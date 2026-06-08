@@ -8,7 +8,7 @@ import { CATEGORIES } from "@/lib/categories";
 type UploadedImage = { id: number; url: string };
 
 const inputCls =
-  "w-full rounded-xl border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+  "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
 export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
   const router = useRouter();
@@ -61,7 +61,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
     <form action={formAction} className="space-y-4">
       {/* 말머리 */}
       <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-600">말머리</label>
+        <label className="mb-1.5 block text-sm font-semibold text-content">말머리</label>
         <div className="flex flex-wrap gap-2">
           {categories.map((c, i) => (
             <label key={c.key} className="cursor-pointer">
@@ -72,7 +72,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
                 defaultChecked={i === 0 || c.key === "GENERAL"}
                 className="peer sr-only"
               />
-              <span className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-500 transition peer-checked:border-brand-400 peer-checked:bg-brand-50 peer-checked:text-brand-600 hover:bg-slate-50">
+              <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm font-semibold text-muted transition peer-checked:border-brand-400 peer-checked:bg-brand-50 peer-checked:text-brand-600 hover:bg-subtle">
                 {c.emoji} {c.label}
               </span>
             </label>
@@ -82,13 +82,13 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
 
       {/* 제목 */}
       <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-600">제목</label>
+        <label className="mb-1.5 block text-sm font-semibold text-content">제목</label>
         <input name="title" maxLength={100} className={inputCls} placeholder="제목을 입력하세요" />
       </div>
 
       {/* 내용 */}
       <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-600">내용</label>
+        <label className="mb-1.5 block text-sm font-semibold text-content">내용</label>
         <textarea
           name="content"
           rows={12}
@@ -100,14 +100,14 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
       {/* 이미지 첨부 */}
       <div>
         <div className="mb-1.5 flex items-center justify-between">
-          <label className="block text-sm font-semibold text-slate-600">
-            이미지 첨부 <span className="text-xs font-normal text-slate-400">(최대 10장 · 4MB)</span>
+          <label className="block text-sm font-semibold text-content">
+            이미지 첨부 <span className="text-xs font-normal text-faint">(최대 10장 · 4MB)</span>
           </label>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading || images.length >= 10}
-            className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted transition hover:bg-subtle disabled:opacity-50"
           >
             {uploading ? "업로드 중…" : "🖼 이미지 추가"}
           </button>
@@ -147,7 +147,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
 
       {/* 익명 옵션 */}
       {isLoggedIn && (
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-500">
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
             name="asAnon"
@@ -160,13 +160,13 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
       )}
 
       {showAnonFields && (
-        <div className="grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 rounded-xl bg-subtle p-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">닉네임 (선택)</label>
+            <label className="mb-1 block text-xs font-medium text-faint">닉네임 (선택)</label>
             <input name="anonNick" maxLength={12} className={inputCls} placeholder="ㅇㅇ" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">
+            <label className="mb-1 block text-xs font-medium text-faint">
               비밀번호 (삭제용, 선택)
             </label>
             <input
@@ -190,7 +190,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl border border-line px-5 py-3 text-sm font-semibold text-slate-500 transition hover:bg-slate-50"
+          className="rounded-xl border border-line px-5 py-3 text-sm font-semibold text-muted transition hover:bg-subtle"
         >
           취소
         </button>

@@ -6,7 +6,7 @@ import { AVATAR_PRESETS } from "@/lib/avatars";
 import Avatar from "@/components/Avatar";
 
 const inputCls =
-  "w-full rounded-xl border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+  "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
 export default function ProfileForm({
   initialNickname,
@@ -26,17 +26,17 @@ export default function ProfileForm({
   return (
     <form action={formAction} className="space-y-6">
       {/* 미리보기 */}
-      <div className="flex items-center gap-4 rounded-2xl bg-slate-50 p-4">
+      <div className="flex items-center gap-4 rounded-2xl bg-subtle p-4">
         <Avatar name={nickname || "?"} avatar={avatar || null} size={64} />
         <div className="min-w-0">
-          <p className="truncate text-lg font-bold text-slate-800">{nickname || "닉네임"}</p>
-          <p className="text-xs text-slate-400">이렇게 표시됩니다</p>
+          <p className="truncate text-lg font-bold text-content">{nickname || "닉네임"}</p>
+          <p className="text-xs text-faint">이렇게 표시됩니다</p>
         </div>
       </div>
 
       {/* 닉네임 */}
       <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-600">닉네임</label>
+        <label className="mb-1.5 block text-sm font-semibold text-content">닉네임</label>
         <input
           name="nickname"
           value={nickname}
@@ -49,7 +49,7 @@ export default function ProfileForm({
 
       {/* 캐릭터 사진 - 프리셋 */}
       <div>
-        <label className="mb-1.5 block text-sm font-semibold text-slate-600">캐릭터 사진</label>
+        <label className="mb-1.5 block text-sm font-semibold text-content">캐릭터 사진</label>
         <div className="grid grid-cols-6 gap-2">
           {AVATAR_PRESETS.map((p) => {
             const key = `preset:${p.key}`;
@@ -73,7 +73,7 @@ export default function ProfileForm({
 
         {/* 또는 이미지 URL */}
         <div className="mt-3">
-          <label className="mb-1 block text-xs font-medium text-slate-400">
+          <label className="mb-1 block text-xs font-medium text-faint">
             또는 이미지 URL 직접 입력
           </label>
           <input

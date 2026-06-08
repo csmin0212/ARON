@@ -23,8 +23,8 @@ export default function CategoryTabs({ current }: { current: string }) {
                 ? `rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm ${
                     isBest ? "bg-rose-500" : "bg-brand-500"
                   }`
-                : `rounded-full bg-white px-4 py-1.5 text-sm font-semibold ring-1 ring-line transition hover:bg-slate-50 ${
-                    isBest ? "text-rose-500 hover:text-rose-600" : "text-slate-500 hover:text-slate-700"
+                : `rounded-full bg-surface px-4 py-1.5 text-sm font-semibold ring-1 ring-line transition hover:bg-subtle ${
+                    isBest ? "text-rose-500 hover:text-rose-600" : "text-muted hover:text-content"
                   }`
             }
           >

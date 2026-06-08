@@ -5,7 +5,7 @@ import Link from "next/link";
 import { register, type FormState } from "@/app/actions/auth";
 
 const inputCls =
-  "w-full rounded-xl border border-line bg-white px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+  "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
 export default function RegisterForm() {
   const [state, formAction, pending] = useActionState<FormState, FormData>(register, undefined);
@@ -13,11 +13,11 @@ export default function RegisterForm() {
   return (
     <form action={formAction} className="space-y-3">
       <div>
-        <label className="mb-1 block text-xs font-semibold text-slate-500">아이디</label>
+        <label className="mb-1 block text-xs font-semibold text-muted">아이디</label>
         <input name="username" autoComplete="username" className={inputCls} placeholder="영문/숫자 4~20자" />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold text-slate-500">비밀번호</label>
+        <label className="mb-1 block text-xs font-semibold text-muted">비밀번호</label>
         <input
           name="password"
           type="password"
@@ -27,7 +27,7 @@ export default function RegisterForm() {
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold text-slate-500">닉네임 (캐릭터명)</label>
+        <label className="mb-1 block text-xs font-semibold text-muted">닉네임 (캐릭터명)</label>
         <input name="nickname" className={inputCls} placeholder="갤러리에 표시될 이름" />
       </div>
 
@@ -45,7 +45,7 @@ export default function RegisterForm() {
         {pending ? "가입 중…" : "회원가입"}
       </button>
 
-      <p className="pt-1 text-center text-sm text-slate-400">
+      <p className="pt-1 text-center text-sm text-faint">
         이미 계정이 있으신가요?{" "}
         <Link href="/login" className="font-semibold text-brand-600 hover:underline">
           로그인

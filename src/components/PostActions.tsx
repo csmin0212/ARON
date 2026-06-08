@@ -36,7 +36,7 @@ export default function PostActions({
     <button
       onClick={handleDelete}
       disabled={pending}
-      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50"
+      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-faint transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50"
     >
       🗑 삭제
     </button>

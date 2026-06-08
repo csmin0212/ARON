@@ -96,7 +96,7 @@ export default async function HomePage({
     items = rows.map((r) => normalize(r, recMap));
     makeHref = (p) => `/?q=${encodeURIComponent(query)}&page=${p}`;
     heading = (
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-muted">
         <span className="font-bold text-brand-600">‘{query}’</span> 검색 결과{" "}
         <span className="font-bold">{total}</span>건
       </p>
@@ -126,7 +126,7 @@ export default async function HomePage({
       .map((r) => normalize(r, recMap));
     makeHref = (p) => `/?tab=BEST&page=${p}`;
     heading = (
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-muted">
         🔥 추천 <span className="font-bold text-rose-500">{BEST_THRESHOLD}개</span> 이상 받은
         개념글
       </p>

@@ -59,7 +59,7 @@ export default function Avatar({
   if (anonymous) {
     return (
       <span
-        className="inline-flex shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-400 ring-1 ring-black/5"
+        className="inline-flex shrink-0 items-center justify-center rounded-full bg-subtle-hover text-faint ring-1 ring-black/5"
         style={{ ...dim, fontSize }}
         aria-hidden
       >

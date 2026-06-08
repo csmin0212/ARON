@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { createComment, type CommentState } from "@/app/actions/comments";
 
 const smallInput =
-  "rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+  "rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
 export default function CommentForm({
   postId,
@@ -46,7 +46,7 @@ export default function CommentForm({
   return (
     <form
       action={formAction}
-      className={`rounded-2xl border border-line bg-white ${compact ? "p-3" : "p-4"}`}
+      className={`rounded-2xl border border-line bg-surface ${compact ? "p-3" : "p-4"}`}
     >
       <input type="hidden" name="postId" value={postId} />
       {parentId != null && <input type="hidden" name="parentId" value={parentId} />}
@@ -60,7 +60,7 @@ export default function CommentForm({
         rows={compact ? 2 : 3}
         maxLength={2000}
         placeholder={parentId != null ? "답글을 입력하세요" : "댓글을 입력하세요"}
-        className="w-full resize-y rounded-lg bg-slate-50 p-3 text-sm outline-none transition focus:bg-white focus:ring-2 focus:ring-brand-100"
+        className="w-full resize-y rounded-lg bg-subtle p-3 text-sm outline-none transition focus:bg-surface focus:ring-2 focus:ring-brand-100"
       />
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -78,7 +78,7 @@ export default function CommentForm({
             </>
           )}
           {isLoggedIn && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-faint">
               <input
                 type="checkbox"
                 checked={asAnon}

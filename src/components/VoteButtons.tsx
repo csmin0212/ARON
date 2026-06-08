@@ -29,11 +29,11 @@ export default function VoteButtons({
         className={`flex w-24 flex-col items-center gap-0.5 rounded-2xl border px-4 py-3 transition ${
           result.my === 1
             ? "border-rose-300 bg-rose-50"
-            : "border-line bg-white hover:border-rose-200 hover:bg-rose-50/50"
+            : "border-line bg-surface hover:border-rose-200 hover:bg-rose-50/50"
         }`}
       >
         <span className="text-lg">👍</span>
-        <span className="text-xs font-semibold text-slate-500">추천</span>
+        <span className="text-xs font-semibold text-muted">추천</span>
         <span className="text-lg font-extrabold text-rose-500">{result.up}</span>
       </button>
 
@@ -42,13 +42,13 @@ export default function VoteButtons({
         disabled={pending}
         className={`flex w-24 flex-col items-center gap-0.5 rounded-2xl border px-4 py-3 transition ${
           result.my === -1
-            ? "border-slate-300 bg-slate-100"
-            : "border-line bg-white hover:border-slate-300 hover:bg-slate-50"
+            ? "border-faint2 bg-subtle-hover"
+            : "border-line bg-surface hover:border-faint2 hover:bg-subtle"
         }`}
       >
         <span className="text-lg">👎</span>
-        <span className="text-xs font-semibold text-slate-500">비추천</span>
-        <span className="text-lg font-extrabold text-slate-500">{result.down}</span>
+        <span className="text-xs font-semibold text-muted">비추천</span>
+        <span className="text-lg font-extrabold text-muted">{result.down}</span>
       </button>
     </div>
   );

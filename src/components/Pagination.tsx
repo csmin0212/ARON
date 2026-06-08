@@ -23,16 +23,16 @@ export default function Pagination({
   return (
     <nav className="mt-5 flex items-center justify-center gap-1.5">
       {current > 1 && (
-        <Link href={makeHref(current - 1)} className={`${base} bg-white text-slate-500 ring-1 ring-line hover:bg-slate-50`}>
+        <Link href={makeHref(current - 1)} className={`${base} bg-surface text-muted ring-1 ring-line hover:bg-subtle`}>
           ‹
         </Link>
       )}
       {start > 1 && (
-        <Link href={makeHref(1)} className={`${base} bg-white text-slate-500 ring-1 ring-line hover:bg-slate-50`}>
+        <Link href={makeHref(1)} className={`${base} bg-surface text-muted ring-1 ring-line hover:bg-subtle`}>
           1
         </Link>
       )}
-      {start > 2 && <span className="px-1 text-slate-300">…</span>}
+      {start > 2 && <span className="px-1 text-faint2">…</span>}
 
       {pages.map((p) =>
         p === current ? (
@@ -40,20 +40,20 @@ export default function Pagination({
             {p}
           </span>
         ) : (
-          <Link key={p} href={makeHref(p)} className={`${base} bg-white text-slate-500 ring-1 ring-line hover:bg-slate-50`}>
+          <Link key={p} href={makeHref(p)} className={`${base} bg-surface text-muted ring-1 ring-line hover:bg-subtle`}>
             {p}
           </Link>
         ),
       )}
 
-      {end < totalPages - 1 && <span className="px-1 text-slate-300">…</span>}
+      {end < totalPages - 1 && <span className="px-1 text-faint2">…</span>}
       {end < totalPages && (
-        <Link href={makeHref(totalPages)} className={`${base} bg-white text-slate-500 ring-1 ring-line hover:bg-slate-50`}>
+        <Link href={makeHref(totalPages)} className={`${base} bg-surface text-muted ring-1 ring-line hover:bg-subtle`}>
           {totalPages}
         </Link>
       )}
       {current < totalPages && (
-        <Link href={makeHref(current + 1)} className={`${base} bg-white text-slate-500 ring-1 ring-line hover:bg-slate-50`}>
+        <Link href={makeHref(current + 1)} className={`${base} bg-surface text-muted ring-1 ring-line hover:bg-subtle`}>
           ›
         </Link>
       )}

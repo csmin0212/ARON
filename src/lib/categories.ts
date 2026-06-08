@@ -13,7 +13,7 @@ export interface Category {
 export const CATEGORIES: Category[] = [
   { key: "NOTICE", label: "공지", tab: "공지", color: "bg-rose-100 text-rose-600", emoji: "📌" },
   { key: "INFO", label: "정보", tab: "정보", color: "bg-sky-100 text-sky-600", emoji: "📘" },
-  { key: "GENERAL", label: "일반", tab: "일반", color: "bg-slate-100 text-slate-500", emoji: "💬" },
+  { key: "GENERAL", label: "일반", tab: "일반", color: "bg-subtle-hover text-muted", emoji: "💬" },
   { key: "QUESTION", label: "질문", tab: "질문", color: "bg-amber-100 text-amber-600", emoji: "❓" },
 ];
 

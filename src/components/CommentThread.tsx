@@ -25,7 +25,7 @@ function AuthorLine({ node }: { node: CommentNode }) {
     return (
       <span className="flex items-center gap-1.5">
         <Avatar name={node.member.nickname} avatar={node.member.avatar} size={22} />
-        <span className="text-sm font-bold text-slate-700">{node.member.nickname}</span>
+        <span className="text-sm font-bold text-content">{node.member.nickname}</span>
         {node.isAuthorPost && (
           <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-600">
             작성자
@@ -37,12 +37,12 @@ function AuthorLine({ node }: { node: CommentNode }) {
   return (
     <span className="flex items-center gap-1.5">
       <Avatar name="ㅇㅇ" anonymous size={22} />
-      <span className="text-sm font-bold text-slate-500">
+      <span className="text-sm font-bold text-muted">
         {node.anonNick ?? "ㅇㅇ"}
-        <span className="ml-1 text-[11px] font-normal text-slate-300">({node.anonIp})</span>
+        <span className="ml-1 text-[11px] font-normal text-faint2">({node.anonIp})</span>
       </span>
       {node.isAuthorPost && (
-        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+        <span className="rounded bg-subtle-hover px-1.5 py-0.5 text-[10px] font-bold text-muted">
           작성자
         </span>
       )}
@@ -88,24 +88,24 @@ function Node({
         <div className="py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
-              {depth > 0 && <span className="text-slate-300">└</span>}
+              {depth > 0 && <span className="text-faint2">└</span>}
               <AuthorLine node={node} />
             </div>
-            <span className="shrink-0 text-[11px] text-slate-300">
+            <span className="shrink-0 text-[11px] text-faint2">
               {formatFullDate(node.createdAt)}
             </span>
           </div>
 
           <p
             className={`mt-1.5 whitespace-pre-wrap break-words pl-0.5 text-[15px] leading-relaxed ${
-              node.isDeleted ? "italic text-slate-300" : "text-slate-700"
+              node.isDeleted ? "italic text-faint2" : "text-content"
             }`}
           >
             {node.content}
           </p>
 
           {!node.isDeleted && (
-            <div className="mt-1.5 flex items-center gap-3 text-xs text-slate-400">
+            <div className="mt-1.5 flex items-center gap-3 text-xs text-faint">
               <button
                 onClick={() => setReplyOpen((v) => !v)}
                 className="font-semibold transition hover:text-brand-500"
@@ -167,7 +167,7 @@ export default function CommentThread({
 }) {
   if (nodes.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-slate-300">
+      <div className="py-10 text-center text-sm text-faint2">
         아직 댓글이 없어요. 첫 댓글을 남겨보세요!
       </div>
     );

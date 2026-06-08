@@ -3,24 +3,82 @@
 @theme inline {
   --font-sans: var(--font-noto), ui-sans-serif, system-ui, sans-serif;
 
-  /* 브랜드 컬러 (아리안로드 = 차분한 인디고/바이올렛 판타지 톤) */
-  --color-brand-50: #eef0ff;
-  --color-brand-100: #e0e3ff;
-  --color-brand-200: #c7ccff;
-  --color-brand-300: #a5acff;
-  --color-brand-400: #838bf7;
-  --color-brand-500: #6b6ff0;
-  --color-brand-600: #5a55e0;
-  --color-brand-700: #4a44c4;
-  --color-brand-800: #3d399e;
-  --color-brand-900: #36347d;
+  /* 시맨틱 색 토큰 — 실제 값은 :root / [data-theme] 에서 지정 */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-subtle-hover: var(--subtle-hover);
+  --color-line: var(--line);
+  --color-content: var(--content);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-faint2: var(--faint2);
 
-  --color-canvas: #f4f5f9;
-  --color-line: #e9ebf2;
+  /* 브랜드(강조) — 단일 --accent 에서 팔레트 자동 생성 */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
 }
 
 :root {
+  --accent: #6b6ff0; /* 기본 강조색 (커스텀 시 이 값만 교체됨) */
+
+  /* ☀️ 라이트 테마 */
+  --canvas: #f4f5f9;
+  --surface: #ffffff;
+  --subtle: #f6f7fb;
+  --subtle-hover: #eef0f5;
+  --line: #e9ebf2;
+  --content: #232633;
+  --muted: #646b7c;
+  --faint: #98a0b3;
+  --faint2: #c2c8d6;
+
+  --brand-50: color-mix(in srgb, var(--accent) 10%, white);
+  --brand-100: color-mix(in srgb, var(--accent) 18%, white);
+  --brand-200: color-mix(in srgb, var(--accent) 32%, white);
+  --brand-300: color-mix(in srgb, var(--accent) 50%, white);
+  --brand-400: color-mix(in srgb, var(--accent) 72%, white);
+  --brand-500: var(--accent);
+  --brand-600: color-mix(in srgb, var(--accent) 84%, black);
+  --brand-700: color-mix(in srgb, var(--accent) 68%, black);
+  --brand-800: color-mix(in srgb, var(--accent) 55%, black);
+  --brand-900: color-mix(in srgb, var(--accent) 45%, black);
+
   color-scheme: light;
+}
+
+/* 🌙 다크 테마 */
+[data-theme="dark"] {
+  --canvas: #0e1016;
+  --surface: #171a21;
+  --subtle: #1e222c;
+  --subtle-hover: #272c38;
+  --line: #2b313d;
+  --content: #e7e9ef;
+  --muted: #9aa3b3;
+  --faint: #6f7686;
+  --faint2: #474e5d;
+
+  --brand-50: color-mix(in srgb, var(--accent) 20%, #171a21);
+  --brand-100: color-mix(in srgb, var(--accent) 30%, #171a21);
+  --brand-200: color-mix(in srgb, var(--accent) 45%, #171a21);
+  --brand-300: color-mix(in srgb, var(--accent) 60%, white);
+  --brand-400: color-mix(in srgb, var(--accent) 78%, white);
+  --brand-500: var(--accent);
+  --brand-600: color-mix(in srgb, var(--accent) 88%, white);
+  --brand-700: color-mix(in srgb, var(--accent) 72%, white);
+  --brand-800: color-mix(in srgb, var(--accent) 58%, white);
+  --brand-900: color-mix(in srgb, var(--accent) 46%, white);
+
+  color-scheme: dark;
 }
 
 html {
@@ -28,8 +86,8 @@ html {
 }
 
 body {
-  background: var(--color-canvas);
-  color: #232633;
+  background: var(--canvas);
+  color: var(--content);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -40,15 +98,11 @@ body {
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #d6d9e4;
+  background: var(--faint2);
   border-radius: 999px;
-  border: 2px solid var(--color-canvas);
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: #c2c6d6;
+  border: 2px solid var(--canvas);
 }
 
-/* 게시글 본문 줄바꿈 보존 */
 .post-content {
   white-space: pre-wrap;
   word-break: break-word;

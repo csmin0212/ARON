@@ -99,14 +99,14 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       <div className="flex items-center justify-between">
         <Link
           href={post.category === "NOTICE" ? "/?tab=NOTICE" : "/"}
-          className="text-sm font-semibold text-slate-400 transition hover:text-slate-600"
+          className="text-sm font-semibold text-faint transition hover:text-content"
         >
           ← 목록으로
         </Link>
       </div>
 
       {/* 본문 카드 */}
-      <article className="overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+      <article className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <header className="border-b border-line px-5 py-5 sm:px-7">
           <div className="mb-2 flex items-center gap-2">
             <span
@@ -115,7 +115,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
               {category.emoji} {category.label}
             </span>
           </div>
-          <h1 className="text-xl font-extrabold leading-snug text-slate-900 sm:text-2xl">
+          <h1 className="text-xl font-extrabold leading-snug text-content sm:text-2xl">
             {post.title}
           </h1>
 
@@ -124,30 +124,30 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
               {post.author ? (
                 <>
                   <Avatar name={post.author.nickname} avatar={post.author.avatar} size={32} />
-                  <span className="text-sm font-bold text-slate-700">
+                  <span className="text-sm font-bold text-content">
                     {post.author.nickname}
                   </span>
                 </>
               ) : (
                 <>
                   <Avatar name="ㅇㅇ" anonymous size={32} />
-                  <span className="text-sm font-bold text-slate-500">
+                  <span className="text-sm font-bold text-muted">
                     {post.anonNick ?? "ㅇㅇ"}
-                    <span className="ml-1 text-xs font-normal text-slate-300">
+                    <span className="ml-1 text-xs font-normal text-faint2">
                       ({post.anonIp})
                     </span>
                   </span>
                 </>
               )}
             </div>
-            <div className="text-right text-xs text-slate-400">
+            <div className="text-right text-xs text-faint">
               <div>{formatFullDate(post.createdAt)}</div>
               <div className="mt-0.5">조회 {post.views}</div>
             </div>
           </div>
         </header>
 
-        <div className="post-content px-5 py-7 text-[15px] text-slate-800 sm:px-7">
+        <div className="post-content px-5 py-7 text-[15px] text-content sm:px-7">
           {post.content}
         </div>
 
@@ -170,10 +170,10 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <VoteButtons postId={postId} initial={{ up, down, my: myVote?.value ?? 0 }} />
         </div>
 
-        <div className="flex items-center justify-between border-t border-line bg-slate-50/60 px-5 py-3 sm:px-7">
+        <div className="flex items-center justify-between border-t border-line bg-subtle/60 px-5 py-3 sm:px-7">
           <Link
             href="/"
-            className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted transition hover:bg-subtle"
           >
             목록
           </Link>
@@ -182,8 +182,8 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       </article>
 
       {/* 댓글 카드 */}
-      <section className="overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
-        <h2 className="border-b border-line px-5 py-3.5 text-sm font-bold text-slate-700 sm:px-7">
+      <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+        <h2 className="border-b border-line px-5 py-3.5 text-sm font-bold text-content sm:px-7">
           댓글 <span className="text-brand-500">{comments.length}</span>
         </h2>
 
@@ -191,7 +191,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <CommentThread nodes={roots} postId={postId} isLoggedIn={!!user} />
         </div>
 
-        <div className="border-t border-line bg-slate-50/60 px-5 py-4 sm:px-7">
+        <div className="border-t border-line bg-subtle/60 px-5 py-4 sm:px-7">
           <CommentForm postId={postId} isLoggedIn={!!user} />
         </div>
       </section>

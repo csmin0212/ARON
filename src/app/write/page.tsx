@@ -10,8 +10,8 @@ export default async function WritePage() {
   return (
     <div className="mx-auto max-w-2xl animate-fadeup py-2">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold text-slate-800">글쓰기</h1>
-        <Link href="/" className="text-sm font-semibold text-slate-400 hover:text-slate-600">
+        <h1 className="text-2xl font-extrabold text-content">글쓰기</h1>
+        <Link href="/" className="text-sm font-semibold text-faint hover:text-content">
           ← 목록으로
         </Link>
       </div>
@@ -26,7 +26,7 @@ export default async function WritePage() {
         </p>
       )}
 
-      <div className="rounded-3xl border border-line bg-white p-6 shadow-sm">
+      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
         <WriteForm isLoggedIn={!!user} />
       </div>
     </div>

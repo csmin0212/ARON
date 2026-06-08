@@ -22,6 +22,26 @@ model User {
   posts        Post[]
   comments     Comment[]
   votes        Vote[]
+  sheet        CharacterSheet?
+}
+
+// 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
+model CharacterSheet {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sheetUrl  String
+  charName  String?
+  charClass String?
+  level     Int?
+  hp        Int?
+  mp        Int?
+  fate      Int?
+  gold      String?
+  statsJson String? // JSON: [{ key, label, value, mod }]
+  syncedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 // 게시글
