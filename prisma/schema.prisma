@@ -30,9 +30,10 @@ model CharacterSheet {
   id        String    @id @default(cuid())
   userId    String    @unique
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sheetUrl  String
-  charName  String?
-  charClass String?
+  sheetTab  String // 마스터 시트의 탭(시트) 이름 = 캐릭터명
+  charClass String? // 메인 클래스
+  race      String? // 종족
+  attribute String? // 속성
   level     Int?
   hp        Int?
   mp        Int?

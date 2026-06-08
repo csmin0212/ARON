@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchAndParseSheet, isGoogleSheetUrl } from "@/lib/charsheet";
+import { fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 
 export type SheetState = { error?: string; ok?: boolean } | undefined;
 
@@ -11,21 +11,21 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
   const user = await getCurrentUser();
   if (!user) return { error: "로그인이 필요합니다." };
 
-  const url = String(formData.get("sheetUrl") ?? "").trim();
-  if (!isGoogleSheetUrl(url))
-    return { error: "구글 스프레드시트 주소(https://docs.google.com/spreadsheets/...)를 입력해주세요." };
+  const tab = String(formData.get("sheetTab") ?? "").trim();
+  if (!isValidTabName(tab)) return { error: "캐릭터 탭 이름을 입력해주세요. (예: 실로)" };
 
   let parsed;
   try {
-    parsed = await fetchAndParseSheet(url);
+    parsed = await fetchSheetByTab(tab);
   } catch (e) {
     return { error: e instanceof Error ? e.message : "시트를 불러오지 못했어요." };
   }
 
   const data = {
-    sheetUrl: url,
-    charName: parsed.charName,
+    sheetTab: tab,
     charClass: parsed.charClass,
+    race: parsed.race,
+    attribute: parsed.attribute,
     level: parsed.level,
     hp: parsed.hp,
     mp: parsed.mp,

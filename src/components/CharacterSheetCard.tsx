@@ -3,6 +3,8 @@ import type { StatEntry } from "@/lib/charsheet";
 export type SheetData = {
   charName: string | null;
   charClass: string | null;
+  race: string | null;
+  attribute: string | null;
   level: number | null;
   hp: number | null;
   mp: number | null;
@@ -24,7 +26,7 @@ function Stat({ s }: { s: StatEntry }) {
   );
 }
 
-function Vital({ label, value, color }: { label: string; value: number | null; color: string }) {
+function Vital({ label, value, color }: { label: string; value: string | number | null; color: string }) {
   return (
     <div className="flex-1 rounded-xl bg-subtle px-3 py-2 text-center">
       <div className="text-[11px] font-bold text-faint">{label}</div>
@@ -41,25 +43,37 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
     stats = [];
   }
 
+  const tags = [sheet.charClass, sheet.race, sheet.attribute && `속성 ${sheet.attribute}`].filter(
+    Boolean,
+  ) as string[];
+
   return (
     <div className="space-y-4">
-      {/* 클래스 / 레벨 / 이름 */}
+      {/* 캐릭터명 / 클래스 / 종족 */}
       <div className="flex items-center gap-3">
         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-2xl shadow-sm">
           📜
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-extrabold text-content">
-              {sheet.charClass ?? "클래스 미설정"}
+            <span className="truncate text-lg font-extrabold text-content">
+              {sheet.charName ?? "캐릭터"}
             </span>
             {sheet.level != null && (
-              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">
+              <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">
                 Lv.{sheet.level}
               </span>
             )}
           </div>
-          {sheet.charName && <p className="truncate text-sm text-muted">{sheet.charName}</p>}
+          {tags.length > 0 && (
+            <p className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-muted">
+              {tags.map((t, i) => (
+                <span key={i} className="rounded bg-subtle px-1.5 py-0.5 font-medium">
+                  {t}
+                </span>
+              ))}
+            </p>
+          )}
         </div>
       </div>
 
@@ -68,10 +82,7 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
         <Vital label="HP" value={sheet.hp} color="text-rose-500" />
         <Vital label="MP" value={sheet.mp} color="text-sky-500" />
         <Vital label="페이트" value={sheet.fate} color="text-amber-500" />
-        <div className="flex-1 rounded-xl bg-subtle px-3 py-2 text-center">
-          <div className="text-[11px] font-bold text-faint">소지금</div>
-          <div className="text-lg font-extrabold text-emerald-500">{sheet.gold ?? "-"}</div>
-        </div>
+        <Vital label="소지금" value={sheet.gold} color="text-emerald-500" />
       </div>
 
       {/* 능력치 */}

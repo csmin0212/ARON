@@ -1,11 +1,19 @@
-// 구글 스프레드시트(코코포리아 아리안로드 캐릭터 시트) 파서
-// 시트는 "링크가 있는 모든 사용자 보기 가능"으로 공유돼 있어야 읽을 수 있음.
+// 마스터 구글 스프레드시트에서 "탭 이름(=캐릭터명)"으로 캐릭터 데이터를 읽어온다.
+// 시트는 "링크가 있는 모든 사용자 보기 가능"으로 공유돼 있어야 함.
+// 행 위치가 탭마다 미세하게 달라질 수 있어, 절대 좌표 대신 "라벨을 찾아 상대 위치"로 읽는다.
+
+export const MASTER_SHEET_ID =
+  process.env.MASTER_SHEET_ID || "1fHofIK9o4eeA2HZ_OQP4h4rOt87dzZ7jDCibmrBROug";
+
+export const MASTER_SHEET_URL = `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit`;
 
 export type StatEntry = { key: string; label: string; value: number | null; mod: number | null };
 
 export type ParsedSheet = {
-  charName: string | null;
-  charClass: string | null;
+  charName: string | null; // 탭 이름
+  charClass: string | null; // 메인 클래스
+  race: string | null; // 종족
+  attribute: string | null; // 속성
   level: number | null;
   hp: number | null;
   mp: number | null;
@@ -14,33 +22,10 @@ export type ParsedSheet = {
   stats: StatEntry[];
 };
 
-const STAT_DEFS: { key: string; label: string; row: number }[] = [
-  { key: "STR", label: "근력", row: 19 },
-  { key: "DEX", label: "재주", row: 20 },
-  { key: "AGI", label: "민첩", row: 21 },
-  { key: "INT", label: "지력", row: 22 },
-  { key: "PER", label: "감지", row: 23 },
-  { key: "SPI", label: "정신", row: 24 },
-  { key: "LUK", label: "행운", row: 25 },
-];
-const STAT_VALUE_COL = 18; // 【능력치】
-const STAT_MOD_COL = 21; // 고정치(판정 수정)
+const ABILITY_LABELS = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
+const ABILITY_KEYS = ["STR", "DEX", "AGI", "INT", "PER", "SPI", "LUK"];
 
-export function extractSheetId(url: string): string | null {
-  const m = url.match(/\/spreadsheets\/d\/([\w-]+)/);
-  return m ? m[1] : null;
-}
-
-function extractGid(url: string): string | null {
-  const m = url.match(/[?#&]gid=(\d+)/);
-  return m ? m[1] : null;
-}
-
-export function isGoogleSheetUrl(url: string): boolean {
-  return /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[\w-]+/.test(url.trim());
-}
-
-// 따옴표/개행 처리하는 최소 CSV 파서
+// ── CSV 파서 (따옴표/개행 처리) ──
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -77,55 +62,105 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-function cell(grid: string[][], r: number, c: number): string | null {
-  const v = (grid[r]?.[c] ?? "").trim();
-  if (!v || v === "-" || v === "#N/A" || v === "(닉네임)") return null;
-  return v;
+function at(g: string[][], r: number, c: number): string {
+  return (g[r]?.[c] ?? "").trim();
 }
 
-function toNum(v: string | null): number | null {
-  if (v == null) return null;
+// 라벨 셀 위치 찾기 (정확히 일치하는 첫 셀)
+function find(g: string[][], text: string): [number, number] | null {
+  for (let r = 0; r < g.length; r++) {
+    const row = g[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if ((row[c] ?? "").trim() === text) return [r, c];
+    }
+  }
+  return null;
+}
+
+function clean(v: string): string | null {
+  const t = v.trim();
+  if (!t || t === "-" || t === "#N/A" || t === "0") return null;
+  return t;
+}
+
+function toNum(v: string): number | null {
   const n = parseInt(v.replace(/[^\d-]/g, ""), 10);
   return Number.isNaN(n) ? null : n;
 }
 
-export function parseSheetCsv(text: string): ParsedSheet {
-  const g = parseCsv(text);
+// 라벨 기준으로 값 읽기 (dr, dc = 라벨로부터의 오프셋)
+function below(g: string[][], label: string, dr = 1, dc = 0): string | null {
+  const p = find(g, label);
+  if (!p) return null;
+  return clean(at(g, p[0] + dr, p[1] + dc));
+}
+function beside(g: string[][], label: string, dc = 1): string | null {
+  return below(g, label, 0, dc);
+}
+
+export function isValidTabName(name: string): boolean {
+  const t = name.trim();
+  return t.length >= 1 && t.length <= 40;
+}
+
+export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
+  // 능력치 블록: "【능력 기본치】" 헤더 기준
+  const base = find(g, "【능력 기본치】");
+  const stats: StatEntry[] = [];
+  if (base) {
+    const [hr, hc] = base;
+    const valueCol = hc + 7; // 【능력치】
+    const modCol = hc + 10; // 고정치(판정 수정)
+    for (let i = 0; i < 7; i++) {
+      const r = hr + 2 + i;
+      stats.push({
+        key: ABILITY_KEYS[i],
+        label: ABILITY_LABELS[i],
+        value: toNum(at(g, r, valueCol)),
+        mod: toNum(at(g, r, modCol)),
+      });
+    }
+  }
+
+  const hp = find(g, "HP");
   return {
-    charName: cell(g, 6, 2),
-    charClass: cell(g, 8, 11),
-    level: toNum(cell(g, 29, 2)),
-    hp: toNum(cell(g, 12, 11)),
-    mp: toNum(cell(g, 12, 12)),
-    fate: toNum(cell(g, 12, 13)),
-    gold: cell(g, 30, 26),
-    stats: STAT_DEFS.map((s) => ({
-      key: s.key,
-      label: s.label,
-      value: toNum(cell(g, s.row, STAT_VALUE_COL)),
-      mod: toNum(cell(g, s.row, STAT_MOD_COL)),
-    })),
+    charName: tabName,
+    charClass: below(g, "메인 클래스", 1, 0),
+    race: below(g, "종족", 1, 0),
+    attribute: below(g, "속성", 1, 0),
+    level: (() => {
+      const v = beside(g, "Level.", 1);
+      return v ? toNum(v) : null;
+    })(),
+    hp: hp ? toNum(at(g, hp[0] + 1, hp[1])) : null,
+    mp: hp ? toNum(at(g, hp[0] + 1, hp[1] + 1)) : null,
+    fate: hp ? toNum(at(g, hp[0] + 1, hp[1] + 2)) : null,
+    gold: beside(g, "소지금:", 1),
+    stats,
   };
 }
 
-// 시트 URL → CSV 가져와 파싱
-export async function fetchAndParseSheet(url: string): Promise<ParsedSheet> {
-  const id = extractSheetId(url);
-  if (!id) throw new Error("올바른 구글 스프레드시트 주소가 아니에요.");
+// 탭 이름으로 마스터 시트에서 데이터 가져오기 (gviz CSV 사용 → 탭 이름 지정 가능)
+export async function fetchSheetByTab(tabName: string): Promise<ParsedSheet> {
+  const url = `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
+    tabName.trim(),
+  )}`;
 
-  const gid = extractGid(url);
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv${
-    gid ? `&gid=${gid}` : ""
-  }`;
-
-  const res = await fetch(csvUrl, { redirect: "follow", cache: "no-store" });
-  if (!res.ok) throw new Error("시트를 불러오지 못했어요. 공유 설정을 확인해주세요.");
+  const res = await fetch(url, { redirect: "follow", cache: "no-store" });
+  if (!res.ok) throw new Error("시트를 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
 
   const text = await res.text();
-  // 비공개 시트는 로그인 HTML 페이지를 반환함
+  if (/google\.visualization\.Query|"status":"error"/.test(text)) {
+    throw new Error(`'${tabName}' 탭을 찾지 못했어요. 시트 하단의 탭 이름과 정확히 같게 입력해주세요.`);
+  }
   if (/^\s*<(!doctype|html)/i.test(text)) {
     throw new Error("시트가 비공개예요. '링크가 있는 모든 사용자 보기 가능'으로 공유해주세요.");
   }
 
-  return parseSheetCsv(text);
+  const g = parseCsv(text);
+  if (!find(g, "【능력 기본치】") && !find(g, "HP")) {
+    throw new Error(`'${tabName}' 탭에서 캐릭터 정보를 찾지 못했어요. 탭 이름을 확인해주세요.`);
+  }
+
+  return parseSheetGrid(g, tabName.trim());
 }

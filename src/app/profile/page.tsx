@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatFullDate } from "@/lib/format";
+import { MASTER_SHEET_URL } from "@/lib/charsheet";
 import ProfileForm from "@/components/forms/ProfileForm";
 import SheetLinkForm from "@/components/forms/SheetLinkForm";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
@@ -56,13 +57,14 @@ export default async function ProfilePage({
 
         {sheet && (
           <div className="mb-5 rounded-2xl border border-line bg-canvas p-4">
-            <CharacterSheetCard sheet={sheet} />
+            <CharacterSheetCard sheet={{ ...sheet, charName: sheet.sheetTab }} />
           </div>
         )}
 
         <SheetLinkForm
-          initialUrl={sheet?.sheetUrl}
+          initialTab={sheet?.sheetTab}
           syncedAt={sheet?.syncedAt ? formatFullDate(sheet.syncedAt) : null}
+          masterUrl={MASTER_SHEET_URL}
         />
       </div>
     </div>
