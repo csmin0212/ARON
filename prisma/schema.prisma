@@ -23,6 +23,7 @@ model User {
   comments     Comment[]
   votes        Vote[]
   sheet        CharacterSheet?
+  rolls        Roll[]
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
@@ -38,11 +39,32 @@ model CharacterSheet {
   hp        Int?
   mp        Int?
   fate      Int?
-  gold      String?
+  gold      String? // 시트 원문 골드 (참고용)
   statsJson String? // JSON: [{ key, label, value, mod }]
+  // 사이트 라이브 상태 (탐색/게임으로 변동)
+  curHp     Int?
+  curMp     Int?
+  curGold   Int?
+  invJson   String? // 인벤토리 JSON [{ name, qty }]
   syncedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+}
+
+// 주사위/판정 로그 (탐색·RP 공용 엔진)
+model Roll {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String // "근력 판정" / "자유 굴림" 등
+  dice      String // 굴린 주사위 "[4,3]"
+  modifier  Int      @default(0)
+  total     Int
+  dc        Int? // 목표치
+  success   Boolean?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // 게시글

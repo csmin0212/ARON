@@ -38,7 +38,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const post = await prisma.post.update({
     where: { id: postId },
     data: { views: { increment: 1 } },
-    include: { author: { select: { id: true, nickname: true, avatar: true } } },
+    include: { author: { select: { id: true, username: true, nickname: true, avatar: true } } },
   });
 
   const user = await getCurrentUser();
@@ -51,21 +51,20 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   });
 
   // 거래글이면 판매자의 연동된 보유 골드 조회
-  const sellerGold =
-    post.category === "TRADE" && post.authorId
-      ? (
-          await prisma.characterSheet.findUnique({
-            where: { userId: post.authorId },
-            select: { gold: true },
-          })
-        )?.gold ?? null
-      : null;
+  let sellerGold: string | null = null;
+  if (post.category === "TRADE" && post.authorId) {
+    const s = await prisma.characterSheet.findUnique({
+      where: { userId: post.authorId },
+      select: { curGold: true, gold: true },
+    });
+    sellerGold = s?.curGold != null ? `${s.curGold.toLocaleString()}G` : (s?.gold ?? null);
+  }
 
   // 댓글 + 트리 구성
   const comments = await prisma.comment.findMany({
     where: { postId },
     orderBy: { createdAt: "asc" },
-    include: { author: { select: { id: true, nickname: true, avatar: true } } },
+    include: { author: { select: { id: true, username: true, nickname: true, avatar: true } } },
   });
 
   const nodeMap = new Map<number, CommentNode>();
@@ -76,7 +75,9 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       createdAt: c.createdAt.toISOString(),
       isDeleted: c.isDeleted,
       isAuthorPost: c.isAuthorPost,
-      member: c.author ? { nickname: c.author.nickname, avatar: c.author.avatar } : null,
+      member: c.author
+        ? { username: c.author.username, nickname: c.author.nickname, avatar: c.author.avatar }
+        : null,
       anonNick: c.anonNick,
       anonIp: c.anonIp,
       isMine: !!(user && c.authorId && c.authorId === user.id),
@@ -136,9 +137,12 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
               {post.author ? (
                 <>
                   <Avatar name={post.author.nickname} avatar={post.author.avatar} size={32} />
-                  <span className="text-sm font-bold text-content">
+                  <Link
+                    href={`/u/${encodeURIComponent(post.author.username)}`}
+                    className="text-sm font-bold text-content transition hover:text-brand-600 hover:underline"
+                  >
                     {post.author.nickname}
-                  </span>
+                  </Link>
                 </>
               ) : (
                 <>

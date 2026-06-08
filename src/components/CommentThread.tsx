@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import Avatar from "./Avatar";
 import CommentForm from "./CommentForm";
 import { deleteComment } from "@/app/actions/comments";
@@ -12,7 +13,7 @@ export type CommentNode = {
   createdAt: string;
   isDeleted: boolean;
   isAuthorPost: boolean;
-  member: { nickname: string; avatar: string | null } | null;
+  member: { username: string; nickname: string; avatar: string | null } | null;
   anonNick: string | null;
   anonIp: string | null;
   isMine: boolean;
@@ -25,7 +26,12 @@ function AuthorLine({ node }: { node: CommentNode }) {
     return (
       <span className="flex items-center gap-1.5">
         <Avatar name={node.member.nickname} avatar={node.member.avatar} size={22} />
-        <span className="text-sm font-bold text-content">{node.member.nickname}</span>
+        <Link
+          href={`/u/${encodeURIComponent(node.member.username)}`}
+          className="text-sm font-bold text-content transition hover:text-brand-600 hover:underline"
+        >
+          {node.member.nickname}
+        </Link>
         {node.isAuthorPost && (
           <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-600">
             작성자

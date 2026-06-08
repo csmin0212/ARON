@@ -11,6 +11,10 @@ export type SheetData = {
   fate: number | null;
   gold: string | null;
   statsJson: string | null;
+  // 라이브 상태 (있으면 현재값으로 표시)
+  curHp?: number | null;
+  curMp?: number | null;
+  curGold?: number | null;
 };
 
 function Stat({ s }: { s: StatEntry }) {
@@ -77,12 +81,24 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
         </div>
       </div>
 
-      {/* HP / MP / 페이트 / 소지금 */}
+      {/* HP / MP / 페이트 / 소지금 (라이브 상태 우선) */}
       <div className="flex gap-2">
-        <Vital label="HP" value={sheet.hp} color="text-rose-500" />
-        <Vital label="MP" value={sheet.mp} color="text-sky-500" />
+        <Vital
+          label="HP"
+          value={sheet.curHp != null && sheet.hp != null ? `${sheet.curHp}/${sheet.hp}` : sheet.hp}
+          color="text-rose-500"
+        />
+        <Vital
+          label="MP"
+          value={sheet.curMp != null && sheet.mp != null ? `${sheet.curMp}/${sheet.mp}` : sheet.mp}
+          color="text-sky-500"
+        />
         <Vital label="페이트" value={sheet.fate} color="text-amber-500" />
-        <Vital label="소지금" value={sheet.gold} color="text-emerald-500" />
+        <Vital
+          label="소지금"
+          value={sheet.curGold != null ? `${sheet.curGold.toLocaleString()}G` : sheet.gold}
+          color="text-emerald-500"
+        />
       </div>
 
       {/* 능력치 */}

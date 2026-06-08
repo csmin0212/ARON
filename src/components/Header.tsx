@@ -51,7 +51,7 @@ export default async function Header() {
           {user ? (
             <div className="flex items-center gap-2">
               <Link
-                href="/profile"
+                href={`/u/${encodeURIComponent(user.username)}`}
                 className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 transition hover:bg-subtle-hover"
               >
                 <Avatar name={user.nickname} avatar={user.avatar} size={30} />
