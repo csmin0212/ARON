@@ -17,6 +17,9 @@ const POST_SELECT = {
   views: true,
   anonNick: true,
   anonIp: true,
+  price: true,
+  tradeType: true,
+  tradeStatus: true,
   author: { select: { nickname: true, avatar: true } },
   _count: { select: { comments: true, images: true } },
 } as const;
@@ -29,6 +32,9 @@ type RawPost = {
   views: number;
   anonNick: string | null;
   anonIp: string | null;
+  price: number | null;
+  tradeType: string | null;
+  tradeStatus: string | null;
   author: { nickname: string; avatar: string | null } | null;
   _count: { comments: number; images: number };
 };
@@ -46,6 +52,9 @@ function normalize(p: RawPost, recMap: Map<number, number>, pinned = false): Lis
     anonNick: p.anonNick,
     anonIp: p.anonIp,
     hasImage: p._count.images > 0,
+    price: p.price,
+    tradeType: p.tradeType,
+    tradeStatus: p.tradeStatus,
     pinned,
   };
 }

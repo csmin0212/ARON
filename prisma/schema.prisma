@@ -48,11 +48,15 @@ model CharacterSheet {
 // 게시글
 model Post {
   id        Int       @id @default(autoincrement())
-  category  String // NOTICE | INFO | GENERAL | QUESTION
+  category  String // NOTICE | INFO | GENERAL | QUESTION | TRADE
   title     String
   content   String
   views     Int       @default(0)
   createdAt DateTime  @default(now())
+  // 거래(TRADE) 전용 필드
+  price       Int? // 골드 가격
+  tradeType   String? // SELL(팝니다) | BUY(삽니다)
+  tradeStatus String? // OPEN(거래중) | CLOSED(거래완료)
   // 회원 작성
   authorId  String?
   author    User?     @relation(fields: [authorId], references: [id])

@@ -17,6 +17,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
     undefined,
   );
   const [asAnon, setAsAnon] = useState(!isLoggedIn);
+  const [category, setCategory] = useState("GENERAL");
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -53,9 +54,8 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
   }
 
   const showAnonFields = !isLoggedIn || asAnon;
-  const categories = isLoggedIn
-    ? CATEGORIES
-    : CATEGORIES.filter((c) => c.key !== "NOTICE");
+  const categories = isLoggedIn ? CATEGORIES : CATEGORIES.filter((c) => c.key !== "NOTICE");
+  const isTrade = category === "TRADE";
 
   return (
     <form action={formAction} className="space-y-4">
@@ -63,13 +63,14 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
       <div>
         <label className="mb-1.5 block text-sm font-semibold text-content">말머리</label>
         <div className="flex flex-wrap gap-2">
-          {categories.map((c, i) => (
+          {categories.map((c) => (
             <label key={c.key} className="cursor-pointer">
               <input
                 type="radio"
                 name="category"
                 value={c.key}
-                defaultChecked={i === 0 || c.key === "GENERAL"}
+                checked={category === c.key}
+                onChange={() => setCategory(c.key)}
                 className="peer sr-only"
               />
               <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm font-semibold text-muted transition peer-checked:border-brand-400 peer-checked:bg-brand-50 peer-checked:text-brand-600 hover:bg-subtle">
@@ -79,6 +80,51 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
           ))}
         </div>
       </div>
+
+      {/* 거래 전용 필드 */}
+      {isTrade && (
+        <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-content">거래 유형</label>
+            <div className="flex gap-2">
+              {[
+                { v: "SELL", t: "💸 팝니다" },
+                { v: "BUY", t: "🛒 삽니다" },
+              ].map((o, i) => (
+                <label key={o.v} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tradeType"
+                    value={o.v}
+                    defaultChecked={i === 0}
+                    className="peer sr-only"
+                  />
+                  <span className="inline-flex rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-muted transition peer-checked:border-emerald-400 peer-checked:bg-emerald-100 peer-checked:text-emerald-700">
+                    {o.t}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-content">
+              가격 <span className="text-xs font-normal text-faint">(골드)</span>
+            </label>
+            <div className="relative w-48">
+              <input
+                name="price"
+                type="number"
+                min={0}
+                defaultValue={0}
+                className={inputCls}
+              />
+              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500">
+                G
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 제목 */}
       <div>
@@ -93,7 +139,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
           name="content"
           rows={12}
           className={`${inputCls} resize-y leading-relaxed`}
-          placeholder="내용을 입력하세요. 꿀팁 공유 ㄱㄱ"
+          placeholder={isTrade ? "매물 설명, 거래 방식 등을 적어주세요." : "내용을 입력하세요. 꿀팁 공유 ㄱㄱ"}
         />
       </div>
 
@@ -167,7 +213,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-faint">
-              비밀번호 (삭제용, 선택)
+              비밀번호 (삭제용{isTrade ? " · 거래완료" : ""}, 선택)
             </label>
             <input
               name="anonPass"

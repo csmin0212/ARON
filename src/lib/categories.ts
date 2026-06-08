@@ -1,6 +1,6 @@
 // 갤러리 탭(말머리) 정의
 
-export type CategoryKey = "NOTICE" | "INFO" | "GENERAL" | "QUESTION";
+export type CategoryKey = "NOTICE" | "INFO" | "GENERAL" | "QUESTION" | "TRADE";
 
 export interface Category {
   key: CategoryKey;
@@ -15,7 +15,17 @@ export const CATEGORIES: Category[] = [
   { key: "INFO", label: "정보", tab: "정보", color: "bg-sky-100 text-sky-600", emoji: "📘" },
   { key: "GENERAL", label: "일반", tab: "일반", color: "bg-subtle-hover text-muted", emoji: "💬" },
   { key: "QUESTION", label: "질문", tab: "질문", color: "bg-amber-100 text-amber-600", emoji: "❓" },
+  { key: "TRADE", label: "거래", tab: "거래", color: "bg-emerald-100 text-emerald-600", emoji: "💰" },
 ];
+
+// 거래 유형/상태
+export const TRADE_TYPES: Record<string, { label: string; color: string }> = {
+  SELL: { label: "팝니다", color: "bg-rose-100 text-rose-600" },
+  BUY: { label: "삽니다", color: "bg-sky-100 text-sky-600" },
+};
+export function tradeTypeLabel(t: string | null | undefined): string {
+  return t && TRADE_TYPES[t] ? TRADE_TYPES[t].label : "거래";
+}
 
 export const CATEGORY_MAP: Record<CategoryKey, Category> = Object.fromEntries(
   CATEGORIES.map((c) => [c.key, c]),

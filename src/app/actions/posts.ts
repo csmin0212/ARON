@@ -28,6 +28,18 @@ export async function createPost(_prev: FormState, formData: FormData): Promise<
   if (content.length < 1 || content.length > 10000)
     return { error: "내용을 입력해주세요. (최대 10000자)" };
 
+  // 거래 글 전용 필드
+  let tradeData: { price?: number; tradeType?: string; tradeStatus?: string } = {};
+  if (category === "TRADE") {
+    const tradeType = String(formData.get("tradeType") ?? "SELL");
+    if (tradeType !== "SELL" && tradeType !== "BUY")
+      return { error: "거래 유형을 선택해주세요." };
+    const price = Math.floor(Number(formData.get("price") ?? 0));
+    if (!Number.isFinite(price) || price < 0 || price > 1_000_000_000)
+      return { error: "가격(골드)을 올바르게 입력해주세요." };
+    tradeData = { price, tradeType, tradeStatus: "OPEN" };
+  }
+
   const user = await getCurrentUser();
   const writeAsMember = user && !asAnon;
 
@@ -38,7 +50,7 @@ export async function createPost(_prev: FormState, formData: FormData): Promise<
 
   if (writeAsMember) {
     const post = await prisma.post.create({
-      data: { category, title, content, authorId: user!.id },
+      data: { category, title, content, authorId: user!.id, ...tradeData },
     });
     newId = post.id;
   } else {
@@ -53,6 +65,7 @@ export async function createPost(_prev: FormState, formData: FormData): Promise<
         anonNick,
         anonIp: await getMaskedIp(),
         anonPass: anonPass ? await hashPassword(anonPass) : null,
+        ...tradeData,
       },
     });
     newId = post.id;
@@ -91,4 +104,26 @@ export async function deletePost(formData: FormData): Promise<void> {
   await prisma.post.delete({ where: { id } });
   revalidatePath("/");
   redirect("/");
+}
+
+// 거래 상태 전환 (판매중 ↔ 거래완료). 작성자(회원) 또는 익명 비밀번호로만.
+export async function toggleTradeStatus(formData: FormData): Promise<void> {
+  const id = Number(formData.get("id"));
+  const password = String(formData.get("password") ?? "");
+  if (!id) return;
+
+  const post = await prisma.post.findUnique({ where: { id } });
+  if (!post || post.category !== "TRADE") return;
+
+  const user = await getCurrentUser();
+  if (post.authorId) {
+    if (!user || user.id !== post.authorId) return;
+  } else {
+    if (!post.anonPass || !(await verifyPassword(password, post.anonPass))) return;
+  }
+
+  const next = post.tradeStatus === "CLOSED" ? "OPEN" : "CLOSED";
+  await prisma.post.update({ where: { id }, data: { tradeStatus: next } });
+  revalidatePath(`/post/${id}`);
+  revalidatePath("/");
 }

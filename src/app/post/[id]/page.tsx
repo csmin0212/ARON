@@ -4,10 +4,11 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/anon";
-import { getCategory } from "@/lib/categories";
+import { getCategory, tradeTypeLabel, TRADE_TYPES } from "@/lib/categories";
 import { formatFullDate } from "@/lib/format";
 import Avatar from "@/components/Avatar";
 import VoteButtons from "@/components/VoteButtons";
+import TradeStatusButton from "@/components/TradeStatusButton";
 import CommentThread, { type CommentNode } from "@/components/CommentThread";
 import CommentForm from "@/components/CommentForm";
 import PostActions from "@/components/PostActions";
@@ -48,6 +49,17 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
     select: { id: true },
     orderBy: { id: "asc" },
   });
+
+  // 거래글이면 판매자의 연동된 보유 골드 조회
+  const sellerGold =
+    post.category === "TRADE" && post.authorId
+      ? (
+          await prisma.characterSheet.findUnique({
+            where: { userId: post.authorId },
+            select: { gold: true },
+          })
+        )?.gold ?? null
+      : null;
 
   // 댓글 + 트리 구성
   const comments = await prisma.comment.findMany({
@@ -146,6 +158,46 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         </header>
+
+        {post.category === "TRADE" && (
+          <div className="border-b border-line px-5 py-4 sm:px-7">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-emerald-50 px-4 py-3">
+              <span
+                className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+                  post.tradeType ? TRADE_TYPES[post.tradeType]?.color : "bg-subtle text-muted"
+                }`}
+              >
+                {tradeTypeLabel(post.tradeType)}
+              </span>
+              <span className="text-xl font-extrabold text-emerald-600">
+                {post.price?.toLocaleString() ?? 0}
+                <span className="ml-0.5 text-sm">G</span>
+              </span>
+              {post.tradeStatus === "CLOSED" ? (
+                <span className="rounded-full bg-subtle-hover px-2.5 py-0.5 text-xs font-bold text-faint">
+                  거래완료
+                </span>
+              ) : (
+                <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-xs font-bold text-white">
+                  판매중
+                </span>
+              )}
+              {sellerGold && (
+                <span className="text-xs text-muted">
+                  판매자 보유 골드 <b className="text-content">{sellerGold}</b>
+                </span>
+              )}
+              <span className="ml-auto">
+                <TradeStatusButton
+                  postId={postId}
+                  status={post.tradeStatus}
+                  isMine={postIsMine}
+                  anonHasPass={postAnonHasPass}
+                />
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="post-content px-5 py-7 text-[15px] text-content sm:px-7">
           {post.content}

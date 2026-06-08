@@ -15,6 +15,9 @@ export type ListPost = {
   anonNick: string | null;
   anonIp: string | null;
   hasImage?: boolean;
+  price?: number | null;
+  tradeType?: string | null;
+  tradeStatus?: string | null;
   pinned?: boolean;
 };
 
@@ -64,6 +67,17 @@ function Row({ post }: { post: ListPost }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate text-[15px] font-medium text-content">{post.title}</span>
+            {post.category === "TRADE" && (
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${
+                  post.tradeStatus === "CLOSED"
+                    ? "bg-subtle-hover text-faint line-through"
+                    : "bg-emerald-100 text-emerald-600"
+                }`}
+              >
+                {post.tradeStatus === "CLOSED" ? "거래완료" : `💰${(post.price ?? 0).toLocaleString()}G`}
+              </span>
+            )}
             {post.hasImage && <span className="shrink-0 text-xs">🖼</span>}
             {post.commentCount > 0 && (
               <span className="shrink-0 text-xs font-bold text-brand-500">
