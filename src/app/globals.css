@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-noto), ui-sans-serif, system-ui, sans-serif;
+
+  /* 브랜드 컬러 (아리안로드 = 차분한 인디고/바이올렛 판타지 톤) */
+  --color-brand-50: #eef0ff;
+  --color-brand-100: #e0e3ff;
+  --color-brand-200: #c7ccff;
+  --color-brand-300: #a5acff;
+  --color-brand-400: #838bf7;
+  --color-brand-500: #6b6ff0;
+  --color-brand-600: #5a55e0;
+  --color-brand-700: #4a44c4;
+  --color-brand-800: #3d399e;
+  --color-brand-900: #36347d;
+
+  --color-canvas: #f4f5f9;
+  --color-line: #e9ebf2;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: light;
+}
+
+html {
+  scrollbar-gutter: stable;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: #232633;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 부드러운 스크롤바 */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d6d9e4;
+  border-radius: 999px;
+  border: 2px solid var(--color-canvas);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #c2c6d6;
+}
+
+/* 게시글 본문 줄바꿈 보존 */
+.post-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+}
+
+@keyframes fadeup {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fadeup {
+  animation: fadeup 0.25s ease-out both;
 }

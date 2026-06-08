@@ -1,0 +1,94 @@
+// 아리안로드 온라인 갤러리 - 데이터베이스 스키마
+// 개발: SQLite / 배포: provider 를 "postgresql" 로 바꾸고 DATABASE_URL 만 교체하면 됨
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 회원
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique // 로그인 아이디
+  passwordHash String
+  nickname     String // 캐릭터(표시) 닉네임
+  avatar       String? // 캐릭터 사진(이미지 URL 또는 프리셋 키)
+  createdAt    DateTime  @default(now())
+  posts        Post[]
+  comments     Comment[]
+  votes        Vote[]
+}
+
+// 게시글
+model Post {
+  id        Int       @id @default(autoincrement())
+  category  String // NOTICE | INFO | GENERAL | QUESTION
+  title     String
+  content   String
+  views     Int       @default(0)
+  createdAt DateTime  @default(now())
+  // 회원 작성
+  authorId  String?
+  author    User?     @relation(fields: [authorId], references: [id])
+  // 익명 작성
+  anonNick  String? // 표시 닉네임 (기본 "ㅇㅇ")
+  anonIp    String? // 마스킹된 IP "121.♡.4.12"
+  anonPass  String? // 익명 글 수정/삭제용 비밀번호 해시
+  comments  Comment[]
+  votes     Vote[]
+  images    Image[]
+
+  @@index([category, createdAt])
+}
+
+// 첨부 이미지 (DB 저장 → /api/image/[id] 로 서빙. 서버리스 배포 호환)
+model Image {
+  id        Int      @id @default(autoincrement())
+  postId    Int?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  data      Bytes
+  mime      String
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+}
+
+// 댓글 / 대댓글 (parentId 로 자기참조)
+model Comment {
+  id           Int       @id @default(autoincrement())
+  content      String
+  createdAt    DateTime  @default(now())
+  isDeleted    Boolean   @default(false)
+  postId       Int
+  post         Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentId     Int?
+  parent       Comment?  @relation("Replies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      Comment[] @relation("Replies")
+  authorId     String?
+  author       User?     @relation(fields: [authorId], references: [id])
+  anonNick     String?
+  anonIp       String?
+  anonPass     String?
+  isAuthorPost Boolean   @default(false) // 글 작성자가 단 댓글이면 "작성자" 표시
+
+  @@index([postId])
+}
+
+// 추천 / 비추천 (중복 방지)
+model Vote {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  voterKey  String // userId 또는 IP — 중복 추천 방지 키
+  value     Int      @default(1) // 1 = 추천, -1 = 비추천
+  createdAt DateTime @default(now())
+
+  @@unique([postId, voterKey])
+}
