@@ -28,7 +28,9 @@ function ApBar({ ap }: { ap: number }) {
           />
         </div>
       </div>
-      <span className="text-[11px] text-faint">매일 오전 {RESET_HOUR_KST}시 회복</span>
+      <span className="text-[11px] text-faint">
+        채집·전투 등에 사용 · 매일 오전 {RESET_HOUR_KST}시 회복
+      </span>
     </div>
   );
 }
@@ -128,8 +130,6 @@ export default async function WorldPage() {
     take: 20,
   });
 
-  const canMove = ap > 0;
-
   return (
     <div className="animate-fadeup space-y-4 py-1">
       <ApBar ap={ap} />
@@ -174,7 +174,7 @@ export default async function WorldPage() {
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
               🧭 이동 가능 구역{" "}
-              <span className="ml-1 text-xs font-normal text-faint">(행동치 1)</span>
+              <span className="ml-1 text-xs font-normal text-faint">(자유 이동)</span>
             </h2>
             {destinations.length === 0 ? (
               <p className="py-3 text-center text-sm text-faint">이동할 수 있는 곳이 없어요.</p>
@@ -185,8 +185,7 @@ export default async function WorldPage() {
                     <input type="hidden" name="target" value={d.id} />
                     <button
                       type="submit"
-                      disabled={!canMove}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50"
                     >
                       <span className="text-xl">{d.emoji ?? "📍"}</span>
                       <span className="min-w-0">
@@ -204,11 +203,6 @@ export default async function WorldPage() {
                   </form>
                 ))}
               </div>
-            )}
-            {!canMove && (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-600">
-                ⚡ 행동치가 다 떨어졌어요. 매일 오전 {RESET_HOUR_KST}시에 회복돼요.
-              </p>
             )}
           </div>
 

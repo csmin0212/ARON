@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { AP_MAX, MOVE_COST, currentResetBoundary, fetchWorldRows } from "@/lib/world";
+import { AP_MAX, currentResetBoundary, fetchWorldRows } from "@/lib/world";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 
@@ -35,7 +35,7 @@ export async function enterWorld(): Promise<void> {
   revalidatePath("/world");
 }
 
-// 이동 — 연결된 장소로만, 행동치 소모
+// 이동 — 연결된 장소로만. 행동치 소모 없음(행동치는 채집·전투 등 행동 전용)
 export async function moveTo(formData: FormData): Promise<void> {
   const target = String(formData.get("target") ?? "").trim();
   if (!target) return;
@@ -72,12 +72,9 @@ export async function moveTo(formData: FormData): Promise<void> {
     if (!discovered.includes(target)) return;
   }
 
-  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
-  if (ap < MOVE_COST) return; // UI에서 비활성화되지만 이중 방어
-
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: target, ap: ap - MOVE_COST, apResetAt },
+    data: { locationId: target },
   });
   revalidatePath("/world");
 }

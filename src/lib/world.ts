@@ -6,8 +6,8 @@
 import { MASTER_SHEET_ID, parseCsv } from "./charsheet";
 
 // ── 행동치(AP) 규칙 ──
+// 이동은 자유(소모 없음). 행동치는 채집·낚시·전투 등 "행동"에만 소모된다.
 export const AP_MAX = 10; // 하루 행동치
-export const MOVE_COST = 1; // 이동 1회 소모
 export const RESET_HOUR_KST = 5; // 매일 KST 05:00 회복
 
 const KST_OFFSET = 9 * 3_600_000;
@@ -90,8 +90,12 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
     const id = cell(colMap.id);
     const name = cell(colMap.name);
     if (!id || !name) continue; // 빈 행 스킵
-    if (!/^[\w-]+$/.test(id)) {
-      throw new Error(`장소 ID '${id}' 는 영문/숫자/하이픈만 사용할 수 있어요.`);
+    // 한국어 ID 허용 — 쉼표만 금지(연결 구분자), 길이 제한
+    if (/[,，]/.test(id)) {
+      throw new Error(`장소 ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    }
+    if (id.length > 30) {
+      throw new Error(`장소 ID '${id}' 가 너무 길어요. (30자 이하)`);
     }
     if (seen.has(id)) throw new Error(`장소 ID '${id}' 가 중복됐어요.`);
     seen.add(id);
