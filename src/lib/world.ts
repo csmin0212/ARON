@@ -32,6 +32,9 @@ export function effectiveAp(ap: number | null, apResetAt: Date | null): number {
 }
 
 // ── 맵 시트 파서 ──
+// 맵은 GM 전용 별도 스프레드시트(WORLD_SHEET_ID)에서 읽는다.
+// 미설정 시 마스터 시트로 폴백 (플레이어에게 보이므로 별도 시트 권장)
+export const WORLD_SHEET_ID = process.env.WORLD_SHEET_ID || MASTER_SHEET_ID;
 export const WORLD_TAB = process.env.WORLD_TAB_NAME || "맵";
 
 export type WorldRow = {
@@ -74,7 +77,7 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
   }
   if (headerRow < 0 || colMap.id == null || colMap.name == null) {
     throw new Error(
-      `'${WORLD_TAB}' 탭이 없거나 헤더(ID/이름)가 없어요. 마스터 시트에 '${WORLD_TAB}' 탭을 만들고 WORLD.md 양식대로 채워주세요.`,
+      `'${WORLD_TAB}' 탭이 없거나 헤더(ID/이름)가 없어요. 맵 시트에 '${WORLD_TAB}' 탭을 만들고 WORLD.md 양식대로 채워주세요.`,
     );
   }
 
@@ -124,7 +127,7 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
 
 // 마스터 시트의 "맵" 탭을 불러와 파싱
 export async function fetchWorldRows(): Promise<WorldRow[]> {
-  const url = `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
+  const url = `https://docs.google.com/spreadsheets/d/${WORLD_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
     WORLD_TAB,
   )}`;
   const res = await fetch(url, { redirect: "follow", cache: "no-store" });
@@ -132,10 +135,10 @@ export async function fetchWorldRows(): Promise<WorldRow[]> {
 
   const text = await res.text();
   if (/google\.visualization\.Query|"status":"error"/.test(text)) {
-    throw new Error(`마스터 시트에 '${WORLD_TAB}' 탭이 없어요. 탭을 만들고 양식대로 채워주세요.`);
+    throw new Error(`맵 시트에 '${WORLD_TAB}' 탭이 없어요. 탭을 만들고 양식대로 채워주세요.`);
   }
   if (/^\s*<(!doctype|html)/i.test(text)) {
-    throw new Error("시트가 비공개예요. '링크가 있는 모든 사용자 보기 가능'으로 공유해주세요.");
+    throw new Error("맵 시트가 비공개예요. '링크가 있는 모든 사용자 보기 가능'으로 공유해주세요.");
   }
   return parseWorldGrid(parseCsv(text));
 }

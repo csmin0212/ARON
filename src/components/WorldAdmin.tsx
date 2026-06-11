@@ -14,7 +14,9 @@ export default function WorldAdmin() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-brand-700">🛠 GM 도구</p>
-          <p className="text-xs text-muted">마스터 시트의 ‘맵’ 탭에서 월드를 불러옵니다.</p>
+          <p className="text-xs text-muted">
+            GM 맵 시트(WORLD_SHEET_ID)의 ‘맵’ 탭에서 월드를 불러옵니다.
+          </p>
         </div>
         <form action={formAction}>
           <button
