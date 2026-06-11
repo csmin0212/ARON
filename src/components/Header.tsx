@@ -40,6 +40,12 @@ export default async function Header() {
 
         <nav className="flex items-center gap-2 text-sm">
           <Link
+            href="/world"
+            className="rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600"
+          >
+            🗺️ 월드
+          </Link>
+          <Link
             href="/write"
             className="hidden rounded-lg bg-brand-500 px-3.5 py-2 font-semibold text-white shadow-sm transition hover:bg-brand-600 sm:inline-block"
           >

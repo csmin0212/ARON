@@ -9,7 +9,8 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "seed:world": "node prisma/seed-world.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

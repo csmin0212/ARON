@@ -26,7 +26,7 @@ const ABILITY_LABELS = ["근력", "재주", "민첩", "지력", "감지", "정�
 const ABILITY_KEYS = ["STR", "DEX", "AGI", "INT", "PER", "SPI", "LUK"];
 
 // ── CSV 파서 (따옴표/개행 처리) ──
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
