@@ -105,6 +105,7 @@ export async function syncWorldMap(
         name: r.name,
         emoji: r.emoji,
         desc: r.desc,
+        image: r.image,
         connJson: JSON.stringify(r.conns),
         hidden: r.hidden,
         isStart: r.isStart,

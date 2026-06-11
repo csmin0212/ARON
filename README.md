@@ -27,9 +27,10 @@ npm run dev                 # http://localhost:3000
 
 | 아이디 | 닉네임 | 비밀번호 |
 |--------|--------|----------|
-| `ironknight` | 강철의기사 | `test1234` |
 | `moonmage` | 달빛마법사 | `test1234` |
 | `forestbow` | 숲의궁수 | `test1234` |
+
+> `ironknight` 는 운영(GM) 계정으로 전환되어 비밀번호가 변경되었습니다.
 
 ## 🔧 환경 변수 (`.env`)
 

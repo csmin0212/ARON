@@ -24,6 +24,7 @@ model User {
   votes        Vote[]
   sheet        CharacterSheet?
   rolls        Roll[]
+  worldMsgs    WorldMessage[]
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
@@ -62,11 +63,24 @@ model Location {
   name      String
   emoji     String?
   desc      String?
+  image     String? // 장소 사진 URL (시트 '이미지' 컬럼)
   connJson  String? // 이동 가능한 장소 ID 배열 JSON
   hidden    Boolean  @default(false) // 히든 장소 (발견해야 보임)
   isStart   Boolean  @default(false) // 입장 지점
   order     Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+// 장소 채팅 (같은 장소의 모험가들끼리)
+model WorldMessage {
+  id         Int      @id @default(autoincrement())
+  locationId String
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([locationId, id])
 }
 
 // 주사위/판정 로그 (탐색·RP 공용 엔진)

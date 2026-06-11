@@ -39,6 +39,7 @@ export type WorldRow = {
   name: string;
   emoji: string | null;
   desc: string | null;
+  image: string | null;
   conns: string[];
   hidden: boolean;
   isStart: boolean;
@@ -50,6 +51,7 @@ const HEADER_KEYS: Record<string, string> = {
   이름: "name",
   이모지: "emoji",
   설명: "desc",
+  이미지: "image",
   연결: "conns",
   히든: "hidden",
   시작: "isStart",
@@ -96,6 +98,7 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
       name,
       emoji: cell(colMap.emoji) || null,
       desc: cell(colMap.desc) || null,
+      image: cell(colMap.image) || null,
       conns: cell(colMap.conns)
         .split(/[,，]/)
         .map((s) => s.trim())

@@ -21,6 +21,7 @@ const prisma = new PrismaClient();
 const LOCATIONS = [
   {
     id: "town",
+    image: "https://picsum.photos/seed/aron-town/1200/400",
     name: "시작의 마을",
     emoji: "🏘️",
     desc: "모험가들이 모이는 평화로운 마을이다. 광장 중앙의 분수대 주변으로 상인과 여행자들이 오간다.",
@@ -30,6 +31,7 @@ const LOCATIONS = [
   },
   {
     id: "market",
+    image: "https://picsum.photos/seed/aron-market/1200/400",
     name: "시장 거리",
     emoji: "🛒",
     desc: "온갖 물건을 파는 상인들로 북적인다. 어디선가 고소한 빵 냄새가 풍긴다.",
@@ -39,6 +41,7 @@ const LOCATIONS = [
   },
   {
     id: "forest",
+    image: "https://picsum.photos/seed/aron-forest/1200/400",
     name: "어스름 숲",
     emoji: "🌲",
     desc: "햇빛이 잘 들지 않는 울창한 숲. 나뭇잎 사이로 무언가 움직이는 기척이 느껴진다.",
@@ -48,6 +51,7 @@ const LOCATIONS = [
   },
   {
     id: "river",
+    image: "https://picsum.photos/seed/aron-river/1200/400",
     name: "은빛 강가",
     emoji: "🏞️",
     desc: "낚시하기 좋은 잔잔한 강. 물결이 달빛을 받아 은빛으로 반짝인다.",
@@ -57,6 +61,7 @@ const LOCATIONS = [
   },
   {
     id: "ruins",
+    image: "https://picsum.photos/seed/aron-ruins/1200/400",
     name: "무너진 폐허",
     emoji: "🏚️",
     desc: "누구도 모르는 옛 유적. 발견한 자만이 들어올 수 있다.",
@@ -73,6 +78,7 @@ const LOCATIONS = [
       id: l.id,
       name: l.name,
       emoji: l.emoji,
+      image: l.image ?? null,
       desc: l.desc,
       connJson: JSON.stringify(l.conns),
       hidden: l.hidden,
