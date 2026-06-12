@@ -8,6 +8,7 @@ import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
+import WorldServices from "@/components/WorldServices";
 import type { SheetInventory, SheetInventoryItem } from "@/lib/googleSheets";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
@@ -51,6 +52,17 @@ function parseSheetInventory(value: string | null | undefined): SheetInventory |
   } catch {
     return null;
   }
+}
+
+function hasServiceKeyword(
+  here: { id: string; name: string },
+  actions: { kind: string; label: string | null }[],
+  keywords: string[],
+): boolean {
+  const source = [here.id, here.name, ...actions.flatMap((a) => [a.kind, a.label ?? ""])]
+    .join(" ")
+    .toLowerCase();
+  return keywords.some((keyword) => source.includes(keyword.toLowerCase()));
 }
 
 export default async function WorldPage() {
@@ -169,6 +181,28 @@ export default async function WorldPage() {
     sheetInventory?.curWeight != null && sheetInventory.maxWeight != null
       ? `${sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
+  const shopItems = await prisma.item.findMany({
+    where: { buyPrice: { gt: 0 } },
+    select: { id: true, name: true, category: true, buyPrice: true, desc: true },
+    orderBy: [{ category: "asc" }, { order: "asc" }],
+  });
+  const canShop = hasServiceKeyword(here, locActions, [
+    "상점",
+    "시장",
+    "잡화",
+    "구매",
+    "shop",
+    "store",
+    "market",
+  ]);
+  const canForge = hasServiceKeyword(here, locActions, [
+    "대장간",
+    "강화",
+    "제련",
+    "forge",
+    "smith",
+    "blacksmith",
+  ]);
 
   return (
     <div className="animate-fadeup space-y-4 py-1">
@@ -251,6 +285,13 @@ export default async function WorldPage() {
               </div>
             )}
           </div>
+
+          <WorldServices
+            canShop={canShop}
+            canForge={canForge}
+            shopItems={shopItems}
+            inventoryItems={bagItems}
+          />
 
           <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} />
 

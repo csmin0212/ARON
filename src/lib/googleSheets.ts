@@ -211,12 +211,13 @@ export async function readSheetInventory(tab: string | null): Promise<SheetInven
   }
 }
 
-export async function syncSheetGold(tab: string | null, gold: number): Promise<void> {
-  if (!tab) return;
+export async function syncSheetGold(tab: string | null, gold: number): Promise<boolean> {
+  if (!tab) return false;
   try {
-    await updateValues(`${quoteSheet(tab)}!AB31`, [[`${gold}G`]]);
+    return updateValues(`${quoteSheet(tab)}!AB31`, [[`${gold}G`]]);
   } catch (error) {
     console.warn("Failed to sync sheet gold", error);
+    return false;
   }
 }
 
@@ -224,8 +225,8 @@ export async function appendSheetItem(
   tab: string | null,
   itemName: string,
   qty: number,
-): Promise<void> {
-  if (!tab || qty <= 0) return;
+): Promise<boolean> {
+  if (!tab || qty <= 0) return false;
 
   const blocks = [
     { col: "Z", qtyCol: "AE", start: 33, maxRows: 26, range: `${quoteSheet(tab)}!Z33:AE58` },
@@ -235,30 +236,109 @@ export async function appendSheetItem(
   try {
     for (const block of blocks) {
       const values = await getValues(block.range);
-      if (!values) return;
+      if (!values) return false;
 
       const existing = findItemRow(values, block.start, itemName);
       if (existing) {
-        await updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
+        return updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
           [String(existing.qty + qty)],
         ]);
-        return;
       }
     }
 
     for (const block of blocks) {
       const values = await getValues(block.range);
-      if (!values) return;
+      if (!values) return false;
 
       const row = firstEmptyRow(values, block.start, block.maxRows);
       if (!row) continue;
 
-      await updateValues(`${quoteSheet(tab)}!${block.col}${row}`, [
+      return updateValues(`${quoteSheet(tab)}!${block.col}${row}`, [
         [itemName, "", "", "", "1", String(qty)],
       ]);
-      return;
     }
   } catch (error) {
     console.warn("Failed to append sheet item", error);
   }
+  return false;
+}
+
+export async function consumeSheetItem(
+  tab: string | null,
+  itemName: string,
+  qty: number,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!tab || qty <= 0) return { ok: false, error: "잘못된 요청입니다." };
+
+  const blocks = [
+    { qtyCol: "AE", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
+    { qtyCol: "AK", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
+  ];
+
+  try {
+    for (const block of blocks) {
+      const values = await getValues(block.range);
+      if (!values) return { ok: false, error: "시트 인증이 필요합니다." };
+
+      const existing = findItemRow(values, block.start, itemName);
+      if (!existing) continue;
+      if (existing.qty < qty) {
+        return { ok: false, error: `${itemName} 수량이 부족합니다. (${existing.qty}/${qty})` };
+      }
+
+      await updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
+        [String(existing.qty - qty)],
+      ]);
+      return { ok: true };
+    }
+  } catch (error) {
+    console.warn("Failed to consume sheet item", error);
+  }
+
+  return { ok: false, error: `${itemName}을 찾지 못했습니다.` };
+}
+
+export async function updateSheetItemDetails(
+  tab: string | null,
+  itemName: string,
+  patch: { effect?: string; weight?: number | null },
+): Promise<{ ok: boolean; error?: string }> {
+  if (!tab) return { ok: false, error: "시트가 연동되지 않았습니다." };
+
+  const blocks = [
+    { effectCol: "AA", weightCol: "AD", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
+    { effectCol: "AG", weightCol: "AJ", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
+  ];
+
+  try {
+    for (const block of blocks) {
+      const values = await getValues(block.range);
+      if (!values) return { ok: false, error: "시트 인증이 필요합니다." };
+
+      const existing = findItemRow(values, block.start, itemName);
+      if (!existing) continue;
+
+      const updates: Promise<boolean>[] = [];
+      if (patch.effect !== undefined) {
+        updates.push(
+          updateValues(`${quoteSheet(tab)}!${block.effectCol}${existing.row}`, [[patch.effect]]),
+        );
+      }
+      if (patch.weight !== undefined && patch.weight != null) {
+        updates.push(
+          updateValues(`${quoteSheet(tab)}!${block.weightCol}${existing.row}`, [
+            [String(patch.weight)],
+          ]),
+        );
+      }
+      const results = await Promise.all(updates);
+      return results.every(Boolean)
+        ? { ok: true }
+        : { ok: false, error: "시트에 아이템 정보를 쓰지 못했습니다." };
+    }
+  } catch (error) {
+    console.warn("Failed to update sheet item", error);
+  }
+
+  return { ok: false, error: `${itemName}을 찾지 못했습니다.` };
 }
