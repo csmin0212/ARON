@@ -1,14 +1,11 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { collectionItems, isSeaLifeItem, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { collectionItems, isSeaLifeItem } from "@/lib/lifeSkillData";
+import { parseLifeState } from "@/lib/lifeSkillPerks";
+import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
 export const metadata = { title: "도감 · 아리안로드 온라인 갤러리" };
-
-const KIND_LABEL: Record<LifeSkillKind, { title: string; emoji: string }> = {
-  채집: { title: "채집 도감", emoji: "🌿" },
-  낚시: { title: "낚시 도감", emoji: "🎣" },
-};
 
 export default async function CollectionPage() {
   const user = await getCurrentUser();
@@ -26,20 +23,36 @@ export default async function CollectionPage() {
     );
   }
 
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { lifeJson: true },
+  });
+  const life = parseLifeState(sheet?.lifeJson);
   const items = collectionItems(false);
   const itemNames = items.map(({ item }) => item.name);
   const entries = await prisma.inventoryEntry.findMany({
     where: { userId: user.id, itemId: { in: itemNames } },
-    select: { itemId: true },
+    select: { itemId: true, qty: true },
   });
-  const discovered = new Set(entries.map((entry) => entry.itemId));
+  const inventoryCounts = new Map(entries.map((entry) => [entry.itemId, entry.qty]));
+  const discovered = new Set([
+    ...entries.map((entry) => entry.itemId),
+    ...life.collection.채집,
+    ...life.collection.낚시,
+  ]);
   const found = items.filter(({ item }) => discovered.has(item.name)).length;
   const pct = items.length > 0 ? Math.round((found / items.length) * 1000) / 10 : 0;
-
-  const byKind: Record<LifeSkillKind, typeof items> = {
-    채집: items.filter((entry) => entry.kind === "채집"),
-    낚시: items.filter((entry) => entry.kind === "낚시"),
-  };
+  const bookEntries: CollectionBookEntry[] = items.map(({ kind, item }) => ({
+    kind,
+    name: item.name,
+    rank: item.rank,
+    rarity: item.rarity,
+    price: item.price,
+    weight: item.weight,
+    text: item.text,
+    discovered: discovered.has(item.name),
+    count: life.catchCounts[kind][item.name] ?? inventoryCounts.get(item.name) ?? 0,
+  }));
 
   return (
     <div className="animate-fadeup space-y-5 py-1">
@@ -61,57 +74,7 @@ export default async function CollectionPage() {
         </div>
       </div>
 
-      {(["채집", "낚시"] as LifeSkillKind[]).map((kind) => {
-        const group = byKind[kind];
-        const groupFound = group.filter(({ item }) => discovered.has(item.name)).length;
-        const meta = KIND_LABEL[kind];
-        return (
-          <section key={kind} className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold text-content">
-                {meta.emoji} {meta.title}
-              </h2>
-              <span className="rounded-full bg-subtle px-3 py-1 text-xs font-extrabold text-muted">
-                {groupFound}/{group.length}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {group.map(({ item }) => {
-                const open = discovered.has(item.name);
-                return (
-                  <div
-                    key={`${kind}-${item.name}`}
-                    className={`rounded-2xl border px-4 py-3 ${
-                      open
-                        ? "border-line bg-subtle/55"
-                        : "border-dashed border-line bg-subtle/25 opacity-70"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-extrabold text-content">
-                          {open ? item.name : "???"}
-                        </p>
-                        <p className="mt-0.5 text-xs font-bold text-faint">
-                          {item.rarity} · {open ? `판매가 ${item.price}G` : "미발견"}
-                        </p>
-                      </div>
-                      <span className="shrink-0 rounded bg-surface px-2 py-0.5 text-[11px] font-bold text-muted">
-                        R{item.rank}
-                      </span>
-                    </div>
-                    {open && (
-                      <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted">
-                        {item.text}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
+      <CollectionRankBook entries={bookEntries} />
 
       <p className="px-1 text-xs text-faint">
         바다 어종 {collectionItems(true).filter(({ item }) => isSeaLifeItem(item)).length}종은

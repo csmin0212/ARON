@@ -30,6 +30,24 @@ export type LifeState = {
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
   collection: { 채집: string[]; 낚시: string[] };
+  // 생활 전용 임시 가방 — 일반 시트 소지품과 별도로 중량 제한을 둔다.
+  bags: Record<LifeSkillKind, LifeBag>;
+  tools: Record<LifeSkillKind, string>;
+  catchCounts: Record<LifeSkillKind, Record<string, number>>;
+};
+
+export type LifeBagItem = {
+  name: string;
+  qty: number;
+  weight: number;
+  rank: number;
+  text: string;
+};
+
+export type LifeBag = {
+  name: string;
+  maxWeight: number;
+  items: LifeBagItem[];
 };
 
 export const RARITY_COLORS: Record<PerkRarity, string> = {
@@ -156,7 +174,39 @@ const EMPTY: LifeState = {
   perks: [],
   pending: [],
   collection: { 채집: [], 낚시: [] },
+  bags: {
+    채집: { name: "약초꾼 가방", maxWeight: 10, items: [] },
+    낚시: { name: "낚시꾼 가방", maxWeight: 10, items: [] },
+  },
+  tools: {
+    채집: "기본 채집도구",
+    낚시: "기본 낚싯대",
+  },
+  catchCounts: { 채집: {}, 낚시: {} },
 };
+
+function defaultBag(kind: LifeSkillKind): LifeBag {
+  return structuredClone(EMPTY.bags[kind]);
+}
+
+function normalizeBag(kind: LifeSkillKind, bag: Partial<LifeBag> | undefined): LifeBag {
+  const fallback = defaultBag(kind);
+  return {
+    name: bag?.name || fallback.name,
+    maxWeight: typeof bag?.maxWeight === "number" ? bag.maxWeight : fallback.maxWeight,
+    items: Array.isArray(bag?.items)
+      ? bag.items
+          .filter((item) => item && item.name && item.qty > 0)
+          .map((item) => ({
+            name: item.name,
+            qty: item.qty,
+            weight: item.weight ?? 1,
+            rank: item.rank ?? 0,
+            text: item.text ?? "",
+          }))
+      : [],
+  };
+}
 
 export function parseLifeState(json: string | null | undefined): LifeState {
   if (!json) return structuredClone(EMPTY);
@@ -170,6 +220,18 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       collection: {
         채집: v.collection?.채집 ?? [],
         낚시: v.collection?.낚시 ?? [],
+      },
+      bags: {
+        채집: normalizeBag("채집", v.bags?.채집),
+        낚시: normalizeBag("낚시", v.bags?.낚시),
+      },
+      tools: {
+        채집: v.tools?.채집 || EMPTY.tools.채집,
+        낚시: v.tools?.낚시 || EMPTY.tools.낚시,
+      },
+      catchCounts: {
+        채집: v.catchCounts?.채집 ?? {},
+        낚시: v.catchCounts?.낚시 ?? {},
       },
     };
   } catch {
@@ -187,6 +249,43 @@ export function recordCollection(
   if (list.includes(itemName)) return false;
   list.push(itemName);
   return true;
+}
+
+export function recordLifeCatch(state: LifeState, kind: LifeSkillKind, itemName: string): number {
+  const counts = state.catchCounts[kind];
+  counts[itemName] = (counts[itemName] ?? 0) + 1;
+  return counts[itemName];
+}
+
+export function lifeBagWeight(bag: LifeBag): number {
+  return bag.items.reduce((sum, item) => sum + item.weight * item.qty, 0);
+}
+
+export function lifeBagLimit(state: LifeState, kind: LifeSkillKind, bonus = 0): number {
+  return state.bags[kind].maxWeight + bonus;
+}
+
+export function addLifeBagItem(
+  state: LifeState,
+  kind: LifeSkillKind,
+  item: { name: string; weight: number; rank: number; text: string },
+): void {
+  const bag = state.bags[kind];
+  const found = bag.items.find((entry) => entry.name === item.name);
+  if (found) {
+    found.qty += 1;
+    found.weight = item.weight;
+    found.rank = item.rank;
+    found.text = item.text;
+  } else {
+    bag.items.push({
+      name: item.name,
+      qty: 1,
+      weight: item.weight,
+      rank: item.rank,
+      text: item.text,
+    });
+  }
 }
 
 export function progressOf(state: LifeState, kind: LifeSkillKind): SkillProgress {

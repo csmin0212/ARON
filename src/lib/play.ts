@@ -6,6 +6,7 @@ import { KEYWORD_SEARCH_COST, regenFatigue } from "./world";
 import { pickDrop, type DropEntry } from "./gamedata";
 import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
+import { dedupeLifeActions } from "./locationActions";
 import {
   appendSheetItem,
   inventoryWeightTotal,
@@ -25,11 +26,15 @@ import {
 } from "./lifeSkillData";
 import {
   adjustedRankWeights,
+  addLifeBagItem,
   applyExp,
   baseWeightsFor,
   computeMods,
+  lifeBagLimit,
+  lifeBagWeight,
   parseLifeState,
   progressOf,
+  recordLifeCatch,
   recordCollection,
 } from "./lifeSkillPerks";
 
@@ -114,6 +119,10 @@ function parseInventorySnapshot(invJson: string | null): SheetInventory {
   return { gold: null, curWeight: null, maxWeight: null, items: [] };
 }
 
+function currentInventoryWeight(inv: SheetInventory): number | null {
+  return inventoryWeightTotal(inv.items) ?? inv.curWeight;
+}
+
 function lifeSkillResultText(catchResult: LifeSkillCatch): string {
   const item = catchResult.item;
   return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${item.price}G)`;
@@ -172,7 +181,7 @@ export async function runActionCommand(
   command: string,
 ): Promise<{ error?: string }> {
   const locationId = sheet.locationId!;
-  const [actions, here] = await Promise.all([
+  const [rawActions, here] = await Promise.all([
     prisma.locationAction.findMany({
       where: { locationId },
       orderBy: { order: "asc" },
@@ -182,6 +191,7 @@ export async function runActionCommand(
       select: { lifeJson: true },
     }),
   ]);
+  const actions = dedupeLifeActions(rawActions);
 
   const target = actions.find(
     (a) => norm(a.label ?? a.kind) === norm(command) || norm(a.kind) === norm(command),
@@ -257,9 +267,38 @@ export async function runActionCommand(
       );
       const item = caught.item;
       const effect = lifeSkillItemEffect(item);
+
+      const currentInv = parseInventorySnapshot(sheet.invJson);
+      const currentSheetWeight = currentInventoryWeight(currentInv);
+      if (
+        currentSheetWeight != null &&
+        currentInv.maxWeight != null &&
+        currentSheetWeight + item.weight > currentInv.maxWeight
+      ) {
+        return {
+          error: `소지품 중량이 부족해요. (${currentSheetWeight} + ${item.weight} / ${currentInv.maxWeight})`,
+        };
+      }
+
+      const bag = life.bags[lifeSkillKind];
+      const bagWeight = lifeBagWeight(bag);
+      const bagMax = lifeBagLimit(life, lifeSkillKind, mods.weightBonus);
+      if (bagWeight + item.weight > bagMax) {
+        return {
+          error: `${bag.name}이 가득 찼어요. (${bagWeight} + ${item.weight} / ${bagMax})`,
+        };
+      }
+
       const expGained = Math.max(1, Math.round(item.exp * mods.expMult));
       const leveled = applyExp(life, lifeSkillKind, expGained);
       const firstCatch = recordCollection(life, lifeSkillKind, item.name);
+      const caughtCount = recordLifeCatch(life, lifeSkillKind, item.name);
+      addLifeBagItem(life, lifeSkillKind, {
+        name: item.name,
+        weight: item.weight,
+        rank: item.rank,
+        text: item.text,
+      });
 
       await ensureLifeSkillItem(item, lifeSkillKind);
       await addItem(userId, item.name, 1);
@@ -277,7 +316,7 @@ export async function runActionCommand(
       if (nextInv.curWeight != null) void syncSheetWeight(sheet.sheetTab, nextInv.curWeight);
 
       resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})${
-        firstCatch ? " 📖 도감에 새로 등록!" : ""
+        firstCatch ? " 📖 도감에 새로 등록!" : ` 누적 ${caughtCount}회`
       }`;
       for (const lv of leveled) {
         await postSystem(

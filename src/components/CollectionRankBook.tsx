@@ -1,0 +1,145 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import type { LifeSkillKind } from "@/lib/lifeSkillData";
+
+export type CollectionBookEntry = {
+  kind: LifeSkillKind;
+  name: string;
+  rank: number;
+  rarity: string;
+  price: number;
+  weight: number;
+  text: string;
+  discovered: boolean;
+  count: number;
+};
+
+const KIND_META: Record<LifeSkillKind, { title: string; emoji: string }> = {
+  낚시: { title: "낚시 도감", emoji: "🎣" },
+  채집: { title: "채집 도감", emoji: "🌿" },
+};
+
+const RANK_TONE = [
+  "text-slate-500",
+  "text-slate-900",
+  "text-emerald-600",
+  "text-sky-600",
+  "text-violet-600",
+  "text-amber-500",
+];
+
+function pct(found: number, total: number): number {
+  return total > 0 ? Math.round((found / total) * 100) : 0;
+}
+
+export default function CollectionRankBook({ entries }: { entries: CollectionBookEntry[] }) {
+  const [activeRanks, setActiveRanks] = useState<Record<LifeSkillKind, number>>({
+    낚시: 1,
+    채집: 1,
+  });
+
+  const byKind = useMemo(
+    () => ({
+      낚시: entries.filter((entry) => entry.kind === "낚시"),
+      채집: entries.filter((entry) => entry.kind === "채집"),
+    }),
+    [entries],
+  );
+
+  return (
+    <div className="space-y-4">
+      {(["낚시", "채집"] as LifeSkillKind[]).map((kind) => {
+        const group = byKind[kind].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+        const found = group.filter((entry) => entry.discovered).length;
+        const activeRank = activeRanks[kind];
+        const rankItems = group.filter((entry) => entry.rank === activeRank);
+        const rankFound = rankItems.filter((entry) => entry.discovered).length;
+        const meta = KIND_META[kind];
+
+        return (
+          <section key={kind} className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-extrabold text-content">
+                  {meta.emoji} {meta.title}
+                </h2>
+                <p className="mt-0.5 text-xs text-faint">
+                  {found}/{group.length} · {pct(found, group.length)}%
+                </p>
+              </div>
+              <div className="rounded-full bg-brand-50 px-3 py-1 text-sm font-black text-brand-600">
+                {rankFound}/{rankItems.length} <span className="text-xs">R{activeRank}</span>
+              </div>
+            </div>
+
+            <div className="mb-4 grid grid-cols-6 gap-1.5 rounded-2xl bg-subtle p-1.5">
+              {[0, 1, 2, 3, 4, 5].map((rank) => {
+                const total = group.filter((entry) => entry.rank === rank).length;
+                const rankCount = group.filter((entry) => entry.rank === rank && entry.discovered).length;
+                const active = activeRank === rank;
+                return (
+                  <button
+                    key={rank}
+                    type="button"
+                    onClick={() => setActiveRanks((prev) => ({ ...prev, [kind]: rank }))}
+                    className={`rounded-xl px-2 py-2 text-center text-[11px] font-extrabold transition ${
+                      active
+                        ? "bg-surface text-brand-600 shadow-sm"
+                        : "text-muted hover:bg-surface/70 hover:text-content"
+                    }`}
+                  >
+                    <span className="block">R{rank}</span>
+                    <span className="text-[10px] font-bold text-faint">
+                      {rankCount}/{total}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {rankItems.length === 0 ? (
+              <p className="rounded-2xl bg-subtle/50 px-4 py-6 text-center text-sm text-faint">
+                이 등급의 항목은 아직 없어요.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {rankItems.map((entry) => (
+                  <article
+                    key={`${kind}-${entry.name}`}
+                    className={`rounded-2xl border px-4 py-3 ${
+                      entry.discovered
+                        ? "border-line bg-subtle/55"
+                        : "border-dashed border-line bg-subtle/20 opacity-75"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-content">
+                          {entry.discovered ? entry.name : "???"}
+                        </p>
+                        <p className={`mt-0.5 text-xs font-bold ${RANK_TONE[entry.rank] ?? "text-muted"}`}>
+                          {entry.rarity}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
+                        x{entry.discovered ? entry.count : 0}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
+                      <span className="rounded bg-surface px-2 py-0.5">중량 {entry.weight}</span>
+                      <span className="rounded bg-surface px-2 py-0.5">판매가 {entry.price}G</span>
+                    </div>
+                    <p className="mt-2 line-clamp-3 min-h-[3.75rem] text-xs leading-relaxed text-muted">
+                      {entry.discovered ? entry.text : "아직 발견하지 못한 항목입니다."}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}

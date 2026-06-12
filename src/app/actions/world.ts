@@ -8,6 +8,7 @@ import { fetchWorldRows, regenFatigue } from "@/lib/world";
 import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
 import { postSystem } from "@/lib/play";
 import type { ActionRow } from "@/lib/gamedata";
+import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
@@ -22,6 +23,17 @@ function actionKey(action: Pick<ActionRow, "locationId" | "kind" | "label">): st
   return `${action.locationId}::${action.label ?? action.kind}`.replace(/\s+/g, "");
 }
 
+function hasLifeAction(
+  existing: ActionRow[],
+  locationId: string,
+  kind: LifeSkillKind,
+): boolean {
+  return existing.some(
+    (action) =>
+      action.locationId === locationId && lifeSkillKindOf(action.kind, action.label) === kind,
+  );
+}
+
 function autoLifeActions(
   rows: Awaited<ReturnType<typeof fetchWorldRows>>,
   existing: ActionRow[],
@@ -30,7 +42,7 @@ function autoLifeActions(
   const actions: ActionRow[] = [];
   for (const row of rows) {
     const candidates: ActionRow[] = [];
-    if (row.life?.gather?.enabled) {
+    if (row.life?.gather?.enabled && !hasLifeAction(existing, row.id, "채집")) {
       candidates.push({
         locationId: row.id,
         kind: "채집",
@@ -42,7 +54,7 @@ function autoLifeActions(
         failText: null,
       });
     }
-    if (row.life?.fish?.enabled) {
+    if (row.life?.fish?.enabled && !hasLifeAction(existing, row.id, "낚시")) {
       candidates.push({
         locationId: row.id,
         kind: "낚시",

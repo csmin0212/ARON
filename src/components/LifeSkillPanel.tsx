@@ -3,76 +3,36 @@
 import { useActionState } from "react";
 import { chooseLifePerk, type LifeActionState } from "@/app/actions/life";
 import {
+  computeMods,
   expForNext,
+  lifeBagLimit,
+  lifeBagWeight,
   RARITY_COLORS,
   type LifeState,
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
-import { collectionItems, type LifeSkillKind } from "@/lib/lifeSkillData";
-
-// 등급별 칩 색 (0성~5성)
-const RANK_TONE = [
-  "text-faint",
-  "text-content",
-  "text-emerald-600",
-  "text-sky-600",
-  "text-violet-600",
-  "text-amber-500",
-];
+import { collectionItems } from "@/lib/lifeSkillData";
+import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
 function CollectionBook({ life }: { life: LifeState }) {
   const all = collectionItems(false); // 바다 어종은 아직 도감에 미포함 (상위 층 해금 예정)
+  const entries: CollectionBookEntry[] = all.map(({ kind, item }) => ({
+    kind,
+    name: item.name,
+    rank: item.rank,
+    rarity: item.rarity,
+    price: item.price,
+    weight: item.weight,
+    text: item.text,
+    discovered: life.collection[kind].includes(item.name),
+    count: life.catchCounts[kind][item.name] ?? 0,
+  }));
+
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <h2 className="mb-1 text-lg font-extrabold text-content">📖 도감</h2>
       <p className="mb-4 text-xs text-faint">한 번이라도 획득하면 등록돼요.</p>
-      <div className="space-y-3">
-        {(["낚시", "채집"] as LifeSkillKind[]).map((kind) => {
-          const items = all
-            .filter((e) => e.kind === kind)
-            .map((e) => e.item)
-            .sort((a, b) => a.rank - b.rank || a.no - b.no);
-          const caught = new Set(life.collection[kind]);
-          const count = items.filter((it) => caught.has(it.name)).length;
-          const pct = items.length > 0 ? Math.round((count / items.length) * 100) : 0;
-          return (
-            <details key={kind} className="group rounded-2xl border border-line bg-subtle/40">
-              <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl px-4 py-3 transition hover:bg-subtle">
-                <span className="text-sm font-extrabold text-content">
-                  {kind === "낚시" ? "🎣" : "🌿"} {kind} 도감
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-sm font-extrabold text-brand-600">
-                    {count} / {items.length}
-                  </span>
-                  <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-600">
-                    {pct}%
-                  </span>
-                  <span className="text-faint2 transition group-open:rotate-180">▾</span>
-                </span>
-              </summary>
-              <div className="flex flex-wrap gap-1.5 px-4 pb-4">
-                {items.map((it) => {
-                  const got = caught.has(it.name);
-                  return (
-                    <span
-                      key={`${it.rank}-${it.no}`}
-                      title={got ? `${it.rarity} · ${it.text}` : `${it.rarity} · 미발견`}
-                      className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${
-                        got
-                          ? `border-line bg-surface ${RANK_TONE[it.rank] ?? "text-content"}`
-                          : "border-dashed border-line bg-transparent text-faint2"
-                      }`}
-                    >
-                      {got ? it.name : "???"}
-                    </span>
-                  );
-                })}
-              </div>
-            </details>
-          );
-        })}
-      </div>
+      <CollectionRankBook entries={entries} />
     </div>
   );
 }
@@ -87,6 +47,58 @@ function RarityBadge({ rarity }: { rarity: PerkRarity }) {
     <span className={`rounded bg-subtle px-1.5 py-0.5 text-[11px] font-bold ${RARITY_COLORS[rarity]}`}>
       {rarity}
     </span>
+  );
+}
+
+function LifeGearPanel({ life }: { life: LifeState }) {
+  return (
+    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+      <h2 className="mb-4 text-lg font-extrabold text-content">생활 프로필</h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {KIND_META.map(({ kind, emoji }) => {
+          const bag = life.bags[kind];
+          const mods = computeMods(life, kind);
+          const weight = lifeBagWeight(bag);
+          const max = lifeBagLimit(life, kind, mods.weightBonus);
+          const pct = Math.min(100, Math.round((weight / max) * 100));
+          return (
+            <div key={kind} className="rounded-2xl border border-line bg-subtle/45 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-extrabold text-content">
+                    {emoji} {kind}
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-faint">
+                    {life.tools[kind]}
+                  </p>
+                </div>
+                <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
+                  기본
+                </span>
+              </div>
+              <div className="rounded-2xl bg-surface p-3">
+                <div className="mb-1.5 flex items-center justify-between text-xs">
+                  <span className="font-bold text-muted">{bag.name}</span>
+                  <span className="font-extrabold text-content">
+                    {weight} / {max}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-subtle-hover">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-faint">
+                  보관 중 {bag.items.reduce((sum, item) => sum + item.qty, 0)}개
+                  {mods.weightBonus > 0 && ` · 특성 보너스 +${mods.weightBonus}`}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -138,6 +150,8 @@ export default function LifeSkillPanel({
           })}
         </div>
       </div>
+
+      <LifeGearPanel life={life} />
 
       {/* 레벨업 특성 선택 (본인만) */}
       {isOwn && choice && (

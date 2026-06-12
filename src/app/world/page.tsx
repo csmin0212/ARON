@@ -10,6 +10,7 @@ import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
+import { dedupeLifeActions } from "@/lib/locationActions";
 import type { LocationLifeConfig } from "@/lib/lifeSkillData";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
@@ -178,13 +179,14 @@ export default async function WorldPage() {
     take: 20,
   });
 
-  const [locActions, invEntries] = await Promise.all([
+  const [rawLocActions, invEntries] = await Promise.all([
     prisma.locationAction.findMany({ where: { locationId: here.id }, orderBy: { order: "asc" } }),
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, qty: { gt: 0 } },
       orderBy: { updatedAt: "desc" },
     }),
   ]);
+  const locActions = dedupeLifeActions(rawLocActions);
 
   const itemNames = new Map(
     (
@@ -288,8 +290,7 @@ export default async function WorldPage() {
         <div className="space-y-4">
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
-              🧭 이동 가능 구역{" "}
-              <span className="ml-1 text-xs font-normal text-faint">(자유 이동)</span>
+              🧭 이동 가능 구역
             </h2>
             {destinations.length === 0 ? (
               <p className="py-3 text-center text-sm text-faint">이동할 수 있는 곳이 없어요.</p>
