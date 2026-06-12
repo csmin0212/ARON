@@ -183,7 +183,9 @@ export default async function WorldPage() {
       {/* 채팅(넓게) + 사이드(이동/모험가) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
+          {/* key=장소ID — 이동 시 채팅창을 새로 마운트해 이전 장소 메시지가 남지 않게 */}
           <WorldChat
+            key={here.id}
             locationName={here.name}
             myUsername={user.username}
             actions={locActions.map((a) => ({
