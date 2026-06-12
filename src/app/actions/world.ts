@@ -7,6 +7,7 @@ import { isGmUsername } from "@/lib/gm";
 import { fetchWorldRows, regenFatigue } from "@/lib/world";
 import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
 import { postSystem } from "@/lib/play";
+import type { ActionRow } from "@/lib/gamedata";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
@@ -15,6 +16,52 @@ export type WorldCleanupState = { error?: string; ok?: string } | undefined;
 function freshAp(ap: number | null, apResetAt: Date | null): { ap: number; apResetAt: Date } {
   const r = regenFatigue(ap, apResetAt);
   return { ap: r.value, apResetAt: r.at };
+}
+
+function actionKey(action: Pick<ActionRow, "locationId" | "kind" | "label">): string {
+  return `${action.locationId}::${action.label ?? action.kind}`.replace(/\s+/g, "");
+}
+
+function autoLifeActions(
+  rows: Awaited<ReturnType<typeof fetchWorldRows>>,
+  existing: ActionRow[],
+): ActionRow[] {
+  const seen = new Set(existing.map(actionKey));
+  const actions: ActionRow[] = [];
+  for (const row of rows) {
+    const candidates: ActionRow[] = [];
+    if (row.life?.gather?.enabled) {
+      candidates.push({
+        locationId: row.id,
+        kind: "채집",
+        label: "채집",
+        apCost: 1,
+        statLabel: null,
+        dc: null,
+        drops: [{ item: "꽝", qty: 1, gold: 0, weight: 1 }],
+        failText: null,
+      });
+    }
+    if (row.life?.fish?.enabled) {
+      candidates.push({
+        locationId: row.id,
+        kind: "낚시",
+        label: "낚시",
+        apCost: 1,
+        statLabel: null,
+        dc: null,
+        drops: [{ item: "꽝", qty: 1, gold: 0, weight: 1 }],
+        failText: null,
+      });
+    }
+    for (const action of candidates) {
+      const key = actionKey(action);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      actions.push(action);
+    }
+  }
+  return actions;
 }
 
 // 월드 입장 — 시작 장소로 배치
@@ -91,6 +138,8 @@ export async function syncWorldMap(
   _prev: WorldActionState,
   _formData: FormData,
 ): Promise<WorldActionState> {
+  void _prev;
+  void _formData;
   const user = await getCurrentUser();
   if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
 
@@ -115,6 +164,7 @@ export async function syncWorldMap(
         hidden: r.hidden,
         keyword: r.keyword,
         cond: r.cond,
+        lifeJson: r.life ? JSON.stringify(r.life) : null,
         isStart: r.isStart,
         order: i,
       })),
@@ -148,8 +198,9 @@ export async function syncWorldMap(
       const existing = await prisma.item.findMany({ select: { id: true } });
       itemIds = new Set(existing.map((it) => it.id));
     }
-    const actions = await fetchActionsRows(itemIds);
-    if (actions) {
+    const sheetActions = (await fetchActionsRows(itemIds)) ?? [];
+    const actions = [...sheetActions, ...autoLifeActions(rows, sheetActions)];
+    if (actions.length > 0) {
       const locIds = new Set(rows.map((r) => r.id));
       for (const a of actions) {
         if (!locIds.has(a.locationId))
@@ -186,6 +237,8 @@ export async function cleanupOldWorldMessages(
   _prev: WorldCleanupState,
   _formData: FormData,
 ): Promise<WorldCleanupState> {
+  void _prev;
+  void _formData;
   const user = await getCurrentUser();
   if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
 

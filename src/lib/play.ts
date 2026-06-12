@@ -20,6 +20,8 @@ import {
   pickLifeSkillCatch,
   type LifeSkillCatch,
   type LifeSkillItem,
+  type LifeSkillPoolConfig,
+  type LocationLifeConfig,
 } from "./lifeSkillData";
 import {
   adjustedRankWeights,
@@ -116,6 +118,23 @@ function lifeSkillResultText(catchResult: LifeSkillCatch): string {
   return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${item.price}G)`;
 }
 
+function parseLocationLifeConfig(value: string | null): LocationLifeConfig | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as LocationLifeConfig;
+  } catch {
+    return null;
+  }
+}
+
+function locationPoolConfig(
+  life: LocationLifeConfig | null,
+  kind: "채집" | "낚시",
+): LifeSkillPoolConfig | null {
+  if (!life) return { enabled: true };
+  return kind === "채집" ? life.gather ?? null : life.fish ?? null;
+}
+
 async function ensureLifeSkillItem(item: LifeSkillItem, kind: "채집" | "낚시"): Promise<void> {
   await prisma.item.upsert({
     where: { id: item.name },
@@ -152,10 +171,16 @@ export async function runActionCommand(
   command: string,
 ): Promise<{ error?: string }> {
   const locationId = sheet.locationId!;
-  const actions = await prisma.locationAction.findMany({
-    where: { locationId },
-    orderBy: { order: "asc" },
-  });
+  const [actions, here] = await Promise.all([
+    prisma.locationAction.findMany({
+      where: { locationId },
+      orderBy: { order: "asc" },
+    }),
+    prisma.location.findUnique({
+      where: { id: locationId },
+      select: { lifeJson: true },
+    }),
+  ]);
 
   const target = actions.find(
     (a) => norm(a.label ?? a.kind) === norm(command) || norm(a.kind) === norm(command),
@@ -210,12 +235,24 @@ export async function runActionCommand(
 
     if (lifeSkillKind) {
       // 특성 보정 적용한 등급 추첨 + 숙련도 누적/레벨업
+      const locationLife = parseLocationLifeConfig(here?.lifeJson ?? null);
+      const locationPool = locationPoolConfig(locationLife, lifeSkillKind);
+      if (!locationPool?.enabled) {
+        return { error: `이 장소에서는 ${lifeSkillKind}을 할 수 없어요.` };
+      }
       const life = parseLifeState(sheet.lifeJson);
       const mods = computeMods(life, lifeSkillKind);
       const level = progressOf(life, lifeSkillKind).level;
+      const levelBase = baseWeightsFor(level);
+      const regionBase = locationPool.weights
+        ? locationPool.weights.map((weight, rank) => (levelBase[rank] > 0 ? weight : 0))
+        : levelBase;
       const caught = pickLifeSkillCatch(
         lifeSkillKind,
-        adjustedRankWeights(mods, baseWeightsFor(level)),
+        {
+          ...locationPool,
+          weights: adjustedRankWeights(mods, regionBase),
+        },
       );
       const item = caught.item;
       const effect = lifeSkillItemEffect(item);

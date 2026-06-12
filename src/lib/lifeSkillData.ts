@@ -1,4 +1,20 @@
 export type LifeSkillKind = "채집" | "낚시";
+export type FishWater = "민물" | "바다" | "전체";
+
+export type LifeSkillPoolConfig = {
+  enabled: boolean;
+  items?: string[];
+  exclude?: string[];
+  ranks?: number[];
+  weights?: number[];
+  water?: FishWater;
+};
+
+export type LocationLifeConfig = {
+  gather?: LifeSkillPoolConfig;
+  fish?: LifeSkillPoolConfig;
+  combat?: { enabled: boolean };
+};
 
 export type LifeSkillItem = {
   no: number;
@@ -27,6 +43,28 @@ const RANK_WEIGHTS = [
   { rank: 4, weight: 3 },
   { rank: 5, weight: 1 },
 ];
+
+const SEA_FISH = new Set([
+  "찢어진 그물",
+  "바닷빛 정수",
+  "정어리",
+  "멸치",
+  "문어",
+  "광어",
+  "참돔",
+  "개복치",
+  "참치",
+  "청새치",
+  "밀레니엄 크랩",
+  "혼불아귀",
+  "오레이칼",
+  "기갈로돈",
+  "백경",
+  "금강비늘",
+  "바다의 전령",
+  "쉔 우",
+  "크라켄",
+]);
 
 export const PLANT_ITEMS: LifeSkillItem[] = [
   { no: 1, name: "쐐기풀", rank: 0, weight: 1, price: 0, exp: 1, sizeBase: 1, sizeVariance: 1, rarity: "☆☆☆☆☆", text: "잎에 닿으면 따끔거린다. 딱히 쓸모는 없다." },
@@ -158,6 +196,26 @@ function poolFor(kind: LifeSkillKind): LifeSkillItem[] {
   return kind === "채집" ? PLANT_ITEMS : FISH_ITEMS;
 }
 
+function waterAllowed(item: LifeSkillItem, water: FishWater): boolean {
+  if (water === "전체") return true;
+  const sea = SEA_FISH.has(item.name);
+  return water === "바다" ? sea : !sea;
+}
+
+export function isSeaLifeItem(item: LifeSkillItem): boolean {
+  return SEA_FISH.has(item.name);
+}
+
+export function collectionItems(includeSea = false): { kind: LifeSkillKind; item: LifeSkillItem }[] {
+  return [
+    ...PLANT_ITEMS.map((item) => ({ kind: "채집" as const, item })),
+    ...FISH_ITEMS.filter((item) => includeSea || !isSeaLifeItem(item)).map((item) => ({
+      kind: "낚시" as const,
+      item,
+    })),
+  ];
+}
+
 export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillKind | null {
   const source = `${kind} ${label ?? ""}`.replace(/\s+/g, "");
   if (source.includes("채집") || source.includes("약초")) return "채집";
@@ -165,11 +223,38 @@ export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillK
   return null;
 }
 
-export function pickLifeSkillCatch(kind: LifeSkillKind, weights?: number[]): LifeSkillCatch {
-  const pool = poolFor(kind);
-  const rank = pickRank(weights);
-  const rankPool = pool.filter((item) => item.rank === rank);
-  const candidates = rankPool.length > 0 ? rankPool : pool;
+export function pickLifeSkillCatch(
+  kind: LifeSkillKind,
+  options?: number[] | LifeSkillPoolConfig,
+): LifeSkillCatch {
+  const config: LifeSkillPoolConfig | undefined = Array.isArray(options)
+    ? { enabled: true, weights: options }
+    : options;
+  const allowed = new Set(config?.items?.map((name) => name.trim()).filter(Boolean));
+  const excluded = new Set(config?.exclude?.map((name) => name.trim()).filter(Boolean));
+  const rankSet = new Set(config?.ranks);
+  const water = config?.water ?? "민물";
+  const pool = poolFor(kind).filter((item) => {
+    if (allowed.size > 0 && !allowed.has(item.name)) return false;
+    if (excluded.has(item.name)) return false;
+    if (rankSet.size > 0 && !rankSet.has(item.rank)) return false;
+    if (kind === "낚시" && !waterAllowed(item, water)) return false;
+    return true;
+  });
+  const fallback = pool.length > 0 ? pool : poolFor(kind).filter((item) => kind !== "낚시" || !SEA_FISH.has(item.name));
+  const availableRanks = new Set(fallback.map((item) => item.rank));
+  const rankWeights = (config?.weights ?? undefined)?.map((weight, rank) =>
+    availableRanks.has(rank) ? weight : 0,
+  );
+  const weightedRanks = rankWeights
+    ? new Set(rankWeights.map((weight, rank) => (weight > 0 ? rank : null)).filter((rank) => rank != null))
+    : null;
+  const finalPool = weightedRanks
+    ? fallback.filter((item) => weightedRanks.has(item.rank))
+    : fallback;
+  const rank = pickRank(rankWeights);
+  const rankPool = finalPool.filter((item) => item.rank === rank);
+  const candidates = rankPool.length > 0 ? rankPool : finalPool.length > 0 ? finalPool : fallback;
   const item = candidates[Math.floor(Math.random() * candidates.length)];
   return {
     kind,

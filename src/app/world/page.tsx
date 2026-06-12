@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { FATIGUE_MAX, FATIGUE_REGEN_MIN, effectiveAp } from "@/lib/world";
+import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
@@ -10,10 +10,11 @@ import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
+import type { LocationLifeConfig } from "@/lib/lifeSkillData";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
-function ApBar({ ap }: { ap: number }) {
+function ApBar({ ap, nextRegenMin }: { ap: number; nextRegenMin: number | null }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm">
       <span className="text-lg">⚡</span>
@@ -32,8 +33,16 @@ function ApBar({ ap }: { ap: number }) {
         </div>
       </div>
       <span className="text-[11px] text-faint">
-        채집·낚시·전투에 사용 · {FATIGUE_REGEN_MIN}분마다 1 회복
+        {nextRegenMin == null ? "완전히 회복됨" : `다음 회복까지 ${nextRegenMin}분`}
       </span>
+      <button
+        type="button"
+        disabled
+        className="rounded-xl border border-line bg-subtle px-3 py-2 text-xs font-bold text-faint opacity-70"
+        title="피로도 회복 아이템은 추후 활성화됩니다"
+      >
+        회복
+      </button>
     </div>
   );
 }
@@ -52,6 +61,23 @@ function parseSheetInventory(value: string | null | undefined): SheetInventory |
   } catch {
     return null;
   }
+}
+
+function parseLocationLife(value: string | null | undefined): LocationLifeConfig | null {
+  try {
+    return value ? (JSON.parse(value) as LocationLifeConfig) : null;
+  } catch {
+    return null;
+  }
+}
+
+function activityBadges(life: LocationLifeConfig | null): { label: string; tone: string }[] {
+  if (!life) return [];
+  return [
+    life.gather?.enabled ? { label: "🌿 채집 가능", tone: "bg-emerald-50 text-emerald-700" } : null,
+    life.fish?.enabled ? { label: "🎣 낚시 가능", tone: "bg-sky-50 text-sky-700" } : null,
+    life.combat?.enabled ? { label: "⚔️ 전투 가능", tone: "bg-rose-50 text-rose-700" } : null,
+  ].filter((badge): badge is { label: string; tone: string } => !!badge);
 }
 
 function hasServiceKeyword(
@@ -106,6 +132,7 @@ export default async function WorldPage() {
   }
 
   const ap = effectiveAp(sheet.ap, sheet.apResetAt);
+  const nextRegenMin = nextFatigueRegenMinutes(sheet.ap, sheet.apResetAt);
   const here = sheet.locationId
     ? await prisma.location.findUnique({ where: { id: sheet.locationId } })
     : null;
@@ -137,6 +164,8 @@ export default async function WorldPage() {
   }
 
   const connIds = parseJsonArray(here.connJson);
+  const hereLife = parseLocationLife(here.lifeJson);
+  const badges = activityBadges(hereLife);
   const discovered = parseJsonArray(sheet.discoveredJson);
   const destinations = (
     await prisma.location.findMany({ where: { id: { in: connIds } }, orderBy: { order: "asc" } })
@@ -200,7 +229,7 @@ export default async function WorldPage() {
 
   return (
     <div className="animate-fadeup space-y-4 py-1">
-      <ApBar ap={ap} />
+      <ApBar ap={ap} nextRegenMin={nextRegenMin} />
 
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
         <div className="relative">
@@ -227,6 +256,18 @@ export default async function WorldPage() {
           <p className="whitespace-pre-wrap px-6 py-4 text-[15px] leading-relaxed text-content">
             {here.desc}
           </p>
+        )}
+        {badges.length > 0 && (
+          <div className="flex flex-wrap gap-2 border-t border-line px-6 py-3">
+            {badges.map((badge) => (
+              <span
+                key={badge.label}
+                className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${badge.tone}`}
+              >
+                {badge.label}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 

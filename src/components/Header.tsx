@@ -46,6 +46,12 @@ export default async function Header() {
             🗺️ 월드
           </Link>
           <Link
+            href="/collection"
+            className="rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600"
+          >
+            📖 도감
+          </Link>
+          <Link
             href="/write"
             className="hidden rounded-lg bg-brand-500 px-3.5 py-2 font-semibold text-white shadow-sm transition hover:bg-brand-600 sm:inline-block"
           >

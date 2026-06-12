@@ -71,6 +71,7 @@ model Location {
   hidden    Boolean  @default(false) // 히든 장소 (발견해야 보임)
   keyword   String? // 히든 발견 키워드 (시트 '키워드')
   cond      String? // 발견 조건: "판정:재주:9" | "아이템:고대의 나침반" (시트 '조건')
+  lifeJson  String? // 지역 생활스킬 설정 JSON { gather/fish/combat }
   isStart   Boolean  @default(false) // 입장 지점
   order     Int      @default(0)
   updatedAt DateTime @updatedAt

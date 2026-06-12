@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { runActionCommand, tryKeywordSpeech } from "@/lib/play";
+import { runActionCommand } from "@/lib/play";
 
 export type ChatMessage = {
   id: number;
@@ -104,11 +104,10 @@ export async function POST(req: Request) {
     data: { locationId: sheet.locationId, userId: user.id, content },
     include: MSG_INCLUDE,
   });
-  const keyword = await tryKeywordSpeech(user.id, user.nickname, sheet, content);
 
   return Response.json({
     message: serialize(msg),
-    notice: keyword.notice ?? null,
-    refresh: !!keyword.changed,
+    notice: null,
+    refresh: false,
   });
 }

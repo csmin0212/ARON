@@ -4,6 +4,7 @@
 // | ID | 이름 | 이모지 | 설명 | 연결 | 히든 | 시작 |
 
 import { MASTER_SHEET_ID, parseCsv } from "./charsheet";
+import type { FishWater, LifeSkillPoolConfig, LocationLifeConfig } from "./lifeSkillData";
 
 // ── 피로도 규칙 ──
 // 이동은 자유(소모 없음). 피로도는 채집·낚시·전투 등 "행동"에 소모된다.
@@ -36,6 +37,14 @@ export function effectiveAp(ap: number | null, apResetAt: Date | null): number {
   return regenFatigue(ap, apResetAt).value;
 }
 
+export function nextFatigueRegenMinutes(ap: number | null, apResetAt: Date | null): number | null {
+  const now = new Date();
+  const fresh = regenFatigue(ap, apResetAt, now);
+  if (fresh.value >= FATIGUE_MAX) return null;
+  const nextAt = fresh.at.getTime() + REGEN_MS;
+  return Math.max(1, Math.ceil((nextAt - now.getTime()) / 60_000));
+}
+
 // ── 맵 시트 파서 ──
 // 맵은 GM 전용 별도 스프레드시트(WORLD_SHEET_ID)에서 읽는다.
 // 미설정 시 마스터 시트로 폴백 (플레이어에게 보이므로 별도 시트 권장)
@@ -52,6 +61,7 @@ export type WorldRow = {
   hidden: boolean;
   keyword: string | null;
   cond: string | null;
+  life: LocationLifeConfig | null;
   isStart: boolean;
 };
 
@@ -67,7 +77,97 @@ const HEADER_KEYS: Record<string, string> = {
   키워드: "keyword",
   조건: "cond",
   시작: "isStart",
+  채집: "gather",
+  "채집 가능": "gather",
+  채집가능: "gather",
+  채집목록: "gatherItems",
+  채집물: "gatherItems",
+  채집제외: "gatherExclude",
+  채집랭크: "gatherRanks",
+  채집확률: "gatherWeights",
+  낚시: "fish",
+  "낚시 가능": "fish",
+  낚시가능: "fish",
+  낚시목록: "fishItems",
+  물고기: "fishItems",
+  낚시제외: "fishExclude",
+  낚시랭크: "fishRanks",
+  낚시확률: "fishWeights",
+  수역: "fishWater",
+  전투: "combat",
+  "전투 가능": "combat",
+  전투가능: "combat",
 };
+
+function splitList(value: string): string[] | undefined {
+  const items = value
+    .split(/[,，;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
+function parseRanks(value: string): number[] | undefined {
+  const out = new Set<number>();
+  for (const raw of value.split(/[,，;\s]+/)) {
+    const part = raw.trim();
+    if (!part) continue;
+    const range = part.match(/^(\d+)\s*[~-]\s*(\d+)$/);
+    if (range) {
+      const a = parseInt(range[1], 10);
+      const b = parseInt(range[2], 10);
+      for (let n = Math.min(a, b); n <= Math.max(a, b); n++) {
+        if (n >= 0 && n <= 5) out.add(n);
+      }
+      continue;
+    }
+    const n = parseInt(part.replace(/[^\d]/g, ""), 10);
+    if (!Number.isNaN(n) && n >= 0 && n <= 5) out.add(n);
+  }
+  return out.size > 0 ? [...out] : undefined;
+}
+
+function parseWeights(value: string): number[] | undefined {
+  if (!value.trim()) return undefined;
+  const weights = [0, 0, 0, 0, 0, 0];
+  if (/[=:：]/.test(value)) {
+    for (const raw of value.split(/[,，;\n]/)) {
+      const m = raw.trim().match(/^(\d+)\s*[=:：]\s*(\d+(?:\.\d+)?)$/);
+      if (!m) continue;
+      const rank = parseInt(m[1], 10);
+      if (rank >= 0 && rank <= 5) weights[rank] = Number(m[2]);
+    }
+    return weights.some((w) => w > 0) ? weights : undefined;
+  }
+
+  const parts = value
+    .split(/[,，;\s]+/)
+    .map((part) => Number(part.trim()))
+    .filter((n) => !Number.isNaN(n));
+  if (parts.length === 0) return undefined;
+  for (let i = 0; i < Math.min(6, parts.length); i++) weights[i] = parts[i];
+  return weights.some((w) => w > 0) ? weights : undefined;
+}
+
+function parseWater(value: string): FishWater | undefined {
+  const raw = value.trim();
+  if (!raw) return undefined;
+  if (/바다|해안|항구|sea|ocean/i.test(raw)) return "바다";
+  if (/전체|모두|all/i.test(raw)) return "전체";
+  return "민물";
+}
+
+function compactPool(pool: LifeSkillPoolConfig): LifeSkillPoolConfig | undefined {
+  if (!pool.enabled) return undefined;
+  return {
+    enabled: true,
+    ...(pool.items?.length ? { items: pool.items } : {}),
+    ...(pool.exclude?.length ? { exclude: pool.exclude } : {}),
+    ...(pool.ranks?.length ? { ranks: pool.ranks } : {}),
+    ...(pool.weights?.some((w) => w > 0) ? { weights: pool.weights } : {}),
+    ...(pool.water ? { water: pool.water } : {}),
+  };
+}
 
 export function parseWorldGrid(g: string[][]): WorldRow[] {
   // 헤더 행 찾기: "ID" 와 "이름" 이 함께 있는 행
@@ -109,6 +209,31 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
     if (seen.has(id)) throw new Error(`장소 ID '${id}' 가 중복됐어요.`);
     seen.add(id);
 
+    const gather = compactPool({
+      enabled: yes(cell(colMap.gather)),
+      items: splitList(cell(colMap.gatherItems)),
+      exclude: splitList(cell(colMap.gatherExclude)),
+      ranks: parseRanks(cell(colMap.gatherRanks)),
+      weights: parseWeights(cell(colMap.gatherWeights)),
+    });
+    const fish = compactPool({
+      enabled: yes(cell(colMap.fish)),
+      items: splitList(cell(colMap.fishItems)),
+      exclude: splitList(cell(colMap.fishExclude)),
+      ranks: parseRanks(cell(colMap.fishRanks)),
+      weights: parseWeights(cell(colMap.fishWeights)),
+      water: parseWater(cell(colMap.fishWater)),
+    });
+    const combat = yes(cell(colMap.combat)) ? { enabled: true } : undefined;
+    const life =
+      gather || fish || combat
+        ? {
+            ...(gather ? { gather } : {}),
+            ...(fish ? { fish } : {}),
+            ...(combat ? { combat } : {}),
+          }
+        : null;
+
     rows.push({
       id,
       name,
@@ -122,6 +247,7 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
       hidden: yes(cell(colMap.hidden)),
       keyword: cell(colMap.keyword) || null,
       cond: cell(colMap.cond) || null,
+      life,
       isStart: yes(cell(colMap.isStart)),
     });
   }
