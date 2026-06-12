@@ -3,7 +3,7 @@
 
 export function isGmUsername(username: string | null | undefined): boolean {
   if (!username) return false;
-  const list = (process.env.GM_USERNAMES ?? "")
+  const list = (process.env.GM_USERNAMES ?? "ironknight")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

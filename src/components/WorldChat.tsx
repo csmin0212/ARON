@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
 import { getPreset, isImageUrl } from "@/lib/avatars";
 
@@ -59,6 +60,7 @@ export default function WorldChat({
   myUsername: string;
   actions?: ChatActionChip[];
 }) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -125,6 +127,7 @@ export default function WorldChat({
         notice?: string | null;
         ok?: boolean;
         error?: string;
+        refresh?: boolean;
       };
       if (!res.ok) {
         setError(data.error ?? "전송에 실패했어요.");
@@ -134,6 +137,7 @@ export default function WorldChat({
         if (data.message) append([data.message]);
         if (data.notice) setNotice(data.notice);
         await poll(); // 행동 결과·발견 등 시스템 메시지 즉시 수신
+        if (data.refresh) router.refresh();
       }
     } catch {
       setError("전송에 실패했어요. 잠시 후 다시 시도해주세요.");

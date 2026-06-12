@@ -153,7 +153,7 @@ export async function tryKeywordSpeech(
   nickname: string,
   sheet: CharacterSheet,
   content: string,
-): Promise<{ notice?: string }> {
+): Promise<{ notice?: string; changed?: boolean }> {
   const locationId = sheet.locationId!;
   const here = await prisma.location.findUnique({ where: { id: locationId } });
   if (!here) return {};
@@ -207,7 +207,7 @@ export async function tryKeywordSpeech(
       : null;
     if (!entry) return { notice: "무언가 희미하게 반응하지만… 열쇠가 되어줄 무언가가 필요해 보인다." };
     await discover();
-    return {};
+    return { changed: true };
   }
 
   if (cond.startsWith("판정")) {
@@ -244,10 +244,10 @@ export async function tryKeywordSpeech(
       `🔍 ${nickname}님의 탐색 판정 — ${diceText(dice, mod, total, dc)} ${success ? "성공!" : "실패…"}`,
     );
     if (success) await discover();
-    return {};
+    return { changed: true };
   }
 
   // 조건 없음 → 즉시 발견
   await discover();
-  return {};
+  return { changed: true };
 }

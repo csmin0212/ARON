@@ -9,6 +9,7 @@ import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
 import { postSystem } from "@/lib/play";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
+export type WorldCleanupState = { error?: string; ok?: string } | undefined;
 
 // 현재 행동치 계산 (회복 시점 지났으면 가득 채워서 반환)
 function freshAp(ap: number | null, apResetAt: Date | null): { ap: number; apResetAt: Date } {
@@ -181,4 +182,22 @@ export async function syncWorldMap(
   revalidatePath("/world");
   const okMsg = `동기화 완료 — ${parts.join(" · ")}`;
   return warns.length > 0 ? { ok: okMsg, error: `⚠ ${warns.join(" / ")}` } : { ok: okMsg };
+}
+
+export async function cleanupOldWorldMessages(
+  _prev: WorldCleanupState,
+  _formData: FormData,
+): Promise<WorldCleanupState> {
+  const user = await getCurrentUser();
+  if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 90);
+
+  const result = await prisma.worldMessage.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+
+  revalidatePath("/world");
+  return { ok: `90일 지난 월드 채팅 ${result.count.toLocaleString("ko-KR")}개를 정리했어요.` };
 }
