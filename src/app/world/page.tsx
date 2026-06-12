@@ -199,7 +199,7 @@ export default async function WorldPage() {
 
   const sheetInventory = parseSheetInventory(sheet.invJson);
   const bagItems: SheetInventoryItem[] =
-    sheetInventory?.items && sheetInventory.items.length > 0
+    sheetInventory
       ? sheetInventory.items
       : invEntries.map((e) => ({
           name: itemNames.get(e.itemId) ?? e.itemId,

@@ -5,9 +5,55 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
-import { readSheetInventory } from "@/lib/googleSheets";
+import { readSheetInventory, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 
 export type SheetState = { error?: string; ok?: boolean } | undefined;
+
+function mergeSheetItems(items: SheetInventoryItem[]): { itemId: string; qty: number }[] {
+  const merged = new Map<string, number>();
+  for (const item of items) {
+    const itemId = item.name.trim();
+    if (!itemId || item.qty <= 0) continue;
+    merged.set(itemId, (merged.get(itemId) ?? 0) + item.qty);
+  }
+  return [...merged.entries()].map(([itemId, qty]) => ({ itemId, qty }));
+}
+
+async function syncDbInventoryFromSheet(userId: string, inventory: SheetInventory): Promise<void> {
+  const entries = mergeSheetItems(inventory.items);
+  const itemIds = entries.map((entry) => entry.itemId);
+
+  await prisma.inventoryEntry.deleteMany({
+    where: {
+      userId,
+      meta: null,
+      ...(itemIds.length > 0 ? { itemId: { notIn: itemIds } } : {}),
+    },
+  });
+
+  for (const entry of entries) {
+    const existing = await prisma.inventoryEntry.findMany({
+      where: { userId, itemId: entry.itemId, meta: null },
+      orderBy: { updatedAt: "desc" },
+    });
+    const [keep, ...duplicates] = existing;
+    if (keep) {
+      await prisma.inventoryEntry.update({
+        where: { id: keep.id },
+        data: { qty: entry.qty },
+      });
+      if (duplicates.length > 0) {
+        await prisma.inventoryEntry.deleteMany({
+          where: { id: { in: duplicates.map((item) => item.id) } },
+        });
+      }
+    } else {
+      await prisma.inventoryEntry.create({
+        data: { userId, itemId: entry.itemId, qty: entry.qty },
+      });
+    }
+  }
+}
 
 export async function syncSheet(_prev: SheetState, formData: FormData): Promise<SheetState> {
   const user = await getCurrentUser();
@@ -61,6 +107,7 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     create: { userId: user.id, ...data },
     update: data,
   });
+  if (inventory) await syncDbInventoryFromSheet(user.id, inventory);
 
   revalidatePath("/profile");
   revalidatePath("/world");
@@ -89,6 +136,7 @@ export async function syncSheetInventory(): Promise<void> {
       syncedAt: new Date(),
     },
   });
+  await syncDbInventoryFromSheet(user.id, inventory);
 
   revalidatePath("/profile");
   revalidatePath("/world");
