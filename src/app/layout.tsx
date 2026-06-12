@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Noto_Sans_KR } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
 import Header from "@/components/Header";
@@ -11,13 +10,6 @@ import {
   isThemeMode,
   isHexColor,
 } from "@/lib/theme";
-
-const notoSansKr = Noto_Sans_KR({
-  subsets: ["latin"],
-  weight: ["400", "500", "700", "900"],
-  variable: "--font-noto",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "아리안로드 온라인 갤러리",
@@ -40,7 +32,7 @@ export default async function RootLayout({
       lang="ko"
       data-theme={theme}
       style={{ "--accent": accent } as React.CSSProperties}
-      className={`${notoSansKr.variable} h-full`}
+      className="h-full"
     >
       <body className="flex min-h-full flex-col">
         <Header />

@@ -12,6 +12,20 @@ type SheetsValuesResponse = {
   values?: string[][];
 };
 
+export type SheetInventoryItem = {
+  name: string;
+  effect: string | null;
+  weight: number | null;
+  qty: number;
+};
+
+export type SheetInventory = {
+  gold: string | null;
+  curWeight: number | null;
+  maxWeight: number | null;
+  items: SheetInventoryItem[];
+};
+
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
 function credentials(): ServiceAccount | null {
@@ -116,6 +130,70 @@ function firstEmptyRow(values: string[][], startRow: number): number | null {
   return null;
 }
 
+function cell(row: string[] | undefined, index: number): string {
+  return String(row?.[index] ?? "").trim();
+}
+
+function parseNumber(raw: string): number | null {
+  const n = parseInt(raw.replace(/[^\d-]/g, ""), 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+function parseQty(raw: string): number {
+  return parseNumber(raw) ?? 1;
+}
+
+function parseWeightPair(raw: string): { curWeight: number | null; maxWeight: number | null } {
+  const m = raw.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!m) return { curWeight: null, maxWeight: null };
+  return { curWeight: parseInt(m[1], 10), maxWeight: parseInt(m[2], 10) };
+}
+
+function parseItemBlock(row: string[], offset: number): SheetInventoryItem | null {
+  const name = cell(row, offset);
+  if (!name || name === "휴대품") return null;
+
+  const effect = [cell(row, offset + 1), cell(row, offset + 2), cell(row, offset + 3)]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return {
+    name,
+    effect: effect || null,
+    weight: parseNumber(cell(row, offset + 4)),
+    qty: parseQty(cell(row, offset + 5)),
+  };
+}
+
+export async function readSheetInventory(tab: string | null): Promise<SheetInventory | null> {
+  if (!tab) return null;
+
+  try {
+    const values = await getValues(`${quoteSheet(tab)}!Z31:AK58`);
+    if (!values) return null;
+
+    const top = values[0] ?? [];
+    const gold = top.find((v) => /G/i.test(String(v ?? "")))?.trim() ?? null;
+    const weightText = top.find((v) => /\d+\s*\/\s*\d+/.test(String(v ?? ""))) ?? "";
+    const { curWeight, maxWeight } = parseWeightPair(weightText);
+    const items: SheetInventoryItem[] = [];
+
+    for (let i = 0; i < values.length; i++) {
+      const row = values[i];
+      const left = i >= 2 ? parseItemBlock(row, 0) : null;
+      const right = i >= 1 ? parseItemBlock(row, 6) : null;
+      if (left) items.push(left);
+      if (right) items.push(right);
+    }
+
+    return { gold, curWeight, maxWeight, items };
+  } catch (error) {
+    console.warn("Failed to read sheet inventory", error);
+    return null;
+  }
+}
+
 export async function syncSheetGold(tab: string | null, gold: number): Promise<void> {
   if (!tab) return;
   try {
@@ -146,7 +224,7 @@ export async function appendSheetItem(
       if (!row) continue;
 
       await updateValues(`${quoteSheet(tab)}!${block.col}${row}`, [
-        [itemName, qty > 1 ? `x${qty}` : "", "", "", "", "사이트 자동 획득"],
+        [itemName, "", "", "", "1", String(qty)],
       ]);
       return;
     }

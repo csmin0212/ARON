@@ -8,7 +8,6 @@ export type ChatMessage = {
   createdAt: string;
   system: boolean;
   user: { username: string; nickname: string; avatar: string | null } | null;
-  charName: string | null;
 };
 
 const MSG_INCLUDE = {
@@ -17,7 +16,6 @@ const MSG_INCLUDE = {
       username: true,
       nickname: true,
       avatar: true,
-      sheet: { select: { sheetTab: true } },
     },
   },
 } as const;
@@ -31,7 +29,6 @@ type RawMsg = {
     username: string;
     nickname: string;
     avatar: string | null;
-    sheet: { sheetTab: string } | null;
   } | null;
 };
 
@@ -44,7 +41,6 @@ function serialize(m: RawMsg): ChatMessage {
     user: m.user
       ? { username: m.user.username, nickname: m.user.nickname, avatar: m.user.avatar }
       : null,
-    charName: m.user?.sheet?.sheetTab ?? null,
   };
 }
 

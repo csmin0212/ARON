@@ -12,7 +12,6 @@ type ChatMessage = {
   createdAt: string;
   system: boolean;
   user: { username: string; nickname: string; avatar: string | null } | null;
-  charName: string | null;
 };
 
 export type ChatActionChip = { kind: string; label: string | null; apCost: number };

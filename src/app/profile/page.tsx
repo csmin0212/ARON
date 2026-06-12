@@ -57,7 +57,7 @@ export default async function ProfilePage({
 
         {sheet && (
           <div className="mb-5 rounded-2xl border border-line bg-canvas p-4">
-            <CharacterSheetCard sheet={{ ...sheet, charName: sheet.sheetTab }} />
+            <CharacterSheetCard sheet={{ ...sheet, charName: user.nickname }} />
           </div>
         )}
 

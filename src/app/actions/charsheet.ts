@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
+import { readSheetInventory } from "@/lib/googleSheets";
 
 export type SheetState = { error?: string; ok?: boolean } | undefined;
 
@@ -22,15 +23,22 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     return { error: e instanceof Error ? e.message : "시트를 불러오지 못했어요." };
   }
 
-  // 기존 라이브 상태 보존 여부 확인 (첫 연동이면 시트값으로 초기화)
+  const inventory = await readSheetInventory(tab);
   const existing = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
     select: { curHp: true },
   });
+
   const live =
     existing && existing.curHp != null
-      ? {} // 이미 진행 중 → 현재 HP/골드 유지
-      : { curHp: parsed.hp, curMp: parsed.mp, curGold: parseGoldToInt(parsed.gold) };
+      ? inventory?.gold
+        ? { curGold: parseGoldToInt(inventory.gold) }
+        : {}
+      : {
+          curHp: parsed.hp,
+          curMp: parsed.mp,
+          curGold: parseGoldToInt(inventory?.gold ?? parsed.gold),
+        };
 
   const data = {
     sheetTab: tab,
@@ -38,11 +46,12 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     race: parsed.race,
     attribute: parsed.attribute,
     level: parsed.level,
-    hp: parsed.hp, // 최대치 기준값
+    hp: parsed.hp,
     mp: parsed.mp,
     fate: parsed.fate,
-    gold: parsed.gold,
+    gold: inventory?.gold ?? parsed.gold,
     statsJson: JSON.stringify(parsed.stats),
+    invJson: inventory ? JSON.stringify(inventory) : undefined,
     syncedAt: new Date(),
     ...live,
   };
@@ -54,7 +63,35 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
   });
 
   revalidatePath("/profile");
+  revalidatePath("/world");
   return { ok: true };
+}
+
+export async function syncSheetInventory(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { sheetTab: true },
+  });
+  if (!sheet?.sheetTab) return;
+
+  const inventory = await readSheetInventory(sheet.sheetTab);
+  if (!inventory) return;
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      invJson: JSON.stringify(inventory),
+      curGold: parseGoldToInt(inventory.gold),
+      gold: inventory.gold,
+      syncedAt: new Date(),
+    },
+  });
+
+  revalidatePath("/profile");
+  revalidatePath("/world");
 }
 
 export async function unlinkSheet(): Promise<void> {
@@ -62,4 +99,5 @@ export async function unlinkSheet(): Promise<void> {
   if (!user) return;
   await prisma.characterSheet.deleteMany({ where: { userId: user.id } });
   revalidatePath("/profile");
+  revalidatePath("/world");
 }

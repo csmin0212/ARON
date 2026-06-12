@@ -7,6 +7,7 @@ import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
+import type { SheetInventory, SheetInventoryItem } from "@/lib/googleSheets";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -35,6 +36,22 @@ function ApBar({ ap }: { ap: number }) {
   );
 }
 
+function parseJsonArray(value: string | null | undefined): string[] {
+  try {
+    return value ? (JSON.parse(value) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseSheetInventory(value: string | null | undefined): SheetInventory | null {
+  try {
+    return value ? (JSON.parse(value) as SheetInventory) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function WorldPage() {
   const user = await getCurrentUser();
   const isGm = isGmUsername(user?.username);
@@ -43,7 +60,7 @@ export default async function WorldPage() {
     return (
       <Gate emoji="🗺️" title="월드에 입장하려면 로그인이 필요해요">
         <Link href="/login" className="font-bold text-brand-600 hover:underline">
-          로그인하러 가기 →
+          로그인하러 가기
         </Link>
       </Gate>
     );
@@ -67,7 +84,7 @@ export default async function WorldPage() {
   if (locationCount === 0) {
     return (
       <div className="mx-auto max-w-xl animate-fadeup space-y-4 py-6">
-        <Gate emoji="🚧" title="월드 준비 중이에요">
+        <Gate emoji="🛠️" title="월드 준비 중이에요">
           <p className="text-sm text-faint">GM이 맵을 만들고 있어요. 조금만 기다려주세요!</p>
         </Gate>
         {isGm && <WorldAdmin />}
@@ -96,7 +113,7 @@ export default async function WorldPage() {
                 type="submit"
                 className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-brand-600"
               >
-                ⚔️ 월드 입장
+                🚪 월드 입장
               </button>
             </form>
           )}
@@ -106,19 +123,8 @@ export default async function WorldPage() {
     );
   }
 
-  // 이동 가능 구역 (히든은 발견한 곳만)
-  let connIds: string[] = [];
-  try {
-    connIds = here.connJson ? (JSON.parse(here.connJson) as string[]) : [];
-  } catch {
-    connIds = [];
-  }
-  let discovered: string[] = [];
-  try {
-    discovered = sheet.discoveredJson ? (JSON.parse(sheet.discoveredJson) as string[]) : [];
-  } catch {
-    discovered = [];
-  }
+  const connIds = parseJsonArray(here.connJson);
+  const discovered = parseJsonArray(sheet.discoveredJson);
   const destinations = (
     await prisma.location.findMany({ where: { id: { in: connIds } }, orderBy: { order: "asc" } })
   ).filter((d) => !d.hidden || discovered.includes(d.id));
@@ -130,7 +136,6 @@ export default async function WorldPage() {
     take: 20,
   });
 
-  // 이 장소의 행동 + 내 가방
   const [locActions, invEntries] = await Promise.all([
     prisma.locationAction.findMany({ where: { locationId: here.id }, orderBy: { order: "asc" } }),
     prisma.inventoryEntry.findMany({
@@ -138,6 +143,7 @@ export default async function WorldPage() {
       orderBy: { updatedAt: "desc" },
     }),
   ]);
+
   const itemNames = new Map(
     (
       await prisma.item.findMany({
@@ -147,11 +153,26 @@ export default async function WorldPage() {
     ).map((it) => [it.id, it.name]),
   );
 
+  const sheetInventory = parseSheetInventory(sheet.invJson);
+  const bagItems: SheetInventoryItem[] =
+    sheetInventory?.items && sheetInventory.items.length > 0
+      ? sheetInventory.items
+      : invEntries.map((e) => ({
+          name: itemNames.get(e.itemId) ?? e.itemId,
+          effect: null,
+          weight: null,
+          qty: e.qty,
+        }));
+  const bagGold = sheetInventory?.gold ?? `${(sheet.curGold ?? 0).toLocaleString()}G`;
+  const bagWeight =
+    sheetInventory?.curWeight != null && sheetInventory.maxWeight != null
+      ? `${sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
+      : null;
+
   return (
     <div className="animate-fadeup space-y-4 py-1">
       <ApBar ap={ap} />
 
-      {/* 장소 배너 (맵 사진 + 이름 + 설명) */}
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
         <div className="relative">
           {here.image ? (
@@ -180,10 +201,8 @@ export default async function WorldPage() {
         )}
       </div>
 
-      {/* 채팅(넓게) + 사이드(이동/모험가) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {/* key=장소ID — 이동 시 채팅창을 새로 마운트해 이전 장소 메시지가 남지 않게 */}
           <WorldChat
             key={here.id}
             locationName={here.name}
@@ -197,7 +216,6 @@ export default async function WorldPage() {
         </div>
 
         <div className="space-y-4">
-          {/* 이동 가능 구역 */}
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
               🧭 이동 가능 구역{" "}
@@ -221,7 +239,7 @@ export default async function WorldPage() {
                         </span>
                         {d.hidden && (
                           <span className="text-[11px] font-semibold text-violet-500">
-                            ✨ 발견한 장소
+                            발견한 장소
                           </span>
                         )}
                       </span>
@@ -233,32 +251,44 @@ export default async function WorldPage() {
             )}
           </div>
 
-          {/* 가방 */}
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
-            <h2 className="mb-2 flex items-center justify-between px-1 text-sm font-extrabold text-content">
+            <h2 className="mb-3 flex items-center justify-between px-1 text-sm font-extrabold text-content">
               <span>🎒 가방</span>
-              <span className="text-xs font-bold text-emerald-500">
-                {(sheet.curGold ?? 0).toLocaleString()}G
-              </span>
+              <span className="text-xs font-bold text-emerald-500">{bagGold}</span>
             </h2>
-            {invEntries.length === 0 ? (
-              <p className="px-1 text-xs text-faint">아직 비어 있어요. 채집·낚시로 채워보세요!</p>
+            <div className="mb-3 flex items-center justify-between rounded-2xl bg-subtle px-3 py-2 text-xs">
+              <span className="font-semibold text-muted">중량</span>
+              <span className="font-extrabold text-content">{bagWeight ?? "-"}</span>
+            </div>
+            {bagItems.length === 0 ? (
+              <p className="px-1 text-xs text-faint">
+                아직 비어 있어요. 시트에서 소지품을 추가한 뒤 프로필에서 가방만 다시
+                동기화해보세요.
+              </p>
             ) : (
-              <ul className="flex flex-wrap gap-1.5">
-                {invEntries.map((e) => (
-                  <li
-                    key={e.id}
-                    className="rounded-lg bg-subtle px-2.5 py-1 text-xs font-semibold text-content"
-                  >
-                    {itemNames.get(e.itemId) ?? e.itemId}{" "}
-                    <span className="text-faint">x{e.qty}</span>
+              <ul className="space-y-2">
+                {bagItems.map((item, i) => (
+                  <li key={`${item.name}-${i}`} className="rounded-2xl bg-subtle px-3 py-2">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-extrabold text-content">{item.name}</p>
+                        {item.effect && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-faint">
+                            {item.effect}
+                          </p>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right text-[11px] font-bold text-muted">
+                        <p>중량 {item.weight ?? "-"}</p>
+                        <p className="text-brand-600">x{item.qty}</p>
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
           </div>
 
-          {/* 이곳의 모험가들 */}
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
               👥 이곳의 모험가 <span className="text-brand-500">{others.length + 1}</span>
@@ -287,7 +317,7 @@ export default async function WorldPage() {
               ))}
             </ul>
             {others.length === 0 && (
-              <p className="mt-1 px-3 text-xs text-faint">지금은 혼자예요.</p>
+              <p className="mt-1 px-3 text-xs text-faint">지금은 혼자 있어요.</p>
             )}
           </div>
         </div>

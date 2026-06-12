@@ -77,7 +77,7 @@ export default async function CharacterPage({
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-extrabold text-content">캐릭터 시트</h2>
         {profile.sheet ? (
-          <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.sheet.sheetTab }} />
+          <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.nickname }} />
         ) : (
           <p className="py-6 text-center text-sm text-faint">
             아직 캐릭터 시트를 연동하지 않았어요.

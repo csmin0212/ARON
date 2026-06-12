@@ -1,29 +1,29 @@
-// 게임 플레이 로직 — 채팅 명령(/채집 등)과 키워드 발화로 실행된다.
-// 결과는 그 장소의 "시스템 메시지"로 채팅에 기록된다.
 import "server-only";
+
 import { prisma } from "./prisma";
 import { rollDice } from "./dice";
 import { AP_MAX, currentResetBoundary } from "./world";
 import { pickDrop, type DropEntry } from "./gamedata";
 import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
-import { appendSheetItem, syncSheetGold } from "./googleSheets";
+import { appendSheetItem, syncSheetGold, type SheetInventory } from "./googleSheets";
 
 export const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
   낚시: "🎣",
   채굴: "⛏️",
   벌목: "🪓",
-  사냥: "🏹",
-  휴식: "🛏️",
   탐색: "🔍",
+  휴식: "🛌",
 };
 
 export function freshAp(
   ap: number | null,
   apResetAt: Date | null,
 ): { ap: number; apResetAt: Date } {
-  if (!apResetAt || apResetAt < currentResetBoundary()) return { ap: AP_MAX, apResetAt: new Date() };
+  if (!apResetAt || apResetAt < currentResetBoundary()) {
+    return { ap: AP_MAX, apResetAt: new Date() };
+  }
   return { ap: ap ?? AP_MAX, apResetAt };
 }
 
@@ -31,8 +31,8 @@ function statModOf(statsJson: string | null, label: string): number | null {
   if (!statsJson) return null;
   try {
     const stats = JSON.parse(statsJson) as StatEntry[];
-    const s = stats.find((x) => x.label === label);
-    return s ? (s.mod ?? 0) : null;
+    const stat = stats.find((x) => x.label === label);
+    return stat ? (stat.mod ?? 0) : null;
   } catch {
     return null;
   }
@@ -40,15 +40,36 @@ function statModOf(statsJson: string | null, label: string): number | null {
 
 async function addItem(userId: string, itemId: string, qty: number): Promise<void> {
   const existing = await prisma.inventoryEntry.findFirst({ where: { userId, itemId, meta: null } });
-  if (existing)
+  if (existing) {
     await prisma.inventoryEntry.update({
       where: { id: existing.id },
       data: { qty: existing.qty + qty },
     });
-  else await prisma.inventoryEntry.create({ data: { userId, itemId, qty } });
+  } else {
+    await prisma.inventoryEntry.create({ data: { userId, itemId, qty } });
+  }
 }
 
-// 장소에 시스템 메시지 게시
+function mergeInventorySnapshot(
+  invJson: string | null,
+  itemName: string,
+  qty: number,
+): string {
+  let inv: SheetInventory = { gold: null, curWeight: null, maxWeight: null, items: [] };
+  try {
+    if (invJson) inv = JSON.parse(invJson) as SheetInventory;
+  } catch {
+    inv = { gold: null, curWeight: null, maxWeight: null, items: [] };
+  }
+
+  const found = inv.items.find((item) => item.name === itemName);
+  if (found) found.qty += qty;
+  else inv.items.push({ name: itemName, effect: null, weight: 1, qty });
+
+  inv.curWeight = (inv.curWeight ?? 0) + qty;
+  return JSON.stringify(inv);
+}
+
 export async function postSystem(locationId: string, content: string): Promise<void> {
   await prisma.worldMessage.create({ data: { locationId, system: true, content } });
 }
@@ -57,7 +78,6 @@ const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 const diceText = (dice: number[], mod: number, total: number, dc: number) =>
   `🎲 ${dice.join("+")}${mod >= 0 ? "+" : ""}${mod} = ${total} (목표 ${dc})`;
 
-// ── /명령 — 장소 행동 실행. 반환: 보낸 사람에게만 보여줄 오류/안내 ──
 export async function runActionCommand(
   userId: string,
   nickname: string,
@@ -84,18 +104,20 @@ export async function runActionCommand(
 
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   if (ap < target.apCost)
-    return { error: `행동치가 부족해요. (필요 ⚡${target.apCost}, 보유 ⚡${ap})` };
+    return { error: `행동치가 부족해요. (필요 ${target.apCost}, 보유 ${ap})` };
 
   const label = target.label ?? target.kind;
   const emoji = KIND_EMOJI[target.kind] ?? "✨";
 
-  // 판정
   let success = true;
   let rollLine = "";
   if (target.statLabel && target.dc != null) {
     const mod = statModOf(sheet.statsJson, target.statLabel);
     if (mod == null)
-      return { error: `시트에서 【${target.statLabel}】 능력치를 찾지 못했어요. 프로필에서 다시 동기화해주세요.` };
+      return {
+        error: `시트에서 ${target.statLabel} 능력치를 찾지 못했어요. 프로필에서 다시 동기화해주세요.`,
+      };
+
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
     success = total >= target.dc;
@@ -113,10 +135,9 @@ export async function runActionCommand(
     });
   }
 
-  // 보상 + AP 차감
   let resultLine: string;
   if (!success) {
-    resultLine = ` 실패… ${target.failText ?? ""}`.trimEnd();
+    resultLine = ` 실패... ${target.failText ?? ""}`.trimEnd();
   } else {
     let drop: DropEntry;
     try {
@@ -124,21 +145,38 @@ export async function runActionCommand(
     } catch {
       return { error: "드랍테이블이 잘못됐어요. GM에게 알려주세요." };
     }
+
     if (drop.item === "골드" && drop.gold > 0) {
       const nextGold = (sheet.curGold ?? 0) + drop.gold;
+      let nextInvJson = sheet.invJson;
+      try {
+        const inv = nextInvJson
+          ? (JSON.parse(nextInvJson) as SheetInventory)
+          : { gold: null, curWeight: null, maxWeight: null, items: [] };
+        inv.gold = `${nextGold}G`;
+        nextInvJson = JSON.stringify(inv);
+      } catch {
+        nextInvJson = sheet.invJson;
+      }
+
       await prisma.characterSheet.update({
         where: { userId },
-        data: { curGold: nextGold },
+        data: { curGold: nextGold, invJson: nextInvJson },
       });
       void syncSheetGold(sheet.sheetTab, nextGold);
       resultLine = ` 성공! ✨ ${drop.gold}G 획득!`;
     } else if (drop.item === "꽝") {
-      resultLine = " …허탕이었다.";
+      resultLine = " 꽝... 아무 일도 일어나지 않았다.";
     } else {
       await addItem(userId, drop.item, drop.qty);
       const item = await prisma.item.findUnique({ where: { id: drop.item } });
-      void appendSheetItem(sheet.sheetTab, item?.name ?? drop.item, drop.qty);
-      resultLine = ` 성공! ✨ ${item?.name ?? drop.item} x${drop.qty} 획득!`;
+      const itemName = item?.name ?? drop.item;
+      await prisma.characterSheet.update({
+        where: { userId },
+        data: { invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty) },
+      });
+      void appendSheetItem(sheet.sheetTab, itemName, drop.qty);
+      resultLine = ` 성공! ✨ ${itemName} x${drop.qty} 획득!`;
     }
   }
 
@@ -151,7 +189,6 @@ export async function runActionCommand(
   return {};
 }
 
-// ── 키워드 발화 — 일반 채팅이 히든 키워드와 일치하면 발견 시도 ──
 export async function tryKeywordSpeech(
   userId: string,
   nickname: string,
@@ -168,6 +205,7 @@ export async function tryKeywordSpeech(
   } catch {
     discovered = [];
   }
+
   let hereConns: string[] = [];
   try {
     hereConns = here.connJson ? (JSON.parse(here.connJson) as string[]) : [];
@@ -175,7 +213,9 @@ export async function tryKeywordSpeech(
     hereConns = [];
   }
 
-  const hiddens = await prisma.location.findMany({ where: { hidden: true, keyword: { not: null } } });
+  const hiddens = await prisma.location.findMany({
+    where: { hidden: true, keyword: { not: null } },
+  });
   const target = hiddens.find((h) => {
     if (discovered.includes(h.id)) return false;
     if (norm(h.keyword!) !== norm(content)) return false;
@@ -189,7 +229,6 @@ export async function tryKeywordSpeech(
   });
   if (!target) return {};
 
-  const cond = (target.cond ?? "").trim();
   const discover = async () => {
     await prisma.characterSheet.update({
       where: { userId },
@@ -197,33 +236,36 @@ export async function tryKeywordSpeech(
     });
     await postSystem(
       locationId,
-      `✨ ${nickname}님이 숨겨진 장소를 발견했다 — ${target.emoji ?? "📍"} ${target.name}!`,
+      `🗺️ ${nickname}님이 숨겨진 장소를 발견했다: ${target.emoji ?? "📍"} ${target.name}!`,
     );
   };
 
+  const cond = (target.cond ?? "").trim();
   if (cond.startsWith("아이템")) {
-    const itemName = cond.replace(/^아이템\s*[:：]\s*/, "").trim();
+    const itemName = cond.replace(/^아이템\s*[:=>]\s*/, "").trim();
     const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
     const entry = item
       ? await prisma.inventoryEntry.findFirst({
           where: { userId, itemId: item.id, qty: { gt: 0 } },
         })
       : null;
-    if (!entry) return { notice: "무언가 희미하게 반응하지만… 열쇠가 되어줄 무언가가 필요해 보인다." };
+    if (!entry)
+      return { notice: "무언가 희미하게 반응하지만... 열쇠가 되어줄 무언가가 필요해 보인다." };
     await discover();
     return { changed: true };
   }
 
   if (cond.startsWith("판정")) {
-    const cm = cond.match(/^판정\s*[:：]\s*(.+?)\s*[:：]\s*(\d+)$/);
+    const cm = cond.match(/^판정\s*[:=>]\s*(.+?)\s*[:=>]\s*(\d+)$/);
     if (!cm) return { notice: "발견 조건 형식이 잘못됐어요. GM에게 알려주세요." };
+
     const statLabel = cm[1].trim();
     const dc = parseInt(cm[2], 10);
     const mod = statModOf(sheet.statsJson, statLabel);
-    if (mod == null) return { notice: `시트에서 【${statLabel}】 능력치를 찾지 못했어요.` };
+    if (mod == null) return { notice: `시트에서 ${statLabel} 능력치를 찾지 못했어요.` };
 
     const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
-    if (ap < 1) return { notice: "무언가 느껴지지만… 탐색할 기력(행동치 1)이 없다." };
+    if (ap < 1) return { notice: "탐색할 기력(행동치 1)이 없어요." };
 
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
@@ -245,13 +287,12 @@ export async function tryKeywordSpeech(
 
     await postSystem(
       locationId,
-      `🔍 ${nickname}님의 탐색 판정 — ${diceText(dice, mod, total, dc)} ${success ? "성공!" : "실패…"}`,
+      `🔍 ${nickname}님의 탐색 판정 — ${diceText(dice, mod, total, dc)} ${success ? "성공!" : "실패..."}`,
     );
     if (success) await discover();
     return { changed: true };
   }
 
-  // 조건 없음 → 즉시 발견
   await discover();
   return { changed: true };
 }

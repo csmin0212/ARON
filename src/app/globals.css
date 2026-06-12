@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-noto), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", ui-sans-serif, system-ui,
+    sans-serif;
 
   /* 시맨틱 색 토큰 — 실제 값은 :root / [data-theme] 에서 지정 */
   --color-canvas: var(--canvas);

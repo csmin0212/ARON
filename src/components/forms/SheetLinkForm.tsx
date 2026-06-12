@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState, useTransition } from "react";
-import { syncSheet, unlinkSheet, type SheetState } from "@/app/actions/charsheet";
+import {
+  syncSheet,
+  syncSheetInventory,
+  unlinkSheet,
+  type SheetState,
+} from "@/app/actions/charsheet";
 
 const inputCls =
   "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
@@ -17,6 +22,7 @@ export default function SheetLinkForm({
 }) {
   const [state, formAction, pending] = useActionState<SheetState, FormData>(syncSheet, undefined);
   const [unlinking, startUnlink] = useTransition();
+  const [syncingInventory, startInventorySync] = useTransition();
   const linked = !!initialTab;
 
   return (
@@ -30,25 +36,36 @@ export default function SheetLinkForm({
           maxLength={40}
           className={inputCls}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="submit"
             disabled={pending}
             className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
           >
-            {pending ? "불러오는 중…" : linked ? "🔄 다시 불러오기" : "📥 캐릭터 불러오기"}
+            {pending ? "불러오는 중..." : linked ? "전체 다시 불러오기" : "캐릭터 불러오기"}
           </button>
           {linked && (
-            <button
-              type="button"
-              disabled={unlinking}
-              onClick={() => {
-                if (confirm("캐릭터 시트 연동을 해제할까요?")) startUnlink(() => void unlinkSheet());
-              }}
-              className="rounded-xl px-3 py-2.5 text-sm font-semibold text-faint transition hover:text-rose-500 disabled:opacity-50"
-            >
-              연동 해제
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={syncingInventory}
+                onClick={() => startInventorySync(() => void syncSheetInventory())}
+                className="rounded-xl border border-line px-3 py-2.5 text-sm font-semibold text-muted transition hover:bg-subtle disabled:opacity-50"
+              >
+                {syncingInventory ? "소지품 동기화 중..." : "가방만 다시 동기화"}
+              </button>
+              <button
+                type="button"
+                disabled={unlinking}
+                onClick={() => {
+                  if (confirm("캐릭터 시트 연동을 해제할까요?"))
+                    startUnlink(() => void unlinkSheet());
+                }}
+                className="rounded-xl px-3 py-2.5 text-sm font-semibold text-faint transition hover:text-rose-500 disabled:opacity-50"
+              >
+                연동 해제
+              </button>
+            </>
           )}
         </div>
       </form>
@@ -60,7 +77,7 @@ export default function SheetLinkForm({
       )}
       {state?.ok && (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600">
-          ✅ 캐릭터 정보를 불러왔어요!
+          ✅ 캐릭터 정보를 불러왔어요.
         </p>
       )}
       {linked && syncedAt && !state?.error && (
@@ -68,7 +85,7 @@ export default function SheetLinkForm({
       )}
 
       <p className="text-xs leading-relaxed text-faint">
-        💡 마스터 시트{" "}
+        마스터 시트의{" "}
         <a
           href={masterUrl}
           target="_blank"
@@ -77,7 +94,8 @@ export default function SheetLinkForm({
         >
           하단 탭 이름
         </a>
-        을 그대로 입력하세요. 시트는 “링크가 있는 모든 사용자 보기 가능”으로 공유돼 있어야 해요.
+        을 그대로 입력하세요. 시트에서 직접 수정한 소지품은 “가방만 다시 동기화”로
+        사이트에 반영할 수 있어요.
       </p>
     </div>
   );
