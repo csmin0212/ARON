@@ -42,10 +42,10 @@ function Vital({ label, value, color }: { label: string; value: string | number 
 }
 
 const RANK_GOALS: Record<string, number> = {
-  D: 1000,
-  C: 2500,
-  B: 5000,
-  A: 10000,
+  D: 10,
+  C: 25,
+  B: 60,
+  A: 100,
   S: 0,
 };
 

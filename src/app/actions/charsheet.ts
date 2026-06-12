@@ -96,6 +96,8 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     mp: parsed.mp,
     fate: parsed.fate,
     gold: inventory?.gold ?? parsed.gold,
+    adventurerRank: parsed.adventurerRank ?? undefined,
+    fame: parsed.fame ?? undefined,
     statsJson: JSON.stringify(parsed.stats),
     invJson: inventory ? JSON.stringify(inventory) : undefined,
     syncedAt: new Date(),

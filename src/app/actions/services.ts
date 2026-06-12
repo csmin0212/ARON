@@ -15,13 +15,20 @@ import {
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
 import { parseGoldToInt } from "@/lib/dice";
-import { parseLifeState } from "@/lib/lifeSkillPerks";
+import {
+  addLifeBagItem,
+  computeMods,
+  lifeBagLimit,
+  lifeBagWeight,
+  parseLifeState,
+} from "@/lib/lifeSkillPerks";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
 import { postSystem } from "@/lib/play";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
 export type StorageState = { error?: string; ok?: string } | undefined;
 export type LifeShopState = { error?: string; ok?: string } | undefined;
+export type MarketState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
 const MOON_FRAGMENT = "달의 파편";
@@ -36,6 +43,19 @@ const LIFE_SHOP_ITEMS = [
   { id: "good_sickle", kind: "채집", type: "tool", name: "숙련 채집 도구", price: 2500, tier: 1 },
   { id: "master_sickle", kind: "채집", type: "tool", name: "장인의 채집 도구", price: 7000, tier: 2 },
 ] as const satisfies readonly LifeShopProduct[];
+
+const FOOD_ITEMS = [
+  { id: "egg", name: "달걀", buyPrice: 20, sellPrice: 10, weight: 1, desc: "요리용 식재료" },
+  { id: "milk", name: "우유", buyPrice: 30, sellPrice: 15, weight: 1, desc: "요리용 식재료" },
+  { id: "meat", name: "고기", buyPrice: 80, sellPrice: 40, weight: 1, desc: "요리용 식재료" },
+  { id: "vegetable", name: "채소", buyPrice: 35, sellPrice: 18, weight: 1, desc: "요리용 식재료" },
+  { id: "fruit", name: "과일", buyPrice: 45, sellPrice: 22, weight: 1, desc: "요리용 식재료" },
+  { id: "water", name: "물", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
+  { id: "wheat", name: "밀", buyPrice: 25, sellPrice: 12, weight: 1, desc: "요리용 식재료" },
+  { id: "salt", name: "소금", buyPrice: 15, sellPrice: 8, weight: 1, desc: "요리용 식재료" },
+  { id: "spice", name: "향신료", buyPrice: 60, sellPrice: 30, weight: 1, desc: "요리용 식재료" },
+  { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25, weight: 1, desc: "요리용 식재료" },
+] as const;
 
 type LifeShopProduct =
   | {
@@ -226,6 +246,10 @@ function lifeShopProduct(productId: string): LifeShopProduct | null {
   return LIFE_SHOP_ITEMS.find((item) => item.id === productId) ?? null;
 }
 
+function foodProduct(productId: string) {
+  return FOOD_ITEMS.find((item) => item.id === productId) ?? null;
+}
+
 function toolTier(toolName: string): number {
   if (toolName === "고급 낚싯대" || toolName === "장인의 채집 도구") return 2;
   if (toolName === "좋은 낚싯대" || toolName === "숙련 채집 도구") return 1;
@@ -282,6 +306,26 @@ async function storageWeight(boxId: string): Promise<number> {
   return entries.reduce((sum, item) => sum + (item.weight ?? 0) * Math.max(0, item.qty), 0);
 }
 
+function removeLifeBagItem(
+  life: ReturnType<typeof parseLifeState>,
+  kind: LifeSkillKind,
+  itemName: string,
+  qty: number,
+) {
+  const bag = life.bags[kind];
+  const item = bag.items.find((entry) => entry.name === itemName);
+  if (!item || item.qty < qty) return null;
+  item.qty -= qty;
+  bag.items = bag.items.filter((entry) => entry.qty > 0);
+  return {
+    name: item.name,
+    effect: `R${item.rank} · ${item.text}`,
+    weight: item.weight,
+    rank: item.rank,
+    text: item.text,
+  };
+}
+
 function formQty(formData: FormData): number {
   return Math.max(1, Math.min(99, Number(formData.get("qty") ?? 1) || 1));
 }
@@ -292,12 +336,40 @@ export async function depositToStorage(
 ): Promise<StorageState> {
   const ctx = await currentSheet();
   if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
-  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
 
   const itemName = String(formData.get("itemName") ?? "").trim();
+  const sourceKindRaw = String(formData.get("sourceKind") ?? "basic");
+  const sourceKind =
+    sourceKindRaw === "낚시" || sourceKindRaw === "채집" ? sourceKindRaw : null;
   const qty = formQty(formData);
-  const item = findInvItem(ctx.inv, itemName);
-  if (!item || item.qty < qty) return { error: "보관할 아이템 수량이 부족합니다." };
+
+  let item:
+    | {
+        name: string;
+        effect: string | null;
+        weight: number | null;
+        qty?: number;
+        rank?: number | null;
+        text?: string | null;
+      }
+    | null = null;
+  let inv: SheetInventory | null = null;
+  let nextLifeJson: string | null = null;
+
+  if (sourceKind) {
+    const sheet = await prisma.characterSheet.findUnique({
+      where: { userId: ctx.userId },
+      select: { lifeJson: true },
+    });
+    const life = parseLifeState(sheet?.lifeJson);
+    item = removeLifeBagItem(life, sourceKind, itemName, qty);
+    if (!item) return { error: "보관할 생활 아이템 수량이 부족합니다." };
+    nextLifeJson = JSON.stringify(life);
+  } else {
+    if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+    item = findInvItem(ctx.inv, itemName);
+    if (!item || (item.qty ?? 0) < qty) return { error: "보관할 아이템 수량이 부족합니다." };
+  }
 
   const box = await storageBox(ctx.userId);
   const usedWeight = await storageWeight(box.id);
@@ -306,18 +378,22 @@ export async function depositToStorage(
     return { error: `창고 중량이 부족합니다. (${usedWeight + movingWeight}/${box.maxWeight})` };
   }
 
-  const consumeOk = await consumeSheetItem(ctx.tab, item.name, qty);
-  if (!consumeOk.ok) return { error: consumeOk.error };
-
-  const inv = consumeInvItem(ctx.inv, item.name, qty);
-  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  if (!sourceKind) {
+    const consumeOk = await consumeSheetItem(ctx.tab, item.name, qty);
+    if (!consumeOk.ok) return { error: consumeOk.error };
+    inv = consumeInvItem(ctx.inv, item.name, qty);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  }
 
   const existing = await prisma.storageEntry.findFirst({
     where: {
       boxId: box.id,
+      sourceKind,
       name: item.name,
       effect: item.effect,
       weight: item.weight,
+      rank: item.rank ?? null,
+      text: item.text ?? null,
     },
   });
 
@@ -330,18 +406,23 @@ export async function depositToStorage(
       : prisma.storageEntry.create({
           data: {
             boxId: box.id,
+            sourceKind,
             name: item.name,
             effect: item.effect,
             weight: item.weight,
+            rank: item.rank ?? null,
+            text: item.text ?? null,
             qty,
           },
         }),
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
-      data: { invJson: JSON.stringify(inv) },
+      data: sourceKind ? { lifeJson: nextLifeJson } : { invJson: JSON.stringify(inv) },
     }),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
-    decrementDbInventory(ctx.userId, item.name, qty),
+    !sourceKind && inv?.curWeight != null
+      ? syncSheetWeight(ctx.tab, inv.curWeight)
+      : Promise.resolve(false),
+    sourceKind ? Promise.resolve() : decrementDbInventory(ctx.userId, item.name, qty),
   ]);
 
   revalidatePath("/world");
@@ -354,7 +435,6 @@ export async function withdrawFromStorage(
 ): Promise<StorageState> {
   const ctx = await currentSheet();
   if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
-  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
 
   const entryId = String(formData.get("entryId") ?? "").trim();
   const qty = formQty(formData);
@@ -364,6 +444,48 @@ export async function withdrawFromStorage(
   });
   if (!entry || entry.qty < qty) return { error: "꺼낼 아이템 수량이 부족합니다." };
 
+  const sourceKind =
+    entry.sourceKind === "낚시" || entry.sourceKind === "채집" ? entry.sourceKind : null;
+  if (sourceKind) {
+    const sheet = await prisma.characterSheet.findUnique({
+      where: { userId: ctx.userId },
+      select: { lifeJson: true },
+    });
+    const life = parseLifeState(sheet?.lifeJson);
+    const bag = life.bags[sourceKind];
+    const mods = computeMods(life, sourceKind);
+    const currentWeight = lifeBagWeight(bag);
+    const movingWeight = (entry.weight ?? 0) * qty;
+    const maxWeight = lifeBagLimit(life, sourceKind, mods.weightBonus);
+    if (currentWeight + movingWeight > maxWeight) {
+      return { error: `${bag.name} 중량이 부족합니다. (${currentWeight + movingWeight}/${maxWeight})` };
+    }
+    for (let i = 0; i < qty; i++) {
+      addLifeBagItem(life, sourceKind, {
+        name: entry.name,
+        weight: entry.weight ?? 1,
+        rank: entry.rank ?? 0,
+        text: entry.text ?? entry.effect ?? "",
+      });
+    }
+    await Promise.all([
+      entry.qty === qty
+        ? prisma.storageEntry.delete({ where: { id: entry.id } })
+        : prisma.storageEntry.update({
+            where: { id: entry.id },
+            data: { qty: entry.qty - qty },
+          }),
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: { lifeJson: JSON.stringify(life) },
+      }),
+    ]);
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return { ok: `${entry.name} x${qty} ${bag.name}으로 꺼내기 완료.` };
+  }
+
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
   const curWeight = inventoryWeightTotal(ctx.inv.items) ?? ctx.inv.curWeight ?? 0;
   const movingWeight = (entry.weight ?? 0) * qty;
   if (ctx.inv.maxWeight != null && curWeight + movingWeight > ctx.inv.maxWeight) {
@@ -400,6 +522,99 @@ export async function withdrawFromStorage(
 
   revalidatePath("/world");
   return { ok: `${entry.name} x${qty} 꺼내기 완료.` };
+}
+
+export async function buyFood(_prev: MarketState, formData: FormData): Promise<MarketState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const product = foodProduct(String(formData.get("productId") ?? ""));
+  if (!product) return { error: "판매 목록에 없는 식료품입니다." };
+  const qty = formQty(formData);
+  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  const totalPrice = product.buyPrice * qty;
+  if (currentGold < totalPrice) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${totalPrice.toLocaleString()}G)` };
+  }
+
+  const curWeight = inventoryWeightTotal(ctx.inv.items) ?? ctx.inv.curWeight ?? 0;
+  const movingWeight = product.weight * qty;
+  if (ctx.inv.maxWeight != null && curWeight + movingWeight > ctx.inv.maxWeight) {
+    return { error: `가방 중량이 부족합니다. (${curWeight + movingWeight}/${ctx.inv.maxWeight})` };
+  }
+
+  const appendOk = await appendSheetItem(ctx.tab, product.name, qty, {
+    effect: product.desc,
+    weight: product.weight,
+  });
+  if (!appendOk) return { error: "시트 휴대품에 식료품을 넣지 못했습니다." };
+
+  const inv = addInvItem(ctx.inv, {
+    name: product.name,
+    effect: product.desc,
+    weight: product.weight,
+  }, qty);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  inv.gold = `${currentGold - totalPrice}G`;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: currentGold - totalPrice,
+        gold: `${currentGold - totalPrice}G`,
+        invJson: JSON.stringify(inv),
+      },
+    }),
+    syncSheetGold(ctx.tab, currentGold - totalPrice),
+    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
+    incrementDbInventory(ctx.userId, product.name, qty),
+  ]);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${product.name} x${qty} 구매 완료.` };
+}
+
+export async function sellFood(_prev: MarketState, formData: FormData): Promise<MarketState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const product = foodProduct(String(formData.get("productId") ?? ""));
+  if (!product) return { error: "판매 목록에 없는 식료품입니다." };
+  const qty = formQty(formData);
+  if (itemQty(ctx.inv, product.name) < qty) {
+    return { error: `${product.name} 수량이 부족합니다.` };
+  }
+
+  const consumeOk = await consumeSheetItem(ctx.tab, product.name, qty);
+  if (!consumeOk.ok) return { error: consumeOk.error };
+
+  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  const nextGold = currentGold + product.sellPrice * qty;
+  const inv = consumeInvItem(ctx.inv, product.name, qty);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  inv.gold = `${nextGold}G`;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        invJson: JSON.stringify(inv),
+      },
+    }),
+    syncSheetGold(ctx.tab, nextGold),
+    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
+    decrementDbInventory(ctx.userId, product.name, qty),
+  ]);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${product.name} x${qty} 판매 완료. +${(product.sellPrice * qty).toLocaleString()}G` };
 }
 
 export async function buyLifeGear(

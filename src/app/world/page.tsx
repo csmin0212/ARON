@@ -8,7 +8,11 @@ import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
-import WorldServices, { type LifeShopView, type StorageView } from "@/components/WorldServices";
+import WorldServices, {
+  type LifeShopView,
+  type LifeStorageItemView,
+  type StorageView,
+} from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { lifeSkillItemKind, type LocationLifeConfig } from "@/lib/lifeSkillData";
@@ -235,6 +239,8 @@ export default async function WorldPage() {
     items:
       storageBox?.entries.map((item) => ({
         id: item.id,
+        sourceKind:
+          item.sourceKind === "낚시" || item.sourceKind === "채집" ? item.sourceKind : "basic",
         name: item.name,
         effect: item.effect,
         weight: item.weight,
@@ -250,6 +256,15 @@ export default async function WorldPage() {
     },
     tools: life.tools,
   };
+  const lifeStorageItems: LifeStorageItemView[] = (["낚시", "채집"] as const).flatMap((kind) =>
+    life.bags[kind].items.map((item) => ({
+      sourceKind: kind,
+      name: item.name,
+      effect: `R${item.rank} · ${item.text}`,
+      weight: item.weight,
+      qty: item.qty,
+    })),
+  );
   const lifeBags = ([
     { kind: "낚시" as const, emoji: "🎣" },
     { kind: "채집" as const, emoji: "🌿" },
@@ -269,7 +284,7 @@ export default async function WorldPage() {
     };
   });
   const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
-  const canForge = hasServiceKeyword(here, locActions, [
+  const canMarket = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
     "잡화",
@@ -277,6 +292,8 @@ export default async function WorldPage() {
     "shop",
     "store",
     "market",
+  ]);
+  const canForge = canMarket || hasServiceKeyword(here, locActions, [
     "대장간",
     "강화",
     "제련",
@@ -383,8 +400,10 @@ export default async function WorldPage() {
           <WorldServices
             canForge={canForge}
             canGuild={canGuild}
+            canMarket={canMarket}
             canStorage={canStorage}
             inventoryItems={bagItems}
+            lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}
             storage={storage}
           />

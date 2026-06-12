@@ -15,6 +15,8 @@ export type ParsedSheet = {
   mp: number | null;
   fate: number | null;
   gold: string | null;
+  adventurerRank: string | null;
+  fame: number | null;
   stats: StatEntry[];
 };
 
@@ -84,6 +86,11 @@ function toNum(v: string): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+function parseRank(v: string): string | null {
+  const m = v.toUpperCase().match(/\b([DCBAS])\b/);
+  return m ? m[1] : null;
+}
+
 function below(g: string[][], label: string, dr = 1, dc = 0): string | null {
   const p = find(g, label);
   if (!p) return null;
@@ -120,6 +127,9 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
   }
 
   const hp = find(g, "HP");
+  const fameCells = [at(g, 8, 14), at(g, 9, 14)]; // O9:O10
+  const fame = fameCells.map(toNum).find((value) => value != null) ?? null;
+  const adventurerRank = fameCells.map(parseRank).find((value) => value != null) ?? null;
   return {
     charName: tabName,
     charClass: below(g, "메인 클래스", 1, 0),
@@ -133,6 +143,8 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
     mp: hp ? toNum(at(g, hp[0] + 1, hp[1] + 1)) : null,
     fate: hp ? toNum(at(g, hp[0] + 1, hp[1] + 2)) : null,
     gold: beside(g, "소지금:", 1),
+    adventurerRank,
+    fame,
     stats,
   };
 }

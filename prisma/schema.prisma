@@ -136,9 +136,12 @@ model StorageEntry {
   id        String     @id @default(cuid())
   boxId     String
   box       StorageBox @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  sourceKind String?   // null/basic | 낚시 | 채집
   name      String
   effect    String?
   weight    Int?
+  rank      Int?
+  text      String?
   qty       Int        @default(1)
   updatedAt DateTime   @updatedAt
 

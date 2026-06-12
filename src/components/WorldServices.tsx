@@ -2,12 +2,15 @@
 
 import { useMemo, useState, useActionState } from "react";
 import {
+  buyFood,
   buyLifeGear,
   depositToStorage,
   enchantWeapon,
+  sellFood,
   upgradeWeapon,
   withdrawFromStorage,
   type LifeShopState,
+  type MarketState,
   type ServiceState,
   type StorageState,
 } from "@/app/actions/services";
@@ -16,8 +19,10 @@ import type { SheetInventoryItem } from "@/lib/googleSheets";
 type Props = {
   canForge: boolean;
   canGuild: boolean;
+  canMarket: boolean;
   canStorage: boolean;
   inventoryItems: SheetInventoryItem[];
+  lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
   storage: StorageView;
 };
@@ -30,6 +35,11 @@ export type StorageView = {
 
 export type StorageItemView = SheetInventoryItem & {
   id: string;
+  sourceKind: "basic" | "낚시" | "채집";
+};
+
+export type LifeStorageItemView = SheetInventoryItem & {
+  sourceKind: "낚시" | "채집";
 };
 
 export type LifeShopView = {
@@ -147,6 +157,24 @@ function LifeShopStateLine({ state }: { state: LifeShopState }) {
   return null;
 }
 
+function MarketStateLine({ state }: { state: MarketState }) {
+  if (state?.error) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+        {state.error}
+      </p>
+    );
+  }
+  if (state?.ok) {
+    return (
+      <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-600">
+        {state.ok}
+      </p>
+    );
+  }
+  return null;
+}
+
 function ForgeChoice({
   tone,
   icon,
@@ -201,10 +229,12 @@ function ForgeChoice({
 
 function StorageManager({
   inventoryItems,
+  lifeStorageItems,
   storage,
   onClose,
 }: {
   inventoryItems: SheetInventoryItem[];
+  lifeStorageItems: LifeStorageItemView[];
   storage: StorageView;
   onClose: () => void;
 }) {
@@ -217,6 +247,10 @@ function StorageManager({
     undefined,
   );
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
+  const lifeItems = useMemo(
+    () => lifeStorageItems.filter((item) => item.qty > 0),
+    [lifeStorageItems],
+  );
   const storageItems = storage.items.filter((item) => item.qty > 0);
   const fill = Math.min(100, Math.round((storage.usedWeight / storage.maxWeight) * 100));
 
@@ -256,6 +290,7 @@ function StorageManager({
             <h4 className="mb-2 text-sm font-extrabold text-content">가방에서 보관</h4>
             <StorageStateLine state={depositState} />
             <form action={depositAction} className="mt-2 grid grid-cols-[1fr_4.5rem] gap-2">
+              <input type="hidden" name="sourceKind" value="basic" />
               <select
                 name="itemName"
                 className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
@@ -281,6 +316,41 @@ function StorageManager({
                 {depositPending ? "보관 중..." : "보관하기"}
               </button>
             </form>
+            {lifeItems.length > 0 && (
+              <form action={depositAction} className="mt-2 grid grid-cols-[1fr_4.5rem] gap-2">
+                <select
+                  name="itemName"
+                  className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
+                >
+                  {lifeItems.map((item) => (
+                    <option key={`${item.sourceKind}-${item.name}`} value={item.name}>
+                      {item.sourceKind} · {item.name} x{item.qty}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  name="qty"
+                  type="number"
+                  min="1"
+                  defaultValue="1"
+                  className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
+                />
+                <select
+                  name="sourceKind"
+                  className="col-span-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
+                >
+                  <option value="낚시">낚시 가방에서 보관</option>
+                  <option value="채집">채집 가방에서 보관</option>
+                </select>
+                <button
+                  type="submit"
+                  disabled={depositPending}
+                  className="col-span-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {depositPending ? "보관 중..." : "생활 가방 물건 보관"}
+                </button>
+              </form>
+            )}
           </section>
 
           <section>
@@ -300,6 +370,9 @@ function StorageManager({
                     <div className="mb-2 flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-extrabold text-content">{item.name}</p>
+                        <p className="mt-0.5 text-[11px] font-bold text-brand-600">
+                          {item.sourceKind === "basic" ? "기본 가방" : `${item.sourceKind} 가방`}
+                        </p>
                         {item.effect && (
                           <p className="mt-0.5 line-clamp-2 text-xs text-faint">{item.effect}</p>
                         )}
@@ -508,11 +581,126 @@ function QuestBoard({ onClose }: { onClose: () => void }) {
   );
 }
 
+const FOOD_PRODUCTS = [
+  { id: "egg", name: "달걀", buyPrice: 20, sellPrice: 10 },
+  { id: "milk", name: "우유", buyPrice: 30, sellPrice: 15 },
+  { id: "meat", name: "고기", buyPrice: 80, sellPrice: 40 },
+  { id: "vegetable", name: "채소", buyPrice: 35, sellPrice: 18 },
+  { id: "fruit", name: "과일", buyPrice: 45, sellPrice: 22 },
+  { id: "water", name: "물", buyPrice: 10, sellPrice: 5 },
+  { id: "wheat", name: "밀", buyPrice: 25, sellPrice: 12 },
+  { id: "salt", name: "소금", buyPrice: 15, sellPrice: 8 },
+  { id: "spice", name: "향신료", buyPrice: 60, sellPrice: 30 },
+  { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25 },
+] as const;
+
+function FoodMarket({ onClose }: { onClose: () => void }) {
+  const [buyState, buyAction, buyPending] = useActionState<MarketState, FormData>(
+    buyFood,
+    undefined,
+  );
+  const [sellState, sellAction, sellPending] = useActionState<MarketState, FormData>(
+    sellFood,
+    undefined,
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="식료품 상점"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Market Pantry
+          </p>
+          <h3 className="mt-1 text-2xl font-extrabold text-content">🥚 식료품 상점</h3>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <MarketStateLine state={buyState} />
+          <MarketStateLine state={sellState} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {FOOD_PRODUCTS.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-line bg-subtle p-3">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-extrabold text-content">{item.name}</p>
+                    <p className="text-[11px] text-faint">
+                      구매 {item.buyPrice}G · 판매 {item.sellPrice}G · 중량 1
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-muted">
+                    식재료
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <form action={buyAction} className="grid grid-cols-[1fr_3.5rem] gap-1.5">
+                    <input type="hidden" name="productId" value={item.id} />
+                    <button
+                      type="submit"
+                      disabled={buyPending}
+                      className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                    >
+                      구매
+                    </button>
+                    <input
+                      name="qty"
+                      type="number"
+                      min="1"
+                      defaultValue="1"
+                      className="rounded-xl border border-line bg-surface px-2 py-2 text-xs font-bold text-content outline-none focus:border-brand-300"
+                    />
+                  </form>
+                  <form action={sellAction} className="grid grid-cols-[1fr_3.5rem] gap-1.5">
+                    <input type="hidden" name="productId" value={item.id} />
+                    <button
+                      type="submit"
+                      disabled={sellPending}
+                      className="rounded-xl bg-surface px-3 py-2 text-xs font-bold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
+                    >
+                      판매
+                    </button>
+                    <input
+                      name="qty"
+                      type="number"
+                      min="1"
+                      defaultValue="1"
+                      className="rounded-xl border border-line bg-surface px-2 py-2 text-xs font-bold text-content outline-none focus:border-brand-300"
+                    />
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WorldServices({
   canForge,
   canGuild,
+  canMarket,
   canStorage,
   inventoryItems,
+  lifeStorageItems,
   lifeShop,
   storage,
 }: Props) {
@@ -520,6 +708,7 @@ export default function WorldServices({
   const [storageOpen, setStorageOpen] = useState(false);
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
   const [questOpen, setQuestOpen] = useState(false);
+  const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -536,7 +725,7 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge && !canGuild && !canStorage) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage) return null;
 
   function closeForge() {
     setOpen(false);
@@ -558,6 +747,19 @@ export default function WorldServices({
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">대장간</span>
                 <span className="text-[11px] text-faint">무기 강화 · 마법 제련</span>
+              </span>
+            </button>
+          )}
+          {canMarket && (
+            <button
+              type="button"
+              onClick={() => setFoodMarketOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🥚</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">식료품 상점</span>
+                <span className="text-[11px] text-faint">요리 재료 구매 · 판매</span>
               </span>
             </button>
           )}
@@ -608,6 +810,7 @@ export default function WorldServices({
       {storageOpen && (
         <StorageManager
           inventoryItems={inventoryItems}
+          lifeStorageItems={lifeStorageItems}
           storage={storage}
           onClose={() => setStorageOpen(false)}
         />
@@ -618,6 +821,8 @@ export default function WorldServices({
       )}
 
       {questOpen && <QuestBoard onClose={() => setQuestOpen(false)} />}
+
+      {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
 
       {open && (
         <div
