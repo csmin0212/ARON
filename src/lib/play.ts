@@ -7,6 +7,7 @@ import { AP_MAX, currentResetBoundary } from "./world";
 import { pickDrop, type DropEntry } from "./gamedata";
 import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
+import { appendSheetItem, syncSheetGold } from "./googleSheets";
 
 export const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
@@ -124,16 +125,19 @@ export async function runActionCommand(
       return { error: "드랍테이블이 잘못됐어요. GM에게 알려주세요." };
     }
     if (drop.item === "골드" && drop.gold > 0) {
+      const nextGold = (sheet.curGold ?? 0) + drop.gold;
       await prisma.characterSheet.update({
         where: { userId },
-        data: { curGold: (sheet.curGold ?? 0) + drop.gold },
+        data: { curGold: nextGold },
       });
+      void syncSheetGold(sheet.sheetTab, nextGold);
       resultLine = ` 성공! ✨ ${drop.gold}G 획득!`;
     } else if (drop.item === "꽝") {
       resultLine = " …허탕이었다.";
     } else {
       await addItem(userId, drop.item, drop.qty);
       const item = await prisma.item.findUnique({ where: { id: drop.item } });
+      void appendSheetItem(sheet.sheetTab, item?.name ?? drop.item, drop.qty);
       resultLine = ` 성공! ✨ ${item?.name ?? drop.item} x${drop.qty} 획득!`;
     }
   }

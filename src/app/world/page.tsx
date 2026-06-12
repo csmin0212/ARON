@@ -283,9 +283,6 @@ export default async function WorldPage() {
                   >
                     {o.user.nickname}
                   </Link>
-                  {o.sheetTab && (
-                    <span className="ml-auto shrink-0 text-xs text-faint">({o.sheetTab})</span>
-                  )}
                 </li>
               ))}
             </ul>
