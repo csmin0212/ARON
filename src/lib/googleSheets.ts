@@ -122,10 +122,20 @@ async function updateValues(range: string, values: string[][]): Promise<boolean>
   return res.ok;
 }
 
-function firstEmptyRow(values: string[][], startRow: number): number | null {
+function firstEmptyRow(values: string[][], startRow: number, maxRows: number): number | null {
   for (let i = 0; i < values.length; i++) {
     const row = values[i] ?? [];
     if (row.every((cell) => !String(cell ?? "").trim())) return startRow + i;
+  }
+  if (values.length < maxRows) return startRow + values.length;
+  return null;
+}
+
+function findItemRow(values: string[][], startRow: number, itemName: string): { row: number; qty: number } | null {
+  const target = itemName.trim();
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i] ?? [];
+    if (cell(row, 0) === target) return { row: startRow + i, qty: parseQty(cell(row, 5)) };
   }
   return null;
 }
@@ -218,8 +228,8 @@ export async function appendSheetItem(
   if (!tab || qty <= 0) return;
 
   const blocks = [
-    { col: "Z", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
-    { col: "AF", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
+    { col: "Z", qtyCol: "AE", start: 33, maxRows: 26, range: `${quoteSheet(tab)}!Z33:AE58` },
+    { col: "AF", qtyCol: "AK", start: 32, maxRows: 27, range: `${quoteSheet(tab)}!AF32:AK58` },
   ];
 
   try {
@@ -227,7 +237,20 @@ export async function appendSheetItem(
       const values = await getValues(block.range);
       if (!values) return;
 
-      const row = firstEmptyRow(values, block.start);
+      const existing = findItemRow(values, block.start, itemName);
+      if (existing) {
+        await updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
+          [String(existing.qty + qty)],
+        ]);
+        return;
+      }
+    }
+
+    for (const block of blocks) {
+      const values = await getValues(block.range);
+      if (!values) return;
+
+      const row = firstEmptyRow(values, block.start, block.maxRows);
       if (!row) continue;
 
       await updateValues(`${quoteSheet(tab)}!${block.col}${row}`, [

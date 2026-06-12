@@ -5,6 +5,7 @@ import { isGmUsername } from "@/lib/gm";
 import { AP_MAX, RESET_HOUR_KST, effectiveAp } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
+import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import type { SheetInventory, SheetInventoryItem } from "@/lib/googleSheets";
@@ -251,43 +252,7 @@ export default async function WorldPage() {
             )}
           </div>
 
-          <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
-            <h2 className="mb-3 flex items-center justify-between px-1 text-sm font-extrabold text-content">
-              <span>🎒 가방</span>
-              <span className="text-xs font-bold text-emerald-500">{bagGold}</span>
-            </h2>
-            <div className="mb-3 flex items-center justify-between rounded-2xl bg-subtle px-3 py-2 text-xs">
-              <span className="font-semibold text-muted">중량</span>
-              <span className="font-extrabold text-content">{bagWeight ?? "-"}</span>
-            </div>
-            {bagItems.length === 0 ? (
-              <p className="px-1 text-xs text-faint">
-                아직 비어 있어요. 시트에서 소지품을 추가한 뒤 프로필에서 가방만 다시
-                동기화해보세요.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {bagItems.map((item, i) => (
-                  <li key={`${item.name}-${i}`} className="rounded-2xl bg-subtle px-3 py-2">
-                    <div className="flex items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-extrabold text-content">{item.name}</p>
-                        {item.effect && (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-faint">
-                            {item.effect}
-                          </p>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-right text-[11px] font-bold text-muted">
-                        <p>중량 {item.weight ?? "-"}</p>
-                        <p className="text-brand-600">x{item.qty}</p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} />
 
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
