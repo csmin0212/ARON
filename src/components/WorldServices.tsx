@@ -1,12 +1,31 @@
 "use client";
 
 import { useMemo, useState, useActionState } from "react";
-import { enchantWeapon, upgradeWeapon, type ServiceState } from "@/app/actions/services";
+import {
+  depositToStorage,
+  enchantWeapon,
+  upgradeWeapon,
+  withdrawFromStorage,
+  type ServiceState,
+  type StorageState,
+} from "@/app/actions/services";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
   canForge: boolean;
+  canStorage: boolean;
   inventoryItems: SheetInventoryItem[];
+  storage: StorageView;
+};
+
+export type StorageView = {
+  maxWeight: number;
+  usedWeight: number;
+  items: StorageItemView[];
+};
+
+export type StorageItemView = SheetInventoryItem & {
+  id: string;
 };
 
 const GEM_NAMES = ["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
@@ -76,6 +95,24 @@ function StateLine({ state }: { state: ServiceState }) {
   return null;
 }
 
+function StorageStateLine({ state }: { state: StorageState }) {
+  if (state?.error) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+        {state.error}
+      </p>
+    );
+  }
+  if (state?.ok) {
+    return (
+      <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-600">
+        {state.ok}
+      </p>
+    );
+  }
+  return null;
+}
+
 function ForgeChoice({
   tone,
   icon,
@@ -128,8 +165,158 @@ function ForgeChoice({
   );
 }
 
-export default function WorldServices({ canForge, inventoryItems }: Props) {
+function StorageManager({
+  inventoryItems,
+  storage,
+  onClose,
+}: {
+  inventoryItems: SheetInventoryItem[];
+  storage: StorageView;
+  onClose: () => void;
+}) {
+  const [depositState, depositAction, depositPending] = useActionState<StorageState, FormData>(
+    depositToStorage,
+    undefined,
+  );
+  const [withdrawState, withdrawAction, withdrawPending] = useActionState<StorageState, FormData>(
+    withdrawFromStorage,
+    undefined,
+  );
+  const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
+  const storageItems = storage.items.filter((item) => item.qty > 0);
+  const fill = Math.min(100, Math.round((storage.usedWeight / storage.maxWeight) * 100));
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="창고 관리인"
+        className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Storage Keeper
+          </p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
+            <span>🧰 창고 관리인</span>
+            <span className="text-sm font-bold text-muted">
+              {storage.usedWeight} / {storage.maxWeight}
+            </span>
+          </h3>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-brand-500"
+              style={{ width: `${fill}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <section className="rounded-2xl border border-line p-3">
+            <h4 className="mb-2 text-sm font-extrabold text-content">가방에서 보관</h4>
+            <StorageStateLine state={depositState} />
+            <form action={depositAction} className="mt-2 grid grid-cols-[1fr_4.5rem] gap-2">
+              <select
+                name="itemName"
+                className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
+              >
+                {items.map((item) => (
+                  <option key={item.name} value={item.name}>
+                    {item.name} x{item.qty}
+                  </option>
+                ))}
+              </select>
+              <input
+                name="qty"
+                type="number"
+                min="1"
+                defaultValue="1"
+                className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
+              />
+              <button
+                type="submit"
+                disabled={depositPending || items.length === 0}
+                className="col-span-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+              >
+                {depositPending ? "보관 중..." : "보관하기"}
+              </button>
+            </form>
+          </section>
+
+          <section>
+            <h4 className="mb-2 text-sm font-extrabold text-content">창고 내용물</h4>
+            <StorageStateLine state={withdrawState} />
+            {storageItems.length === 0 ? (
+              <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+                아직 맡긴 물건이 없어요.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {storageItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="rounded-2xl bg-subtle px-3 py-3"
+                  >
+                    <div className="mb-2 flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-extrabold text-content">{item.name}</p>
+                        {item.effect && (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-faint">{item.effect}</p>
+                        )}
+                      </div>
+                      <div className="text-right text-xs font-bold text-muted">
+                        <p>중량 {item.weight ?? "-"}</p>
+                        <p className="text-brand-600">x{item.qty}</p>
+                      </div>
+                    </div>
+                    <form action={withdrawAction} className="grid grid-cols-[1fr_5rem] gap-2">
+                      <input type="hidden" name="entryId" value={item.id} />
+                      <input
+                        name="qty"
+                        type="number"
+                        min="1"
+                        max={item.qty}
+                        defaultValue="1"
+                        className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
+                      />
+                      <button
+                        type="submit"
+                        disabled={withdrawPending}
+                        className="rounded-xl bg-surface px-3 py-2 text-sm font-extrabold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
+                      >
+                        꺼내기
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function WorldServices({ canForge, canStorage, inventoryItems, storage }: Props) {
   const [open, setOpen] = useState(false);
+  const [storageOpen, setStorageOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -146,7 +333,7 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge) return null;
+  if (!canForge && !canStorage) return null;
 
   function closeForge() {
     setOpen(false);
@@ -157,18 +344,45 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
     <>
       <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
         <h2 className="mb-3 px-1 text-sm font-extrabold text-content">🏷️ 시설</h2>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
-        >
-          <span className="text-xl">⚒️</span>
-          <span className="min-w-0">
-            <span className="block text-sm font-extrabold text-content">대장간</span>
-            <span className="text-[11px] text-faint">무기 강화 · 마법 제련</span>
-          </span>
-        </button>
+        <div className="space-y-2">
+          {canForge && (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">⚒️</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">대장간</span>
+                <span className="text-[11px] text-faint">무기 강화 · 마법 제련</span>
+              </span>
+            </button>
+          )}
+          {canStorage && (
+            <button
+              type="button"
+              onClick={() => setStorageOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🧰</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">창고 관리인</span>
+                <span className="text-[11px] text-faint">
+                  캐릭터별 창고 {storage.usedWeight}/{storage.maxWeight}
+                </span>
+              </span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {storageOpen && (
+        <StorageManager
+          inventoryItems={inventoryItems}
+          storage={storage}
+          onClose={() => setStorageOpen(false)}
+        />
+      )}
 
       {open && (
         <div

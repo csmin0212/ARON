@@ -8,7 +8,7 @@ import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
-import WorldServices from "@/components/WorldServices";
+import WorldServices, { type StorageView } from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { lifeSkillItemKind, type LocationLifeConfig } from "@/lib/lifeSkillData";
@@ -180,11 +180,20 @@ export default async function WorldPage() {
     take: 20,
   });
 
-  const [rawLocActions, invEntries] = await Promise.all([
+  const [rawLocActions, invEntries, storageBox] = await Promise.all([
     prisma.locationAction.findMany({ where: { locationId: here.id }, orderBy: { order: "asc" } }),
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, qty: { gt: 0 } },
       orderBy: { updatedAt: "desc" },
+    }),
+    prisma.storageBox.findUnique({
+      where: { userId: user.id },
+      include: {
+        entries: {
+          where: { qty: { gt: 0 } },
+          orderBy: { updatedAt: "desc" },
+        },
+      },
     }),
   ]);
   const locActions = dedupeLifeActions(rawLocActions);
@@ -215,6 +224,22 @@ export default async function WorldPage() {
     (computedBagWeight ?? sheetInventory?.curWeight) != null && sheetInventory?.maxWeight != null
       ? `${computedBagWeight ?? sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
+  const storage: StorageView = {
+    maxWeight: storageBox?.maxWeight ?? 30,
+    usedWeight:
+      storageBox?.entries.reduce(
+        (sum, item) => sum + (item.weight ?? 0) * Math.max(0, item.qty),
+        0,
+      ) ?? 0,
+    items:
+      storageBox?.entries.map((item) => ({
+        id: item.id,
+        name: item.name,
+        effect: item.effect,
+        weight: item.weight,
+        qty: item.qty,
+      })) ?? [],
+  };
   const life = parseLifeState(sheet.lifeJson);
   const lifeBags = ([
     { kind: "낚시" as const, emoji: "🎣" },
@@ -234,7 +259,8 @@ export default async function WorldPage() {
       })),
     };
   });
-  const canForge = hasServiceKeyword(here, locActions, [
+  const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
+  const canForge = canGuild || hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
     "잡화",
@@ -249,6 +275,8 @@ export default async function WorldPage() {
     "smith",
     "blacksmith",
   ]);
+  const canStorage =
+    canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
 
   return (
     <div className="animate-fadeup space-y-4 py-1">
@@ -345,7 +373,9 @@ export default async function WorldPage() {
 
           <WorldServices
             canForge={canForge}
+            canStorage={canStorage}
             inventoryItems={bagItems}
+            storage={storage}
           />
 
           <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} lifeBags={lifeBags} />

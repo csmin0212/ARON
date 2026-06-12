@@ -26,6 +26,7 @@ model User {
   rolls        Roll[]
   worldMsgs    WorldMessage[]
   inventory    InventoryEntry[]
+  storageBox   StorageBox?
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
@@ -116,6 +117,30 @@ model InventoryEntry {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+// 캐릭터별 창고. 기본 중량 30, 추후 골드 확장으로 maxWeight 증가 가능
+model StorageBox {
+  id        String         @id @default(cuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maxWeight Int            @default(30)
+  entries   StorageEntry[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model StorageEntry {
+  id        String     @id @default(cuid())
+  boxId     String
+  box       StorageBox @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  name      String
+  effect    String?
+  weight    Int?
+  qty       Int        @default(1)
+  updatedAt DateTime   @updatedAt
+
+  @@index([boxId])
 }
 
 // 장소 채팅 (같은 장소의 모험가들끼리) — system=true 면 입장/행동 결과 등 시스템 메시지
