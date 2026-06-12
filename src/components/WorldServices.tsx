@@ -46,6 +46,8 @@ function isGem(item: SheetInventoryItem): boolean {
 }
 
 function isWeapon(item: SheetInventoryItem): boolean {
+  if (item.name.trim() === "강철 파편") return false;
+  if (item.name.includes("파편") || isGem(item)) return false;
   const source = `${item.name} ${item.effect ?? ""}`;
   return WEAPON_HINTS.some((hint) => source.includes(hint));
 }
@@ -274,6 +276,9 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
                             </label>
                           ))}
                         </div>
+                        <p className="mt-2 text-xs font-semibold text-amber-100/75">
+                          선택한 레벨만큼 강철 파편을 소모하고, 결과는 무기명(+1)로 기록됩니다.
+                        </p>
                       </div>
                       {weapons.length === 0 && (
                         <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-3 text-sm text-stone-400">

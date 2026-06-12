@@ -53,10 +53,11 @@ function consumeInvItem(inv: SheetInventory, name: string, qty: number): SheetIn
 function updateInvItem(
   inv: SheetInventory,
   name: string,
-  patch: { effect?: string; weight?: number | null },
+  patch: { name?: string; effect?: string; weight?: number | null },
 ): SheetInventory {
   const item = findInvItem(inv, name);
   if (!item) return inv;
+  if (patch.name !== undefined) item.name = patch.name;
   if (patch.effect !== undefined) item.effect = patch.effect;
   if (patch.weight !== undefined) item.weight = patch.weight;
   return inv;
@@ -68,6 +69,37 @@ function appendEffect(current: string | null, line: string): string {
 
 function gemEffect(gemName: string): string {
   return GEM_EFFECTS.find((gem) => gemName.includes(gem.key))?.text ?? `${gemName} 인첸트`;
+}
+
+function gemTag(gemName: string): string {
+  return GEM_EFFECTS.find((gem) => gemName.includes(gem.key))?.key ?? gemName.trim();
+}
+
+function itemTags(itemName: string): string[] {
+  const match = itemName.trim().match(/\(([^()]*)\)$/);
+  if (!match) return [];
+  return match[1]
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function hasTag(itemName: string, tag: string): boolean {
+  return itemTags(itemName).includes(tag);
+}
+
+function addItemTag(itemName: string, tag: string): string {
+  const trimmed = itemName.trim();
+  const match = trimmed.match(/^(.*)\(([^()]*)\)$/);
+  if (!match) return `${trimmed}(${tag})`;
+
+  const baseName = match[1].trim();
+  const tags = match[2]
+    .split(",")
+    .map((existing) => existing.trim())
+    .filter(Boolean);
+  if (!tags.includes(tag)) tags.push(tag);
+  return `${baseName}(${tags.join(", ")})`;
 }
 
 async function currentSheet(): Promise<{
@@ -122,7 +154,7 @@ export async function upgradeWeapon(
   const level = Math.max(1, Math.min(4, Number(formData.get("level") ?? 1) || 1));
   const weapon = findInvItem(ctx.inv, weaponName);
   if (!weapon || weapon.qty <= 0) return { error: "강화할 무기를 인벤토리에서 찾지 못했습니다." };
-  if ((weapon.effect ?? "").includes("강철 강화")) {
+  if ((weapon.effect ?? "").includes("강철 강화") || hasTag(weapon.name, "+1")) {
     return { error: "이미 강철 강화가 적용된 무기입니다." };
   }
   if (itemQty(ctx.inv, STEEL_FRAGMENT) < level) {
@@ -134,17 +166,19 @@ export async function upgradeWeapon(
     weapon.effect,
     `강철 강화 +${level}: 공격력 +${level}, 중량 +${level}`,
   );
+  const nextName = addItemTag(weapon.name, "+1");
 
   const consumeOk = await consumeSheetItem(ctx.tab, STEEL_FRAGMENT, level);
   if (!consumeOk.ok) return { error: consumeOk.error };
   const updateOk = await updateSheetItemDetails(ctx.tab, weapon.name, {
+    name: nextName,
     effect: nextEffect,
     weight: nextWeight,
   });
   if (!updateOk.ok) return { error: updateOk.error };
 
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, level);
-  inv = updateInvItem(inv, weapon.name, { effect: nextEffect, weight: nextWeight });
+  inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect, weight: nextWeight });
   inv.curWeight = (inv.curWeight ?? 0) + level;
   await Promise.all([
     prisma.characterSheet.update({
@@ -155,10 +189,10 @@ export async function upgradeWeapon(
   ]);
 
   if (ctx.locationId) {
-    await postSystem(ctx.locationId, `⚒️ ${ctx.nickname}님이 ${weapon.name}을 +${level} 강화.`);
+    await postSystem(ctx.locationId, `⚒️ ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 강화.`);
   }
   revalidatePath("/world");
-  return { ok: `${weapon.name} +${level} 강화 완료.` };
+  return { ok: `${nextName} 강화 완료. 공격력 +${level}, 중량 +${level}` };
 }
 
 export async function enchantWeapon(
@@ -173,7 +207,8 @@ export async function enchantWeapon(
   const gemName = String(formData.get("gemName") ?? "").trim();
   const weapon = findInvItem(ctx.inv, weaponName);
   if (!weapon || weapon.qty <= 0) return { error: "인첸트할 무기를 인벤토리에서 찾지 못했습니다." };
-  if ((weapon.effect ?? "").includes("인첸트")) {
+  const nextGemTag = gemTag(gemName);
+  if ((weapon.effect ?? "").includes("인첸트") || hasTag(weapon.name, nextGemTag)) {
     return { error: "이미 인첸트가 적용된 무기입니다." };
   }
   if (itemQty(ctx.inv, STEEL_FRAGMENT) < 2) {
@@ -182,16 +217,20 @@ export async function enchantWeapon(
   if (itemQty(ctx.inv, gemName) < 1) return { error: `${gemName}이 부족합니다.` };
 
   const nextEffect = appendEffect(weapon.effect, gemEffect(gemName));
+  const nextName = addItemTag(weapon.name, nextGemTag);
   const steelOk = await consumeSheetItem(ctx.tab, STEEL_FRAGMENT, 2);
   if (!steelOk.ok) return { error: steelOk.error };
   const gemOk = await consumeSheetItem(ctx.tab, gemName, 1);
   if (!gemOk.ok) return { error: gemOk.error };
-  const updateOk = await updateSheetItemDetails(ctx.tab, weapon.name, { effect: nextEffect });
+  const updateOk = await updateSheetItemDetails(ctx.tab, weapon.name, {
+    name: nextName,
+    effect: nextEffect,
+  });
   if (!updateOk.ok) return { error: updateOk.error };
 
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 2);
   inv = consumeInvItem(inv, gemName, 1);
-  inv = updateInvItem(inv, weapon.name, { effect: nextEffect });
+  inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect });
   await Promise.all([
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
@@ -202,8 +241,8 @@ export async function enchantWeapon(
   ]);
 
   if (ctx.locationId) {
-    await postSystem(ctx.locationId, `💎 ${ctx.nickname}님이 ${weapon.name}에 ${gemName} 인첸트.`);
+    await postSystem(ctx.locationId, `💎 ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 제련.`);
   }
   revalidatePath("/world");
-  return { ok: `${weapon.name} 인첸트 완료.` };
+  return { ok: `${nextName} 제련 완료.` };
 }

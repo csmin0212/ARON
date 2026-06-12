@@ -301,13 +301,13 @@ export async function consumeSheetItem(
 export async function updateSheetItemDetails(
   tab: string | null,
   itemName: string,
-  patch: { effect?: string; weight?: number | null },
+  patch: { name?: string; effect?: string; weight?: number | null },
 ): Promise<{ ok: boolean; error?: string }> {
   if (!tab) return { ok: false, error: "시트가 연동되지 않았습니다." };
 
   const blocks = [
-    { effectCol: "AA", weightCol: "AD", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
-    { effectCol: "AG", weightCol: "AJ", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
+    { nameCol: "Z", effectCol: "AA", weightCol: "AD", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
+    { nameCol: "AF", effectCol: "AG", weightCol: "AJ", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
   ];
 
   try {
@@ -319,6 +319,11 @@ export async function updateSheetItemDetails(
       if (!existing) continue;
 
       const updates: Promise<boolean>[] = [];
+      if (patch.name !== undefined) {
+        updates.push(
+          updateValues(`${quoteSheet(tab)}!${block.nameCol}${existing.row}`, [[patch.name]]),
+        );
+      }
       if (patch.effect !== undefined) {
         updates.push(
           updateValues(`${quoteSheet(tab)}!${block.effectCol}${existing.row}`, [[patch.effect]]),
