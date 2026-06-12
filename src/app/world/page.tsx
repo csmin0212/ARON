@@ -11,7 +11,7 @@ import WorldChat from "@/components/WorldChat";
 import WorldServices from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
-import type { LocationLifeConfig } from "@/lib/lifeSkillData";
+import { lifeSkillItemKind, type LocationLifeConfig } from "@/lib/lifeSkillData";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
@@ -199,7 +199,7 @@ export default async function WorldPage() {
   );
 
   const sheetInventory = parseSheetInventory(sheet.invJson);
-  const bagItems: SheetInventoryItem[] =
+  const rawBagItems: SheetInventoryItem[] =
     sheetInventory
       ? sheetInventory.items
       : invEntries.map((e) => ({
@@ -208,6 +208,7 @@ export default async function WorldPage() {
           weight: null,
           qty: e.qty,
         }));
+  const bagItems = rawBagItems.filter((item) => !lifeSkillItemKind(item.name));
   const bagGold = sheetInventory?.gold ?? `${(sheet.curGold ?? 0).toLocaleString()}G`;
   const computedBagWeight = inventoryWeightTotal(bagItems);
   const bagWeight =

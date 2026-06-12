@@ -216,6 +216,14 @@ export function collectionItems(includeSea = false): { kind: LifeSkillKind; item
   ];
 }
 
+export function lifeSkillItemKind(name: string): LifeSkillKind | null {
+  const target = name.trim();
+  if (!target) return null;
+  if (PLANT_ITEMS.some((item) => item.name === target)) return "채집";
+  if (FISH_ITEMS.some((item) => item.name === target)) return "낚시";
+  return null;
+}
+
 function clampPrice(value: number, min: number, max: number): number {
   if (value <= 0) return min;
   return Math.max(min, Math.min(max, value));

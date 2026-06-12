@@ -11,12 +11,10 @@ import {
   appendSheetItem,
   inventoryWeightTotal,
   syncSheetGold,
-  syncSheetWeight,
   type SheetInventory,
 } from "./googleSheets";
 import {
   lifeSkillCategory,
-  lifeSkillItemEffect,
   lifeSkillKindOf,
   lifeSkillMarketPrice,
   pickLifeSkillCatch,
@@ -109,19 +107,6 @@ function mergeInventorySnapshot(
 
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   return JSON.stringify(inv);
-}
-
-function parseInventorySnapshot(invJson: string | null): SheetInventory {
-  try {
-    if (invJson) return JSON.parse(invJson) as SheetInventory;
-  } catch {
-    // fallthrough
-  }
-  return { gold: null, curWeight: null, maxWeight: null, items: [] };
-}
-
-function currentInventoryWeight(inv: SheetInventory): number | null {
-  return inventoryWeightTotal(inv.items) ?? inv.curWeight;
 }
 
 function lifeSkillResultText(catchResult: LifeSkillCatch): string {
@@ -268,19 +253,6 @@ export async function runActionCommand(
         },
       );
       const item = caught.item;
-      const effect = lifeSkillItemEffect(item, lifeSkillKind);
-
-      const currentInv = parseInventorySnapshot(sheet.invJson);
-      const currentSheetWeight = currentInventoryWeight(currentInv);
-      if (
-        currentSheetWeight != null &&
-        currentInv.maxWeight != null &&
-        currentSheetWeight + item.weight > currentInv.maxWeight
-      ) {
-        return {
-          error: `소지품 중량이 부족해요. (${currentSheetWeight} + ${item.weight} / ${currentInv.maxWeight})`,
-        };
-      }
 
       const bag = life.bags[lifeSkillKind];
       const bagWeight = lifeBagWeight(bag);
@@ -303,19 +275,10 @@ export async function runActionCommand(
       });
 
       await ensureLifeSkillItem(item, lifeSkillKind);
-      await addItem(userId, item.name, 1);
-      const nextInvJson = mergeInventorySnapshot(sheet.invJson, item.name, 1, {
-        effect,
-        weight: item.weight,
-      });
-      const nextInv = parseInventorySnapshot(nextInvJson);
-
       await prisma.characterSheet.update({
         where: { userId },
-        data: { invJson: nextInvJson, lifeJson: JSON.stringify(life) },
+        data: { lifeJson: JSON.stringify(life) },
       });
-      void appendSheetItem(sheet.sheetTab, item.name, 1, { effect, weight: item.weight });
-      if (nextInv.curWeight != null) void syncSheetWeight(sheet.sheetTab, nextInv.curWeight);
 
       resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})${
         firstCatch ? " 📖 도감에 새로 등록!" : ` 누적 ${caughtCount}회`
