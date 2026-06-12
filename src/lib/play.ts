@@ -6,7 +6,21 @@ import { AP_MAX, currentResetBoundary } from "./world";
 import { pickDrop, type DropEntry } from "./gamedata";
 import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
-import { appendSheetItem, syncSheetGold, type SheetInventory } from "./googleSheets";
+import {
+  appendSheetItem,
+  inventoryWeightTotal,
+  syncSheetGold,
+  syncSheetWeight,
+  type SheetInventory,
+} from "./googleSheets";
+import {
+  lifeSkillCategory,
+  lifeSkillItemEffect,
+  lifeSkillKindOf,
+  pickLifeSkillCatch,
+  type LifeSkillCatch,
+  type LifeSkillItem,
+} from "./lifeSkillData";
 
 export const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
@@ -54,6 +68,7 @@ function mergeInventorySnapshot(
   invJson: string | null,
   itemName: string,
   qty: number,
+  details: { effect?: string | null; weight?: number | null } = {},
 ): string {
   let inv: SheetInventory = { gold: null, curWeight: null, maxWeight: null, items: [] };
   try {
@@ -63,11 +78,56 @@ function mergeInventorySnapshot(
   }
 
   const found = inv.items.find((item) => item.name === itemName);
-  if (found) found.qty += qty;
-  else inv.items.push({ name: itemName, effect: null, weight: 1, qty });
+  if (found) {
+    found.qty += qty;
+    if (!found.effect && details.effect) found.effect = details.effect;
+    if (found.weight == null && details.weight != null) found.weight = details.weight;
+  } else {
+    inv.items.push({
+      name: itemName,
+      effect: details.effect ?? null,
+      weight: details.weight ?? 1,
+      qty,
+    });
+  }
 
-  inv.curWeight = (inv.curWeight ?? 0) + qty;
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   return JSON.stringify(inv);
+}
+
+function parseInventorySnapshot(invJson: string | null): SheetInventory {
+  try {
+    if (invJson) return JSON.parse(invJson) as SheetInventory;
+  } catch {
+    // fallthrough
+  }
+  return { gold: null, curWeight: null, maxWeight: null, items: [] };
+}
+
+function lifeSkillResultText(catchResult: LifeSkillCatch): string {
+  const item = catchResult.item;
+  return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${item.price}G, 숙련도 ${item.exp})`;
+}
+
+async function ensureLifeSkillItem(item: LifeSkillItem, kind: "채집" | "낚시"): Promise<void> {
+  await prisma.item.upsert({
+    where: { id: item.name },
+    create: {
+      id: item.name,
+      name: item.name,
+      category: lifeSkillCategory(kind),
+      sellPrice: item.price,
+      desc: item.text,
+      order: item.no,
+    },
+    update: {
+      name: item.name,
+      category: lifeSkillCategory(kind),
+      sellPrice: item.price,
+      desc: item.text,
+      order: item.no,
+    },
+  });
 }
 
 export async function postSystem(locationId: string, content: string): Promise<void> {
@@ -139,44 +199,67 @@ export async function runActionCommand(
   if (!success) {
     resultLine = ` 실패... ${target.failText ?? ""}`.trimEnd();
   } else {
-    let drop: DropEntry;
-    try {
-      drop = pickDrop(JSON.parse(target.dropsJson) as DropEntry[]);
-    } catch {
-      return { error: "드랍테이블이 잘못됐어요. GM에게 알려주세요." };
-    }
+    const lifeSkillKind = lifeSkillKindOf(target.kind, target.label);
 
-    if (drop.item === "골드" && drop.gold > 0) {
-      const nextGold = (sheet.curGold ?? 0) + drop.gold;
-      let nextInvJson = sheet.invJson;
+    if (lifeSkillKind) {
+      const caught = pickLifeSkillCatch(lifeSkillKind);
+      const item = caught.item;
+      const effect = lifeSkillItemEffect(item);
+      await ensureLifeSkillItem(item, lifeSkillKind);
+      await addItem(userId, item.name, 1);
+      const nextInvJson = mergeInventorySnapshot(sheet.invJson, item.name, 1, {
+        effect,
+        weight: item.weight,
+      });
+      const nextInv = parseInventorySnapshot(nextInvJson);
+
+      await prisma.characterSheet.update({
+        where: { userId },
+        data: { invJson: nextInvJson },
+      });
+      void appendSheetItem(sheet.sheetTab, item.name, 1, { effect, weight: item.weight });
+      if (nextInv.curWeight != null) void syncSheetWeight(sheet.sheetTab, nextInv.curWeight);
+      resultLine = lifeSkillResultText(caught);
+    } else {
+      let drop: DropEntry;
       try {
-        const inv = nextInvJson
-          ? (JSON.parse(nextInvJson) as SheetInventory)
-          : { gold: null, curWeight: null, maxWeight: null, items: [] };
-        inv.gold = `${nextGold}G`;
-        nextInvJson = JSON.stringify(inv);
+        drop = pickDrop(JSON.parse(target.dropsJson) as DropEntry[]);
       } catch {
-        nextInvJson = sheet.invJson;
+        return { error: "드랍테이블이 잘못됐어요. GM에게 알려주세요." };
       }
 
-      await prisma.characterSheet.update({
-        where: { userId },
-        data: { curGold: nextGold, invJson: nextInvJson },
-      });
-      void syncSheetGold(sheet.sheetTab, nextGold);
-      resultLine = ` 성공! ✨ ${drop.gold}G 획득!`;
-    } else if (drop.item === "꽝") {
-      resultLine = " 꽝... 아무 일도 일어나지 않았다.";
-    } else {
-      await addItem(userId, drop.item, drop.qty);
-      const item = await prisma.item.findUnique({ where: { id: drop.item } });
-      const itemName = item?.name ?? drop.item;
-      await prisma.characterSheet.update({
-        where: { userId },
-        data: { invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty) },
-      });
-      void appendSheetItem(sheet.sheetTab, itemName, drop.qty);
-      resultLine = ` 성공! ✨ ${itemName} x${drop.qty} 획득!`;
+      if (drop.item === "골드" && drop.gold > 0) {
+        const nextGold = (sheet.curGold ?? 0) + drop.gold;
+        let nextInvJson = sheet.invJson;
+        try {
+          const inv = nextInvJson
+            ? (JSON.parse(nextInvJson) as SheetInventory)
+            : { gold: null, curWeight: null, maxWeight: null, items: [] };
+          inv.gold = `${nextGold}G`;
+          nextInvJson = JSON.stringify(inv);
+        } catch {
+          nextInvJson = sheet.invJson;
+        }
+
+        await prisma.characterSheet.update({
+          where: { userId },
+          data: { curGold: nextGold, invJson: nextInvJson },
+        });
+        void syncSheetGold(sheet.sheetTab, nextGold);
+        resultLine = ` 성공! ✨ ${drop.gold}G 획득!`;
+      } else if (drop.item === "꽝") {
+        resultLine = " 꽝... 아무 일도 일어나지 않았다.";
+      } else {
+        await addItem(userId, drop.item, drop.qty);
+        const item = await prisma.item.findUnique({ where: { id: drop.item } });
+        const itemName = item?.name ?? drop.item;
+        await prisma.characterSheet.update({
+          where: { userId },
+          data: { invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty) },
+        });
+        void appendSheetItem(sheet.sheetTab, itemName, drop.qty);
+        resultLine = ` 성공! ✨ ${itemName} x${drop.qty} 획득!`;
+      }
     }
   }
 

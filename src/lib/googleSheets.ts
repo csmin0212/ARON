@@ -245,12 +245,29 @@ export async function appendSheetItem(
   tab: string | null,
   itemName: string,
   qty: number,
+  details: { effect?: string | null; weight?: number | null } = {},
 ): Promise<boolean> {
   if (!tab || qty <= 0) return false;
 
   const blocks = [
-    { col: "Z", qtyCol: "AE", start: 33, maxRows: 26, range: `${quoteSheet(tab)}!Z33:AE58` },
-    { col: "AF", qtyCol: "AK", start: 32, maxRows: 27, range: `${quoteSheet(tab)}!AF32:AK58` },
+    {
+      col: "Z",
+      effectCol: "AA",
+      weightCol: "AD",
+      qtyCol: "AE",
+      start: 33,
+      maxRows: 26,
+      range: `${quoteSheet(tab)}!Z33:AE58`,
+    },
+    {
+      col: "AF",
+      effectCol: "AG",
+      weightCol: "AJ",
+      qtyCol: "AK",
+      start: 32,
+      maxRows: 27,
+      range: `${quoteSheet(tab)}!AF32:AK58`,
+    },
   ];
 
   try {
@@ -260,9 +277,27 @@ export async function appendSheetItem(
 
       const existing = findItemRow(values, block.start, itemName);
       if (existing) {
-        return updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
-          [String(existing.qty + qty)],
-        ]);
+        const updates = [
+          updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
+            [String(existing.qty + qty)],
+          ]),
+        ];
+        if (details.effect) {
+          updates.push(
+            updateValues(`${quoteSheet(tab)}!${block.effectCol}${existing.row}`, [
+              [details.effect],
+            ]),
+          );
+        }
+        if (details.weight != null) {
+          updates.push(
+            updateValues(`${quoteSheet(tab)}!${block.weightCol}${existing.row}`, [
+              [String(details.weight)],
+            ]),
+          );
+        }
+        const results = await Promise.all(updates);
+        return results.every(Boolean);
       }
     }
 
@@ -274,7 +309,7 @@ export async function appendSheetItem(
       if (!row) continue;
 
       return updateValues(`${quoteSheet(tab)}!${block.col}${row}`, [
-        [itemName, "", "", "", "1", String(qty)],
+        [itemName, details.effect ?? "", "", "", String(details.weight ?? 1), String(qty)],
       ]);
     }
   } catch (error) {
