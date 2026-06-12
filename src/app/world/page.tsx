@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { AP_MAX, RESET_HOUR_KST, effectiveAp } from "@/lib/world";
+import { FATIGUE_MAX, FATIGUE_REGEN_MIN, effectiveAp } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
@@ -19,20 +19,20 @@ function ApBar({ ap }: { ap: number }) {
       <span className="text-lg">⚡</span>
       <div className="flex-1">
         <div className="mb-1 flex items-center justify-between text-xs">
-          <span className="font-bold text-content">행동치</span>
+          <span className="font-bold text-content">피로도</span>
           <span className="font-semibold text-muted">
-            {ap} / {AP_MAX}
+            {ap} / {FATIGUE_MAX}
           </span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-subtle-hover">
           <div
             className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all"
-            style={{ width: `${(ap / AP_MAX) * 100}%` }}
+            style={{ width: `${(ap / FATIGUE_MAX) * 100}%` }}
           />
         </div>
       </div>
       <span className="text-[11px] text-faint">
-        채집·전투 등에 사용 · 매일 오전 {RESET_HOUR_KST}시 회복
+        채집·낚시·전투에 사용 · {FATIGUE_REGEN_MIN}분마다 1 회복
       </span>
     </div>
   );

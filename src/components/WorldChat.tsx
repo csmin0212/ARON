@@ -268,7 +268,7 @@ ${body}
                     inputRef.current?.focus();
                   }}
                   className="rounded-full border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:border-amber-400 hover:bg-amber-50 hover:text-content"
-                  title={`행동치 ${a.apCost} 소모`}
+                  title={`피로도 ${a.apCost} 소모`}
                 >
                   {KIND_EMOJI[a.kind] ?? "✨"} {cmd} <span className="text-faint">⚡{a.apCost}</span>
                 </button>

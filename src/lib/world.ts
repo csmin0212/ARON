@@ -5,30 +5,35 @@
 
 import { MASTER_SHEET_ID, parseCsv } from "./charsheet";
 
-// ── 행동치(AP) 규칙 ──
-// 이동은 자유(소모 없음). 행동치는 채집·낚시·전투 등 "행동"에만 소모된다.
-export const AP_MAX = 10; // 하루 행동치
-export const RESET_HOUR_KST = 5; // 매일 KST 05:00 회복
+// ── 피로도 규칙 ──
+// 이동은 자유(소모 없음). 피로도는 채집·낚시·전투 등 "행동"에 소모된다.
+// 최대 300, 6분마다 1씩 자연 회복 (하루 240). 회복 수단은 추후 추가 예정.
+// DB 컬럼은 기존 ap(현재 피로도) / apResetAt(회복 기준 시각)을 그대로 사용한다.
+export const FATIGUE_MAX = 300;
+export const FATIGUE_REGEN_MIN = 6; // 1 회복에 걸리는 분
+export const KEYWORD_SEARCH_COST = 5; // 키워드 탐색 판정 피로도
 
-const KST_OFFSET = 9 * 3_600_000;
+const REGEN_MS = FATIGUE_REGEN_MIN * 60_000;
 
-// 가장 최근 회복 기준 시각(UTC). apResetAt 이 이보다 과거면 회복 대상.
-export function currentResetBoundary(now: Date = new Date()): Date {
-  const kst = new Date(now.getTime() + KST_OFFSET);
-  let boundary = Date.UTC(
-    kst.getUTCFullYear(),
-    kst.getUTCMonth(),
-    kst.getUTCDate(),
-    RESET_HOUR_KST,
-  );
-  if (kst.getUTCHours() < RESET_HOUR_KST) boundary -= 86_400_000;
-  return new Date(boundary - KST_OFFSET);
+// lazy 회복 계산 — 경과 시간만큼 회복하고, 6분 미만의 잔여 진행분은
+// 기준 시각을 소비한 만큼만 전진시켜 보존한다.
+export function regenFatigue(
+  stored: number | null,
+  at: Date | null,
+  now: Date = new Date(),
+): { value: number; at: Date } {
+  if (stored == null || at == null) return { value: FATIGUE_MAX, at: now };
+  const elapsed = now.getTime() - at.getTime();
+  if (elapsed <= 0) return { value: Math.min(stored, FATIGUE_MAX), at };
+  const ticks = Math.floor(elapsed / REGEN_MS);
+  const value = Math.min(FATIGUE_MAX, stored + ticks);
+  if (value >= FATIGUE_MAX) return { value: FATIGUE_MAX, at: now };
+  return { value, at: new Date(at.getTime() + ticks * REGEN_MS) };
 }
 
-// 저장값 기준 "지금 유효한" 행동치 계산 (lazy reset — DB 쓰기는 액션에서)
+// 표시용 — 저장값 기준 현재 피로도
 export function effectiveAp(ap: number | null, apResetAt: Date | null): number {
-  if (!apResetAt || apResetAt < currentResetBoundary()) return AP_MAX;
-  return ap ?? AP_MAX;
+  return regenFatigue(ap, apResetAt).value;
 }
 
 // ── 맵 시트 파서 ──

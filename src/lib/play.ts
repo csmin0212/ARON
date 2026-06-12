@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "./prisma";
 import { rollDice } from "./dice";
-import { AP_MAX, currentResetBoundary } from "./world";
+import { KEYWORD_SEARCH_COST, regenFatigue } from "./world";
 import { pickDrop, type DropEntry } from "./gamedata";
 import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
@@ -24,6 +24,7 @@ import {
 import {
   adjustedRankWeights,
   applyExp,
+  baseWeightsFor,
   computeMods,
   parseLifeState,
   progressOf,
@@ -38,14 +39,13 @@ export const KIND_EMOJI: Record<string, string> = {
   휴식: "🛌",
 };
 
+// 피로도 lazy 회복 (이름은 기존 호출부 호환을 위해 유지)
 export function freshAp(
   ap: number | null,
   apResetAt: Date | null,
 ): { ap: number; apResetAt: Date } {
-  if (!apResetAt || apResetAt < currentResetBoundary()) {
-    return { ap: AP_MAX, apResetAt: new Date() };
-  }
-  return { ap: ap ?? AP_MAX, apResetAt };
+  const r = regenFatigue(ap, apResetAt);
+  return { ap: r.value, apResetAt: r.at };
 }
 
 function statModOf(statsJson: string | null, label: string): number | null {
@@ -171,7 +171,7 @@ export async function runActionCommand(
 
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   if (ap < target.apCost)
-    return { error: `행동치가 부족해요. (필요 ${target.apCost}, 보유 ${ap})` };
+    return { error: `피로도가 부족해요. (필요 ${target.apCost}, 보유 ${ap}) — 6분마다 1씩 회복돼요.` };
 
   const label = target.label ?? target.kind;
   const emoji = KIND_EMOJI[target.kind] ?? "✨";
@@ -212,7 +212,11 @@ export async function runActionCommand(
       // 특성 보정 적용한 등급 추첨 + 숙련도 누적/레벨업
       const life = parseLifeState(sheet.lifeJson);
       const mods = computeMods(life, lifeSkillKind);
-      const caught = pickLifeSkillCatch(lifeSkillKind, adjustedRankWeights(mods));
+      const level = progressOf(life, lifeSkillKind).level;
+      const caught = pickLifeSkillCatch(
+        lifeSkillKind,
+        adjustedRankWeights(mods, baseWeightsFor(level)),
+      );
       const item = caught.item;
       const effect = lifeSkillItemEffect(item);
       const expGained = Math.max(1, Math.round(item.exp * mods.expMult));
@@ -368,7 +372,8 @@ export async function tryKeywordSpeech(
     if (mod == null) return { notice: `시트에서 ${statLabel} 능력치를 찾지 못했어요.` };
 
     const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
-    if (ap < 1) return { notice: "탐색할 기력(행동치 1)이 없어요." };
+    if (ap < KEYWORD_SEARCH_COST)
+      return { notice: `탐색할 기력이 없어요. (피로도 ${KEYWORD_SEARCH_COST} 필요)` };
 
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
@@ -385,7 +390,10 @@ export async function tryKeywordSpeech(
           success,
         },
       }),
-      prisma.characterSheet.update({ where: { userId }, data: { ap: ap - 1, apResetAt } }),
+      prisma.characterSheet.update({
+        where: { userId },
+        data: { ap: ap - KEYWORD_SEARCH_COST, apResetAt },
+      }),
     ]);
 
     await postSystem(

@@ -117,7 +117,7 @@ export default function LifeSkillPanel({
         <h2 className="mb-3 text-lg font-extrabold text-content">보유 특성</h2>
         {life.perks.length === 0 ? (
           <p className="py-4 text-center text-sm text-faint">
-            아직 익힌 특성이 없어요. 낚시·채집 레벨을 올려보세요!
+            아직 익힌 특성이 없어요. 특성은 5레벨마다 선택할 수 있어요!
           </p>
         ) : (
           <ul className="space-y-2">

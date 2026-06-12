@@ -131,6 +131,22 @@ export function expForNext(level: number): number {
   return Math.round(20 * Math.pow(level, 1.6));
 }
 
+// 특성은 5레벨마다 선택
+export const PERK_EVERY = 5;
+
+// ── 등급 등장 구간표 (레벨 구간별 기본 가중치 [0성..5성]) ──
+// 여기 숫자만 고치면 밸런스가 바뀐다. 상위 구간은 추후 천천히 설계.
+export const LEVEL_BANDS: { min: number; max: number; weights: number[] }[] = [
+  { min: 1, max: 30, weights: [0, 70, 25, 5, 0, 0] }, // Lv1~30: 최대 3성
+  { min: 31, max: 60, weights: [0, 55, 30, 12, 3, 0] }, // (가안) 최대 4성
+  { min: 61, max: 999, weights: [0, 45, 30, 17, 6, 2] }, // (가안) 최대 5성
+];
+
+export function baseWeightsFor(level: number): number[] {
+  const band = LEVEL_BANDS.find((b) => level >= b.min && level <= b.max);
+  return [...(band ?? LEVEL_BANDS[LEVEL_BANDS.length - 1]).weights];
+}
+
 // ── 상태 파싱/직렬화 ──
 const EMPTY: LifeState = {
   fishing: { exp: 0, level: 1 },
@@ -181,7 +197,7 @@ export function rollPerkOptions(state: LifeState, kind: LifeSkillKind): LifePerk
   return options;
 }
 
-// 경험치 적용 → 레벨업 시 pending 선택지 적재. 도달한 레벨 목록 반환.
+// 경험치 적용 → 레벨업 시 도달 레벨 반환. 특성 선택지는 PERK_EVERY 레벨마다 적재.
 export function applyExp(state: LifeState, kind: LifeSkillKind, gained: number): number[] {
   const prog = progressOf(state, kind);
   prog.exp += gained;
@@ -190,7 +206,9 @@ export function applyExp(state: LifeState, kind: LifeSkillKind, gained: number):
     prog.exp -= expForNext(prog.level);
     prog.level += 1;
     leveled.push(prog.level);
-    state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind) });
+    if (prog.level % PERK_EVERY === 0) {
+      state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind) });
+    }
   }
   return leveled;
 }
@@ -276,9 +294,11 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
   return mods;
 }
 
-// 기본 등급 가중치 [0성..5성] 에 특성 보정 적용
-export function adjustedRankWeights(mods: LifeMods): number[] {
-  const w = [40, 30, 20, 6, 3, 1];
+// 등급 가중치 [0성..5성] 에 특성 보정 적용.
+// base 는 레벨 구간표(baseWeightsFor) — 구간에서 잠긴 등급(기본치 0)은 절대 열리지 않는다.
+export function adjustedRankWeights(mods: LifeMods, base?: number[]): number[] {
+  const orig = base ? [...base] : [0, 70, 25, 5, 0, 0];
+  const w = [...orig];
   let removed = 0;
   const take = (idx: number, amount: number) => {
     const cut = Math.min(w[idx], amount);
@@ -289,14 +309,30 @@ export function adjustedRankWeights(mods: LifeMods): number[] {
   else take(0, mods.rank0Down);
   take(1, mods.rank1Down);
   take(2, mods.rank2Down);
-  // 제거된 확률은 3/4/5성에 6:3:1 비율로 재분배
-  if (removed > 0) {
-    w[3] += (removed * 6) / 10;
-    w[4] += (removed * 3) / 10;
-    w[5] += removed / 10;
+
+  // 제거된 확률은 "이 구간에서 허용된" 상위 등급(3~5성)에 6:3:1 비율로 재분배
+  const RATIO: Record<number, number> = { 3: 6, 4: 3, 5: 1 };
+  const upper = [3, 4, 5].filter((i) => orig[i] > 0);
+  if (removed > 0 && upper.length > 0) {
+    const ratioSum = upper.reduce((s, i) => s + RATIO[i], 0);
+    for (const i of upper) w[i] += (removed * RATIO[i]) / ratioSum;
+  } else if (removed > 0) {
+    w[2] += removed; // 상위 등급이 모두 잠긴 극단 케이스
   }
-  // 행운아: 4/5성 가산, 신의 어부: 5성 가산
-  w[4] += mods.luck * 0.67;
-  w[5] += mods.luck * 0.33 + mods.rank5Up;
+
+  // 행운아: 허용된 최상위 1~2개 등급에 2:1 가산
+  if (mods.luck > 0 && upper.length > 0) {
+    const top = upper[upper.length - 1];
+    const second = upper.length > 1 ? upper[upper.length - 2] : null;
+    if (second != null) {
+      w[second] += (mods.luck * 2) / 3;
+      w[top] += mods.luck / 3;
+    } else {
+      w[top] += mods.luck;
+    }
+  }
+  // 신의 어부(5성 확률 증가): 5성이 열린 구간에서만 효과
+  if (orig[5] > 0) w[5] += mods.rank5Up;
+
   return w;
 }

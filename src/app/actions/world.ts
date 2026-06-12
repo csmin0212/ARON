@@ -4,19 +4,17 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { AP_MAX, currentResetBoundary, fetchWorldRows } from "@/lib/world";
+import { fetchWorldRows, regenFatigue } from "@/lib/world";
 import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
 import { postSystem } from "@/lib/play";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
 
-// 현재 행동치 계산 (회복 시점 지났으면 가득 채워서 반환)
+// 현재 피로도 계산 (lazy 자연 회복)
 function freshAp(ap: number | null, apResetAt: Date | null): { ap: number; apResetAt: Date } {
-  if (!apResetAt || apResetAt < currentResetBoundary()) {
-    return { ap: AP_MAX, apResetAt: new Date() };
-  }
-  return { ap: ap ?? AP_MAX, apResetAt };
+  const r = regenFatigue(ap, apResetAt);
+  return { ap: r.value, apResetAt: r.at };
 }
 
 // 월드 입장 — 시작 장소로 배치
