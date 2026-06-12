@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import {
   consumeSheetItem,
+  inventoryWeightTotal,
   readSheetInventory,
+  syncSheetWeight,
   updateSheetItemDetails,
   type SheetInventory,
   type SheetInventoryItem,
@@ -15,6 +17,7 @@ import { postSystem } from "@/lib/play";
 export type ServiceState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
+const MOON_FRAGMENT = "달의 파편";
 
 const GEM_EFFECTS = [
   { key: "루비", text: "루비 인첸트: <화> 속성 마법 데미지 +2" },
@@ -41,12 +44,21 @@ function findInvItem(inv: SheetInventory, name: string): SheetInventoryItem | nu
 }
 
 function itemQty(inv: SheetInventory, name: string): number {
-  return findInvItem(inv, name)?.qty ?? 0;
+  const target = name.trim();
+  return inv.items
+    .filter((item) => item.name.trim() === target)
+    .reduce((total, item) => total + Math.max(0, item.qty), 0);
 }
 
 function consumeInvItem(inv: SheetInventory, name: string, qty: number): SheetInventory {
-  const item = findInvItem(inv, name);
-  if (item) item.qty = Math.max(0, item.qty - qty);
+  const target = name.trim();
+  let remaining = qty;
+  for (const item of inv.items) {
+    if (item.name.trim() !== target || remaining <= 0) continue;
+    const used = Math.min(Math.max(0, item.qty), remaining);
+    item.qty = Math.max(0, item.qty - used);
+    remaining -= used;
+  }
   return inv;
 }
 
@@ -88,6 +100,16 @@ function hasTag(itemName: string, tag: string): boolean {
   return itemTags(itemName).includes(tag);
 }
 
+function enhancementLevel(itemName: string): number {
+  const tag = itemTags(itemName).find((value) => /^\+\d+$/.test(value));
+  return tag ? parseInt(tag.slice(1), 10) : 0;
+}
+
+function hasMagicTag(itemName: string): boolean {
+  const tags = itemTags(itemName);
+  return GEM_EFFECTS.some((gem) => tags.includes(gem.key));
+}
+
 function addItemTag(itemName: string, tag: string): string {
   const trimmed = itemName.trim();
   const match = trimmed.match(/^(.*)\(([^()]*)\)$/);
@@ -100,6 +122,24 @@ function addItemTag(itemName: string, tag: string): string {
     .filter(Boolean);
   if (!tags.includes(tag)) tags.push(tag);
   return `${baseName}(${tags.join(", ")})`;
+}
+
+function setEnhancementTag(itemName: string, level: number): string {
+  const trimmed = itemName.trim();
+  const nextTag = `+${level}`;
+  const match = trimmed.match(/^(.*)\(([^()]*)\)$/);
+  if (!match) return `${trimmed}(${nextTag})`;
+
+  const baseName = match[1].trim();
+  const tags = match[2]
+    .split(",")
+    .map((existing) => existing.trim())
+    .filter((existing) => existing && !/^\+\d+$/.test(existing));
+  return `${baseName}(${[nextTag, ...tags].join(", ")})`;
+}
+
+function materialForEnhancement(level: number): string {
+  return level === 1 ? STEEL_FRAGMENT : MOON_FRAGMENT;
 }
 
 async function currentSheet(): Promise<{
@@ -151,24 +191,26 @@ export async function upgradeWeapon(
   if (!ctx.invFromSheet) return { error: "구글 시트 쓰기 설정을 먼저 확인해주세요." };
 
   const weaponName = String(formData.get("weaponName") ?? "").trim();
-  const level = Math.max(1, Math.min(4, Number(formData.get("level") ?? 1) || 1));
+  const weaponLevel = Math.max(1, Math.min(4, Number(formData.get("level") ?? 1) || 1));
   const weapon = findInvItem(ctx.inv, weaponName);
   if (!weapon || weapon.qty <= 0) return { error: "강화할 무기를 인벤토리에서 찾지 못했습니다." };
-  if ((weapon.effect ?? "").includes("강철 강화") || hasTag(weapon.name, "+1")) {
-    return { error: "이미 강철 강화가 적용된 무기입니다." };
+  const nextEnhancement = enhancementLevel(weapon.name) + 1;
+  const materialName = materialForEnhancement(nextEnhancement);
+  if (nextEnhancement > 4) {
+    return { error: "현재는 +4까지만 강화할 수 있습니다." };
   }
-  if (itemQty(ctx.inv, STEEL_FRAGMENT) < level) {
-    return { error: `${STEEL_FRAGMENT}이 부족합니다. (${itemQty(ctx.inv, STEEL_FRAGMENT)}/${level})` };
+  if (itemQty(ctx.inv, materialName) < weaponLevel) {
+    return { error: `${materialName}이 부족합니다. (${itemQty(ctx.inv, materialName)}/${weaponLevel})` };
   }
 
-  const nextWeight = (weapon.weight ?? 0) + level;
+  const nextWeight = (weapon.weight ?? 0) + weaponLevel;
   const nextEffect = appendEffect(
     weapon.effect,
-    `강철 강화 +${level}: 공격력 +${level}, 중량 +${level}`,
+    `무기 강화 +${nextEnhancement}: 공격력 +${weaponLevel}, 중량 +${weaponLevel}`,
   );
-  const nextName = addItemTag(weapon.name, "+1");
+  const nextName = setEnhancementTag(weapon.name, nextEnhancement);
 
-  const consumeOk = await consumeSheetItem(ctx.tab, STEEL_FRAGMENT, level);
+  const consumeOk = await consumeSheetItem(ctx.tab, materialName, weaponLevel);
   if (!consumeOk.ok) return { error: consumeOk.error };
   const updateOk = await updateSheetItemDetails(ctx.tab, weapon.name, {
     name: nextName,
@@ -177,22 +219,23 @@ export async function upgradeWeapon(
   });
   if (!updateOk.ok) return { error: updateOk.error };
 
-  let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, level);
+  let inv = consumeInvItem(ctx.inv, materialName, weaponLevel);
   inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect, weight: nextWeight });
-  inv.curWeight = (inv.curWeight ?? 0) + level;
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   await Promise.all([
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
       data: { invJson: JSON.stringify(inv) },
     }),
-    decrementDbInventory(ctx.userId, STEEL_FRAGMENT, level),
+    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
+    decrementDbInventory(ctx.userId, materialName, weaponLevel),
   ]);
 
   if (ctx.locationId) {
     await postSystem(ctx.locationId, `⚒️ ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 강화.`);
   }
   revalidatePath("/world");
-  return { ok: `${nextName} 강화 완료. 공격력 +${level}, 중량 +${level}` };
+  return { ok: `${nextName} 강화 완료. 공격력 +${weaponLevel}, 중량 +${weaponLevel}` };
 }
 
 export async function enchantWeapon(
@@ -208,7 +251,7 @@ export async function enchantWeapon(
   const weapon = findInvItem(ctx.inv, weaponName);
   if (!weapon || weapon.qty <= 0) return { error: "인첸트할 무기를 인벤토리에서 찾지 못했습니다." };
   const nextGemTag = gemTag(gemName);
-  if ((weapon.effect ?? "").includes("인첸트") || hasTag(weapon.name, nextGemTag)) {
+  if ((weapon.effect ?? "").includes("인첸트") || hasMagicTag(weapon.name) || hasTag(weapon.name, nextGemTag)) {
     return { error: "이미 인첸트가 적용된 무기입니다." };
   }
   if (itemQty(ctx.inv, STEEL_FRAGMENT) < 2) {
@@ -231,11 +274,13 @@ export async function enchantWeapon(
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 2);
   inv = consumeInvItem(inv, gemName, 1);
   inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect });
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   await Promise.all([
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
       data: { invJson: JSON.stringify(inv) },
     }),
+    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     decrementDbInventory(ctx.userId, STEEL_FRAGMENT, 2),
     decrementDbInventory(ctx.userId, gemName, 1),
   ]);

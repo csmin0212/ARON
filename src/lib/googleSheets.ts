@@ -153,6 +153,16 @@ function parseQty(raw: string): number {
   return parseNumber(raw) ?? 1;
 }
 
+export function inventoryWeightTotal(items: SheetInventoryItem[]): number | null {
+  let hasKnownWeight = false;
+  const total = items.reduce((sum, item) => {
+    if (item.weight == null || item.qty <= 0) return sum;
+    hasKnownWeight = true;
+    return sum + item.weight * item.qty;
+  }, 0);
+  return hasKnownWeight ? total : null;
+}
+
 function parseWeightPair(raw: string): { curWeight: number | null; maxWeight: number | null } {
   const m = raw.match(/(\d+)\s*\/\s*(\d+)/);
   if (!m) return { curWeight: null, maxWeight: null };
@@ -204,10 +214,20 @@ export async function readSheetInventory(tab: string | null): Promise<SheetInven
       if (right) items.push(right);
     }
 
-    return { gold, curWeight, maxWeight, items };
+    return { gold, curWeight: inventoryWeightTotal(items) ?? curWeight, maxWeight, items };
   } catch (error) {
     console.warn("Failed to read sheet inventory", error);
     return null;
+  }
+}
+
+export async function syncSheetWeight(tab: string | null, curWeight: number): Promise<boolean> {
+  if (!tab) return false;
+  try {
+    return updateValues(`${quoteSheet(tab)}!AD31`, [[String(curWeight)]]);
+  } catch (error) {
+    console.warn("Failed to sync sheet weight", error);
+    return false;
   }
 }
 
@@ -274,23 +294,37 @@ export async function consumeSheetItem(
     { qtyCol: "AE", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
     { qtyCol: "AK", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
   ];
+  const matches: { qtyCol: string; row: number; qty: number }[] = [];
 
   try {
     for (const block of blocks) {
       const values = await getValues(block.range);
       if (!values) return { ok: false, error: "시트 인증이 필요합니다." };
 
-      const existing = findItemRow(values, block.start, itemName);
-      if (!existing) continue;
-      if (existing.qty < qty) {
-        return { ok: false, error: `${itemName} 수량이 부족합니다. (${existing.qty}/${qty})` };
+      const target = itemName.trim();
+      for (let i = 0; i < values.length; i++) {
+        const row = values[i] ?? [];
+        if (cell(row, 0) !== target) continue;
+        const itemQty = parseQty(cell(row, 5));
+        if (itemQty > 0) matches.push({ qtyCol: block.qtyCol, row: block.start + i, qty: itemQty });
       }
-
-      await updateValues(`${quoteSheet(tab)}!${block.qtyCol}${existing.row}`, [
-        [String(existing.qty - qty)],
-      ]);
-      return { ok: true };
     }
+
+    const totalQty = matches.reduce((sum, item) => sum + item.qty, 0);
+    if (totalQty < qty) {
+      return { ok: false, error: `${itemName} 수량이 부족합니다. (${totalQty}/${qty})` };
+    }
+
+    let remaining = qty;
+    for (const match of matches) {
+      if (remaining <= 0) break;
+      const used = Math.min(match.qty, remaining);
+      await updateValues(`${quoteSheet(tab)}!${match.qtyCol}${match.row}`, [
+        [String(match.qty - used)],
+      ]);
+      remaining -= used;
+    }
+    return { ok: true };
   } catch (error) {
     console.warn("Failed to consume sheet item", error);
   }

@@ -12,6 +12,7 @@ type Props = {
 function mergeItems(items: SheetInventoryItem[]): SheetInventoryItem[] {
   const byName = new Map<string, SheetInventoryItem>();
   for (const item of items) {
+    if (item.qty <= 0) continue;
     const key = item.name.trim();
     const existing = byName.get(key);
     if (existing) {

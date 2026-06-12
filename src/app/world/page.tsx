@@ -9,7 +9,7 @@ import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices from "@/components/WorldServices";
-import type { SheetInventory, SheetInventoryItem } from "@/lib/googleSheets";
+import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -177,9 +177,10 @@ export default async function WorldPage() {
           qty: e.qty,
         }));
   const bagGold = sheetInventory?.gold ?? `${(sheet.curGold ?? 0).toLocaleString()}G`;
+  const computedBagWeight = inventoryWeightTotal(bagItems);
   const bagWeight =
-    sheetInventory?.curWeight != null && sheetInventory.maxWeight != null
-      ? `${sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
+    (computedBagWeight ?? sheetInventory?.curWeight) != null && sheetInventory?.maxWeight != null
+      ? `${computedBagWeight ?? sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
   const canForge = hasServiceKeyword(here, locActions, [
     "상점",

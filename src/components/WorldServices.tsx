@@ -53,7 +53,9 @@ function isWeapon(item: SheetInventoryItem): boolean {
 }
 
 function countOf(items: SheetInventoryItem[], name: string): number {
-  return items.find((item) => item.name === name)?.qty ?? 0;
+  return items
+    .filter((item) => item.name.trim() === name)
+    .reduce((total, item) => total + item.qty, 0);
 }
 
 function StateLine({ state }: { state: ServiceState }) {
@@ -142,6 +144,7 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
   const weapons = items.filter(isWeapon);
   const gems = items.filter(isGem);
   const steelCount = countOf(items, "강철 파편");
+  const moonCount = countOf(items, "달의 파편");
 
   if (!canForge) return null;
 
@@ -213,7 +216,7 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
                     tone="fire"
                     icon="⚔️"
                     title="무기 강화"
-                    subtitle="강철 파편으로 무기의 공격력과 중량을 올립니다"
+                    subtitle="+1은 강철 파편, +2부터는 달의 파편을 사용합니다"
                     onClick={() => setForgeMode("weapon")}
                   />
                   <ForgeChoice
@@ -235,7 +238,8 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
                       선택으로
                     </button>
                     <div className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2 text-xs font-bold text-stone-300">
-                      강철 파편 <b className="text-amber-200">{steelCount}</b>개
+                      강철 파편 <b className="text-amber-200">{steelCount}</b>개 · 달의 파편{" "}
+                      <b className="text-amber-200">{moonCount}</b>개
                     </div>
                   </div>
 
@@ -277,7 +281,8 @@ export default function WorldServices({ canForge, inventoryItems }: Props) {
                           ))}
                         </div>
                         <p className="mt-2 text-xs font-semibold text-amber-100/75">
-                          선택한 레벨만큼 강철 파편을 소모하고, 결과는 무기명(+1)로 기록됩니다.
+                          선택한 무기 레벨만큼 재료를 소모합니다. +1은 강철 파편, +2부터는
+                          달의 파편을 사용합니다.
                         </p>
                       </div>
                       {weapons.length === 0 && (
