@@ -149,6 +149,14 @@ function parseWeightPair(raw: string): { curWeight: number | null; maxWeight: nu
   return { curWeight: parseInt(m[1], 10), maxWeight: parseInt(m[2], 10) };
 }
 
+function parseInventoryWeight(top: string[]): { curWeight: number | null; maxWeight: number | null } {
+  const curWeight = parseNumber(cell(top, 4)); // AD31
+  const maxWeight = parseNumber(cell(top, 5)); // AE31
+  if (curWeight != null || maxWeight != null) return { curWeight, maxWeight };
+
+  return parseWeightPair(top.join(" "));
+}
+
 function parseItemBlock(row: string[], offset: number): SheetInventoryItem | null {
   const name = cell(row, offset);
   if (!name || name === "휴대품") return null;
@@ -175,8 +183,7 @@ export async function readSheetInventory(tab: string | null): Promise<SheetInven
 
     const top = values[0] ?? [];
     const gold = top.find((v) => /G/i.test(String(v ?? "")))?.trim() ?? null;
-    const weightText = top.find((v) => /\d+\s*\/\s*\d+/.test(String(v ?? ""))) ?? "";
-    const { curWeight, maxWeight } = parseWeightPair(weightText);
+    const { curWeight, maxWeight } = parseInventoryWeight(top);
     const items: SheetInventoryItem[] = [];
 
     for (let i = 0; i < values.length; i++) {
