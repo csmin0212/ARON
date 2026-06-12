@@ -3,12 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { parseGoldToInt } from "@/lib/dice";
 import {
-  appendSheetItem,
   consumeSheetItem,
   readSheetInventory,
-  syncSheetGold,
   updateSheetItemDetails,
   type SheetInventory,
   type SheetInventoryItem,
@@ -45,19 +42,6 @@ function findInvItem(inv: SheetInventory, name: string): SheetInventoryItem | nu
 
 function itemQty(inv: SheetInventory, name: string): number {
   return findInvItem(inv, name)?.qty ?? 0;
-}
-
-function addInvItem(inv: SheetInventory, item: SheetInventoryItem, qty: number): SheetInventory {
-  const existing = findInvItem(inv, item.name);
-  if (existing) {
-    existing.qty += qty;
-    existing.effect ||= item.effect;
-    existing.weight ??= item.weight;
-  } else {
-    inv.items.push({ ...item, qty });
-  }
-  if (item.weight != null) inv.curWeight = (inv.curWeight ?? 0) + item.weight * qty;
-  return inv;
 }
 
 function consumeInvItem(inv: SheetInventory, name: string, qty: number): SheetInventory {
@@ -111,18 +95,6 @@ async function currentSheet(): Promise<{
   };
 }
 
-async function addDbInventory(userId: string, itemId: string, qty: number): Promise<void> {
-  const existing = await prisma.inventoryEntry.findFirst({ where: { userId, itemId, meta: null } });
-  if (existing) {
-    await prisma.inventoryEntry.update({
-      where: { id: existing.id },
-      data: { qty: existing.qty + qty },
-    });
-  } else {
-    await prisma.inventoryEntry.create({ data: { userId, itemId, qty } });
-  }
-}
-
 async function decrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
   const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
   if (!item) return;
@@ -136,47 +108,6 @@ async function decrementDbInventory(userId: string, itemName: string, qty: numbe
     where: { id: existing.id },
     data: { qty: Math.max(0, existing.qty - qty) },
   });
-}
-
-export async function buyShopItem(_prev: ServiceState, formData: FormData): Promise<ServiceState> {
-  const ctx = await currentSheet();
-  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
-  if (!ctx.invFromSheet) return { error: "구글 시트 쓰기 설정을 먼저 확인해주세요." };
-
-  const itemId = String(formData.get("itemId") ?? "").trim();
-  const qty = Math.max(1, Math.min(99, Number(formData.get("qty") ?? 1) || 1));
-  const item = await prisma.item.findUnique({ where: { id: itemId } });
-  if (!item || item.buyPrice == null || item.buyPrice <= 0) {
-    return { error: "구매할 수 없는 아이템입니다." };
-  }
-
-  const price = item.buyPrice * qty;
-  const gold = parseGoldToInt(ctx.inv.gold);
-  if (gold < price) return { error: `소지금이 부족합니다. (${gold}G / ${price}G)` };
-
-  const nextGold = gold - price;
-  const goldOk = await syncSheetGold(ctx.tab, nextGold);
-  const itemOk = await appendSheetItem(ctx.tab, item.name, qty);
-  if (!goldOk || !itemOk) return { error: "시트에 구매 결과를 쓰지 못했습니다." };
-
-  const inv = addInvItem(
-    { ...ctx.inv, gold: `${nextGold}G` },
-    { name: item.name, effect: item.desc, weight: 1, qty },
-    qty,
-  );
-  await Promise.all([
-    prisma.characterSheet.update({
-      where: { userId: ctx.userId },
-      data: { curGold: nextGold, gold: `${nextGold}G`, invJson: JSON.stringify(inv) },
-    }),
-    addDbInventory(ctx.userId, item.id, qty),
-  ]);
-
-  if (ctx.locationId) {
-    await postSystem(ctx.locationId, `🛒 ${ctx.nickname}님이 ${item.name} x${qty} 구매.`);
-  }
-  revalidatePath("/world");
-  return { ok: `${item.name} x${qty} 구매 완료.` };
 }
 
 export async function upgradeWeapon(

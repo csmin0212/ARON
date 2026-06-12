@@ -181,12 +181,7 @@ export default async function WorldPage() {
     sheetInventory?.curWeight != null && sheetInventory.maxWeight != null
       ? `${sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
-  const shopItems = await prisma.item.findMany({
-    where: { buyPrice: { gt: 0 } },
-    select: { id: true, name: true, category: true, buyPrice: true, desc: true },
-    orderBy: [{ category: "asc" }, { order: "asc" }],
-  });
-  const canShop = hasServiceKeyword(here, locActions, [
+  const canForge = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
     "잡화",
@@ -194,8 +189,6 @@ export default async function WorldPage() {
     "shop",
     "store",
     "market",
-  ]);
-  const canForge = hasServiceKeyword(here, locActions, [
     "대장간",
     "강화",
     "제련",
@@ -287,9 +280,7 @@ export default async function WorldPage() {
           </div>
 
           <WorldServices
-            canShop={canShop}
             canForge={canForge}
-            shopItems={shopItems}
             inventoryItems={bagItems}
           />
 
