@@ -151,11 +151,22 @@ export function parseActionsGrid(g: string[][], itemIds: Set<string>): ActionRow
     행동: "kind",
     라벨: "label",
     AP: "apCost",
+    ap: "apCost",
+    행동치: "apCost",
+    피로도: "apCost",
+    소모AP: "apCost",
+    "소모 AP": "apCost",
+    "AP 소모": "apCost",
     판정: "check",
     드랍: "drops",
     실패문구: "failText",
   });
   if (!h) throw new Error("행동 탭이 없거나 헤더(장소ID/행동)가 없어요.");
+  if (h.col.apCost == null && h.col.label != null) {
+    const inferred = h.col.label + 1;
+    const header = (g[h.row]?.[inferred] ?? "").trim();
+    if (!header || h.col.check === inferred + 1) h.col.apCost = inferred;
+  }
 
   const rows: ActionRow[] = [];
   for (let r = h.row + 1; r < g.length; r++) {
