@@ -50,6 +50,7 @@ model CharacterSheet {
   invJson   String? // 인벤토리 JSON [{ name, qty }]
   // 월드(오픈월드) 상태
   locationId     String? // 현재 위치 (Location.id, FK 아님 — 맵 교체에 안전)
+  enteredAt      DateTime? // 현재 장소 진입 시각 (이후 채팅만 보임)
   ap             Int? // 행동치 (매일 KST 5시 회복)
   apResetAt      DateTime? // 마지막 행동치 회복 시각
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
@@ -115,12 +116,13 @@ model InventoryEntry {
   @@index([userId])
 }
 
-// 장소 채팅 (같은 장소의 모험가들끼리)
+// 장소 채팅 (같은 장소의 모험가들끼리) — system=true 면 입장/행동 결과 등 시스템 메시지
 model WorldMessage {
   id         Int      @id @default(autoincrement())
   locationId String
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  system     Boolean  @default(false)
   content    String
   createdAt  DateTime @default(now())
 

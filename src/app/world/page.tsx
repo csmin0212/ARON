@@ -7,7 +7,6 @@ import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
-import WorldPlay from "@/components/WorldPlay";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -184,22 +183,18 @@ export default async function WorldPage() {
       {/* 채팅(넓게) + 사이드(이동/모험가) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <WorldChat locationName={here.name} myUsername={user.username} />
-        </div>
-
-        <div className="space-y-4">
-          {/* 행동 + 탐색 */}
-          <WorldPlay
+          <WorldChat
+            locationName={here.name}
+            myUsername={user.username}
             actions={locActions.map((a) => ({
-              id: a.id,
               kind: a.kind,
               label: a.label,
               apCost: a.apCost,
-              statLabel: a.statLabel,
-              dc: a.dc,
             }))}
           />
+        </div>
 
+        <div className="space-y-4">
           {/* 이동 가능 구역 */}
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">

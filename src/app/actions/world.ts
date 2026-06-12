@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { AP_MAX, currentResetBoundary, fetchWorldRows } from "@/lib/world";
 import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
+import { postSystem } from "@/lib/play";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 
@@ -31,8 +32,9 @@ export async function enterWorld(): Promise<void> {
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: start.id, ap, apResetAt },
+    data: { locationId: start.id, enteredAt: new Date(), ap, apResetAt },
   });
+  await postSystem(start.id, `🌟 ${user.nickname}님이 월드에 입장하셨습니다!`);
   revalidatePath("/world");
 }
 
@@ -75,8 +77,13 @@ export async function moveTo(formData: FormData): Promise<void> {
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: target },
+    data: { locationId: target, enteredAt: new Date() },
   });
+  // 퇴장/입장 알림 (목적지는 노출하지 않음 — 히든 보호)
+  await Promise.all([
+    postSystem(here.id, `📤 ${user.nickname}님이 자리를 떠났습니다.`),
+    postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`),
+  ]);
   revalidatePath("/world");
 }
 
