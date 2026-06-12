@@ -54,6 +54,7 @@ model CharacterSheet {
   ap             Int? // 행동치 (매일 KST 5시 회복)
   apResetAt      DateTime? // 마지막 행동치 회복 시각
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
+  lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
   syncedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

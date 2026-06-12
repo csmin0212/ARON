@@ -139,14 +139,19 @@ function rollInt(maxInclusive: number): number {
   return Math.floor(Math.random() * (maxInclusive + 1));
 }
 
-function pickRank(): number {
-  const total = RANK_WEIGHTS.reduce((sum, entry) => sum + entry.weight, 0);
+// weights: [0성..5성] 가중치 — 특성 보정값을 받을 수 있다 (기본은 RANK_WEIGHTS)
+function pickRank(weights?: number[]): number {
+  const entries = weights
+    ? weights.map((weight, rank) => ({ rank, weight }))
+    : RANK_WEIGHTS;
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.weight), 0);
+  if (total <= 0) return 1;
   let roll = Math.random() * total;
-  for (const entry of RANK_WEIGHTS) {
-    roll -= entry.weight;
+  for (const entry of entries) {
+    roll -= Math.max(0, entry.weight);
     if (roll <= 0) return entry.rank;
   }
-  return RANK_WEIGHTS[RANK_WEIGHTS.length - 1].rank;
+  return entries[entries.length - 1].rank;
 }
 
 function poolFor(kind: LifeSkillKind): LifeSkillItem[] {
@@ -160,9 +165,9 @@ export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillK
   return null;
 }
 
-export function pickLifeSkillCatch(kind: LifeSkillKind): LifeSkillCatch {
+export function pickLifeSkillCatch(kind: LifeSkillKind, weights?: number[]): LifeSkillCatch {
   const pool = poolFor(kind);
-  const rank = pickRank();
+  const rank = pickRank(weights);
   const rankPool = pool.filter((item) => item.rank === rank);
   const candidates = rankPool.length > 0 ? rankPool : pool;
   const item = candidates[Math.floor(Math.random() * candidates.length)];

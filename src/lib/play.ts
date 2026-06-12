@@ -21,6 +21,13 @@ import {
   type LifeSkillCatch,
   type LifeSkillItem,
 } from "./lifeSkillData";
+import {
+  adjustedRankWeights,
+  applyExp,
+  computeMods,
+  parseLifeState,
+  progressOf,
+} from "./lifeSkillPerks";
 
 export const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
@@ -106,7 +113,7 @@ function parseInventorySnapshot(invJson: string | null): SheetInventory {
 
 function lifeSkillResultText(catchResult: LifeSkillCatch): string {
   const item = catchResult.item;
-  return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${item.price}G, 숙련도 ${item.exp})`;
+  return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${item.price}G)`;
 }
 
 async function ensureLifeSkillItem(item: LifeSkillItem, kind: "채집" | "낚시"): Promise<void> {
@@ -202,9 +209,15 @@ export async function runActionCommand(
     const lifeSkillKind = lifeSkillKindOf(target.kind, target.label);
 
     if (lifeSkillKind) {
-      const caught = pickLifeSkillCatch(lifeSkillKind);
+      // 특성 보정 적용한 등급 추첨 + 숙련도 누적/레벨업
+      const life = parseLifeState(sheet.lifeJson);
+      const mods = computeMods(life, lifeSkillKind);
+      const caught = pickLifeSkillCatch(lifeSkillKind, adjustedRankWeights(mods));
       const item = caught.item;
       const effect = lifeSkillItemEffect(item);
+      const expGained = Math.max(1, Math.round(item.exp * mods.expMult));
+      const leveled = applyExp(life, lifeSkillKind, expGained);
+
       await ensureLifeSkillItem(item, lifeSkillKind);
       await addItem(userId, item.name, 1);
       const nextInvJson = mergeInventorySnapshot(sheet.invJson, item.name, 1, {
@@ -215,11 +228,18 @@ export async function runActionCommand(
 
       await prisma.characterSheet.update({
         where: { userId },
-        data: { invJson: nextInvJson },
+        data: { invJson: nextInvJson, lifeJson: JSON.stringify(life) },
       });
       void appendSheetItem(sheet.sheetTab, item.name, 1, { effect, weight: item.weight });
       if (nextInv.curWeight != null) void syncSheetWeight(sheet.sheetTab, nextInv.curWeight);
-      resultLine = lifeSkillResultText(caught);
+
+      resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})`;
+      for (const lv of leveled) {
+        await postSystem(
+          locationId,
+          `🆙 ${nickname}님의 ${lifeSkillKind} 레벨이 ${lv}이 되었다! 내 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요.`,
+        );
+      }
     } else {
       let drop: DropEntry;
       try {

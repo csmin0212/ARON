@@ -5,9 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { formatFullDate } from "@/lib/format";
 import type { StatEntry } from "@/lib/charsheet";
+import { parseLifeState } from "@/lib/lifeSkillPerks";
 import Avatar from "@/components/Avatar";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
+import CharacterTabs from "@/components/CharacterTabs";
 import DiceRoller from "@/components/DiceRoller";
+import LifeSkillPanel from "@/components/LifeSkillPanel";
 
 export async function generateMetadata({
   params,
@@ -39,11 +42,25 @@ export default async function CharacterPage({
   const me = await getCurrentUser();
   const isOwn = me?.id === profile.id;
 
-  const rolls = await prisma.roll.findMany({
-    where: { userId: profile.id },
-    orderBy: { createdAt: "desc" },
-    take: 15,
-  });
+  const [rolls, invEntries] = await Promise.all([
+    prisma.roll.findMany({
+      where: { userId: profile.id },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+    }),
+    prisma.inventoryEntry.findMany({
+      where: { userId: profile.id, qty: { gt: 0 } },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
+  const itemMap = new Map(
+    (
+      await prisma.item.findMany({
+        where: { id: { in: invEntries.map((e) => e.itemId) } },
+        select: { id: true, name: true, category: true },
+      })
+    ).map((it) => [it.id, it]),
+  );
 
   let stats: StatEntry[] = [];
   if (profile.sheet?.statsJson) {
@@ -54,46 +71,33 @@ export default async function CharacterPage({
     }
   }
 
-  return (
-    <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
-      {/* 프로필 헤더 */}
-      <div className="flex items-center gap-4 rounded-3xl border border-line bg-surface p-6 shadow-sm">
-        <Avatar name={profile.nickname} avatar={profile.avatar} size={64} />
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-extrabold text-content">{profile.nickname}</h1>
-          <p className="text-sm text-faint">@{profile.username}</p>
-        </div>
-        {isOwn && (
-          <Link
-            href="/profile"
-            className="ml-auto rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
-          >
-            프로필 편집
-          </Link>
-        )}
-      </div>
+  const life = parseLifeState(profile.sheet?.lifeJson);
+  const pendingCount = isOwn ? life.pending.length : 0;
 
-      {/* 캐릭터 시트 */}
-      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-extrabold text-content">캐릭터 시트</h2>
-        {profile.sheet ? (
-          <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.nickname }} />
-        ) : (
-          <p className="py-6 text-center text-sm text-faint">
-            아직 캐릭터 시트를 연동하지 않았어요.
-            {isOwn && (
-              <>
-                {" "}
-                <Link href="/profile" className="font-semibold text-brand-600 hover:underline">
-                  지금 연동하기
-                </Link>
-              </>
-            )}
-          </p>
-        )}
-      </div>
+  // ── 탭 내용 ──
+  const sheetTab = (
+    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+      <h2 className="mb-4 text-lg font-extrabold text-content">캐릭터 시트</h2>
+      {profile.sheet ? (
+        <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.nickname }} />
+      ) : (
+        <p className="py-6 text-center text-sm text-faint">
+          아직 캐릭터 시트를 연동하지 않았어요.
+          {isOwn && (
+            <>
+              {" "}
+              <Link href="/profile" className="font-semibold text-brand-600 hover:underline">
+                지금 연동하기
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
 
-      {/* 주사위 (본인만) */}
+  const combatTab = (
+    <>
       {isOwn && stats.length > 0 && (
         <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
           <h2 className="mb-1 text-lg font-extrabold text-content">🎲 능력치 판정</h2>
@@ -102,7 +106,6 @@ export default async function CharacterPage({
         </div>
       )}
 
-      {/* 굴림 기록 */}
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-extrabold text-content">최근 굴림 기록</h2>
         {rolls.length === 0 ? (
@@ -146,6 +149,70 @@ export default async function CharacterPage({
           </ul>
         )}
       </div>
+    </>
+  );
+
+  const lifeTab = (
+    <>
+      <LifeSkillPanel life={life} isOwn={isOwn} />
+
+      {/* 가방 */}
+      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+        <h2 className="mb-3 flex items-center justify-between text-lg font-extrabold text-content">
+          <span>🎒 가방</span>
+          <span className="text-sm font-bold text-emerald-500">
+            {(profile.sheet?.curGold ?? 0).toLocaleString()}G
+          </span>
+        </h2>
+        {invEntries.length === 0 ? (
+          <p className="py-4 text-center text-sm text-faint">가방이 비어 있어요.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-1.5">
+            {invEntries.map((e) => {
+              const it = itemMap.get(e.itemId);
+              return (
+                <li
+                  key={e.id}
+                  className="rounded-lg bg-subtle px-2.5 py-1 text-xs font-semibold text-content"
+                  title={it?.category ?? undefined}
+                >
+                  {it?.name ?? e.itemId} <span className="text-faint">x{e.qty}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
+      {/* 프로필 헤더 */}
+      <div className="flex items-center gap-4 rounded-3xl border border-line bg-surface p-6 shadow-sm">
+        <Avatar name={profile.nickname} avatar={profile.avatar} size={64} />
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-extrabold text-content">{profile.nickname}</h1>
+          <p className="text-sm text-faint">@{profile.username}</p>
+        </div>
+        {isOwn && (
+          <Link
+            href="/profile"
+            className="ml-auto rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
+          >
+            프로필 편집
+          </Link>
+        )}
+      </div>
+
+      <CharacterTabs
+        tabs={[
+          { key: "sheet", label: "📜 캐릭터 시트", content: sheetTab },
+          { key: "combat", label: "⚔️ 전투 데이터", content: combatTab },
+          { key: "life", label: "🌿 생활 데이터", content: lifeTab },
+        ]}
+        badges={{ life: pendingCount }}
+      />
     </div>
   );
 }
