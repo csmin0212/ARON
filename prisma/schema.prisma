@@ -56,6 +56,8 @@ model CharacterSheet {
   apResetAt      DateTime? // 마지막 행동치 회복 시각
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
   lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
+  adventurerRank String    @default("D") // 모험가 길드 등급
+  fame           Int       @default(0) // 다음 등급까지 누적 명성치
   syncedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

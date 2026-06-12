@@ -2,10 +2,12 @@
 
 import { useMemo, useState, useActionState } from "react";
 import {
+  buyLifeGear,
   depositToStorage,
   enchantWeapon,
   upgradeWeapon,
   withdrawFromStorage,
+  type LifeShopState,
   type ServiceState,
   type StorageState,
 } from "@/app/actions/services";
@@ -13,8 +15,10 @@ import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
   canForge: boolean;
+  canGuild: boolean;
   canStorage: boolean;
   inventoryItems: SheetInventoryItem[];
+  lifeShop: LifeShopView;
   storage: StorageView;
 };
 
@@ -26,6 +30,18 @@ export type StorageView = {
 
 export type StorageItemView = SheetInventoryItem & {
   id: string;
+};
+
+export type LifeShopView = {
+  gold: number;
+  bags: {
+    낚시: { name: string; maxWeight: number };
+    채집: { name: string; maxWeight: number };
+  };
+  tools: {
+    낚시: string;
+    채집: string;
+  };
 };
 
 const GEM_NAMES = ["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
@@ -96,6 +112,24 @@ function StateLine({ state }: { state: ServiceState }) {
 }
 
 function StorageStateLine({ state }: { state: StorageState }) {
+  if (state?.error) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+        {state.error}
+      </p>
+    );
+  }
+  if (state?.ok) {
+    return (
+      <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-600">
+        {state.ok}
+      </p>
+    );
+  }
+  return null;
+}
+
+function LifeShopStateLine({ state }: { state: LifeShopState }) {
   if (state?.error) {
     return (
       <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
@@ -314,9 +348,178 @@ function StorageManager({
   );
 }
 
-export default function WorldServices({ canForge, canStorage, inventoryItems, storage }: Props) {
+const LIFE_SHOP_PRODUCTS = [
+  { id: "fish_bag_20", kind: "낚시", group: "가방", name: "낚시꾼 가방 20칸", price: 2000, note: "낚시 가방 최대 중량 20" },
+  { id: "fish_bag_30", kind: "낚시", group: "가방", name: "낚시꾼 가방 30칸", price: 5000, note: "낚시 가방 최대 중량 30" },
+  { id: "plant_bag_20", kind: "채집", group: "가방", name: "약초꾼 가방 20칸", price: 2000, note: "채집 가방 최대 중량 20" },
+  { id: "plant_bag_30", kind: "채집", group: "가방", name: "약초꾼 가방 30칸", price: 5000, note: "채집 가방 최대 중량 30" },
+  { id: "good_rod", kind: "낚시", group: "도구", name: "좋은 낚싯대", price: 2500, note: "낚시 장비 1단계" },
+  { id: "master_rod", kind: "낚시", group: "도구", name: "고급 낚싯대", price: 7000, note: "낚시 장비 2단계" },
+  { id: "good_sickle", kind: "채집", group: "도구", name: "숙련 채집 도구", price: 2500, note: "채집 장비 1단계" },
+  { id: "master_sickle", kind: "채집", group: "도구", name: "장인의 채집 도구", price: 7000, note: "채집 장비 2단계" },
+] as const;
+
+function LifeGearShop({
+  lifeShop,
+  onClose,
+}: {
+  lifeShop: LifeShopView;
+  onClose: () => void;
+}) {
+  const [state, action, pending] = useActionState<LifeShopState, FormData>(buyLifeGear, undefined);
+  const groups = ["가방", "도구"] as const;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="생활 장비 구매"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Guild Supply
+          </p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
+            <span>🎒 생활 장비 구매</span>
+            <span className="text-sm font-bold text-emerald-500">
+              {lifeShop.gold.toLocaleString()}G
+            </span>
+          </h3>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div className="grid gap-2 rounded-2xl bg-subtle p-3 text-xs font-bold text-muted sm:grid-cols-2">
+            <p>🎣 {lifeShop.bags.낚시.name} · {lifeShop.bags.낚시.maxWeight}칸 · {lifeShop.tools.낚시}</p>
+            <p>🌿 {lifeShop.bags.채집.name} · {lifeShop.bags.채집.maxWeight}칸 · {lifeShop.tools.채집}</p>
+          </div>
+          <LifeShopStateLine state={state} />
+          {groups.map((group) => (
+            <section key={group}>
+              <h4 className="mb-2 text-sm font-extrabold text-content">{group}</h4>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {LIFE_SHOP_PRODUCTS.filter((item) => item.group === group).map((item) => (
+                  <form key={item.id} action={action}>
+                    <input type="hidden" name="productId" value={item.id} />
+                    <button
+                      type="submit"
+                      disabled={pending}
+                      className="flex h-full w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
+                    >
+                      <span className="text-xl">{item.kind === "낚시" ? "🎣" : "🌿"}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-extrabold text-content">{item.name}</span>
+                        <span className="mt-0.5 block text-[11px] text-faint">{item.note}</span>
+                      </span>
+                      <span className="shrink-0 text-xs font-black text-emerald-500">
+                        {item.price.toLocaleString()}G
+                      </span>
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestBoard({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="의뢰 게시판"
+        className="w-full max-w-lg overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Guild Requests
+          </p>
+          <h3 className="mt-1 text-2xl font-extrabold text-content">📜 의뢰 게시판</h3>
+        </div>
+        <div className="px-5 py-4">
+          <article className="rounded-2xl border border-line bg-subtle p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-extrabold text-content">고블린 부락 토벌</p>
+                <p className="mt-1 text-sm text-muted">고블린 부락을 토벌해라.</p>
+              </div>
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
+                토벌
+              </span>
+            </div>
+            <dl className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-xl bg-surface px-2 py-2">
+                <dt className="font-bold text-faint">권장 레벨</dt>
+                <dd className="mt-0.5 font-extrabold text-content">Lv.3</dd>
+              </div>
+              <div className="rounded-xl bg-surface px-2 py-2">
+                <dt className="font-bold text-faint">요구 인원</dt>
+                <dd className="mt-0.5 font-extrabold text-content">4인</dd>
+              </div>
+              <div className="rounded-xl bg-surface px-2 py-2">
+                <dt className="font-bold text-faint">보상</dt>
+                <dd className="mt-0.5 font-extrabold text-emerald-500">1000G</dd>
+              </div>
+            </dl>
+            <button
+              type="button"
+              disabled
+              className="mt-3 w-full rounded-xl bg-subtle-hover px-4 py-2.5 text-sm font-bold text-faint"
+            >
+              수락 기능 준비 중
+            </button>
+          </article>
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function WorldServices({
+  canForge,
+  canGuild,
+  canStorage,
+  inventoryItems,
+  lifeShop,
+  storage,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
+  const [lifeShopOpen, setLifeShopOpen] = useState(false);
+  const [questOpen, setQuestOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -333,7 +536,7 @@ export default function WorldServices({ canForge, canStorage, inventoryItems, st
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge && !canStorage) return null;
+  if (!canForge && !canGuild && !canStorage) return null;
 
   function closeForge() {
     setOpen(false);
@@ -373,6 +576,32 @@ export default function WorldServices({ canForge, canStorage, inventoryItems, st
               </span>
             </button>
           )}
+          {canGuild && (
+            <>
+              <button
+                type="button"
+                onClick={() => setLifeShopOpen(true)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+              >
+                <span className="text-xl">🎒</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold text-content">생활 장비 구매</span>
+                  <span className="text-[11px] text-faint">가방 확장 · 낚싯대 · 채집 도구</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuestOpen(true)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+              >
+                <span className="text-xl">📜</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold text-content">의뢰 게시판</span>
+                  <span className="text-[11px] text-faint">토벌 의뢰 확인</span>
+                </span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -383,6 +612,12 @@ export default function WorldServices({ canForge, canStorage, inventoryItems, st
           onClose={() => setStorageOpen(false)}
         />
       )}
+
+      {lifeShopOpen && (
+        <LifeGearShop lifeShop={lifeShop} onClose={() => setLifeShopOpen(false)} />
+      )}
+
+      {questOpen && <QuestBoard onClose={() => setQuestOpen(false)} />}
 
       {open && (
         <div

@@ -8,11 +8,12 @@ import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
-import WorldServices, { type StorageView } from "@/components/WorldServices";
+import WorldServices, { type LifeShopView, type StorageView } from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { lifeSkillItemKind, type LocationLifeConfig } from "@/lib/lifeSkillData";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
+import { parseGoldToInt } from "@/lib/dice";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -241,6 +242,14 @@ export default async function WorldPage() {
       })) ?? [],
   };
   const life = parseLifeState(sheet.lifeJson);
+  const lifeShop: LifeShopView = {
+    gold: parseGoldToInt(sheetInventory?.gold) || sheet.curGold || 0,
+    bags: {
+      낚시: { name: life.bags.낚시.name, maxWeight: life.bags.낚시.maxWeight },
+      채집: { name: life.bags.채집.name, maxWeight: life.bags.채집.maxWeight },
+    },
+    tools: life.tools,
+  };
   const lifeBags = ([
     { kind: "낚시" as const, emoji: "🎣" },
     { kind: "채집" as const, emoji: "🌿" },
@@ -260,7 +269,7 @@ export default async function WorldPage() {
     };
   });
   const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
-  const canForge = canGuild || hasServiceKeyword(here, locActions, [
+  const canForge = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
     "잡화",
@@ -373,8 +382,10 @@ export default async function WorldPage() {
 
           <WorldServices
             canForge={canForge}
+            canGuild={canGuild}
             canStorage={canStorage}
             inventoryItems={bagItems}
+            lifeShop={lifeShop}
             storage={storage}
           />
 

@@ -15,6 +15,8 @@ export type SheetData = {
   curHp?: number | null;
   curMp?: number | null;
   curGold?: number | null;
+  adventurerRank?: string | null;
+  fame?: number | null;
 };
 
 function Stat({ s }: { s: StatEntry }) {
@@ -39,6 +41,14 @@ function Vital({ label, value, color }: { label: string; value: string | number 
   );
 }
 
+const RANK_GOALS: Record<string, number> = {
+  D: 1000,
+  C: 2500,
+  B: 5000,
+  A: 10000,
+  S: 0,
+};
+
 export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
   let stats: StatEntry[] = [];
   try {
@@ -50,6 +60,10 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
   const tags = [sheet.charClass, sheet.race, sheet.attribute && `속성 ${sheet.attribute}`].filter(
     Boolean,
   ) as string[];
+  const rank = sheet.adventurerRank ?? "D";
+  const fame = sheet.fame ?? 0;
+  const rankGoal = RANK_GOALS[rank] ?? 1000;
+  const rankPct = rankGoal > 0 ? Math.min(100, Math.round((fame / rankGoal) * 100)) : 100;
 
   return (
     <div className="space-y-4">
@@ -79,6 +93,30 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
             </p>
           )}
         </div>
+      </div>
+
+      {/* 모험가 랭크 */}
+      <div className="rounded-2xl border border-line bg-subtle px-4 py-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold text-faint">모험가 랭크</p>
+            <p className="text-sm font-extrabold text-content">길드 등급 {rank}</p>
+          </div>
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-2xl font-black text-white shadow-sm">
+            {rank}
+          </span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-surface">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-sky-400 to-brand-500"
+            style={{ width: `${rankPct}%` }}
+          />
+        </div>
+        <p className="mt-1.5 text-right text-[11px] font-semibold text-faint">
+          {rankGoal > 0
+            ? `남은 명성치 ${Math.max(0, rankGoal - fame).toLocaleString()} · ${fame.toLocaleString()} / ${rankGoal.toLocaleString()}`
+            : "최고 등급"}
+        </p>
       </div>
 
       {/* HP / MP / 페이트 / 소지금 (라이브 상태 우선) */}

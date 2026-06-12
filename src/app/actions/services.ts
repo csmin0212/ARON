@@ -8,18 +8,52 @@ import {
   consumeSheetItem,
   inventoryWeightTotal,
   readSheetInventory,
+  syncSheetGold,
   syncSheetWeight,
   updateSheetItemDetails,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
+import { parseGoldToInt } from "@/lib/dice";
+import { parseLifeState } from "@/lib/lifeSkillPerks";
+import type { LifeSkillKind } from "@/lib/lifeSkillData";
 import { postSystem } from "@/lib/play";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
 export type StorageState = { error?: string; ok?: string } | undefined;
+export type LifeShopState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
 const MOON_FRAGMENT = "달의 파편";
+
+const LIFE_SHOP_ITEMS = [
+  { id: "fish_bag_20", kind: "낚시", type: "bag", name: "낚시꾼 가방 20칸", price: 2000, maxWeight: 20 },
+  { id: "fish_bag_30", kind: "낚시", type: "bag", name: "낚시꾼 가방 30칸", price: 5000, maxWeight: 30 },
+  { id: "plant_bag_20", kind: "채집", type: "bag", name: "약초꾼 가방 20칸", price: 2000, maxWeight: 20 },
+  { id: "plant_bag_30", kind: "채집", type: "bag", name: "약초꾼 가방 30칸", price: 5000, maxWeight: 30 },
+  { id: "good_rod", kind: "낚시", type: "tool", name: "좋은 낚싯대", price: 2500, tier: 1 },
+  { id: "master_rod", kind: "낚시", type: "tool", name: "고급 낚싯대", price: 7000, tier: 2 },
+  { id: "good_sickle", kind: "채집", type: "tool", name: "숙련 채집 도구", price: 2500, tier: 1 },
+  { id: "master_sickle", kind: "채집", type: "tool", name: "장인의 채집 도구", price: 7000, tier: 2 },
+] as const satisfies readonly LifeShopProduct[];
+
+type LifeShopProduct =
+  | {
+      id: string;
+      kind: LifeSkillKind;
+      type: "bag";
+      name: string;
+      price: number;
+      maxWeight: number;
+    }
+  | {
+      id: string;
+      kind: LifeSkillKind;
+      type: "tool";
+      name: string;
+      price: number;
+      tier: number;
+    };
 
 const GEM_EFFECTS = [
   { key: "루비", text: "루비 인첸트: <화> 속성 마법 데미지 +2" },
@@ -166,6 +200,7 @@ async function currentSheet(): Promise<{
   nickname: string;
   tab: string;
   locationId: string | null;
+  curGold: number | null;
   inv: SheetInventory;
   invFromSheet: boolean;
 } | null> {
@@ -181,9 +216,20 @@ async function currentSheet(): Promise<{
     nickname: user.nickname,
     tab: sheet.sheetTab,
     locationId: sheet.locationId,
+    curGold: sheet.curGold,
     inv: sheetInv ?? parseInv(sheet.invJson),
     invFromSheet: !!sheetInv,
   };
+}
+
+function lifeShopProduct(productId: string): LifeShopProduct | null {
+  return LIFE_SHOP_ITEMS.find((item) => item.id === productId) ?? null;
+}
+
+function toolTier(toolName: string): number {
+  if (toolName === "고급 낚싯대" || toolName === "장인의 채집 도구") return 2;
+  if (toolName === "좋은 낚싯대" || toolName === "숙련 채집 도구") return 1;
+  return 0;
 }
 
 async function decrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
@@ -354,6 +400,60 @@ export async function withdrawFromStorage(
 
   revalidatePath("/world");
   return { ok: `${entry.name} x${qty} 꺼내기 완료.` };
+}
+
+export async function buyLifeGear(
+  _prev: LifeShopState,
+  formData: FormData,
+): Promise<LifeShopState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const product = lifeShopProduct(String(formData.get("productId") ?? ""));
+  if (!product) return { error: "판매 목록에 없는 물품입니다." };
+
+  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  if (currentGold < product.price) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${product.price.toLocaleString()}G)` };
+  }
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { lifeJson: true },
+  });
+  const life = parseLifeState(sheet?.lifeJson);
+
+  if (product.type === "bag") {
+    const bag = life.bags[product.kind];
+    if (bag.maxWeight >= product.maxWeight) {
+      return { error: `이미 ${product.maxWeight}칸 이상의 ${product.kind} 가방을 보유 중입니다.` };
+    }
+    bag.name = product.name;
+    bag.maxWeight = product.maxWeight;
+  } else {
+    const currentTier = toolTier(life.tools[product.kind]);
+    if (currentTier >= product.tier) {
+      return { error: `이미 같은 등급 이상의 ${product.kind} 장비를 보유 중입니다.` };
+    }
+    life.tools[product.kind] = product.name;
+  }
+
+  const nextGold = currentGold - product.price;
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        lifeJson: JSON.stringify(life),
+      },
+    }),
+    syncSheetGold(ctx.tab, nextGold),
+  ]);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${product.name} 구매 완료. 남은 골드 ${nextGold.toLocaleString()}G` };
 }
 
 export async function upgradeWeapon(
