@@ -56,6 +56,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
         const rankItems = group.filter((entry) => entry.rank === activeRank);
         const rankFound = rankItems.filter((entry) => entry.discovered).length;
         const meta = KIND_META[kind];
+        const countLabel = kind === "낚시" ? "낚은 횟수" : "채집 횟수";
 
         return (
           <section key={kind} className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
@@ -123,7 +124,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
-                        x{entry.discovered ? entry.count : 0}
+                        {entry.discovered ? `${countLabel} ${Math.max(1, entry.count)}회` : "미발견"}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">

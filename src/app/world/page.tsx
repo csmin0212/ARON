@@ -12,6 +12,7 @@ import WorldServices from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import type { LocationLifeConfig } from "@/lib/lifeSkillData";
+import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -213,6 +214,25 @@ export default async function WorldPage() {
     (computedBagWeight ?? sheetInventory?.curWeight) != null && sheetInventory?.maxWeight != null
       ? `${computedBagWeight ?? sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
+  const life = parseLifeState(sheet.lifeJson);
+  const lifeBags = ([
+    { kind: "낚시" as const, emoji: "🎣" },
+    { kind: "채집" as const, emoji: "🌿" },
+  ]).map(({ kind, emoji }) => {
+    const bag = life.bags[kind];
+    const max = lifeBagLimit(life, kind, computeMods(life, kind).weightBonus);
+    return {
+      name: bag.name,
+      emoji,
+      weight: `${lifeBagWeight(bag)} / ${max}`,
+      items: bag.items.map((item) => ({
+        name: item.name,
+        effect: `R${item.rank} · ${item.text}`,
+        weight: item.weight,
+        qty: item.qty,
+      })),
+    };
+  });
   const canForge = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
@@ -327,7 +347,7 @@ export default async function WorldPage() {
             inventoryItems={bagItems}
           />
 
-          <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} />
+          <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} lifeBags={lifeBags} />
 
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">

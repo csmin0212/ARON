@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { chooseLifePerk, type LifeActionState } from "@/app/actions/life";
 import {
   computeMods,
@@ -9,9 +9,10 @@ import {
   lifeBagWeight,
   RARITY_COLORS,
   type LifeState,
+  type LifeBag,
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
-import { collectionItems } from "@/lib/lifeSkillData";
+import { collectionItems, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
 function CollectionBook({ life }: { life: LifeState }) {
@@ -21,7 +22,7 @@ function CollectionBook({ life }: { life: LifeState }) {
     name: item.name,
     rank: item.rank,
     rarity: item.rarity,
-    price: item.price,
+    price: lifeSkillMarketPrice(kind, item),
     weight: item.weight,
     text: item.text,
     discovered: life.collection[kind].includes(item.name),
@@ -50,19 +51,109 @@ function RarityBadge({ rarity }: { rarity: PerkRarity }) {
   );
 }
 
+function LifeBagModal({
+  bag,
+  emoji,
+  weight,
+  onClose,
+}: {
+  bag: LifeBag;
+  emoji: string;
+  weight: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${bag.name} 내용물`}
+        className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-faint">Life Bag</p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-xl font-extrabold text-content">
+            <span>
+              {emoji} {bag.name}
+            </span>
+            <span className="text-sm font-bold text-muted">{weight}</span>
+          </h3>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {bag.items.length === 0 ? (
+            <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+              아직 비어 있어요.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {bag.items.map((item) => (
+                <li key={item.name} className="rounded-2xl bg-subtle px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold text-content">{item.name}</p>
+                      <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-muted">
+                        R{item.rank} · {item.text}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right text-xs font-bold text-muted">
+                      <p>중량 {item.weight}</p>
+                      <p className="text-brand-600">x{item.qty}</p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LifeGearPanel({ life }: { life: LifeState }) {
+  const [openedKind, setOpenedKind] = useState<"낚시" | "채집" | null>(null);
+  const bagWeights = useMemo(
+    () =>
+      Object.fromEntries(
+        KIND_META.map(({ kind }) => {
+          const bag = life.bags[kind];
+          const mods = computeMods(life, kind);
+          const max = lifeBagLimit(life, kind, mods.weightBonus);
+          return [kind, { weight: lifeBagWeight(bag), max, mods }];
+        }),
+      ) as Record<"낚시" | "채집", { weight: number; max: number; mods: ReturnType<typeof computeMods> }>,
+    [life],
+  );
+
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <h2 className="mb-4 text-lg font-extrabold text-content">생활 프로필</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {KIND_META.map(({ kind, emoji }) => {
           const bag = life.bags[kind];
-          const mods = computeMods(life, kind);
-          const weight = lifeBagWeight(bag);
-          const max = lifeBagLimit(life, kind, mods.weightBonus);
+          const { weight, max, mods } = bagWeights[kind];
           const pct = Math.min(100, Math.round((weight / max) * 100));
           return (
-            <div key={kind} className="rounded-2xl border border-line bg-subtle/45 p-4">
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setOpenedKind(kind)}
+              className="rounded-2xl border border-line bg-subtle/45 p-4 text-left transition hover:border-brand-300 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            >
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-extrabold text-content">
@@ -94,10 +185,18 @@ function LifeGearPanel({ life }: { life: LifeState }) {
                   {mods.weightBonus > 0 && ` · 특성 보너스 +${mods.weightBonus}`}
                 </p>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
+      {openedKind && (
+        <LifeBagModal
+          bag={life.bags[openedKind]}
+          emoji={openedKind === "낚시" ? "🎣" : "🌿"}
+          weight={`${bagWeights[openedKind].weight} / ${bagWeights[openedKind].max}`}
+          onClose={() => setOpenedKind(null)}
+        />
+      )}
     </div>
   );
 }

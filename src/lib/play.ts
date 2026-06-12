@@ -18,6 +18,7 @@ import {
   lifeSkillCategory,
   lifeSkillItemEffect,
   lifeSkillKindOf,
+  lifeSkillMarketPrice,
   pickLifeSkillCatch,
   type LifeSkillCatch,
   type LifeSkillItem,
@@ -125,7 +126,7 @@ function currentInventoryWeight(inv: SheetInventory): number | null {
 
 function lifeSkillResultText(catchResult: LifeSkillCatch): string {
   const item = catchResult.item;
-  return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${item.price}G)`;
+  return ` 성공! ✨ [${item.rarity}] ${item.name} x1 획득! (크기 ${catchResult.size}, 중량 ${item.weight}, 판매가 ${lifeSkillMarketPrice(catchResult.kind, item)}G)`;
 }
 
 function parseLocationLifeConfig(value: string | null): LocationLifeConfig | null {
@@ -146,20 +147,21 @@ function locationPoolConfig(
 }
 
 async function ensureLifeSkillItem(item: LifeSkillItem, kind: "채집" | "낚시"): Promise<void> {
+  const sellPrice = lifeSkillMarketPrice(kind, item);
   await prisma.item.upsert({
     where: { id: item.name },
     create: {
       id: item.name,
       name: item.name,
       category: lifeSkillCategory(kind),
-      sellPrice: item.price,
+      sellPrice,
       desc: item.text,
       order: item.no,
     },
     update: {
       name: item.name,
       category: lifeSkillCategory(kind),
-      sellPrice: item.price,
+      sellPrice,
       desc: item.text,
       order: item.no,
     },
@@ -266,7 +268,7 @@ export async function runActionCommand(
         },
       );
       const item = caught.item;
-      const effect = lifeSkillItemEffect(item);
+      const effect = lifeSkillItemEffect(item, lifeSkillKind);
 
       const currentInv = parseInventorySnapshot(sheet.invJson);
       const currentSheetWeight = currentInventoryWeight(currentInv);

@@ -216,6 +216,31 @@ export function collectionItems(includeSea = false): { kind: LifeSkillKind; item
   ];
 }
 
+function clampPrice(value: number, min: number, max: number): number {
+  if (value <= 0) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): number {
+  if (kind === "낚시") return item.price;
+  switch (item.rank) {
+    case 0:
+      return Math.min(item.price, 5);
+    case 1:
+      return clampPrice(item.price, 3, 10);
+    case 2:
+      return clampPrice(item.price, 7, 18);
+    case 3:
+      return clampPrice(item.price, 20, 35);
+    case 4:
+      return clampPrice(item.price, 400, 750);
+    case 5:
+      return clampPrice(item.price, 2000, 3500);
+    default:
+      return item.price;
+  }
+}
+
 export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillKind | null {
   const source = `${kind} ${label ?? ""}`.replace(/\s+/g, "");
   if (source.includes("채집") || source.includes("약초")) return "채집";
@@ -263,10 +288,10 @@ export function pickLifeSkillCatch(
   };
 }
 
-export function lifeSkillItemEffect(item: LifeSkillItem): string {
+export function lifeSkillItemEffect(item: LifeSkillItem, kind: LifeSkillKind): string {
   return [
     `희귀도 ${item.rarity}`,
-    `판매가 ${item.price}G · 숙련도 ${item.exp}`,
+    `판매가 ${lifeSkillMarketPrice(kind, item)}G · 숙련도 ${item.exp}`,
     item.text,
   ].join("\n");
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { collectionItems, isSeaLifeItem } from "@/lib/lifeSkillData";
+import { collectionItems, isSeaLifeItem, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
@@ -47,7 +47,7 @@ export default async function CollectionPage() {
     name: item.name,
     rank: item.rank,
     rarity: item.rarity,
-    price: item.price,
+    price: lifeSkillMarketPrice(kind, item),
     weight: item.weight,
     text: item.text,
     discovered: discovered.has(item.name),
