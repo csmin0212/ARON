@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { AP_MAX, currentResetBoundary, fetchWorldRows } from "@/lib/world";
+import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 
@@ -79,7 +80,7 @@ export async function moveTo(formData: FormData): Promise<void> {
   revalidatePath("/world");
 }
 
-// 맵 동기화 — GM 전용. 시트 "맵" 탭 → Location 테이블 교체
+// 시트 동기화 — GM 전용. 맵(필수) + 아이템/행동(선택) 탭 → DB 교체
 export async function syncWorldMap(
   _prev: WorldActionState,
   _formData: FormData,
@@ -87,6 +88,7 @@ export async function syncWorldMap(
   const user = await getCurrentUser();
   if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
 
+  // 1) 맵 (필수)
   let rows;
   try {
     rows = await fetchWorldRows();
@@ -105,12 +107,71 @@ export async function syncWorldMap(
         image: r.image,
         connJson: JSON.stringify(r.conns),
         hidden: r.hidden,
+        keyword: r.keyword,
+        cond: r.cond,
         isStart: r.isStart,
         order: i,
       })),
     }),
   ]);
 
+  const parts: string[] = [`장소 ${rows.length}곳`];
+  const warns: string[] = [];
+
+  // 2) 아이템 (선택 — 실패해도 맵 동기화는 유지)
+  let itemIds: Set<string> | null = null;
+  try {
+    const items = await fetchItemsRows();
+    if (items) {
+      await prisma.$transaction([
+        prisma.item.deleteMany(),
+        prisma.item.createMany({
+          data: items.map((it, i) => ({ ...it, order: i })),
+        }),
+      ]);
+      itemIds = new Set(items.map((it) => it.id));
+      parts.push(`아이템 ${items.length}종`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "아이템 탭 오류");
+  }
+
+  // 3) 행동 (선택 — 아이템 도감 기준으로 드랍 검증)
+  try {
+    if (!itemIds) {
+      const existing = await prisma.item.findMany({ select: { id: true } });
+      itemIds = new Set(existing.map((it) => it.id));
+    }
+    const actions = await fetchActionsRows(itemIds);
+    if (actions) {
+      const locIds = new Set(rows.map((r) => r.id));
+      for (const a of actions) {
+        if (!locIds.has(a.locationId))
+          throw new Error(`행동의 장소ID '${a.locationId}' 가 맵에 없어요.`);
+      }
+      await prisma.$transaction([
+        prisma.locationAction.deleteMany(),
+        prisma.locationAction.createMany({
+          data: actions.map((a, i) => ({
+            locationId: a.locationId,
+            kind: a.kind,
+            label: a.label,
+            apCost: a.apCost,
+            statLabel: a.statLabel,
+            dc: a.dc,
+            dropsJson: JSON.stringify(a.drops),
+            failText: a.failText,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`행동 ${actions.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "행동 탭 오류");
+  }
+
   revalidatePath("/world");
-  return { ok: `맵 동기화 완료 — 장소 ${rows.length}곳` };
+  const okMsg = `동기화 완료 — ${parts.join(" · ")}`;
+  return warns.length > 0 ? { ok: okMsg, error: `⚠ ${warns.join(" / ")}` } : { ok: okMsg };
 }

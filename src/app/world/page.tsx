@@ -7,6 +7,7 @@ import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
+import WorldPlay from "@/components/WorldPlay";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -130,6 +131,23 @@ export default async function WorldPage() {
     take: 20,
   });
 
+  // 이 장소의 행동 + 내 가방
+  const [locActions, invEntries] = await Promise.all([
+    prisma.locationAction.findMany({ where: { locationId: here.id }, orderBy: { order: "asc" } }),
+    prisma.inventoryEntry.findMany({
+      where: { userId: user.id, qty: { gt: 0 } },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
+  const itemNames = new Map(
+    (
+      await prisma.item.findMany({
+        where: { id: { in: invEntries.map((e) => e.itemId) } },
+        select: { id: true, name: true },
+      })
+    ).map((it) => [it.id, it.name]),
+  );
+
   return (
     <div className="animate-fadeup space-y-4 py-1">
       <ApBar ap={ap} />
@@ -170,6 +188,18 @@ export default async function WorldPage() {
         </div>
 
         <div className="space-y-4">
+          {/* 행동 + 탐색 */}
+          <WorldPlay
+            actions={locActions.map((a) => ({
+              id: a.id,
+              kind: a.kind,
+              label: a.label,
+              apCost: a.apCost,
+              statLabel: a.statLabel,
+              dc: a.dc,
+            }))}
+          />
+
           {/* 이동 가능 구역 */}
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
@@ -203,6 +233,31 @@ export default async function WorldPage() {
                   </form>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* 가방 */}
+          <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
+            <h2 className="mb-2 flex items-center justify-between px-1 text-sm font-extrabold text-content">
+              <span>🎒 가방</span>
+              <span className="text-xs font-bold text-emerald-500">
+                {(sheet.curGold ?? 0).toLocaleString()}G
+              </span>
+            </h2>
+            {invEntries.length === 0 ? (
+              <p className="px-1 text-xs text-faint">아직 비어 있어요. 채집·낚시로 채워보세요!</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {invEntries.map((e) => (
+                  <li
+                    key={e.id}
+                    className="rounded-lg bg-subtle px-2.5 py-1 text-xs font-semibold text-content"
+                  >
+                    {itemNames.get(e.itemId) ?? e.itemId}{" "}
+                    <span className="text-faint">x{e.qty}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 

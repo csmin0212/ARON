@@ -45,6 +45,8 @@ export type WorldRow = {
   image: string | null;
   conns: string[];
   hidden: boolean;
+  keyword: string | null;
+  cond: string | null;
   isStart: boolean;
 };
 
@@ -57,6 +59,8 @@ const HEADER_KEYS: Record<string, string> = {
   이미지: "image",
   연결: "conns",
   히든: "hidden",
+  키워드: "keyword",
+  조건: "cond",
   시작: "isStart",
 };
 
@@ -111,6 +115,8 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
         .map((s) => s.trim())
         .filter(Boolean),
       hidden: yes(cell(colMap.hidden)),
+      keyword: cell(colMap.keyword) || null,
+      cond: cell(colMap.cond) || null,
       isStart: yes(cell(colMap.isStart)),
     });
   }

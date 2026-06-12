@@ -25,6 +25,7 @@ model User {
   sheet        CharacterSheet?
   rolls        Roll[]
   worldMsgs    WorldMessage[]
+  inventory    InventoryEntry[]
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
@@ -59,16 +60,59 @@ model CharacterSheet {
 
 // 월드 장소 (GM이 구글 시트 "맵" 탭으로 정의 → 동기화)
 model Location {
-  id        String   @id // 시트의 ID 컬럼 (영문/숫자)
+  id        String   @id // 시트의 ID 컬럼
   name      String
   emoji     String?
   desc      String?
   image     String? // 장소 사진 URL (시트 '이미지' 컬럼)
   connJson  String? // 이동 가능한 장소 ID 배열 JSON
   hidden    Boolean  @default(false) // 히든 장소 (발견해야 보임)
+  keyword   String? // 히든 발견 키워드 (시트 '키워드')
+  cond      String? // 발견 조건: "판정:재주:9" | "아이템:고대의 나침반" (시트 '조건')
   isStart   Boolean  @default(false) // 입장 지점
   order     Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+// 아이템 도감 (GM 시트 '아이템' 탭에서 동기화)
+model Item {
+  id        String   @id
+  name      String
+  category  String? // 재료 | 소모품 | 무기 | 보석 …
+  buyPrice  Int? // 상점 구매가 (C2)
+  sellPrice Int? // 상점 판매가
+  desc      String?
+  order     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+// 장소 행동 (GM 시트 '행동' 탭에서 동기화 — 채집/낚시/채굴 등)
+model LocationAction {
+  id         Int     @id @default(autoincrement())
+  locationId String
+  kind       String // 채집 | 낚시 | 채굴 … (자유)
+  label      String? // 버튼 표기 (없으면 kind)
+  apCost     Int     @default(1)
+  statLabel  String? // 판정 능력치 (근력/재주/… 한글 라벨)
+  dc         Int?
+  dropsJson  String // [{ item, qty, gold, weight }] — item:"꽝" 가능
+  failText   String?
+  order      Int     @default(0)
+
+  @@index([locationId])
+}
+
+// 플레이어 인벤토리
+model InventoryEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String
+  qty       Int      @default(1)
+  meta      String? // 무기 인스턴스(강화/인첸트) 등 — C3
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 // 장소 채팅 (같은 장소의 모험가들끼리)
