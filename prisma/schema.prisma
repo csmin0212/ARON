@@ -127,6 +127,7 @@ model WorldMessage {
   createdAt  DateTime @default(now())
 
   @@index([locationId, id])
+  @@index([locationId, createdAt])
 }
 
 // 주사위/판정 로그 (탐색·RP 공용 엔진)

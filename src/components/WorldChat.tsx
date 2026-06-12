@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Avatar from "./Avatar";
+import { getPreset, isImageUrl } from "@/lib/avatars";
 
 type ChatMessage = {
   id: number;
@@ -29,6 +30,24 @@ const KIND_EMOJI: Record<string, string> = {
 function timeOf(iso: string): string {
   const d = new Date(iso);
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function avatarForLog(user: ChatMessage["user"]): string {
+  if (!user) return `<span class="av fallback">?</span>`;
+
+  const preset = getPreset(user.avatar);
+  if (preset) return `<span class="av emoji">${escapeHtml(preset.emoji)}</span>`;
+
+  if (isImageUrl(user.avatar)) {
+    return `<img class="av" src="${escapeHtml(user.avatar as string)}" alt="" referrerpolicy="no-referrer" />`;
+  }
+
+  const initial = user.nickname.trim().charAt(0).toUpperCase() || "?";
+  return `<span class="av fallback">${escapeHtml(initial)}</span>`;
 }
 
 export default function WorldChat({
@@ -127,15 +146,14 @@ export default function WorldChat({
   function exportLog() {
     const w = window.open("", "_blank");
     if (!w) return;
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const esc = escapeHtml;
     const body = messages
       .map((m) => {
         const time = new Date(m.createdAt).toLocaleString("ko-KR");
         if (m.system)
           return `<p class="sys">— ${esc(m.content)} <span class="t">(${time})</span></p>`;
-        const who = `${esc(m.user?.nickname ?? "?")}${m.charName ? ` (${esc(m.charName)})` : ""}`;
-        return `<p><b>${who}</b> <span class="t">${time}</span><br/>${esc(m.content)}</p>`;
+        const who = esc(m.user?.nickname ?? "?");
+        return `<div class="msg">${avatarForLog(m.user)}<div class="msg-body"><p class="name"><b>${who}</b> <span class="t">${time}</span></p><p class="text">${esc(m.content)}</p></div></div>`;
       })
       .join("\n");
     w.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -145,6 +163,13 @@ export default function WorldChat({
   h1{font-size:20px;border-bottom:2px solid #888;padding-bottom:8px}
   .meta{color:#888;font-size:12px;margin-bottom:24px}
   p{margin:10px 0}
+  .msg{display:flex;gap:10px;align-items:flex-start;margin:12px 0;break-inside:avoid}
+  .msg-body{min-width:0;flex:1}
+  .name{margin:0 0 2px}
+  .text{margin:0;white-space:pre-wrap}
+  .av{width:34px;height:34px;border-radius:999px;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;background:#eef1f7;border:1px solid #d9deea;font-weight:700}
+  .emoji{font-size:19px}
+  .fallback{font-size:14px;color:#555}
   .sys{color:#7a7f93;font-size:13px;font-style:italic}
   .t{color:#aaa;font-size:11px;font-weight:normal}
 </style></head><body>
@@ -207,7 +232,6 @@ ${body}
               <div className={`min-w-0 max-w-[75%] ${mine ? "text-right" : ""}`}>
                 <p className="mb-0.5 text-[11px] text-faint">
                   <span className="font-bold text-muted">{m.user!.nickname}</span>
-                  {m.charName && <span className="ml-1">({m.charName})</span>}
                   <span className="ml-1.5">{timeOf(m.createdAt)}</span>
                 </p>
                 <p
