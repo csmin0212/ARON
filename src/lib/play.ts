@@ -30,6 +30,7 @@ import {
   computeMods,
   parseLifeState,
   progressOf,
+  recordCollection,
 } from "./lifeSkillPerks";
 
 export const KIND_EMOJI: Record<string, string> = {
@@ -258,6 +259,7 @@ export async function runActionCommand(
       const effect = lifeSkillItemEffect(item);
       const expGained = Math.max(1, Math.round(item.exp * mods.expMult));
       const leveled = applyExp(life, lifeSkillKind, expGained);
+      const firstCatch = recordCollection(life, lifeSkillKind, item.name);
 
       await ensureLifeSkillItem(item, lifeSkillKind);
       await addItem(userId, item.name, 1);
@@ -274,7 +276,9 @@ export async function runActionCommand(
       void appendSheetItem(sheet.sheetTab, item.name, 1, { effect, weight: item.weight });
       if (nextInv.curWeight != null) void syncSheetWeight(sheet.sheetTab, nextInv.curWeight);
 
-      resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})`;
+      resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})${
+        firstCatch ? " 📖 도감에 새로 등록!" : ""
+      }`;
       for (const lv of leveled) {
         await postSystem(
           locationId,

@@ -12,7 +12,7 @@ import type { FishWater, LifeSkillPoolConfig, LocationLifeConfig } from "./lifeS
 // DB 컬럼은 기존 ap(현재 피로도) / apResetAt(회복 기준 시각)을 그대로 사용한다.
 export const FATIGUE_MAX = 300;
 export const FATIGUE_REGEN_MIN = 6; // 1 회복에 걸리는 분
-export const KEYWORD_SEARCH_COST = 5; // 키워드 탐색 판정 피로도
+export const KEYWORD_SEARCH_COST = 0; // 키워드 탐색은 피로도 무료 (정보 떡밥용)
 
 const REGEN_MS = FATIGUE_REGEN_MIN * 60_000;
 

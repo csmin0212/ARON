@@ -8,6 +8,74 @@ import {
   type LifeState,
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
+import { collectionItems, type LifeSkillKind } from "@/lib/lifeSkillData";
+
+// 등급별 칩 색 (0성~5성)
+const RANK_TONE = [
+  "text-faint",
+  "text-content",
+  "text-emerald-600",
+  "text-sky-600",
+  "text-violet-600",
+  "text-amber-500",
+];
+
+function CollectionBook({ life }: { life: LifeState }) {
+  const all = collectionItems(false); // 바다 어종은 아직 도감에 미포함 (상위 층 해금 예정)
+  return (
+    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+      <h2 className="mb-1 text-lg font-extrabold text-content">📖 도감</h2>
+      <p className="mb-4 text-xs text-faint">한 번이라도 획득하면 등록돼요.</p>
+      <div className="space-y-3">
+        {(["낚시", "채집"] as LifeSkillKind[]).map((kind) => {
+          const items = all
+            .filter((e) => e.kind === kind)
+            .map((e) => e.item)
+            .sort((a, b) => a.rank - b.rank || a.no - b.no);
+          const caught = new Set(life.collection[kind]);
+          const count = items.filter((it) => caught.has(it.name)).length;
+          const pct = items.length > 0 ? Math.round((count / items.length) * 100) : 0;
+          return (
+            <details key={kind} className="group rounded-2xl border border-line bg-subtle/40">
+              <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl px-4 py-3 transition hover:bg-subtle">
+                <span className="text-sm font-extrabold text-content">
+                  {kind === "낚시" ? "🎣" : "🌿"} {kind} 도감
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-brand-600">
+                    {count} / {items.length}
+                  </span>
+                  <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-600">
+                    {pct}%
+                  </span>
+                  <span className="text-faint2 transition group-open:rotate-180">▾</span>
+                </span>
+              </summary>
+              <div className="flex flex-wrap gap-1.5 px-4 pb-4">
+                {items.map((it) => {
+                  const got = caught.has(it.name);
+                  return (
+                    <span
+                      key={`${it.rank}-${it.no}`}
+                      title={got ? `${it.rarity} · ${it.text}` : `${it.rarity} · 미발견`}
+                      className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${
+                        got
+                          ? `border-line bg-surface ${RANK_TONE[it.rank] ?? "text-content"}`
+                          : "border-dashed border-line bg-transparent text-faint2"
+                      }`}
+                    >
+                      {got ? it.name : "???"}
+                    </span>
+                  );
+                })}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const KIND_META: { kind: "낚시" | "채집"; emoji: string; key: "fishing" | "plant" }[] = [
   { kind: "낚시", emoji: "🎣", key: "fishing" },
@@ -111,6 +179,9 @@ export default function LifeSkillPanel({
           )}
         </div>
       )}
+
+      {/* 도감 */}
+      <CollectionBook life={life} />
 
       {/* 보유 특성 */}
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">

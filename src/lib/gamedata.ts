@@ -8,6 +8,7 @@
 
 import { MASTER_SHEET_ID, parseCsv } from "./charsheet";
 import { WORLD_SHEET_ID } from "./world";
+import { lifeSkillKindOf } from "./lifeSkillData";
 
 export const ITEMS_TAB = process.env.ITEMS_TAB_NAME || "아이템";
 export const ACTIONS_TAB = process.env.ACTIONS_TAB_NAME || "행동";
@@ -176,9 +177,12 @@ export function parseActionsGrid(g: string[][], itemIds: Set<string>): ActionRow
       dc = parseInt(cm[2], 10);
     }
 
+    // 낚시·채집은 풀을 맵 탭(채집/낚시 컬럼)이 결정하므로 드랍 칸이 비어도 됨
+    const isLifeSkill = lifeSkillKindOf(kind, at(g, r, h.col.label) || null) != null;
     const dropsSpec = at(g, r, h.col.drops);
-    if (!dropsSpec) throw new Error(`행동(${locationId}/${kind})에 드랍이 비어 있어요.`);
-    const drops = parseDrops(dropsSpec);
+    if (!dropsSpec && !isLifeSkill)
+      throw new Error(`행동(${locationId}/${kind})에 드랍이 비어 있어요.`);
+    const drops = dropsSpec ? parseDrops(dropsSpec) : [];
     for (const d of drops) {
       if (d.item !== "꽝" && d.item !== "골드" && !itemIds.has(d.item))
         throw new Error(

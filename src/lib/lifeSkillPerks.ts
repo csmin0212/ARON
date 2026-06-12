@@ -28,6 +28,8 @@ export type LifeState = {
   plant: SkillProgress;
   perks: OwnedPerk[];
   pending: PendingChoice[];
+  // 도감 — 한 번이라도 획득한 아이템 이름
+  collection: { 채집: string[]; 낚시: string[] };
 };
 
 export const RARITY_COLORS: Record<PerkRarity, string> = {
@@ -153,6 +155,7 @@ const EMPTY: LifeState = {
   plant: { exp: 0, level: 1 },
   perks: [],
   pending: [],
+  collection: { 채집: [], 낚시: [] },
 };
 
 export function parseLifeState(json: string | null | undefined): LifeState {
@@ -164,10 +167,26 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       plant: v.plant ?? { exp: 0, level: 1 },
       perks: v.perks ?? [],
       pending: v.pending ?? [],
+      collection: {
+        채집: v.collection?.채집 ?? [],
+        낚시: v.collection?.낚시 ?? [],
+      },
     };
   } catch {
     return structuredClone(EMPTY);
   }
+}
+
+// 도감 기록 — 처음 잡은 아이템이면 true 반환
+export function recordCollection(
+  state: LifeState,
+  kind: LifeSkillKind,
+  itemName: string,
+): boolean {
+  const list = state.collection[kind];
+  if (list.includes(itemName)) return false;
+  list.push(itemName);
+  return true;
 }
 
 export function progressOf(state: LifeState, kind: LifeSkillKind): SkillProgress {
