@@ -91,6 +91,15 @@ function parseRank(v: string): string | null {
   return m ? m[1] : null;
 }
 
+function rankFromFame(fame: number | null): string | null {
+  if (fame == null) return null;
+  if (fame >= 100) return "S";
+  if (fame >= 60) return "A";
+  if (fame >= 25) return "B";
+  if (fame >= 10) return "C";
+  return "D";
+}
+
 function below(g: string[][], label: string, dr = 1, dc = 0): string | null {
   const p = find(g, label);
   if (!p) return null;
@@ -129,7 +138,8 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
   const hp = find(g, "HP");
   const fameCells = [at(g, 8, 14), at(g, 9, 14)]; // O9:O10
   const fame = fameCells.map(toNum).find((value) => value != null) ?? null;
-  const adventurerRank = fameCells.map(parseRank).find((value) => value != null) ?? null;
+  const adventurerRank =
+    fameCells.map(parseRank).find((value) => value != null) ?? rankFromFame(fame);
   return {
     charName: tabName,
     charClass: below(g, "메인 클래스", 1, 0),
