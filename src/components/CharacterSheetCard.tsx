@@ -41,6 +41,11 @@ function Vital({ label, value, color }: { label: string; value: string | number 
   );
 }
 
+function currentMaxValue(current: number | null | undefined, max: number | null): string | number | null {
+  if (current == null || max == null) return max;
+  return current === max ? max : `${current}/${max}`;
+}
+
 const RANK_GOALS: Record<string, number> = {
   D: 10,
   C: 25,
@@ -123,12 +128,12 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
       <div className="flex gap-2">
         <Vital
           label="HP"
-          value={sheet.curHp != null && sheet.hp != null ? `${sheet.curHp}/${sheet.hp}` : sheet.hp}
+          value={currentMaxValue(sheet.curHp, sheet.hp)}
           color="text-rose-500"
         />
         <Vital
           label="MP"
-          value={sheet.curMp != null && sheet.mp != null ? `${sheet.curMp}/${sheet.mp}` : sheet.mp}
+          value={currentMaxValue(sheet.curMp, sheet.mp)}
           color="text-sky-500"
         />
         <Vital label="페이트" value={sheet.fate} color="text-amber-500" />

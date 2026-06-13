@@ -75,6 +75,16 @@ function find(g: string[][], text: string): [number, number] | null {
   return null;
 }
 
+function findIncludes(g: string[][], text: string): [number, number] | null {
+  for (let r = 0; r < g.length; r++) {
+    const row = g[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if ((row[c] ?? "").trim().includes(text)) return [r, c];
+    }
+  }
+  return null;
+}
+
 function clean(v: string): string | null {
   const t = v.trim();
   if (!t || t === "-" || t === "#N/A") return null;
@@ -83,6 +93,13 @@ function clean(v: string): string | null {
 
 function toNum(v: string): number | null {
   const n = parseInt(v.replace(/[^\d-]/g, ""), 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+function toFirstNum(v: string): number | null {
+  const m = v.match(/-?\d+/);
+  if (!m) return null;
+  const n = parseInt(m[0], 10);
   return Number.isNaN(n) ? null : n;
 }
 
@@ -98,6 +115,32 @@ function rankFromFame(fame: number | null): string | null {
   if (fame >= 25) return "B";
   if (fame >= 10) return "C";
   return "D";
+}
+
+function fameCellsAround(g: string[][]): string[] {
+  const cells = [
+    at(g, 9, 14), // O10
+    at(g, 8, 14), // O9
+  ];
+  const label = findIncludes(g, "명성");
+  if (label) {
+    const [lr, lc] = label;
+    cells.push(
+      at(g, lr, lc),
+      at(g, lr, lc + 1),
+      at(g, lr, lc + 2),
+      at(g, lr + 1, lc),
+      at(g, lr + 1, lc + 1),
+      at(g, lr + 2, lc),
+    );
+  }
+  cells.push(
+    at(g, 8, 13), // N9
+    at(g, 8, 15), // P9
+    at(g, 9, 13), // N10
+    at(g, 9, 15), // P10
+  );
+  return cells.filter(Boolean);
 }
 
 function below(g: string[][], label: string, dr = 1, dc = 0): string | null {
@@ -136,8 +179,8 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
   }
 
   const hp = find(g, "HP");
-  const fameCells = [at(g, 8, 14), at(g, 9, 14)]; // O9:O10
-  const fame = fameCells.map(toNum).find((value) => value != null) ?? null;
+  const fameCells = fameCellsAround(g); // O9:O10 plus nearby "명성" label cells
+  const fame = fameCells.map(toFirstNum).find((value) => value != null) ?? null;
   const adventurerRank =
     fameCells.map(parseRank).find((value) => value != null) ?? rankFromFame(fame);
   return {

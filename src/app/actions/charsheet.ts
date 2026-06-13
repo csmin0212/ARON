@@ -70,22 +70,6 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
   }
 
   const inventory = await readSheetInventory(tab);
-  const existing = await prisma.characterSheet.findUnique({
-    where: { userId: user.id },
-    select: { curHp: true },
-  });
-
-  const live =
-    existing && existing.curHp != null
-      ? inventory?.gold
-        ? { curGold: parseGoldToInt(inventory.gold) }
-        : {}
-      : {
-          curHp: parsed.hp,
-          curMp: parsed.mp,
-          curGold: parseGoldToInt(inventory?.gold ?? parsed.gold),
-        };
-
   const data = {
     sheetTab: tab,
     charClass: parsed.charClass,
@@ -98,10 +82,12 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     gold: inventory?.gold ?? parsed.gold,
     adventurerRank: parsed.adventurerRank ?? undefined,
     fame: parsed.fame ?? undefined,
+    curHp: parsed.hp,
+    curMp: parsed.mp,
+    curGold: parseGoldToInt(inventory?.gold ?? parsed.gold),
     statsJson: JSON.stringify(parsed.stats),
     invJson: inventory ? JSON.stringify(inventory) : undefined,
     syncedAt: new Date(),
-    ...live,
   };
 
   await prisma.characterSheet.upsert({
