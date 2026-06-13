@@ -34,6 +34,7 @@ function pct(found: number, total: number): number {
 }
 
 export default function CollectionRankBook({ entries }: { entries: CollectionBookEntry[] }) {
+  const [activeKind, setActiveKind] = useState<LifeSkillKind>("낚시");
   const [activeRanks, setActiveRanks] = useState<Record<LifeSkillKind, number>>({
     낚시: 1,
     채집: 1,
@@ -49,7 +50,35 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
 
   return (
     <div className="space-y-4">
-      {(["낚시", "채집"] as LifeSkillKind[]).map((kind) => {
+      {/* 낚시 / 채집 토글 */}
+      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-subtle p-1.5">
+        {(["낚시", "채집"] as LifeSkillKind[]).map((kind) => {
+          const group = byKind[kind];
+          const found = group.filter((e) => e.discovered).length;
+          const active = activeKind === kind;
+          return (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setActiveKind(kind)}
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-extrabold transition ${
+                active
+                  ? "bg-surface text-brand-600 shadow-sm"
+                  : "text-muted hover:bg-surface/70 hover:text-content"
+              }`}
+            >
+              <span>
+                {KIND_META[kind].emoji} {kind}
+              </span>
+              <span className="rounded-full bg-brand-50 px-1.5 text-[11px] font-black text-brand-600">
+                {found}/{group.length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {([activeKind] as LifeSkillKind[]).map((kind) => {
         const group = byKind[kind].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
         const found = group.filter((entry) => entry.discovered).length;
         const activeRank = activeRanks[kind];
