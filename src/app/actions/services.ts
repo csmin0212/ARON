@@ -533,7 +533,8 @@ export async function buyFood(_prev: MarketState, formData: FormData): Promise<M
   const product = foodProduct(String(formData.get("productId") ?? ""));
   if (!product) return { error: "판매 목록에 없는 식료품입니다." };
   const qty = formQty(formData);
-  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const totalPrice = product.buyPrice * qty;
   if (currentGold < totalPrice) {
     return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${totalPrice.toLocaleString()}G)` };
@@ -593,7 +594,8 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
   const consumeOk = await consumeSheetItem(ctx.tab, product.name, qty);
   if (!consumeOk.ok) return { error: consumeOk.error };
 
-  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const nextGold = currentGold + product.sellPrice * qty;
   const inv = consumeInvItem(ctx.inv, product.name, qty);
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
@@ -638,7 +640,8 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
   if (!removed) return { error: `${itemName} 수량이 부족합니다.` };
 
   const gain = lifeSkillSellPrice(kind, itemName) * qty;
-  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const nextGold = currentGold + gain;
   // 표시 골드는 invJson 캐시에서 읽으므로, 여기도 함께 갱신해야 화면에 즉시 반영됨.
   const inv = ctx.inv;
@@ -688,7 +691,8 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
   if (!consumeOk.ok) return { error: consumeOk.error };
 
   const gain = item.sellPrice * qty;
-  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const nextGold = currentGold + gain;
   const inv = consumeInvItem(ctx.inv, itemName, qty);
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
@@ -723,7 +727,8 @@ export async function buyLifeGear(
   const product = lifeShopProduct(String(formData.get("productId") ?? ""));
   if (!product) return { error: "판매 목록에 없는 물품입니다." };
 
-  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   if (currentGold < product.price) {
     return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${product.price.toLocaleString()}G)` };
   }

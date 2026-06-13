@@ -226,7 +226,10 @@ export default async function WorldPage() {
           qty: e.qty,
         }));
   const bagItems = rawBagItems.filter((item) => !lifeSkillItemKind(item.name));
-  const bagGold = sheetInventory?.gold ?? `${(sheet.curGold ?? 0).toLocaleString()}G`;
+  const bagGold =
+    sheet.curGold != null
+      ? `${sheet.curGold.toLocaleString()}G`
+      : (sheetInventory?.gold ?? "0G");
   const computedBagWeight = inventoryWeightTotal(bagItems);
   const bagWeight =
     (computedBagWeight ?? sheetInventory?.curWeight) != null && sheetInventory?.maxWeight != null
@@ -252,7 +255,7 @@ export default async function WorldPage() {
   };
   const life = parseLifeState(sheet.lifeJson);
   const lifeShop: LifeShopView = {
-    gold: parseGoldToInt(sheetInventory?.gold) || sheet.curGold || 0,
+    gold: sheet.curGold ?? (parseGoldToInt(sheetInventory?.gold) || 0),
     bags: {
       낚시: { name: life.bags.낚시.name, maxWeight: life.bags.낚시.maxWeight },
       채집: { name: life.bags.채집.name, maxWeight: life.bags.채집.maxWeight },
