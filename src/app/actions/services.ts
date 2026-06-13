@@ -22,7 +22,8 @@ import {
   lifeBagWeight,
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
-import type { LifeSkillKind } from "@/lib/lifeSkillData";
+import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { postSystem } from "@/lib/play";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
@@ -615,6 +616,97 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `${product.name} x${qty} 판매 완료. +${(product.sellPrice * qty).toLocaleString()}G` };
+}
+
+export async function sellLifeCatch(_prev: MarketState, formData: FormData): Promise<MarketState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const kindRaw = String(formData.get("kind") ?? "");
+  const kind: LifeSkillKind | null =
+    kindRaw === "낚시" || kindRaw === "채집" ? kindRaw : null;
+  if (!kind) return { error: "판매할 부산물 종류가 올바르지 않습니다." };
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  const qty = formQty(formData);
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { lifeJson: true },
+  });
+  const life = parseLifeState(sheet?.lifeJson);
+  const removed = removeLifeBagItem(life, kind, itemName, qty);
+  if (!removed) return { error: `${itemName} 수량이 부족합니다.` };
+
+  const gain = lifeSkillSellPrice(kind, itemName) * qty;
+  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  const nextGold = currentGold + gain;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        lifeJson: JSON.stringify(life),
+      },
+    }),
+    syncSheetGold(ctx.tab, nextGold),
+  ]);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
+}
+
+export async function sellMaterial(_prev: MarketState, formData: FormData): Promise<MarketState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  const qty = formQty(formData);
+  if (!itemName) return { error: "판매할 재료가 올바르지 않습니다." };
+  if (isNonSellable(itemName)) return { error: "이 물건은 매입하지 않아요." };
+
+  const item = await prisma.item.findFirst({
+    where: {
+      name: itemName,
+      sellPrice: { gt: 0 },
+      category: { in: SELLABLE_MATERIAL_CATEGORIES },
+    },
+    select: { sellPrice: true },
+  });
+  if (!item?.sellPrice) return { error: "이곳에서 매입하지 않는 물건입니다." };
+
+  if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
+
+  const consumeOk = await consumeSheetItem(ctx.tab, itemName, qty);
+  if (!consumeOk.ok) return { error: consumeOk.error };
+
+  const gain = item.sellPrice * qty;
+  const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
+  const nextGold = currentGold + gain;
+  const inv = consumeInvItem(ctx.inv, itemName, qty);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  inv.gold = `${nextGold}G`;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        invJson: JSON.stringify(inv),
+      },
+    }),
+    syncSheetGold(ctx.tab, nextGold),
+    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
+    decrementDbInventory(ctx.userId, itemName, qty),
+  ]);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
 }
 
 export async function buyLifeGear(

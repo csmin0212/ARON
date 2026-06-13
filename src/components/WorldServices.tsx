@@ -7,6 +7,8 @@ import {
   depositToStorage,
   enchantWeapon,
   sellFood,
+  sellLifeCatch,
+  sellMaterial,
   upgradeWeapon,
   withdrawFromStorage,
   type LifeShopState,
@@ -24,7 +26,23 @@ type Props = {
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
+  byproducts: ByproductView[];
+  materials: MaterialView[];
   storage: StorageView;
+};
+
+export type ByproductView = {
+  kind: "낚시" | "채집";
+  name: string;
+  rank: number;
+  unitPrice: number;
+  qty: number;
+};
+
+export type MaterialView = {
+  name: string;
+  unitPrice: number;
+  qty: number;
 };
 
 export type StorageView = {
@@ -457,7 +475,7 @@ function LifeGearShop({
       >
         <div className="border-b border-line bg-subtle px-5 py-4">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
-            Guild Supply
+            Market Supply
           </p>
           <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
             <span>🎒 생활 장비 구매</span>
@@ -694,6 +712,149 @@ function FoodMarket({ onClose }: { onClose: () => void }) {
   );
 }
 
+function ByproductMarket({
+  byproducts,
+  materials,
+  onClose,
+}: {
+  byproducts: ByproductView[];
+  materials: MaterialView[];
+  onClose: () => void;
+}) {
+  const [lifeState, lifeAction, lifePending] = useActionState<MarketState, FormData>(
+    sellLifeCatch,
+    undefined,
+  );
+  const [matState, matAction, matPending] = useActionState<MarketState, FormData>(
+    sellMaterial,
+    undefined,
+  );
+  const sellable = byproducts.filter((item) => item.qty > 0);
+  const sellableMaterials = materials.filter((item) => item.qty > 0);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="부산물 매입"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Byproduct Trader
+          </p>
+          <h3 className="mt-1 text-2xl font-extrabold text-content">🐟 부산물 매입</h3>
+          <p className="mt-1 text-[11px] text-faint">
+            잡은 물고기·약초와 채집한 재료를 골드로 바꿔요.
+          </p>
+        </div>
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          {sellable.length === 0 && sellableMaterials.length === 0 && (
+            <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+              팔 수 있는 물건이 없어요.
+            </p>
+          )}
+
+          {sellable.length > 0 && (
+            <section className="space-y-2">
+              <h4 className="text-sm font-extrabold text-content">어획물 · 채집품</h4>
+              <MarketStateLine state={lifeState} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                {sellable.map((item) => (
+                  <div
+                    key={`${item.kind}-${item.name}`}
+                    className="rounded-2xl border border-line bg-subtle p-3"
+                  >
+                    <div className="mb-2 min-w-0">
+                      <p className="truncate text-sm font-extrabold text-content">
+                        {item.kind === "낚시" ? "🎣" : "🌿"} {item.name}
+                      </p>
+                      <p className="text-[11px] text-faint">
+                        R{item.rank} · 개당 {item.unitPrice.toLocaleString()}G · {item.qty}개 보유
+                      </p>
+                    </div>
+                    <form action={lifeAction} className="grid grid-cols-[1fr_3.5rem] gap-1.5">
+                      <input type="hidden" name="kind" value={item.kind} />
+                      <input type="hidden" name="itemName" value={item.name} />
+                      <button
+                        type="submit"
+                        disabled={lifePending || item.unitPrice <= 0}
+                        className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                      >
+                        판매
+                      </button>
+                      <input
+                        name="qty"
+                        type="number"
+                        min="1"
+                        max={item.qty}
+                        defaultValue="1"
+                        className="rounded-xl border border-line bg-surface px-2 py-2 text-xs font-bold text-content outline-none focus:border-brand-300"
+                      />
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {sellableMaterials.length > 0 && (
+            <section className="space-y-2">
+              <h4 className="text-sm font-extrabold text-content">재료 · 보석</h4>
+              <MarketStateLine state={matState} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                {sellableMaterials.map((item) => (
+                  <div key={item.name} className="rounded-2xl border border-line bg-subtle p-3">
+                    <div className="mb-2 min-w-0">
+                      <p className="truncate text-sm font-extrabold text-content">⛏️ {item.name}</p>
+                      <p className="text-[11px] text-faint">
+                        개당 {item.unitPrice.toLocaleString()}G · {item.qty}개 보유
+                      </p>
+                    </div>
+                    <form action={matAction} className="grid grid-cols-[1fr_3.5rem] gap-1.5">
+                      <input type="hidden" name="itemName" value={item.name} />
+                      <button
+                        type="submit"
+                        disabled={matPending || item.unitPrice <= 0}
+                        className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                      >
+                        판매
+                      </button>
+                      <input
+                        name="qty"
+                        type="number"
+                        min="1"
+                        max={item.qty}
+                        defaultValue="1"
+                        className="rounded-xl border border-line bg-surface px-2 py-2 text-xs font-bold text-content outline-none focus:border-brand-300"
+                      />
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WorldServices({
   canForge,
   canGuild,
@@ -702,6 +863,8 @@ export default function WorldServices({
   inventoryItems,
   lifeStorageItems,
   lifeShop,
+  byproducts,
+  materials,
   storage,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -709,6 +872,7 @@ export default function WorldServices({
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
+  const [byproductOpen, setByproductOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -751,17 +915,41 @@ export default function WorldServices({
             </button>
           )}
           {canMarket && (
-            <button
-              type="button"
-              onClick={() => setFoodMarketOpen(true)}
-              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
-            >
-              <span className="text-xl">🥚</span>
-              <span className="min-w-0">
-                <span className="block text-sm font-extrabold text-content">식료품 상점</span>
-                <span className="text-[11px] text-faint">요리 재료 구매 · 판매</span>
-              </span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setFoodMarketOpen(true)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+              >
+                <span className="text-xl">🥚</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold text-content">식료품 상점</span>
+                  <span className="text-[11px] text-faint">요리 재료 구매 · 판매</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setByproductOpen(true)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+              >
+                <span className="text-xl">🐟</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold text-content">부산물 매입</span>
+                  <span className="text-[11px] text-faint">어획물 · 채집품 · 재료 판매</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLifeShopOpen(true)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+              >
+                <span className="text-xl">🎒</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold text-content">생활 장비 구매</span>
+                  <span className="text-[11px] text-faint">가방 확장 · 낚싯대 · 채집 도구</span>
+                </span>
+              </button>
+            </>
           )}
           {canStorage && (
             <button
@@ -779,30 +967,17 @@ export default function WorldServices({
             </button>
           )}
           {canGuild && (
-            <>
-              <button
-                type="button"
-                onClick={() => setLifeShopOpen(true)}
-                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
-              >
-                <span className="text-xl">🎒</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-extrabold text-content">생활 장비 구매</span>
-                  <span className="text-[11px] text-faint">가방 확장 · 낚싯대 · 채집 도구</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuestOpen(true)}
-                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
-              >
-                <span className="text-xl">📜</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-extrabold text-content">의뢰 게시판</span>
-                  <span className="text-[11px] text-faint">토벌 의뢰 확인</span>
-                </span>
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => setQuestOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">📜</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">의뢰 게시판</span>
+                <span className="text-[11px] text-faint">토벌 의뢰 확인</span>
+              </span>
+            </button>
           )}
         </div>
       </div>
@@ -823,6 +998,14 @@ export default function WorldServices({
       {questOpen && <QuestBoard onClose={() => setQuestOpen(false)} />}
 
       {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
+
+      {byproductOpen && (
+        <ByproductMarket
+          byproducts={byproducts}
+          materials={materials}
+          onClose={() => setByproductOpen(false)}
+        />
+      )}
 
       {open && (
         <div

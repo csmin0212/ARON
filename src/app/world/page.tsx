@@ -9,13 +9,16 @@ import BagInventory from "@/components/BagInventory";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
+  type ByproductView,
   type LifeShopView,
   type LifeStorageItemView,
+  type MaterialView,
   type StorageView,
 } from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
-import { lifeSkillItemKind, type LocationLifeConfig } from "@/lib/lifeSkillData";
+import { lifeSkillItemKind, lifeSkillSellPrice, type LocationLifeConfig } from "@/lib/lifeSkillData";
+import { isNonSellable } from "@/lib/shop";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { parseGoldToInt } from "@/lib/dice";
 
@@ -265,6 +268,34 @@ export default async function WorldPage() {
       qty: item.qty,
     })),
   );
+  const byproducts: ByproductView[] = (["낚시", "채집"] as const).flatMap((kind) =>
+    life.bags[kind].items
+      .filter((item) => item.qty > 0)
+      .map((item) => ({
+        kind,
+        name: item.name,
+        rank: item.rank,
+        unitPrice: lifeSkillSellPrice(kind, item.name),
+        qty: item.qty,
+      })),
+  );
+  // 기본 가방의 재료·보석 — 아이템 탭에서 동기화된 DB 판매가로 매입.
+  const materialPriceRows = await prisma.item.findMany({
+    where: { sellPrice: { gt: 0 }, category: { in: ["재료", "보석"] } },
+    select: { name: true, sellPrice: true },
+  });
+  const materialPrice = new Map(
+    materialPriceRows.map((row) => [row.name.trim(), row.sellPrice ?? 0]),
+  );
+  const materialQty = new Map<string, number>();
+  for (const item of bagItems) {
+    const key = item.name.trim();
+    if (!materialPrice.has(key) || isNonSellable(key)) continue;
+    materialQty.set(key, (materialQty.get(key) ?? 0) + item.qty);
+  }
+  const materials: MaterialView[] = [...materialQty.entries()]
+    .filter(([, qty]) => qty > 0)
+    .map(([name, qty]) => ({ name, unitPrice: materialPrice.get(name) ?? 0, qty }));
   const lifeBags = ([
     { kind: "낚시" as const, emoji: "🎣" },
     { kind: "채집" as const, emoji: "🌿" },
@@ -293,7 +324,8 @@ export default async function WorldPage() {
     "store",
     "market",
   ]);
-  const canForge = canMarket || hasServiceKeyword(here, locActions, [
+  // 대장간은 시장과 분리 — '대장간' 장소(또는 강화/제련 행동)에서만 노출.
+  const canForge = hasServiceKeyword(here, locActions, [
     "대장간",
     "강화",
     "제련",
@@ -301,6 +333,8 @@ export default async function WorldPage() {
     "smith",
     "blacksmith",
   ]);
+  // 암시장(뒷골목)은 추후 프리미엄 매입처로 확장 여지를 둔 자리.
+  // const canBlackMarket = hasServiceKeyword(here, locActions, ["암시장", "뒷골목"]);
   const canStorage =
     canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
 
@@ -405,6 +439,8 @@ export default async function WorldPage() {
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}
+            byproducts={byproducts}
+            materials={materials}
             storage={storage}
           />
 

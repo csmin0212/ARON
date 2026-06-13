@@ -224,6 +224,17 @@ export function lifeSkillItemKind(name: string): LifeSkillKind | null {
   return null;
 }
 
+export function findLifeSkillItem(kind: LifeSkillKind, name: string): LifeSkillItem | null {
+  const target = name.trim();
+  return poolFor(kind).find((item) => item.name === target) ?? null;
+}
+
+// 부산물(어획물·채집품) 이름으로 매입가(개당)를 계산. 목록에 없으면 0.
+export function lifeSkillSellPrice(kind: LifeSkillKind, name: string): number {
+  const item = findLifeSkillItem(kind, name);
+  return item ? lifeSkillMarketPrice(kind, item) : 0;
+}
+
 function clampPrice(value: number, min: number, max: number): number {
   if (value <= 0) return min;
   return Math.max(min, Math.min(max, value));
