@@ -6,6 +6,7 @@ import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
+import SheetSync from "@/components/SheetSync";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
@@ -448,6 +449,8 @@ export default async function WorldPage() {
           />
 
           <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} lifeBags={lifeBags} />
+
+          <SheetSync />
 
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">

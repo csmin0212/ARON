@@ -4,12 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  appendSheetItem,
-  consumeSheetItem,
   inventoryWeightTotal,
-  syncSheetGold,
-  syncSheetWeight,
-  updateSheetItemDetails,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
@@ -379,8 +374,6 @@ export async function depositToStorage(
   }
 
   if (!sourceKind) {
-    const consumeOk = await consumeSheetItem(ctx.tab, item.name, qty);
-    if (!consumeOk.ok) return { error: consumeOk.error };
     inv = consumeInvItem(ctx.inv, item.name, qty);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   }
@@ -419,9 +412,6 @@ export async function depositToStorage(
       where: { userId: ctx.userId },
       data: sourceKind ? { lifeJson: nextLifeJson } : { invJson: JSON.stringify(inv) },
     }),
-    !sourceKind && inv?.curWeight != null
-      ? syncSheetWeight(ctx.tab, inv.curWeight)
-      : Promise.resolve(false),
     sourceKind ? Promise.resolve() : decrementDbInventory(ctx.userId, item.name, qty),
   ]);
 
@@ -492,12 +482,6 @@ export async function withdrawFromStorage(
     return { error: `가방 중량이 부족합니다. (${curWeight + movingWeight}/${ctx.inv.maxWeight})` };
   }
 
-  const appendOk = await appendSheetItem(ctx.tab, entry.name, qty, {
-    effect: entry.effect,
-    weight: entry.weight,
-  });
-  if (!appendOk) return { error: "시트 휴대품에 아이템을 넣지 못했습니다." };
-
   const inv = addInvItem(
     ctx.inv,
     { name: entry.name, effect: entry.effect, weight: entry.weight },
@@ -516,7 +500,6 @@ export async function withdrawFromStorage(
       where: { userId: ctx.userId },
       data: { invJson: JSON.stringify(inv) },
     }),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     incrementDbInventory(ctx.userId, entry.name, qty),
   ]);
 
@@ -545,12 +528,6 @@ export async function buyFood(_prev: MarketState, formData: FormData): Promise<M
     return { error: `가방 중량이 부족합니다. (${curWeight + movingWeight}/${ctx.inv.maxWeight})` };
   }
 
-  const appendOk = await appendSheetItem(ctx.tab, product.name, qty, {
-    effect: product.desc,
-    weight: product.weight,
-  });
-  if (!appendOk) return { error: "시트 휴대품에 식료품을 넣지 못했습니다." };
-
   const inv = addInvItem(ctx.inv, {
     name: product.name,
     effect: product.desc,
@@ -568,8 +545,6 @@ export async function buyFood(_prev: MarketState, formData: FormData): Promise<M
         invJson: JSON.stringify(inv),
       },
     }),
-    syncSheetGold(ctx.tab, currentGold - totalPrice),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     incrementDbInventory(ctx.userId, product.name, qty),
   ]);
 
@@ -590,9 +565,6 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
     return { error: `${product.name} 수량이 부족합니다.` };
   }
 
-  const consumeOk = await consumeSheetItem(ctx.tab, product.name, qty);
-  if (!consumeOk.ok) return { error: consumeOk.error };
-
   // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const nextGold = currentGold + product.sellPrice * qty;
@@ -609,8 +581,6 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
         invJson: JSON.stringify(inv),
       },
     }),
-    syncSheetGold(ctx.tab, nextGold),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     decrementDbInventory(ctx.userId, product.name, qty),
   ]);
 
@@ -646,18 +616,15 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
   const inv = ctx.inv;
   inv.gold = `${nextGold}G`;
 
-  await Promise.all([
-    prisma.characterSheet.update({
-      where: { userId: ctx.userId },
-      data: {
-        curGold: nextGold,
-        gold: `${nextGold}G`,
-        lifeJson: JSON.stringify(life),
-        invJson: JSON.stringify(inv),
-      },
-    }),
-    syncSheetGold(ctx.tab, nextGold),
-  ]);
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      lifeJson: JSON.stringify(life),
+      invJson: JSON.stringify(inv),
+    },
+  });
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -686,9 +653,6 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
 
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
 
-  const consumeOk = await consumeSheetItem(ctx.tab, itemName, qty);
-  if (!consumeOk.ok) return { error: consumeOk.error };
-
   const gain = item.sellPrice * qty;
   // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
@@ -706,8 +670,6 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
         invJson: JSON.stringify(inv),
       },
     }),
-    syncSheetGold(ctx.tab, nextGold),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     decrementDbInventory(ctx.userId, itemName, qty),
   ]);
 
@@ -757,18 +719,15 @@ export async function buyLifeGear(
   // 표시 골드는 invJson 캐시에서 읽으므로, 여기도 함께 갱신해야 화면에 즉시 반영됨.
   const inv = ctx.inv;
   inv.gold = `${nextGold}G`;
-  await Promise.all([
-    prisma.characterSheet.update({
-      where: { userId: ctx.userId },
-      data: {
-        curGold: nextGold,
-        gold: `${nextGold}G`,
-        lifeJson: JSON.stringify(life),
-        invJson: JSON.stringify(inv),
-      },
-    }),
-    syncSheetGold(ctx.tab, nextGold),
-  ]);
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      lifeJson: JSON.stringify(life),
+      invJson: JSON.stringify(inv),
+    },
+  });
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -803,15 +762,6 @@ export async function upgradeWeapon(
   );
   const nextName = setEnhancementTag(weapon.name, nextEnhancement);
 
-  const consumeOk = await consumeSheetItem(ctx.tab, materialName, weaponLevel);
-  if (!consumeOk.ok) return { error: consumeOk.error };
-  const updateOk = await updateSheetItemDetails(ctx.tab, weapon.name, {
-    name: nextName,
-    effect: nextEffect,
-    weight: nextWeight,
-  });
-  if (!updateOk.ok) return { error: updateOk.error };
-
   let inv = consumeInvItem(ctx.inv, materialName, weaponLevel);
   inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect, weight: nextWeight });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
@@ -820,7 +770,6 @@ export async function upgradeWeapon(
       where: { userId: ctx.userId },
       data: { invJson: JSON.stringify(inv) },
     }),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     decrementDbInventory(ctx.userId, materialName, weaponLevel),
   ]);
 
@@ -854,16 +803,6 @@ export async function enchantWeapon(
 
   const nextEffect = appendEffect(weapon.effect, gemEffect(gemName));
   const nextName = addItemTag(weapon.name, nextGemTag);
-  const steelOk = await consumeSheetItem(ctx.tab, STEEL_FRAGMENT, 2);
-  if (!steelOk.ok) return { error: steelOk.error };
-  const gemOk = await consumeSheetItem(ctx.tab, gemName, 1);
-  if (!gemOk.ok) return { error: gemOk.error };
-  const updateOk = await updateSheetItemDetails(ctx.tab, weapon.name, {
-    name: nextName,
-    effect: nextEffect,
-  });
-  if (!updateOk.ok) return { error: updateOk.error };
-
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 2);
   inv = consumeInvItem(inv, gemName, 1);
   inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect });
@@ -873,7 +812,6 @@ export async function enchantWeapon(
       where: { userId: ctx.userId },
       data: { invJson: JSON.stringify(inv) },
     }),
-    inv.curWeight == null ? Promise.resolve(false) : syncSheetWeight(ctx.tab, inv.curWeight),
     decrementDbInventory(ctx.userId, STEEL_FRAGMENT, 2),
     decrementDbInventory(ctx.userId, gemName, 1),
   ]);

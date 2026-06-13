@@ -416,3 +416,54 @@ export async function updateSheetItemDetails(
 
   return { ok: false, error: `${itemName}을 찾지 못했습니다.` };
 }
+
+// DB(invJson) 기준으로 시트 휴대품·골드·무게를 통째로 다시 씀 (주기적 푸셔용).
+// 두 블록(Z33:AE58 26행 + AF32:AK58 27행)을 빈 행까지 포함해 전부 덮어써 옛 항목을 지움.
+const PUSH_BLOCK1_ROWS = 26; // Z33:AE58
+const PUSH_BLOCK2_ROWS = 27; // AF32:AK58
+
+function inventoryRow(item?: SheetInventoryItem): string[] {
+  if (!item || item.qty <= 0) return ["", "", "", "", "", ""];
+  return [
+    item.name,
+    item.effect ?? "",
+    "",
+    "",
+    item.weight != null ? String(item.weight) : "",
+    String(item.qty),
+  ];
+}
+
+export async function pushInventoryToSheet(
+  tab: string | null,
+  inv: SheetInventory,
+): Promise<boolean> {
+  if (!tab) return false;
+  try {
+    const items = inv.items.filter((item) => item.qty > 0);
+    const block1: string[][] = [];
+    for (let i = 0; i < PUSH_BLOCK1_ROWS; i++) block1.push(inventoryRow(items[i]));
+    const block2: string[][] = [];
+    for (let i = 0; i < PUSH_BLOCK2_ROWS; i++) {
+      block2.push(inventoryRow(items[PUSH_BLOCK1_ROWS + i]));
+    }
+
+    const writes: Promise<boolean>[] = [
+      updateValues(`${quoteSheet(tab)}!Z33:AE58`, block1),
+      updateValues(`${quoteSheet(tab)}!AF32:AK58`, block2),
+    ];
+    if (inv.gold != null) {
+      const goldText = /G\s*$/i.test(inv.gold) ? inv.gold : `${inv.gold}G`;
+      writes.push(updateValues(`${quoteSheet(tab)}!AB31`, [[goldText]]));
+    }
+    if (inv.curWeight != null) {
+      writes.push(updateValues(`${quoteSheet(tab)}!AD31`, [[String(inv.curWeight)]]));
+    }
+
+    const results = await Promise.all(writes);
+    return results.every(Boolean);
+  } catch (error) {
+    console.warn("Failed to push inventory to sheet", error);
+    return false;
+  }
+}
