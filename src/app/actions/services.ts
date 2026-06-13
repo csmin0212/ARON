@@ -640,6 +640,9 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
   const gain = lifeSkillSellPrice(kind, itemName) * qty;
   const currentGold = parseGoldToInt(ctx.inv.gold) || ctx.curGold || 0;
   const nextGold = currentGold + gain;
+  // 표시 골드는 invJson 캐시에서 읽으므로, 여기도 함께 갱신해야 화면에 즉시 반영됨.
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
 
   await Promise.all([
     prisma.characterSheet.update({
@@ -648,6 +651,7 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
         curGold: nextGold,
         gold: `${nextGold}G`,
         lifeJson: JSON.stringify(life),
+        invJson: JSON.stringify(inv),
       },
     }),
     syncSheetGold(ctx.tab, nextGold),
@@ -746,6 +750,9 @@ export async function buyLifeGear(
   }
 
   const nextGold = currentGold - product.price;
+  // 표시 골드는 invJson 캐시에서 읽으므로, 여기도 함께 갱신해야 화면에 즉시 반영됨.
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
   await Promise.all([
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
@@ -753,6 +760,7 @@ export async function buyLifeGear(
         curGold: nextGold,
         gold: `${nextGold}G`,
         lifeJson: JSON.stringify(life),
+        invJson: JSON.stringify(inv),
       },
     }),
     syncSheetGold(ctx.tab, nextGold),
