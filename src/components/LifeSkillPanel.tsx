@@ -214,45 +214,46 @@ export default function LifeSkillPanel({
   );
 
   const choice = life.pending[0];
+  const [view, setView] = useState<"profile" | "book" | "skill">("profile");
 
-  return (
-    <div className="space-y-5">
-      {/* 레벨/경험치 */}
-      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-extrabold text-content">생활 스킬</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {KIND_META.map(({ kind, emoji, key }) => {
-            const prog = life[key];
-            const need = expForNext(prog.level);
-            const pct = Math.min(100, Math.round((prog.exp / need) * 100));
-            return (
-              <div key={kind} className="rounded-2xl border border-line bg-subtle/50 p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-extrabold text-content">
-                    {emoji} {kind}
-                  </span>
-                  <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-sm font-extrabold text-brand-600">
-                    Lv.{prog.level}
-                  </span>
-                </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-subtle-hover">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <p className="mt-1.5 text-right text-[11px] font-semibold text-faint">
-                  숙련도 {prog.exp} / {need}
-                </p>
+  // 레벨/숙련도 카드
+  const levelCard = (
+    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+      <h2 className="mb-4 text-lg font-extrabold text-content">생활 스킬</h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {KIND_META.map(({ kind, emoji, key }) => {
+          const prog = life[key];
+          const need = expForNext(prog.level);
+          const pct = Math.min(100, Math.round((prog.exp / need) * 100));
+          return (
+            <div key={kind} className="rounded-2xl border border-line bg-subtle/50 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-extrabold text-content">
+                  {emoji} {kind}
+                </span>
+                <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-sm font-extrabold text-brand-600">
+                  Lv.{prog.level}
+                </span>
               </div>
-            );
-          })}
-        </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-subtle-hover">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-right text-[11px] font-semibold text-faint">
+                숙련도 {prog.exp} / {need}
+              </p>
+            </div>
+          );
+        })}
       </div>
+    </div>
+  );
 
-      <LifeGearPanel life={life} />
-
-      {/* 레벨업 특성 선택 (본인만) */}
+  // 특성 선택(본인·대기 중) + 보유 특성
+  const skillSection = (
+    <div className="space-y-5">
       {isOwn && choice && (
         <div className="rounded-3xl border-2 border-amber-300 bg-amber-50/60 p-6 shadow-sm">
           <h2 className="text-lg font-extrabold text-content">
@@ -293,10 +294,6 @@ export default function LifeSkillPanel({
         </div>
       )}
 
-      {/* 도감 */}
-      <CollectionBook life={life} />
-
-      {/* 보유 특성 */}
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
         <h2 className="mb-3 text-lg font-extrabold text-content">보유 특성</h2>
         {life.perks.length === 0 ? (
@@ -320,6 +317,51 @@ export default function LifeSkillPanel({
           </ul>
         )}
       </div>
+    </div>
+  );
+
+  const TABS: { key: "profile" | "book" | "skill"; label: string; badge?: number }[] = [
+    { key: "profile", label: "🧺 프로필" },
+    { key: "book", label: "📖 도감" },
+    { key: "skill", label: "✨ 스킬", badge: isOwn ? life.pending.length : 0 },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* 서브 토글 버튼 */}
+      <div className="flex flex-wrap gap-2">
+        {TABS.map((t) => {
+          const active = view === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setView(t.key)}
+              className={`relative rounded-full px-4 py-2 text-sm font-bold transition ${
+                active
+                  ? "bg-brand-500 text-white shadow-sm"
+                  : "bg-surface text-muted ring-1 ring-line hover:bg-subtle hover:text-content"
+              }`}
+            >
+              {t.label}
+              {!!t.badge && t.badge > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-amber-500 px-1 text-[11px] font-black text-white">
+                  {t.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === "profile" && (
+        <div className="space-y-5">
+          {levelCard}
+          <LifeGearPanel life={life} />
+        </div>
+      )}
+      {view === "book" && <CollectionBook life={life} />}
+      {view === "skill" && skillSection}
     </div>
   );
 }
