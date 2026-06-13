@@ -456,9 +456,8 @@ export async function pushInventoryToSheet(
       const goldText = /G\s*$/i.test(inv.gold) ? inv.gold : `${inv.gold}G`;
       writes.push(updateValues(`${quoteSheet(tab)}!AB31`, [[goldText]]));
     }
-    if (inv.curWeight != null) {
-      writes.push(updateValues(`${quoteSheet(tab)}!AD31`, [[String(inv.curWeight)]]));
-    }
+    // 중량 합계(AD31)는 시트의 기존 수식이 휴대품 칸(중량×수량)으로 계산하도록
+    // 직접 쓰지 않는다. 각 항목의 중량·수량 칸만 채우면 수식이 알아서 합산.
 
     const results = await Promise.all(writes);
     return results.every(Boolean);

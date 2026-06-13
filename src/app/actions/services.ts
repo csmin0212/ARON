@@ -143,6 +143,28 @@ function updateInvItem(
   return inv;
 }
 
+// 같은 무기가 여러 개 쌓여 있어도 1개만 분리해 변형 (강화·인첸트는 하나씩만 적용).
+function transformOneInvItem(
+  inv: SheetInventory,
+  name: string,
+  patch: { name: string; effect: string; weight?: number | null },
+): SheetInventory {
+  const item = findInvItem(inv, name);
+  if (!item) return inv;
+  // 1개뿐이면 제자리에서 변형, 여러 개면 1개만 떼어내 새 항목으로.
+  if (item.qty <= 1) return updateInvItem(inv, name, patch);
+  item.qty -= 1;
+  return addInvItem(
+    inv,
+    {
+      name: patch.name,
+      effect: patch.effect,
+      weight: patch.weight !== undefined ? patch.weight : item.weight,
+    },
+    1,
+  );
+}
+
 function appendEffect(current: string | null, line: string): string {
   return current ? `${current}\n${line}` : line;
 }
@@ -763,7 +785,7 @@ export async function upgradeWeapon(
   const nextName = setEnhancementTag(weapon.name, nextEnhancement);
 
   let inv = consumeInvItem(ctx.inv, materialName, weaponLevel);
-  inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect, weight: nextWeight });
+  inv = transformOneInvItem(inv, weapon.name, { name: nextName, effect: nextEffect, weight: nextWeight });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   await Promise.all([
     prisma.characterSheet.update({
@@ -805,7 +827,7 @@ export async function enchantWeapon(
   const nextName = addItemTag(weapon.name, nextGemTag);
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 2);
   inv = consumeInvItem(inv, gemName, 1);
-  inv = updateInvItem(inv, weapon.name, { name: nextName, effect: nextEffect });
+  inv = transformOneInvItem(inv, weapon.name, { name: nextName, effect: nextEffect });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   await Promise.all([
     prisma.characterSheet.update({
