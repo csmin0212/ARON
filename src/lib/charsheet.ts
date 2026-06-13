@@ -5,6 +5,15 @@ export const MASTER_SHEET_URL = `https://docs.google.com/spreadsheets/d/${MASTER
 
 export type StatEntry = { key: string; label: string; value: number | null; mod: number | null };
 
+type ServiceAccount = {
+  client_email: string;
+  private_key: string;
+};
+
+type SheetsValuesResponse = {
+  values?: string[][];
+};
+
 export type ParsedSheet = {
   charName: string | null;
   charClass: string | null;
@@ -22,6 +31,7 @@ export type ParsedSheet = {
 
 const ABILITY_LABELS = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
 const ABILITY_KEYS = ["STR", "DEX", "AGI", "INT", "PER", "SPI", "LUK"];
+let tokenCache: { token: string; expiresAt: number } | null = null;
 
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -63,6 +73,82 @@ export function parseCsv(text: string): string[][] {
 
 function at(g: string[][], r: number, c: number): string {
   return (g[r]?.[c] ?? "").trim();
+}
+
+function quoteSheet(tab: string): string {
+  return `'${tab.replace(/'/g, "''")}'`;
+}
+
+function credentials(): ServiceAccount | null {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ServiceAccount>;
+    if (!parsed.client_email || !parsed.private_key) return null;
+    return {
+      client_email: parsed.client_email,
+      private_key: parsed.private_key.replace(/\\n/g, "\n"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function accessToken(): Promise<string | null> {
+  const sa = credentials();
+  if (!sa) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (tokenCache && tokenCache.expiresAt - 60 > now) return tokenCache.token;
+
+  const { SignJWT, importPKCS8 } = await import("jose");
+  const key = await importPKCS8(sa.private_key, "RS256");
+  const assertion = await new SignJWT({
+    scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+  })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(sa.client_email)
+    .setSubject(sa.client_email)
+    .setAudience("https://oauth2.googleapis.com/token")
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(key);
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!data.access_token) return null;
+  tokenCache = {
+    token: data.access_token,
+    expiresAt: now + (data.expires_in ?? 3600),
+  };
+  return tokenCache.token;
+}
+
+async function fetchSheetByApi(tabName: string): Promise<string[][] | null> {
+  const token = await accessToken();
+  if (!token) return null;
+
+  const range = `${quoteSheet(tabName)}!A1:AK80`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_SHEET_ID}/values/${encodeURIComponent(
+    range,
+  )}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as SheetsValuesResponse;
+  return data.values ?? [];
 }
 
 function find(g: string[][], text: string): [number, number] | null {
@@ -203,6 +289,11 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
 }
 
 export async function fetchSheetByTab(tabName: string): Promise<ParsedSheet> {
+  const apiGrid = await fetchSheetByApi(tabName.trim());
+  if (apiGrid && (find(apiGrid, "【능력 기본치】") || find(apiGrid, "HP"))) {
+    return parseSheetGrid(apiGrid, tabName.trim());
+  }
+
   const url = `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
     tabName.trim(),
   )}`;
