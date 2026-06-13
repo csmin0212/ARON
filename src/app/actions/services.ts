@@ -7,7 +7,6 @@ import {
   appendSheetItem,
   consumeSheetItem,
   inventoryWeightTotal,
-  readSheetInventory,
   syncSheetGold,
   syncSheetWeight,
   updateSheetItemDetails,
@@ -231,15 +230,15 @@ async function currentSheet(): Promise<{
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.sheetTab) return null;
 
-  const sheetInv = await readSheetInventory(sheet.sheetTab);
+  // 가방 기준은 DB(invJson). 매 액션마다 시트를 읽던 네트워크 왕복을 제거.
   return {
     userId: user.id,
     nickname: user.nickname,
     tab: sheet.sheetTab,
     locationId: sheet.locationId,
     curGold: sheet.curGold,
-    inv: sheetInv ?? parseInv(sheet.invJson),
-    invFromSheet: !!sheetInv,
+    inv: parseInv(sheet.invJson),
+    invFromSheet: !!sheet.invJson,
   };
 }
 
