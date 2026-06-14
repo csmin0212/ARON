@@ -55,6 +55,7 @@ model CharacterSheet {
   ap             Int? // 행동치 (매일 KST 5시 회복)
   apResetAt      DateTime? // 마지막 행동치 회복 시각
   restedAt       DateTime? // 여관 휴식 마지막 시각 (일일 1회 판정, KST 기준)
+  pendingCatchJson String? // 낚시 미니게임 진행 중 걸린 어종(서버 추첨 결과) — 성공 시 지급
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
   lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
   adventurerRank String    @default("D") // 모험가 길드 등급

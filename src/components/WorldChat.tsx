@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
+import FishingGame from "./FishingGame";
+import { startFishing } from "@/app/actions/fishing";
 import { getPreset, isImageUrl } from "@/lib/avatars";
 
 type ChatMessage = {
@@ -35,6 +37,8 @@ function timeOf(iso: string): string {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 
 function avatarForLog(user: ChatMessage["user"]): string {
   if (!user) return `<span class="av fallback">?</span>`;
@@ -69,6 +73,8 @@ export default function WorldChat({
   const inputRef = useRef<HTMLInputElement>(null);
   const lastIdRef = useRef(0);
   const stickToBottomRef = useRef(true);
+  const [fishing, setFishing] = useState<{ rarity: string; difficulty: number } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current;
@@ -108,10 +114,37 @@ export default function WorldChat({
     return () => clearInterval(t);
   }, [poll]);
 
+  async function beginFishing() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await startFishing();
+      if ("error" in res) setError(res.error);
+      else setFishing({ rarity: res.rarity, difficulty: res.difficulty });
+    } catch {
+      setError("낚시를 시작하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
     if (!content || sending) return;
+    // 낚시는 미니게임으로 가로채기 (라벨/종류 둘 다 매칭)
+    const fishCmd = actions.find(
+      (a) =>
+        a.kind === "낚시" &&
+        (norm(content) === norm(`/${a.label ?? a.kind}`) || norm(content) === norm(`/${a.kind}`)),
+    );
+    if (fishCmd) {
+      setInput("");
+      void beginFishing();
+      return;
+    }
     setSending(true);
     setError(null);
     setNotice(null);
@@ -263,7 +296,12 @@ ${body}
                 <button
                   key={i}
                   type="button"
+                  disabled={busy && a.kind === "낚시"}
                   onClick={() => {
+                    if (a.kind === "낚시") {
+                      void beginFishing();
+                      return;
+                    }
                     setInput(cmd);
                     inputRef.current?.focus();
                   }}
@@ -298,6 +336,18 @@ ${body}
           </button>
         </div>
       </form>
+
+      {fishing && (
+        <FishingGame
+          rarity={fishing.rarity}
+          difficulty={fishing.difficulty}
+          onDone={() => {
+            setFishing(null);
+            void poll();
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
