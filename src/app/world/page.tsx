@@ -5,8 +5,10 @@ import { isGmUsername } from "@/lib/gm";
 import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes, restedTodayKst } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
 import BagInventory from "@/components/BagInventory";
+import GatheringStatus from "@/components/GatheringStatus";
 import LocationPresence from "@/components/LocationPresence";
 import SheetSync from "@/components/SheetSync";
+import type { PendingGatherView } from "@/app/actions/gathering";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
@@ -349,6 +351,21 @@ export default async function WorldPage() {
     maxAp: FATIGUE_MAX,
     restedToday: restedTodayKst(sheet.restedAt),
   };
+  let gatherPending: PendingGatherView | null = null;
+  if (sheet.pendingGatherJson) {
+    try {
+      const p = JSON.parse(sheet.pendingGatherJson) as {
+        status?: string;
+        rarity?: string;
+        readyAt?: number;
+      };
+      if (p.status === "searching" && typeof p.readyAt === "number") {
+        gatherPending = { status: "searching", rarity: p.rarity ?? "", readyAt: p.readyAt };
+      }
+    } catch {
+      gatherPending = null;
+    }
+  }
 
   return (
     <div className="animate-fadeup space-y-4 py-1">
@@ -442,6 +459,8 @@ export default async function WorldPage() {
               </div>
             )}
           </div>
+
+          <GatheringStatus pending={gatherPending} />
 
           <WorldServices
             canForge={canForge}

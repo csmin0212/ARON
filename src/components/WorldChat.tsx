@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
 import FishingGame from "./FishingGame";
+import GatheringGame from "./GatheringGame";
 import { startFishing } from "@/app/actions/fishing";
+import { startGathering } from "@/app/actions/gathering";
 import { getPreset, isImageUrl } from "@/lib/avatars";
 
 type ChatMessage = {
@@ -78,6 +80,7 @@ export default function WorldChat({
     difficulty: number;
     barBonus: number;
   } | null>(null);
+  const [gathering, setGathering] = useState<{ rarity: string; difficulty: number } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const scrollToBottom = useCallback(() => {
@@ -134,19 +137,43 @@ export default function WorldChat({
     }
   }
 
+  async function beginGathering() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await startGathering();
+      if ("error" in res) setError(res.error);
+      else setGathering({ rarity: res.rarity, difficulty: res.difficulty });
+    } catch {
+      setError("채집을 시작하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function matchLifeCmd(kind: string, content: string): boolean {
+    return actions.some(
+      (a) =>
+        a.kind === kind &&
+        (norm(content) === norm(`/${a.label ?? a.kind}`) || norm(content) === norm(`/${a.kind}`)),
+    );
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
     if (!content || sending) return;
-    // 낚시는 미니게임으로 가로채기 (라벨/종류 둘 다 매칭)
-    const fishCmd = actions.find(
-      (a) =>
-        a.kind === "낚시" &&
-        (norm(content) === norm(`/${a.label ?? a.kind}`) || norm(content) === norm(`/${a.kind}`)),
-    );
-    if (fishCmd) {
+    // 낚시·채집은 미니게임으로 가로채기
+    if (matchLifeCmd("낚시", content)) {
       setInput("");
       void beginFishing();
+      return;
+    }
+    if (matchLifeCmd("채집", content)) {
+      setInput("");
+      void beginGathering();
       return;
     }
     setSending(true);
@@ -300,10 +327,14 @@ ${body}
                 <button
                   key={i}
                   type="button"
-                  disabled={busy && a.kind === "낚시"}
+                  disabled={busy && (a.kind === "낚시" || a.kind === "채집")}
                   onClick={() => {
                     if (a.kind === "낚시") {
                       void beginFishing();
+                      return;
+                    }
+                    if (a.kind === "채집") {
+                      void beginGathering();
                       return;
                     }
                     setInput(cmd);
@@ -348,6 +379,18 @@ ${body}
           barBonus={fishing.barBonus}
           onDone={() => {
             setFishing(null);
+            void poll();
+            router.refresh();
+          }}
+        />
+      )}
+
+      {gathering && (
+        <GatheringGame
+          rarity={gathering.rarity}
+          difficulty={gathering.difficulty}
+          onDone={() => {
+            setGathering(null);
             void poll();
             router.refresh();
           }}
