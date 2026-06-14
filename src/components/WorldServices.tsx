@@ -815,10 +815,10 @@ function ByproductMarket({
                       <input type="hidden" name="itemName" value={item.name} />
                       <button
                         type="submit"
-                        disabled={lifePending || item.unitPrice <= 0}
+                        disabled={lifePending}
                         className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
                       >
-                        판매
+                        {item.unitPrice > 0 ? "판매" : "버리기"}
                       </button>
                       <input
                         name="qty"
