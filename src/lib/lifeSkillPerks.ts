@@ -72,7 +72,6 @@ function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
         { name: "운의 축적 2", rarity, text: "1성 등장 확률이 1% 감소한다. (최대 20%)" },
         { name: "운의 축적 3", rarity, text: "2성 등장 확률이 1% 감소한다. (최대 20%)" },
         { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 20% 개선된다.` },
-        { name: "교섭술", rarity, text: `${k} 환전 골드 + 1%` },
         { name: "솜씨 발휘", rarity, text: `${k} 시간 -1초` },
       ];
     case "레어":
@@ -82,7 +81,6 @@ function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
         { name: "운의 축적 2", rarity, text: "1성 등장 확률이 2% 감소한다. (최대 20%)" },
         { name: "운의 축적 3", rarity, text: "2성 등장 확률이 2% 감소한다. (최대 20%)" },
         { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 40% 개선된다.` },
-        { name: "교섭술", rarity, text: `${k} 환전 골드 + 2%` },
         { name: "솜씨 발휘", rarity, text: `${k} 시간 -2초` },
         { name: "효율적인 정리", rarity, text: "최대 중량 +1" },
         { name: "행운아", rarity, text: `${k} 행운 공식이 1% 개선된다.` },
@@ -94,7 +92,6 @@ function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
         { name: "운의 축적 2", rarity, text: "1성 등장 확률이 3% 감소한다. (최대 20%)" },
         { name: "운의 축적 3", rarity, text: "2성 등장 확률이 3% 감소한다. (최대 20%)" },
         { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 60% 개선된다.` },
-        { name: "교섭술", rarity, text: `${k} 환전 골드 + 3%` },
         { name: "솜씨 발휘", rarity, text: `${k} 시간 -3초` },
         { name: "효율적인 정리", rarity, text: "최대 중량 +2" },
         { name: "행운아", rarity, text: `${k} 행운 공식이 2% 개선된다.` },
@@ -106,7 +103,6 @@ function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
         { name: "운의 축적 2", rarity, text: "1성 등장 확률이 4% 감소한다. (최대 20%)" },
         { name: "운의 축적 3", rarity, text: "2성 등장 확률이 4% 감소한다. (최대 20%)" },
         { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 80% 개선된다.` },
-        { name: "교섭술", rarity, text: `${k} 환전 골드 + 4%` },
         { name: "솜씨 발휘", rarity, text: `${k} 시간 -4초` },
         { name: "효율적인 정리", rarity, text: "최대 중량 +3" },
         { name: "행운아", rarity, text: `${k} 행운 공식이 3% 개선된다.` },
@@ -349,7 +345,6 @@ const VAL: Record<string, Record<string, number>> = {
   "운의 축적 1": { 일반: 0.5, 레어: 1, 유니크: 1.5, 전설: 2 },
   "운의 축적 2": { 일반: 1, 레어: 2, 유니크: 3, 전설: 4 },
   "운의 축적 3": { 일반: 1, 레어: 2, 유니크: 3, 전설: 4 },
-  교섭술: { 일반: 1, 레어: 2, 유니크: 3, 전설: 4 },
   "효율적인 정리": { 레어: 1, 유니크: 2, 전설: 3 },
   행운아: { 레어: 1, 유니크: 2, 전설: 3 },
 };
@@ -381,9 +376,6 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
         break;
       case "운의 축적 3":
         mods.rank2Down += v;
-        break;
-      case "교섭술":
-        mods.goldMult += v / 100;
         break;
       case "효율적인 정리":
         mods.weightBonus += v;
