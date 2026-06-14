@@ -272,6 +272,12 @@ export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): 
   return Math.round(banded * PLANT_SELL_MULT);
 }
 
+// 낚시 exp 배율 — 낚시 어종 exp가 채집보다 낮아, 레벨링 속도를 맞추기 위해 보정.
+const FISH_EXP_MULT = 1.33;
+export function lifeSkillExpGain(kind: LifeSkillKind, baseExp: number): number {
+  return kind === "낚시" ? Math.round(baseExp * FISH_EXP_MULT) : baseExp;
+}
+
 export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillKind | null {
   const source = `${kind} ${label ?? ""}`.replace(/\s+/g, "");
   if (source.includes("채집") || source.includes("약초")) return "채집";

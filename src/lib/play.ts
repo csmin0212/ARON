@@ -15,6 +15,7 @@ import {
 } from "./googleSheets";
 import {
   lifeSkillCategory,
+  lifeSkillExpGain,
   lifeSkillKindOf,
   lifeSkillMarketPrice,
   pickLifeSkillCatch,
@@ -263,7 +264,7 @@ export async function runActionCommand(
         };
       }
 
-      const expGained = Math.max(1, Math.round(item.exp * mods.expMult));
+      const expGained = Math.max(1, Math.round(lifeSkillExpGain(lifeSkillKind, item.exp) * mods.expMult));
       const leveled = applyExp(life, lifeSkillKind, expGained);
       const firstCatch = recordCollection(life, lifeSkillKind, item.name);
       const caughtCount = recordLifeCatch(life, lifeSkillKind, item.name);

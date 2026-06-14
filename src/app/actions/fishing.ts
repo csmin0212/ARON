@@ -7,6 +7,7 @@ import { freshAp, postSystem } from "@/lib/play";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
   lifeSkillCategory,
+  lifeSkillExpGain,
   lifeSkillKindOf,
   lifeSkillMarketPrice,
   pickLifeSkillCatch,
@@ -180,7 +181,7 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
     return { error: `${bag.name}이 가득 차서 놓쳐버렸어요.` };
   }
 
-  const expGained = Math.max(1, Math.round(pending.exp * mods.expMult));
+  const expGained = Math.max(1, Math.round(lifeSkillExpGain(FISH, pending.exp) * mods.expMult));
   const leveled = applyExp(life, FISH, expGained);
   const firstCatch = recordCollection(life, FISH, pending.name);
   const caughtCount = recordLifeCatch(life, FISH, pending.name);
