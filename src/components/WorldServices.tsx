@@ -116,6 +116,23 @@ function isWeapon(item: SheetInventoryItem): boolean {
   return WEAPON_HINTS.some((hint) => source.includes(hint));
 }
 
+function itemTags(name: string): string[] {
+  const match = name.trim().match(/\(([^()]*)\)$/);
+  if (!match) return [];
+  return match[1].split(",").map((tag) => tag.trim()).filter(Boolean);
+}
+
+// 이미 인첸트된 무기 (보석 태그 또는 효과에 '인첸트')
+function isEnchanted(item: SheetInventoryItem): boolean {
+  const tags = itemTags(item.name);
+  return GEM_NAMES.some((gem) => tags.includes(gem)) || (item.effect ?? "").includes("인첸트");
+}
+
+// 이미 강화된 무기 (+N 태그)
+function isEnhanced(item: SheetInventoryItem): boolean {
+  return itemTags(item.name).some((tag) => /^\+\d+$/.test(tag));
+}
+
 function countOf(items: SheetInventoryItem[], name: string): number {
   return items
     .filter((item) => item.name.trim() === name)
@@ -886,6 +903,8 @@ export default function WorldServices({
 
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const weapons = items.filter(isWeapon);
+  // 인첸트 대상: 강화(+N)·인첸트가 안 된 깨끗한 무기만
+  const enchantableWeapons = weapons.filter((w) => !isEnchanted(w) && !isEnhanced(w));
   const gems = items.filter(isGem);
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
@@ -1147,7 +1166,7 @@ export default function WorldServices({
                           name="weaponName"
                           className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2.5 text-sm font-semibold text-stone-100 outline-none focus:border-violet-400"
                         >
-                          {weapons.map((item) => (
+                          {enchantableWeapons.map((item) => (
                             <option key={item.name} value={item.name}>
                               {item.name}
                             </option>
@@ -1170,14 +1189,14 @@ export default function WorldServices({
                       <p className="rounded-xl border border-violet-900/60 bg-violet-950/35 px-3 py-2 text-xs text-violet-100">
                         필요 재료: 강철 파편 x2 + 선택한 보석 x1
                       </p>
-                      {(weapons.length === 0 || gems.length === 0) && (
+                      {(enchantableWeapons.length === 0 || gems.length === 0) && (
                         <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-3 text-sm text-stone-400">
-                          무기와 보석이 모두 인벤토리에 있어야 마법 제련을 할 수 있어요.
+                          제련 가능한 무기(강화·인첸트 안 된)와 보석이 모두 있어야 마법 제련을 할 수 있어요.
                         </p>
                       )}
                       <button
                         type="submit"
-                        disabled={enchantPending || weapons.length === 0 || gems.length === 0}
+                        disabled={enchantPending || enchantableWeapons.length === 0 || gems.length === 0}
                         className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-violet-500 disabled:opacity-50"
                       >
                         {enchantPending ? "제련 중..." : "제련 적용"}
