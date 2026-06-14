@@ -101,8 +101,12 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     data: { ap: ap - DUNGEON_AP, apResetAt, dungeonWeek: week, dungeonRuns: runs + 1 },
   });
 
-  // 경험점은 성공·실패 동일 지급 (시트 수식 끝에 +N)
-  if (dungeon.exp > 0) await appendSheetFormula(sheet.sheetTab, EXP_CELL, dungeon.exp);
+  // 경험점은 성공·실패 동일 지급 (범위면 랜덤). 시트 수식 끝에 +N
+  const expGain =
+    dungeon.expMax > dungeon.exp
+      ? dungeon.exp + Math.floor(Math.random() * (dungeon.expMax - dungeon.exp + 1))
+      : dungeon.exp;
+  if (expGain > 0) await appendSheetFormula(sheet.sheetTab, EXP_CELL, expGain);
 
   // 성공 시 보상(포션 등) 지급
   const rewards: string[] = [];
@@ -135,7 +139,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
       sheet.locationId,
       `⚔️ ${user.nickname}님의 ${dungeon.name} 도전 — 🎲 ${dice.join("+")}+${mod}=${total} (목표 ${dungeon.dc}) ${
         success ? "성공!" : "실패…"
-      } 경험점 +${dungeon.exp}${success && rewards.length ? ` · ${rewards.join(", ")} 획득` : ""}`,
+      } 경험점 +${expGain}${success && rewards.length ? ` · ${rewards.join(", ")} 획득` : ""}`,
     );
   }
 
@@ -149,7 +153,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     mod,
     total,
     dc: dungeon.dc,
-    exp: dungeon.exp,
+    exp: expGain,
     rewards,
     runsLeft: WEEKLY_LIMIT - (runs + 1),
   };

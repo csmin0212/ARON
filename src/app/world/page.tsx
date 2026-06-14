@@ -397,6 +397,7 @@ export default async function WorldPage() {
         name: d.name,
         dc: d.dc,
         exp: d.exp,
+        expMax: d.expMax,
         floor: d.floor,
         rewards: drops
           .filter((x) => x.item !== "꽝")

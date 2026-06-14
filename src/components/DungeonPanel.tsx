@@ -9,6 +9,7 @@ export type DungeonView = {
   name: string;
   dc: number;
   exp: number;
+  expMax: number;
   floor: number;
   rewards: string[];
 };
@@ -47,6 +48,7 @@ function DungeonCard({
           </p>
           <p className="text-[11px] text-faint">
             달성치 {d.dc} · 경험점 +{d.exp}
+            {d.expMax > d.exp ? `~${d.expMax}` : ""}
             {d.rewards.length > 0 && ` · 성공 보상 ${d.rewards.join(", ")}`}
           </p>
         </div>

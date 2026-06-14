@@ -91,7 +91,8 @@ model Dungeon {
   name       String
   locationId String // 도전하는 장소 (Location.id)
   dc         Int // 달성치
-  exp        Int // 경험점 보상 (성공·실패 동일)
+  exp        Int // 경험점 보상 최소 (성공·실패 동일)
+  expMax     Int    @default(0) // 경험점 최대 (exp보다 크면 범위 랜덤, 아니면 고정)
   dropsJson  String // 성공 시 보상 드랍 JSON (DropEntry[])
   floor      Int    @default(1)
   order      Int    @default(0)

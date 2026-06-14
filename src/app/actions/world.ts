@@ -264,6 +264,7 @@ export async function syncWorldMap(
             locationId: d.locationId,
             dc: d.dc,
             exp: d.exp,
+            expMax: d.expMax,
             dropsJson: JSON.stringify(d.drops),
             floor: d.floor,
             order: i,

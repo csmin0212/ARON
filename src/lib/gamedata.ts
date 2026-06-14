@@ -41,7 +41,8 @@ export type DungeonRow = {
   name: string;
   locationId: string;
   dc: number;
-  exp: number;
+  exp: number; // 최소
+  expMax: number; // 최대 (exp보다 크면 범위 랜덤)
   drops: DropEntry[];
   floor: number;
 };
@@ -259,12 +260,23 @@ export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonR
         throw new Error(`던전 '${id}' 보상의 '${d.item}' 이 아이템 탭에 없어요.`);
     }
 
+    const expRaw = at(g, r, h.col.exp);
+    const range = expRaw.match(/^(\d+)\s*[~\-]\s*(\d+)$/);
+    let exp = num(expRaw) ?? 0;
+    let expMax = exp;
+    if (range) {
+      exp = parseInt(range[1], 10);
+      expMax = parseInt(range[2], 10);
+      if (expMax < exp) [exp, expMax] = [expMax, exp];
+    }
+
     rows.push({
       id,
       name,
       locationId,
       dc: num(at(g, r, h.col.dc)) ?? 0,
-      exp: num(at(g, r, h.col.exp)) ?? 0,
+      exp,
+      expMax,
       drops,
       floor: num(at(g, r, h.col.floor)) ?? 1,
     });
