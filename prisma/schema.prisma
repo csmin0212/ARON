@@ -83,6 +83,32 @@ model Location {
   updatedAt DateTime @updatedAt
 }
 
+// 균열 — GM이 특정 장소에 여는 인스턴스 던전 입구. 선착순 정원만큼 진입.
+model Rift {
+  id         String       @id @default(cuid())
+  type       String // 별의 바다 | 망자의 정원 | 핏빛 성채
+  originId   String // 균열이 열린 장소 id (Location.id — FK 아님)
+  interiorId String // 내부맵 장소 id (Location.id)
+  status     String       @default("open") // open | closed
+  capacity   Int          @default(4)
+  createdAt  DateTime     @default(now())
+  members    RiftMember[]
+
+  @@index([originId])
+  @@index([status])
+}
+
+model RiftMember {
+  id       String   @id @default(cuid())
+  riftId   String
+  rift     Rift     @relation(fields: [riftId], references: [id], onDelete: Cascade)
+  userId   String // User.id (FK 아님 — 표시 시 조회)
+  joinedAt DateTime @default(now())
+
+  @@unique([riftId, userId])
+  @@index([userId])
+}
+
 // 아이템 도감 (GM 시트 '아이템' 탭에서 동기화)
 model Item {
   id        String   @id

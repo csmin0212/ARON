@@ -137,6 +137,8 @@ export async function moveTo(formData: FormData): Promise<void> {
     where: { userId: user.id },
     data: { locationId: target, enteredAt: new Date() },
   });
+  // 일반 이동으로 균열을 벗어나면 멤버십 해제
+  await prisma.riftMember.deleteMany({ where: { userId: user.id } });
   // 퇴장/입장 알림 (목적지는 노출하지 않음 — 히든 보호)
   await Promise.all([
     postSystem(here.id, `📤 ${user.nickname}님이 자리를 떠났습니다.`),

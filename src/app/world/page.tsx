@@ -7,7 +7,9 @@ import { enterWorld, moveTo } from "@/app/actions/world";
 import BagInventory from "@/components/BagInventory";
 import GatheringStatus from "@/components/GatheringStatus";
 import LocationPresence from "@/components/LocationPresence";
+import RiftView from "@/components/RiftView";
 import SheetSync from "@/components/SheetSync";
+import { type AdminRift } from "@/components/WorldAdmin";
 import type { PendingGatherView } from "@/app/actions/gathering";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
@@ -367,6 +369,28 @@ export default async function WorldPage() {
     }
   }
 
+  let adminLocations: { id: string; name: string }[] = [];
+  let adminRifts: AdminRift[] = [];
+  if (isGm) {
+    adminLocations = await prisma.location.findMany({
+      select: { id: true, name: true },
+      orderBy: { order: "asc" },
+    });
+    const locName = new Map(adminLocations.map((l) => [l.id, l.name]));
+    const openRifts = await prisma.rift.findMany({
+      where: { status: "open" },
+      orderBy: { createdAt: "desc" },
+    });
+    adminRifts = await Promise.all(
+      openRifts.map(async (r) => ({
+        id: r.id,
+        type: r.type,
+        originName: locName.get(r.originId) ?? r.originId,
+        count: await prisma.riftMember.count({ where: { riftId: r.id } }),
+      })),
+    );
+  }
+
   return (
     <div className="animate-fadeup space-y-4 py-1">
       <ApBar ap={ap} nextRegenMin={nextRegenMin} />
@@ -460,6 +484,8 @@ export default async function WorldPage() {
             )}
           </div>
 
+          <RiftView />
+
           <GatheringStatus pending={gatherPending} />
 
           <WorldServices
@@ -496,7 +522,7 @@ export default async function WorldPage() {
         </div>
       </div>
 
-      {isGm && <WorldAdmin />}
+      {isGm && <WorldAdmin locations={adminLocations} openRifts={adminRifts} />}
     </div>
   );
 }
