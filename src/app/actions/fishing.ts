@@ -50,10 +50,9 @@ type PendingCatch = {
   difficulty: number;
 };
 
-// 랭크 → 미니게임 난이도(0~1). 희귀할수록 어렵게.
-function difficultyForRank(rank: number): number {
-  return [0.15, 0.3, 0.45, 0.6, 0.8, 0.95][rank] ?? 0.5;
-}
+// 등급별 기본 난이도(0~100). 4·5성은 흉악 — 고레벨이라야 잡을 만해진다.
+const RANK_DIFFICULTY = [10, 30, 45, 60, 100, 120];
+const DIFFICULTY_FLOOR = 10; // 만렙이어도 최소 난이도
 
 // 낚싯대 등급 (이름 → 0/1/2). 등급이 높을수록 캐치바가 커진다.
 function rodTier(name: string): number {
@@ -119,10 +118,12 @@ export async function startFishing(): Promise<FishingStart> {
     return { error: `${bag.name}이 가득 찼어요. (${lifeBagWeight(bag)} + ${item.weight} / ${bagMax})` };
   }
 
-  // 숙련도 → 난이도 하락 (레벨당 -1%, 최대 -25%), 낚싯대 등급 → 캐치바 확대
-  const relief = Math.min(0.25, level * 0.01);
-  const difficulty = Math.max(0.05, difficultyForRank(item.rank) - relief);
-  const barBonus = rodTier(life.tools.낚시) * 0.035;
+  // 효과 난이도 = max(10, 등급기본 − 레벨 − 낚싯대보정), 상한 100 → 0~1로 변환
+  const rankDiff = RANK_DIFFICULTY[item.rank] ?? 60;
+  const rodRelief = rodTier(life.tools.낚시) * 10; // 좋은 -10 / 고급 -20
+  const eff = Math.max(DIFFICULTY_FLOOR, Math.min(100, rankDiff - level - rodRelief));
+  const difficulty = eff / 100;
+  const barBonus = 0; // 낚싯대 효과는 난이도 하락으로 통합
   const pending: PendingCatch = {
     no: item.no,
     name: item.name,
