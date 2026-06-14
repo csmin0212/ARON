@@ -891,13 +891,14 @@ function InnRest({ inn, onClose }: { inn: InnView; onClose: () => void }) {
   const full = inn.ap >= inn.maxAp;
   const poor = inn.gold < INN_REST_COST;
   const blocked = inn.restedToday || full || poor || pending;
+  const actualGain = Math.max(0, Math.min(INN_REST_AMOUNT, inn.maxAp - inn.ap));
   const note = inn.restedToday
     ? "오늘은 이미 휴식했어요. 내일 다시 오세요."
     : full
       ? "피로도가 이미 가득 찼어요."
       : poor
         ? `골드가 부족해요. (${INN_REST_COST}G 필요)`
-        : `100G로 피로도를 ${INN_REST_AMOUNT} 회복해요. (최대치 ${inn.maxAp} 초과분은 버려져요)`;
+        : `이번 휴식 회복량: 피로도 +${actualGain} (${inn.ap} → ${inn.ap + actualGain})`;
 
   return (
     <div
@@ -936,6 +937,9 @@ function InnRest({ inn, onClose }: { inn: InnView; onClose: () => void }) {
           </div>
           <MarketStateLine state={state} />
           <p className="px-1 text-xs text-faint">{note}</p>
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+            ⚠️ 최대 피로도({inn.maxAp})를 넘는 분량은 회복되지 않아요.
+          </p>
           <form action={action}>
             <button
               type="submit"
