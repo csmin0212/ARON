@@ -6,6 +6,7 @@ import {
   buyLifeGear,
   depositToStorage,
   enchantWeapon,
+  restAtInn,
   sellFood,
   sellLifeCatch,
   sellMaterial,
@@ -23,13 +24,25 @@ type Props = {
   canGuild: boolean;
   canMarket: boolean;
   canStorage: boolean;
+  canInn: boolean;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
   byproducts: ByproductView[];
   materials: MaterialView[];
+  inn: InnView;
   storage: StorageView;
 };
+
+export type InnView = {
+  gold: number;
+  ap: number;
+  maxAp: number;
+  restedToday: boolean;
+};
+
+const INN_REST_COST = 100;
+const INN_REST_AMOUNT = 60;
 
 export type ByproductView = {
   kind: "낚시" | "채집";
@@ -873,16 +886,96 @@ function ByproductMarket({
   );
 }
 
+function InnRest({ inn, onClose }: { inn: InnView; onClose: () => void }) {
+  const [state, action, pending] = useActionState<MarketState, FormData>(restAtInn, undefined);
+  const full = inn.ap >= inn.maxAp;
+  const poor = inn.gold < INN_REST_COST;
+  const blocked = inn.restedToday || full || poor || pending;
+  const note = inn.restedToday
+    ? "오늘은 이미 휴식했어요. 내일 다시 오세요."
+    : full
+      ? "피로도가 이미 가득 찼어요."
+      : poor
+        ? `골드가 부족해요. (${INN_REST_COST}G 필요)`
+        : `100G로 피로도를 ${INN_REST_AMOUNT} 회복해요. (최대치 ${inn.maxAp} 초과분은 버려져요)`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="여관 휴식"
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">Inn</p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
+            <span>🛏️ 여관 휴식</span>
+            <span className="text-sm font-bold text-emerald-500">{inn.gold.toLocaleString()}G</span>
+          </h3>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          <div className="rounded-2xl bg-subtle px-4 py-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-muted">현재 피로도</span>
+              <span className="font-extrabold text-content">
+                {inn.ap} / {inn.maxAp}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500"
+                style={{ width: `${Math.min(100, (inn.ap / inn.maxAp) * 100)}%` }}
+              />
+            </div>
+          </div>
+          <MarketStateLine state={state} />
+          <p className="px-1 text-xs text-faint">{note}</p>
+          <form action={action}>
+            <button
+              type="submit"
+              disabled={blocked}
+              className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-brand-600 disabled:opacity-50"
+            >
+              {pending
+                ? "휴식 중..."
+                : inn.restedToday
+                  ? "오늘 휴식 완료"
+                  : `휴식하기 (-${INN_REST_COST}G · 피로도 +${INN_REST_AMOUNT})`}
+            </button>
+          </form>
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WorldServices({
   canForge,
   canGuild,
   canMarket,
   canStorage,
+  canInn,
   inventoryItems,
   lifeStorageItems,
   lifeShop,
   byproducts,
   materials,
+  inn,
   storage,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -891,6 +984,7 @@ export default function WorldServices({
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [byproductOpen, setByproductOpen] = useState(false);
+  const [innOpen, setInnOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -909,7 +1003,7 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge && !canGuild && !canMarket && !canStorage) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn) return null;
 
   function closeForge() {
     setOpen(false);
@@ -999,6 +1093,21 @@ export default function WorldServices({
               </span>
             </button>
           )}
+          {canInn && (
+            <button
+              type="button"
+              onClick={() => setInnOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🛏️</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">여관 휴식</span>
+                <span className="text-[11px] text-faint">
+                  {inn.restedToday ? "오늘 휴식 완료" : `100G · 피로도 +${INN_REST_AMOUNT} (하루 1회)`}
+                </span>
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1026,6 +1135,8 @@ export default function WorldServices({
           onClose={() => setByproductOpen(false)}
         />
       )}
+
+      {innOpen && <InnRest inn={inn} onClose={() => setInnOpen(false)} />}
 
       {open && (
         <div

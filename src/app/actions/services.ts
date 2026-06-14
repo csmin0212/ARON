@@ -18,6 +18,7 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
+import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
@@ -706,6 +707,54 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
+}
+
+const INN_REST_COST = 100;
+const INN_REST_AMOUNT = 60;
+
+export async function restAtInn(): Promise<MarketState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { ap: true, apResetAt: true, restedAt: true, curGold: true },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+
+  const now = new Date();
+  if (restedTodayKst(sheet.restedAt, now)) {
+    return { error: "오늘은 이미 휴식했어요. (하루 1회)" };
+  }
+
+  const currentGold = sheet.curGold ?? 0;
+  if (currentGold < INN_REST_COST) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${INN_REST_COST}G)` };
+  }
+
+  const fresh = regenFatigue(sheet.ap, sheet.apResetAt, now);
+  if (fresh.value >= FATIGUE_MAX) {
+    return { error: "피로도가 이미 가득 찼어요." };
+  }
+  const newAp = Math.min(FATIGUE_MAX, fresh.value + INN_REST_AMOUNT);
+  const gained = newAp - fresh.value;
+  const nextGold = currentGold - INN_REST_COST;
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      ap: newAp,
+      apResetAt: fresh.at,
+      restedAt: now,
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+    },
+  });
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return {
+    ok: `포근한 침대에서 푹 쉬었어요. 피로도 +${gained} (${newAp}/${FATIGUE_MAX}) · -${INN_REST_COST}G`,
+  };
 }
 
 export async function buyLifeGear(

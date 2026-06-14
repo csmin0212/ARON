@@ -37,6 +37,16 @@ export function effectiveAp(ap: number | null, apResetAt: Date | null): number {
   return regenFatigue(ap, apResetAt).value;
 }
 
+// 한국시간(UTC+9) 기준 날짜 키 (YYYY-MM-DD) — 일일 1회 판정용
+export function kstDayKey(d: Date): string {
+  return new Date(d.getTime() + 9 * 60 * 60_000).toISOString().slice(0, 10);
+}
+
+// 오늘(KST) 이미 휴식했는지
+export function restedTodayKst(restedAt: Date | null, now: Date = new Date()): boolean {
+  return restedAt != null && kstDayKey(restedAt) === kstDayKey(now);
+}
+
 export function nextFatigueRegenMinutes(ap: number | null, apResetAt: Date | null): number | null {
   const now = new Date();
   const fresh = regenFatigue(ap, apResetAt, now);

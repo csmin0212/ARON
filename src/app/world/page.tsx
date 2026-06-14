@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes } from "@/lib/world";
+import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes, restedTodayKst } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
 import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
@@ -11,6 +11,7 @@ import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
   type ByproductView,
+  type InnView,
   type LifeShopView,
   type LifeStorageItemView,
   type MaterialView,
@@ -341,6 +342,13 @@ export default async function WorldPage() {
   // const canBlackMarket = hasServiceKeyword(here, locActions, ["암시장", "뒷골목"]);
   const canStorage =
     canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
+  const canInn = hasServiceKeyword(here, locActions, ["여관", "숙소", "inn"]);
+  const inn: InnView = {
+    gold: sheet.curGold ?? 0,
+    ap,
+    maxAp: FATIGUE_MAX,
+    restedToday: restedTodayKst(sheet.restedAt),
+  };
 
   return (
     <div className="animate-fadeup space-y-4 py-1">
@@ -440,11 +448,13 @@ export default async function WorldPage() {
             canGuild={canGuild}
             canMarket={canMarket}
             canStorage={canStorage}
+            canInn={canInn}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}
             byproducts={byproducts}
             materials={materials}
+            inn={inn}
             storage={storage}
           />
 
