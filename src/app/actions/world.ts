@@ -199,7 +199,7 @@ export async function syncWorldMap(
           data: items.map((it, i) => ({ ...it, order: i })),
         }),
       ]);
-      itemIds = new Set(items.map((it) => it.id));
+      itemIds = new Set(items.flatMap((it) => [it.id, it.name]));
       parts.push(`아이템 ${items.length}종`);
     }
   } catch (e) {
@@ -209,8 +209,8 @@ export async function syncWorldMap(
   // 3) 행동 (선택 — 아이템 도감 기준으로 드랍 검증)
   try {
     if (!itemIds) {
-      const existing = await prisma.item.findMany({ select: { id: true } });
-      itemIds = new Set(existing.map((it) => it.id));
+      const existing = await prisma.item.findMany({ select: { id: true, name: true } });
+      itemIds = new Set(existing.flatMap((it) => [it.id, it.name]));
     }
     const sheetActions = (await fetchActionsRows(itemIds)) ?? [];
     const actions = [...sheetActions, ...autoLifeActions(rows, sheetActions)];
@@ -245,20 +245,18 @@ export async function syncWorldMap(
   // 4) 던전 (선택)
   try {
     if (!itemIds) {
-      const existing = await prisma.item.findMany({ select: { id: true } });
-      itemIds = new Set(existing.map((it) => it.id));
+      const existing = await prisma.item.findMany({ select: { id: true, name: true } });
+      itemIds = new Set(existing.flatMap((it) => [it.id, it.name]));
     }
     const dungeons = await fetchDungeonsRows(itemIds);
     if (dungeons) {
       const locIds = new Set(rows.map((r) => r.id));
-      for (const d of dungeons) {
-        if (!locIds.has(d.locationId))
-          throw new Error(`던전 '${d.name}'의 장소 '${d.locationId}' 가 맵에 없어요.`);
-      }
+      const valid = dungeons.filter((d) => locIds.has(d.locationId));
+      const skipped = dungeons.length - valid.length;
       await prisma.$transaction([
         prisma.dungeon.deleteMany(),
         prisma.dungeon.createMany({
-          data: dungeons.map((d, i) => ({
+          data: valid.map((d, i) => ({
             id: d.id,
             name: d.name,
             locationId: d.locationId,
@@ -271,7 +269,8 @@ export async function syncWorldMap(
           })),
         }),
       ]);
-      parts.push(`던전 ${dungeons.length}개`);
+      parts.push(`던전 ${valid.length}개`);
+      if (skipped > 0) warns.push(`던전 ${skipped}개는 장소가 맵에 없어 건너뜀`);
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "던전 탭 오류");
