@@ -57,6 +57,8 @@ model CharacterSheet {
   restedAt       DateTime? // 여관 휴식 마지막 시각 (일일 1회 판정, KST 기준)
   pendingCatchJson String? // 낚시 미니게임 진행 중 걸린 어종(서버 추첨 결과) — 성공 시 지급
   pendingGatherJson String? // 채집 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
+  dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
+  dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
   lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
   adventurerRank String    @default("D") // 모험가 길드 등급
@@ -81,6 +83,20 @@ model Location {
   isStart   Boolean  @default(false) // 입장 지점
   order     Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+// 던전 — 주간 컨텐츠 (GM 시트 '던전' 탭에서 동기화). 능력치 판정으로 경험점·포션.
+model Dungeon {
+  id         String @id // 던전ID (시트)
+  name       String
+  locationId String // 도전하는 장소 (Location.id)
+  dc         Int // 달성치
+  exp        Int // 경험점 보상 (성공·실패 동일)
+  dropsJson  String // 성공 시 보상 드랍 JSON (DropEntry[])
+  floor      Int    @default(1)
+  order      Int    @default(0)
+
+  @@index([locationId])
 }
 
 // 균열 — GM이 특정 장소에 여는 인스턴스 던전 입구. 선착순 정원만큼 진입.

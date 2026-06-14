@@ -12,6 +12,7 @@ import { lifeSkillKindOf } from "./lifeSkillData";
 
 export const ITEMS_TAB = process.env.ITEMS_TAB_NAME || "아이템";
 export const ACTIONS_TAB = process.env.ACTIONS_TAB_NAME || "행동";
+export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
 
 export type ItemRow = {
   id: string;
@@ -33,6 +34,16 @@ export type ActionRow = {
   dc: number | null;
   drops: DropEntry[];
   failText: string | null;
+};
+
+export type DungeonRow = {
+  id: string;
+  name: string;
+  locationId: string;
+  dc: number;
+  exp: number;
+  drops: DropEntry[];
+  floor: number;
 };
 
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
@@ -216,7 +227,59 @@ export function parseActionsGrid(g: string[][], itemIds: Set<string>): ActionRow
   return rows;
 }
 
+// ── 던전 탭 ──  던전ID | 이름 | 장소 | 달성치 | 경험점 | 보상 | 층
+export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonRow[] {
+  const h = findHeader(g, ["이름", "장소"], {
+    던전ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    장소: "locationId",
+    달성치: "dc",
+    경험점: "exp",
+    보상: "drops",
+    층: "floor",
+  });
+  if (!h) throw new Error("던전 탭이 없거나 헤더(이름/장소)가 없어요.");
+
+  const rows: DungeonRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    const locationId = at(g, r, h.col.locationId);
+    if (!name || !locationId) continue;
+    const id = at(g, r, h.col.id) || name;
+    if (seen.has(id)) throw new Error(`던전 ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+
+    const dropsSpec = at(g, r, h.col.drops);
+    const drops = dropsSpec ? parseDrops(dropsSpec) : [];
+    for (const d of drops) {
+      if (d.item !== "꽝" && d.item !== "골드" && !itemIds.has(d.item))
+        throw new Error(`던전 '${id}' 보상의 '${d.item}' 이 아이템 탭에 없어요.`);
+    }
+
+    rows.push({
+      id,
+      name,
+      locationId,
+      dc: num(at(g, r, h.col.dc)) ?? 0,
+      exp: num(at(g, r, h.col.exp)) ?? 0,
+      drops,
+      floor: num(at(g, r, h.col.floor)) ?? 1,
+    });
+  }
+  return rows;
+}
+
 // ── 시트에서 불러오기 (탭 없으면 null — 선택 탭) ──
+export async function fetchDungeonsRows(itemIds: Set<string>): Promise<DungeonRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, DUNGEON_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, DUNGEON_TAB));
+  if (!g) return null;
+  return parseDungeonsGrid(g, itemIds);
+}
+
 export async function fetchItemsRows(): Promise<ItemRow[] | null> {
   const g = (await fetchTab(WORLD_SHEET_ID, ITEMS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, ITEMS_TAB));
   if (!g) return null;

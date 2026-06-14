@@ -241,6 +241,45 @@ export async function syncSheetGold(tab: string | null, gold: number): Promise<b
   }
 }
 
+// 셀의 수식 원문 읽기 (계산값 아님)
+async function getCellFormula(range: string): Promise<string | null> {
+  const token = await accessToken();
+  if (!token) return null;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_SHEET_ID}/values/${encodeURIComponent(
+    range,
+  )}?valueRenderOption=FORMULA`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (!res.ok) return null;
+  const data = (await res.json()) as SheetsValuesResponse;
+  const v = data.values?.[0]?.[0];
+  return v == null ? "" : String(v);
+}
+
+// 경험점처럼 수식이 있는 칸에 값을 더한다. 수식이면 끝에 '+N'을 붙여 원 수식 보존.
+export async function appendSheetFormula(
+  tab: string | null,
+  cell: string,
+  addend: number,
+): Promise<boolean> {
+  if (!tab || addend === 0) return false;
+  try {
+    const range = `${quoteSheet(tab)}!${cell}`;
+    const cur = await getCellFormula(range);
+    if (cur == null) return false;
+    let next: string;
+    if (cur.startsWith("=")) {
+      next = `${cur}+${addend}`;
+    } else {
+      const n = Number(cur);
+      next = cur.trim() !== "" && Number.isFinite(n) ? String(n + addend) : `=${addend}`;
+    }
+    return updateValues(range, [[next]]);
+  } catch (error) {
+    console.warn("Failed to append sheet formula", error);
+    return false;
+  }
+}
+
 export async function appendSheetItem(
   tab: string | null,
   itemName: string,

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { fetchWorldRows, regenFatigue } from "@/lib/world";
-import { fetchItemsRows, fetchActionsRows } from "@/lib/gamedata";
+import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows } from "@/lib/gamedata";
 import { postSystem } from "@/lib/play";
 import type { ActionRow } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
@@ -240,6 +240,40 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "행동 탭 오류");
+  }
+
+  // 4) 던전 (선택)
+  try {
+    if (!itemIds) {
+      const existing = await prisma.item.findMany({ select: { id: true } });
+      itemIds = new Set(existing.map((it) => it.id));
+    }
+    const dungeons = await fetchDungeonsRows(itemIds);
+    if (dungeons) {
+      const locIds = new Set(rows.map((r) => r.id));
+      for (const d of dungeons) {
+        if (!locIds.has(d.locationId))
+          throw new Error(`던전 '${d.name}'의 장소 '${d.locationId}' 가 맵에 없어요.`);
+      }
+      await prisma.$transaction([
+        prisma.dungeon.deleteMany(),
+        prisma.dungeon.createMany({
+          data: dungeons.map((d, i) => ({
+            id: d.id,
+            name: d.name,
+            locationId: d.locationId,
+            dc: d.dc,
+            exp: d.exp,
+            dropsJson: JSON.stringify(d.drops),
+            floor: d.floor,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`던전 ${dungeons.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "던전 탭 오류");
   }
 
   revalidatePath("/world");

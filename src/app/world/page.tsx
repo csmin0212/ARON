@@ -2,8 +2,16 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes, restedTodayKst } from "@/lib/world";
+import {
+  FATIGUE_MAX,
+  dungeonWeekKey,
+  effectiveAp,
+  nextFatigueRegenMinutes,
+  restedTodayKst,
+} from "@/lib/world";
+import { ABILITY_LABELS_KO, type DropEntry } from "@/lib/gamedata";
 import { enterWorld, moveTo } from "@/app/actions/world";
+import DungeonPanel, { type DungeonAbility, type DungeonView } from "@/components/DungeonPanel";
 import BagInventory from "@/components/BagInventory";
 import GatheringStatus from "@/components/GatheringStatus";
 import LocationPresence from "@/components/LocationPresence";
@@ -369,6 +377,47 @@ export default async function WorldPage() {
     }
   }
 
+  const dungeonsHere = await prisma.dungeon.findMany({
+    where: { locationId: here.id },
+    orderBy: { order: "asc" },
+  });
+  let dungeonView: DungeonView[] = [];
+  let dungeonAbilities: DungeonAbility[] = [];
+  let dungeonRunsLeft = 0;
+  if (dungeonsHere.length > 0) {
+    dungeonView = dungeonsHere.map((d) => {
+      let drops: DropEntry[] = [];
+      try {
+        drops = JSON.parse(d.dropsJson) as DropEntry[];
+      } catch {
+        drops = [];
+      }
+      return {
+        id: d.id,
+        name: d.name,
+        dc: d.dc,
+        exp: d.exp,
+        floor: d.floor,
+        rewards: drops
+          .filter((x) => x.item !== "꽝")
+          .map((x) => (x.item === "골드" ? `${x.gold}G` : `${x.item} x${x.qty}`)),
+      };
+    });
+    let stats: { label: string; mod: number | null }[] = [];
+    try {
+      stats = JSON.parse(sheet.statsJson ?? "[]") as { label: string; mod: number | null }[];
+    } catch {
+      stats = [];
+    }
+    dungeonAbilities = ABILITY_LABELS_KO.map((label) => ({
+      label,
+      mod: stats.find((s) => s.label === label)?.mod ?? null,
+    }));
+    const week = dungeonWeekKey();
+    const used = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
+    dungeonRunsLeft = Math.max(0, 3 - used);
+  }
+
   let adminLocations: { id: string; name: string }[] = [];
   let adminRifts: AdminRift[] = [];
   if (isGm) {
@@ -485,6 +534,8 @@ export default async function WorldPage() {
           </div>
 
           <RiftView />
+
+          <DungeonPanel dungeons={dungeonView} runsLeft={dungeonRunsLeft} abilities={dungeonAbilities} />
 
           <GatheringStatus pending={gatherPending} />
 
