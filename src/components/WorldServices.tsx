@@ -105,7 +105,8 @@ function mergeItems(items: SheetInventoryItem[]): SheetInventoryItem[] {
 }
 
 function isGem(item: SheetInventoryItem): boolean {
-  return GEM_NAMES.some((name) => item.name.includes(name));
+  // 정확히 보석 이름인 것만 (예: "다이아몬드"). "강철 검(+1, 다이아몬드)" 같은 인첸트 무기는 제외.
+  return GEM_NAMES.some((name) => item.name.trim() === name);
 }
 
 function isWeapon(item: SheetInventoryItem): boolean {

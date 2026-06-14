@@ -169,12 +169,20 @@ function appendEffect(current: string | null, line: string): string {
   return current ? `${current}\n${line}` : line;
 }
 
+// 정확히 보석 이름인지 (예: "다이아몬드"). 인첸트된 무기 이름은 보석으로 인정하지 않음.
+function isGemName(name: string): boolean {
+  const target = name.trim();
+  return GEM_EFFECTS.some((gem) => gem.key === target);
+}
+
 function gemEffect(gemName: string): string {
-  return GEM_EFFECTS.find((gem) => gemName.includes(gem.key))?.text ?? `${gemName} 인첸트`;
+  const target = gemName.trim();
+  return GEM_EFFECTS.find((gem) => gem.key === target)?.text ?? `${target} 인첸트`;
 }
 
 function gemTag(gemName: string): string {
-  return GEM_EFFECTS.find((gem) => gemName.includes(gem.key))?.key ?? gemName.trim();
+  const target = gemName.trim();
+  return GEM_EFFECTS.find((gem) => gem.key === target)?.key ?? target;
 }
 
 function itemTags(itemName: string): string[] {
@@ -814,6 +822,12 @@ export async function enchantWeapon(
   const gemName = String(formData.get("gemName") ?? "").trim();
   const weapon = findInvItem(ctx.inv, weaponName);
   if (!weapon || weapon.qty <= 0) return { error: "인첸트할 무기를 인벤토리에서 찾지 못했습니다." };
+  if (!isGemName(gemName)) {
+    return { error: "보석(루비·에메랄드·사파이어·토파즈·다이아몬드)만 사용할 수 있어요." };
+  }
+  if (enhancementLevel(weapon.name) > 0) {
+    return { error: "강화된 무기는 마법 제련할 수 없어요." };
+  }
   const nextGemTag = gemTag(gemName);
   if ((weapon.effect ?? "").includes("인첸트") || hasMagicTag(weapon.name) || hasTag(weapon.name, nextGemTag)) {
     return { error: "이미 인첸트가 적용된 무기입니다." };
