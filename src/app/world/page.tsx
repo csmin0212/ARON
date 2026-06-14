@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { FATIGUE_MAX, effectiveAp, nextFatigueRegenMinutes, restedTodayKst } from "@/lib/world";
 import { enterWorld, moveTo } from "@/app/actions/world";
-import Avatar from "@/components/Avatar";
 import BagInventory from "@/components/BagInventory";
+import LocationPresence from "@/components/LocationPresence";
 import SheetSync from "@/components/SheetSync";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
@@ -462,37 +462,18 @@ export default async function WorldPage() {
 
           <SheetSync />
 
-          <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
-            <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
-              👥 이곳의 모험가 <span className="text-brand-500">{others.length + 1}</span>
-            </h2>
-            <ul className="space-y-1.5">
-              <li className="flex items-center gap-2.5 rounded-xl bg-brand-50/60 px-3 py-2">
-                <Avatar name={user.nickname} avatar={user.avatar} size={26} />
-                <span className="truncate text-sm font-bold text-content">{user.nickname}</span>
-                <span className="ml-auto rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-600">
-                  나
-                </span>
-              </li>
-              {others.map((o) => (
-                <li
-                  key={o.userId}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 transition hover:bg-subtle"
-                >
-                  <Avatar name={o.user.nickname} avatar={o.user.avatar} size={26} />
-                  <Link
-                    href={`/u/${encodeURIComponent(o.user.username)}`}
-                    className="truncate text-sm font-bold text-content transition hover:text-brand-600 hover:underline"
-                  >
-                    {o.user.nickname}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            {others.length === 0 && (
-              <p className="mt-1 px-3 text-xs text-faint">지금은 혼자 있어요.</p>
-            )}
-          </div>
+          <LocationPresence
+            key={here.id}
+            initial={[
+              { username: user.username, nickname: user.nickname, avatar: user.avatar, isMe: true },
+              ...others.map((o) => ({
+                username: o.user.username,
+                nickname: o.user.nickname,
+                avatar: o.user.avatar,
+                isMe: false,
+              })),
+            ]}
+          />
         </div>
       </div>
 

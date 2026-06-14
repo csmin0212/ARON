@@ -29,7 +29,7 @@ import {
 const FISH = "낚시" as const;
 
 export type FishingStart =
-  | { ok: true; rarity: string; rank: number; difficulty: number }
+  | { ok: true; rarity: string; rank: number; difficulty: number; barBonus: number }
   | { error: string };
 
 export type FishingResolve =
@@ -53,6 +53,13 @@ type PendingCatch = {
 // 랭크 → 미니게임 난이도(0~1). 희귀할수록 어렵게.
 function difficultyForRank(rank: number): number {
   return [0.15, 0.3, 0.45, 0.6, 0.8, 0.95][rank] ?? 0.5;
+}
+
+// 낚싯대 등급 (이름 → 0/1/2). 등급이 높을수록 캐치바가 커진다.
+function rodTier(name: string): number {
+  if (name === "고급 낚싯대") return 2;
+  if (name === "좋은 낚싯대") return 1;
+  return 0;
 }
 
 function parseLocationLife(value: string | null): LocationLifeConfig | null {
@@ -112,7 +119,10 @@ export async function startFishing(): Promise<FishingStart> {
     return { error: `${bag.name}이 가득 찼어요. (${lifeBagWeight(bag)} + ${item.weight} / ${bagMax})` };
   }
 
-  const difficulty = difficultyForRank(item.rank);
+  // 숙련도 → 난이도 하락 (레벨당 -1%, 최대 -25%), 낚싯대 등급 → 캐치바 확대
+  const relief = Math.min(0.25, level * 0.01);
+  const difficulty = Math.max(0.05, difficultyForRank(item.rank) - relief);
+  const barBonus = rodTier(life.tools.낚시) * 0.035;
   const pending: PendingCatch = {
     no: item.no,
     name: item.name,
@@ -131,7 +141,7 @@ export async function startFishing(): Promise<FishingStart> {
     data: { ap: ap - action.apCost, apResetAt, pendingCatchJson: JSON.stringify(pending) },
   });
 
-  return { ok: true, rarity: item.rarity, rank: item.rank, difficulty };
+  return { ok: true, rarity: item.rarity, rank: item.rank, difficulty, barBonus };
 }
 
 // 2단계: 결과 — 성공 시 지급, 실패 시 빈손. 어느 쪽이든 진행 상태 정리.

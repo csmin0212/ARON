@@ -8,10 +8,12 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export default function FishingGame({
   rarity,
   difficulty,
+  barBonus = 0,
   onDone,
 }: {
   rarity: string;
   difficulty: number;
+  barBonus?: number;
   onDone: () => void;
 }) {
   const [phase, setPhase] = useState<"playing" | "resolving" | "result">("playing");
@@ -25,7 +27,7 @@ export default function FishingGame({
 
   useEffect(() => {
     const d = Math.max(0, Math.min(1, difficulty));
-    const barH = lerp(0.2, 0.075, d); // 캐치존 반높이
+    const barH = Math.min(0.34, Math.max(0.05, lerp(0.2, 0.075, d) + barBonus)); // 캐치존 반높이 (낚싯대 보너스)
     const fishSpeed = lerp(0.5, 1.7, d);
     const retarget = lerp(1.5, 0.5, d);
     const rate = lerp(0.55, 0.3, d);
@@ -103,7 +105,7 @@ export default function FishingGame({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [difficulty]);
+  }, [difficulty, barBonus]);
 
   const landed = result && "landed" in result && result.landed;
 

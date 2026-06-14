@@ -73,7 +73,11 @@ export default function WorldChat({
   const inputRef = useRef<HTMLInputElement>(null);
   const lastIdRef = useRef(0);
   const stickToBottomRef = useRef(true);
-  const [fishing, setFishing] = useState<{ rarity: string; difficulty: number } | null>(null);
+  const [fishing, setFishing] = useState<{
+    rarity: string;
+    difficulty: number;
+    barBonus: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const scrollToBottom = useCallback(() => {
@@ -122,7 +126,7 @@ export default function WorldChat({
     try {
       const res = await startFishing();
       if ("error" in res) setError(res.error);
-      else setFishing({ rarity: res.rarity, difficulty: res.difficulty });
+      else setFishing({ rarity: res.rarity, difficulty: res.difficulty, barBonus: res.barBonus });
     } catch {
       setError("낚시를 시작하지 못했어요.");
     } finally {
@@ -341,6 +345,7 @@ ${body}
         <FishingGame
           rarity={fishing.rarity}
           difficulty={fishing.difficulty}
+          barBonus={fishing.barBonus}
           onDone={() => {
             setFishing(null);
             void poll();
