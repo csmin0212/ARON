@@ -240,24 +240,36 @@ function clampPrice(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+// 종류별 판매가 배율 — 채집을 살짝 낮추고 낚시를 올려 수급량을 맞춘다.
+const PLANT_SELL_MULT = 0.85;
+const FISH_SELL_MULT = 1.24;
+
 export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): number {
-  if (kind === "낚시") return item.price;
+  if (kind === "낚시") return Math.round(item.price * FISH_SELL_MULT);
+  let banded: number;
   switch (item.rank) {
     case 0:
-      return Math.min(item.price, 5);
+      banded = Math.min(item.price, 5);
+      break;
     case 1:
-      return clampPrice(item.price, 3, 10);
+      banded = clampPrice(item.price, 3, 10);
+      break;
     case 2:
-      return clampPrice(item.price, 7, 18);
+      banded = clampPrice(item.price, 7, 18);
+      break;
     case 3:
-      return clampPrice(item.price, 20, 35);
+      banded = clampPrice(item.price, 20, 35);
+      break;
     case 4:
-      return clampPrice(item.price, 400, 750);
+      banded = clampPrice(item.price, 400, 750);
+      break;
     case 5:
-      return clampPrice(item.price, 2000, 3500);
+      banded = clampPrice(item.price, 2000, 3500);
+      break;
     default:
-      return item.price;
+      banded = item.price;
   }
+  return Math.round(banded * PLANT_SELL_MULT);
 }
 
 export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillKind | null {
