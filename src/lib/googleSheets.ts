@@ -231,12 +231,34 @@ export async function syncSheetWeight(tab: string | null, curWeight: number): Pr
   }
 }
 
-export async function syncSheetGold(tab: string | null, gold: number): Promise<boolean> {
-  if (!tab) return false;
+// AA31:AB31 병합 셀 — 값은 앵커(AA31)에만 들어가므로 AB31에 쓰면 화면에 안 보인다.
+export const GOLD_CELL = "AA31";
+
+// 골드 칸은 경험점처럼 시트의 기존 수식을 보존하고 끝에 +N/-N 만 붙인다.
+// (절대값 덮어쓰기를 하면 시트에 손으로 넣은 수식이 사라지므로)
+export async function appendSheetGold(tab: string | null, delta: number): Promise<boolean> {
+  if (!tab || delta === 0) return false;
   try {
-    return updateValues(`${quoteSheet(tab)}!AB31`, [[`${gold}G`]]);
+    const range = `${quoteSheet(tab)}!${GOLD_CELL}`;
+    const cur = await getCellFormula(range);
+    if (cur == null) return false;
+
+    const op = delta < 0 ? "-" : "+";
+    const mag = Math.abs(delta);
+    let next: string;
+    if (cur.startsWith("=")) {
+      // 수식 보존 — 끝에 +/-N
+      next = `${cur}${op}${mag}`;
+    } else {
+      // 옛 텍스트 값("500G" 등) 호환 — 숫자만 뽑아 가감, 'G' 표기는 유지
+      const hadG = /G\s*$/i.test(cur);
+      const n = parseInt(cur.replace(/[^\d-]/g, ""), 10);
+      const sum = (Number.isFinite(n) ? n : 0) + delta;
+      next = hadG ? `${sum}G` : String(sum);
+    }
+    return updateValues(range, [[next]]);
   } catch (error) {
-    console.warn("Failed to sync sheet gold", error);
+    console.warn("Failed to append sheet gold", error);
     return false;
   }
 }
@@ -491,12 +513,9 @@ export async function pushInventoryToSheet(
       updateValues(`${quoteSheet(tab)}!Z33:AE58`, block1),
       updateValues(`${quoteSheet(tab)}!AF32:AK58`, block2),
     ];
-    if (inv.gold != null) {
-      const goldText = /G\s*$/i.test(inv.gold) ? inv.gold : `${inv.gold}G`;
-      writes.push(updateValues(`${quoteSheet(tab)}!AB31`, [[goldText]]));
-    }
-    // 중량 합계(AD31)는 시트의 기존 수식이 휴대품 칸(중량×수량)으로 계산하도록
-    // 직접 쓰지 않는다. 각 항목의 중량·수량 칸만 채우면 수식이 알아서 합산.
+    // 골드(AA31)는 시트의 기존 수식을 보존하기 위해 여기서 절대값으로 덮어쓰지 않는다.
+    // 골드 변동은 그때그때 appendSheetGold 로 수식 끝에 +N/-N 만 누적한다.
+    // 중량 합계(AD31)도 시트 수식이 휴대품 칸(중량×수량)으로 계산하므로 직접 쓰지 않는다.
 
     const results = await Promise.all(writes);
     return results.every(Boolean);

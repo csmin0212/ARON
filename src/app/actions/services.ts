@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import {
+  appendSheetGold,
   inventoryWeightTotal,
   type SheetInventory,
   type SheetInventoryItem,
@@ -168,6 +169,22 @@ function transformOneInvItem(
 
 function appendEffect(current: string | null, line: string): string {
   return current ? `${current}\n${line}` : line;
+}
+
+// "강철 검(+1, 사파이어)" → "강철 검" : 강화·인첸트 꼬리표를 떼어 기본 이름만.
+function baseItemName(name: string): string {
+  return name.trim().replace(/\s*\([^()]*\)\s*$/, "").trim();
+}
+
+// 아이템 도감(아이템 탭)의 설명을 가져온다 — 강화/제련 아이템도 기본 설명을 보존하기 위함.
+async function lookupItemDesc(name: string): Promise<string | null> {
+  const exact = name.trim();
+  const base = baseItemName(name);
+  const item = await prisma.item.findFirst({
+    where: { OR: [{ id: exact }, { name: exact }, { id: base }, { name: base }] },
+    select: { desc: true },
+  });
+  return item?.desc ?? null;
 }
 
 // 정확히 보석 이름인지 (예: "다이아몬드"). 인첸트된 무기 이름은 보석으로 인정하지 않음.
@@ -578,6 +595,7 @@ export async function buyFood(_prev: MarketState, formData: FormData): Promise<M
     }),
     incrementDbInventory(ctx.userId, product.name, qty),
   ]);
+  void appendSheetGold(ctx.tab, -totalPrice);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -614,6 +632,7 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
     }),
     decrementDbInventory(ctx.userId, product.name, qty),
   ]);
+  void appendSheetGold(ctx.tab, product.sellPrice * qty);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -656,6 +675,7 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
       invJson: JSON.stringify(inv),
     },
   });
+  void appendSheetGold(ctx.tab, gain);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -703,6 +723,7 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
     }),
     decrementDbInventory(ctx.userId, itemName, qty),
   ]);
+  void appendSheetGold(ctx.tab, gain);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -717,7 +738,7 @@ export async function restAtInn(): Promise<MarketState> {
   if (!user) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
-    select: { ap: true, apResetAt: true, restedAt: true, curGold: true },
+    select: { ap: true, apResetAt: true, restedAt: true, curGold: true, sheetTab: true },
   });
   if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
 
@@ -749,6 +770,7 @@ export async function restAtInn(): Promise<MarketState> {
       gold: `${nextGold}G`,
     },
   });
+  void appendSheetGold(sheet.sheetTab, -INN_REST_COST);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -807,6 +829,7 @@ export async function buyLifeGear(
       invJson: JSON.stringify(inv),
     },
   });
+  void appendSheetGold(ctx.tab, -product.price);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -835,8 +858,10 @@ export async function upgradeWeapon(
   }
 
   const nextWeight = (weapon.weight ?? 0) + weaponLevel;
+  // 효과가 비어 있으면 아이템 탭 기본 설명을 먼저 채워 시트 효과·해설에도 보존되게 한다.
+  const baseEffect = weapon.effect ?? (await lookupItemDesc(weapon.name));
   const nextEffect = appendEffect(
-    weapon.effect,
+    baseEffect,
     `무기 강화 +${nextEnhancement}: 공격력 +${weaponLevel}, 중량 +${weaponLevel}`,
   );
   const nextName = setEnhancementTag(weapon.name, nextEnhancement);
@@ -886,7 +911,8 @@ export async function enchantWeapon(
   }
   if (itemQty(ctx.inv, gemName) < 1) return { error: `${gemName}이 부족합니다.` };
 
-  const nextEffect = appendEffect(weapon.effect, gemEffect(gemName));
+  const baseEffect = weapon.effect ?? (await lookupItemDesc(weapon.name));
+  const nextEffect = appendEffect(baseEffect, gemEffect(gemName));
   const nextName = addItemTag(weapon.name, nextGemTag);
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 2);
   inv = consumeInvItem(inv, gemName, 1);

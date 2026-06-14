@@ -5,9 +5,53 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
-import { readSheetInventory, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
+import {
+  pushInventoryToSheet,
+  readSheetInventory,
+  type SheetInventory,
+  type SheetInventoryItem,
+} from "@/lib/googleSheets";
 
 export type SheetState = { error?: string; ok?: boolean } | undefined;
+
+// "강철 검(+1)" → "강철 검" : 강화·인첸트 꼬리표 제거
+function baseItemName(name: string): string {
+  return name.trim().replace(/\s*\([^()]*\)\s*$/, "").trim();
+}
+
+// 효과가 비어 있는 휴대품을 아이템 탭(Item.desc) 설명으로 채운다.
+// 모달 '상세 효과'와 시트 '효과·해설'에 아이템 설명이 함께 나오도록 하기 위함.
+// 하나라도 채워졌으면 true (시트에도 반영해야 함).
+async function fillItemEffects(inventory: SheetInventory): Promise<boolean> {
+  const targets = inventory.items.filter((item) => item.qty > 0 && !item.effect);
+  if (targets.length === 0) return false;
+
+  const keys = new Set<string>();
+  for (const item of targets) {
+    keys.add(item.name.trim());
+    keys.add(baseItemName(item.name));
+  }
+  const catalog = await prisma.item.findMany({
+    where: { OR: [{ id: { in: [...keys] } }, { name: { in: [...keys] } }] },
+    select: { id: true, name: true, desc: true },
+  });
+  const descByKey = new Map<string, string>();
+  for (const entry of catalog) {
+    if (!entry.desc) continue;
+    if (!descByKey.has(entry.id)) descByKey.set(entry.id, entry.desc);
+    if (!descByKey.has(entry.name)) descByKey.set(entry.name, entry.desc);
+  }
+
+  let changed = false;
+  for (const item of targets) {
+    const desc = descByKey.get(item.name.trim()) ?? descByKey.get(baseItemName(item.name));
+    if (desc) {
+      item.effect = desc;
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 function mergeSheetItems(items: SheetInventoryItem[]): { itemId: string; qty: number }[] {
   const merged = new Map<string, number>();
@@ -70,6 +114,7 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
   }
 
   const inventory = await readSheetInventory(tab);
+  const effectsFilled = inventory ? await fillItemEffects(inventory) : false;
   const data = {
     sheetTab: tab,
     charClass: parsed.charClass,
@@ -96,6 +141,8 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     update: data,
   });
   if (inventory) await syncDbInventoryFromSheet(user.id, inventory);
+  // 새로 채운 효과를 시트 효과·해설 칸에도 반영 (보강된 게 있을 때만)
+  if (inventory && effectsFilled) await pushInventoryToSheet(tab, inventory);
 
   revalidatePath("/profile");
   revalidatePath("/world");
@@ -114,6 +161,7 @@ export async function syncSheetInventory(): Promise<void> {
 
   const inventory = await readSheetInventory(sheet.sheetTab);
   if (!inventory) return;
+  const effectsFilled = await fillItemEffects(inventory);
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
@@ -125,6 +173,7 @@ export async function syncSheetInventory(): Promise<void> {
     },
   });
   await syncDbInventoryFromSheet(user.id, inventory);
+  if (effectsFilled) await pushInventoryToSheet(sheet.sheetTab, inventory);
 
   revalidatePath("/profile");
   revalidatePath("/world");

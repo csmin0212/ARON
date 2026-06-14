@@ -8,9 +8,9 @@ import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
 import { dedupeLifeActions } from "./locationActions";
 import {
+  appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
-  syncSheetGold,
   type SheetInventory,
 } from "./googleSheets";
 import {
@@ -315,7 +315,7 @@ export async function runActionCommand(
           where: { userId },
           data: { curGold: nextGold, invJson: nextInvJson },
         });
-        void syncSheetGold(sheet.sheetTab, nextGold);
+        void appendSheetGold(sheet.sheetTab, drop.gold);
         resultLine = ` 성공! ✨ ${drop.gold}G 획득!`;
       } else if (drop.item === "꽝") {
         resultLine = " 꽝... 아무 일도 일어나지 않았다.";
@@ -323,11 +323,14 @@ export async function runActionCommand(
         await addItem(userId, drop.item, drop.qty);
         const item = await prisma.item.findUnique({ where: { id: drop.item } });
         const itemName = item?.name ?? drop.item;
+        const effect = item?.desc ?? null;
         await prisma.characterSheet.update({
           where: { userId },
-          data: { invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty) },
+          data: {
+            invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty, { effect }),
+          },
         });
-        void appendSheetItem(sheet.sheetTab, itemName, drop.qty);
+        void appendSheetItem(sheet.sheetTab, itemName, drop.qty, { effect });
         resultLine = ` 성공! ✨ ${itemName} x${drop.qty} 획득!`;
       }
     }

@@ -121,11 +121,20 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     for (const d of drops) {
       if (d.item === "꽝") continue;
       if (d.item === "골드") continue; // 던전 골드 보상은 후속
-      const found = inv.items.find((i) => i.name.trim() === d.item.trim());
-      if (found) found.qty += d.qty;
-      else inv.items.push({ name: d.item, effect: null, weight: 1, qty: d.qty });
+      const catalog = await prisma.item.findFirst({
+        where: { OR: [{ id: d.item }, { name: d.item }] },
+        select: { name: true, desc: true },
+      });
+      const itemName = catalog?.name ?? d.item;
+      const found = inv.items.find((i) => i.name.trim() === itemName.trim());
+      if (found) {
+        found.qty += d.qty;
+        if (!found.effect && catalog?.desc) found.effect = catalog.desc;
+      } else {
+        inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty: d.qty });
+      }
       await incDbItem(user.id, d.item, d.qty);
-      rewards.push(`${d.item} x${d.qty}`);
+      rewards.push(`${itemName} x${d.qty}`);
     }
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
     await prisma.characterSheet.update({
