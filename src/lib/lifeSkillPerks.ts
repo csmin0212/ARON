@@ -1,7 +1,7 @@
 // 생활스킬 레벨·특성 시스템 (level_up_fishing.py / level_up_plant.py 포팅)
 //
 // 레벨업 시 특성 3개가 제시되고 하나를 선택한다.
-// 특성 희귀도 등장률: 일반 50% / 레어 30% / 유니크 16% / 전설 3.5% / 신화 0.5%
+// 특성 희귀도 등장률: 일반 50% / 레어 30% / 유니크 16% / 전설 4% (신화는 현재 비활성)
 
 import type { LifeSkillKind } from "./lifeSkillData";
 
@@ -128,12 +128,12 @@ function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
   }
 }
 
+// 신화는 일단 제외 (추첨에서 등장하지 않음)
 const RARITY_ROLL: { rarity: PerkRarity; weight: number }[] = [
   { rarity: "일반", weight: 50 },
   { rarity: "레어", weight: 30 },
   { rarity: "유니크", weight: 16 },
-  { rarity: "전설", weight: 3.5 },
-  { rarity: "신화", weight: 0.5 },
+  { rarity: "전설", weight: 4 },
 ];
 
 function rollRarity(): PerkRarity {
@@ -157,9 +157,9 @@ export const PERK_EVERY = 5;
 // ── 등급 등장 구간표 (레벨 구간별 기본 가중치 [0성..5성]) ──
 // 여기 숫자만 고치면 밸런스가 바뀐다. 상위 구간은 추후 천천히 설계.
 export const LEVEL_BANDS: { min: number; max: number; weights: number[] }[] = [
-  { min: 1, max: 30, weights: [0, 70, 25, 5, 0, 0] }, // Lv1~30: 최대 3성
-  { min: 31, max: 60, weights: [0, 55, 30, 12, 3, 0] }, // (가안) 최대 4성
-  { min: 61, max: 999, weights: [0, 45, 30, 17, 6, 2] }, // (가안) 최대 5성
+  { min: 1, max: 30, weights: [30, 40, 25, 5, 0, 0] }, // Lv1~30: 0~3성
+  { min: 31, max: 60, weights: [20, 35, 35, 9, 1, 0] }, // Lv31~60: 4성까지 살짝
+  { min: 61, max: 999, weights: [10, 30, 30, 20, 9, 1] }, // Lv61+: 5성까지
 ];
 
 export function baseWeightsFor(level: number): number[] {
@@ -415,7 +415,7 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
 // 등급 가중치 [0성..5성] 에 특성 보정 적용.
 // base 는 레벨 구간표(baseWeightsFor) — 구간에서 잠긴 등급(기본치 0)은 절대 열리지 않는다.
 export function adjustedRankWeights(mods: LifeMods, base?: number[]): number[] {
-  const orig = base ? [...base] : [0, 70, 25, 5, 0, 0];
+  const orig = base ? [...base] : [30, 40, 25, 5, 0, 0];
   const w = [...orig];
   let removed = 0;
   const take = (idx: number, amount: number) => {
