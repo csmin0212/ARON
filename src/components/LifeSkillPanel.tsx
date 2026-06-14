@@ -215,6 +215,8 @@ export default function LifeSkillPanel({
 
   const choice = life.pending[0];
   const [view, setView] = useState<"profile" | "book" | "skill">("profile");
+  const [perkKind, setPerkKind] = useState<"낚시" | "채집">("낚시");
+  const kindPerks = life.perks.filter((p) => p.kind === perkKind);
 
   // 레벨/숙련도 카드
   const levelCard = (
@@ -295,14 +297,36 @@ export default function LifeSkillPanel({
       )}
 
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-        <h2 className="mb-3 text-lg font-extrabold text-content">보유 특성</h2>
-        {life.perks.length === 0 ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-extrabold text-content">보유 특성</h2>
+          <div className="flex gap-1.5">
+            {KIND_META.map(({ kind, emoji }) => {
+              const active = perkKind === kind;
+              const n = life.perks.filter((p) => p.kind === kind).length;
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setPerkKind(kind)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                    active
+                      ? "bg-brand-500 text-white shadow-sm"
+                      : "bg-subtle text-muted hover:text-content"
+                  }`}
+                >
+                  {emoji} {kind} {n > 0 && <span className="opacity-80">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {kindPerks.length === 0 ? (
           <p className="py-4 text-center text-sm text-faint">
-            아직 익힌 특성이 없어요. 특성은 5레벨마다 선택할 수 있어요!
+            {perkKind} 특성이 아직 없어요. 특성은 5레벨마다 선택할 수 있어요!
           </p>
         ) : (
           <ul className="space-y-2">
-            {life.perks.map((p, i) => (
+            {kindPerks.map((p, i) => (
               <li key={i} className="flex items-start gap-2.5 rounded-xl bg-subtle/60 px-3.5 py-2.5">
                 <span className="mt-0.5 shrink-0 text-sm">{p.kind === "낚시" ? "🎣" : "🌿"}</span>
                 <div className="min-w-0">
