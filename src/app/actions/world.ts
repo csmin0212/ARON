@@ -6,12 +6,31 @@ import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { fetchWorldRows, regenFatigue } from "@/lib/world";
 import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows } from "@/lib/gamedata";
-import { postSystem } from "@/lib/play";
+import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import type { ActionRow } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
+export type DiscoverState = { error?: string; notice?: string; found?: boolean };
+
+// 비밀 키워드로 히든 장소 발견 — 채팅과 분리된 전용 입력칸에서 호출.
+// 입력 키워드는 공개 채팅에 남기지 않고, 결과는 본인에게만 notice 로 돌려준다.
+export async function discoverByKeyword(keyword: string): Promise<DiscoverState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const trimmed = keyword.trim();
+  if (!trimmed) return { error: "키워드를 입력해주세요." };
+  if (trimmed.length > 60) return { error: "키워드가 너무 길어요." };
+
+  const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
+  if (!sheet?.locationId) return { error: "월드에 입장한 상태에서만 조사할 수 있어요." };
+
+  const result = await tryKeywordSpeech(user.id, sheet, trimmed);
+  if (result.found) revalidatePath("/world");
+  return { notice: result.notice, found: result.found };
+}
 
 // 현재 피로도 계산 (lazy 자연 회복)
 function freshAp(ap: number | null, apResetAt: Date | null): { ap: number; apResetAt: Date } {
@@ -113,25 +132,25 @@ export async function moveTo(formData: FormData): Promise<void> {
   ]);
   if (!here || !dest) return;
 
-  // 연결 검증
-  let conns: string[] = [];
-  try {
-    conns = here.connJson ? (JSON.parse(here.connJson) as string[]) : [];
-  } catch {
-    conns = [];
-  }
-  if (!conns.includes(target)) return;
-
-  // 히든 장소는 발견한 경우에만 (발견 시스템은 C단계 — 지금은 차단)
-  if (dest.hidden) {
-    let discovered: string[] = [];
+  const parseArr = (json: string | null): string[] => {
     try {
-      discovered = sheet.discoveredJson ? (JSON.parse(sheet.discoveredJson) as string[]) : [];
+      return json ? (JSON.parse(json) as string[]) : [];
     } catch {
-      discovered = [];
+      return [];
     }
+  };
+
+  // 히든 장소는 발견한 경우에만 진입 가능
+  if (dest.hidden) {
+    const discovered = parseArr(sheet.discoveredJson);
     if (!discovered.includes(target)) return;
   }
+
+  // 연결 검증 — 정방향(현재→목적지) 또는 발견한 히든의 역방향(목적지→현재) 진입 허용.
+  // (히든은 이웃 행이 아닌 자기 행에만 연결을 적어두므로 역방향을 인정해야 들어갈 수 있다)
+  const conns = parseArr(here.connJson);
+  const linked = conns.includes(target) || (dest.hidden && parseArr(dest.connJson).includes(here.id));
+  if (!linked) return;
 
   await prisma.characterSheet.update({
     where: { userId: user.id },

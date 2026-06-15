@@ -8,6 +8,7 @@ import FishingGame from "./FishingGame";
 import GatheringGame from "./GatheringGame";
 import { startFishing } from "@/app/actions/fishing";
 import { startGathering } from "@/app/actions/gathering";
+import { discoverByKeyword } from "@/app/actions/world";
 import { getPreset, isImageUrl } from "@/lib/avatars";
 
 type ChatMessage = {
@@ -82,6 +83,8 @@ export default function WorldChat({
   } | null>(null);
   const [gathering, setGathering] = useState<{ rarity: string; difficulty: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [secret, setSecret] = useState("");
+  const [probing, setProbing] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current;
@@ -206,6 +209,30 @@ export default function WorldChat({
       setError("전송에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setSending(false);
+    }
+  }
+
+  // 비밀 키워드 조사 — 채팅에 남기지 않고 본인에게만 결과를 알려준다.
+  async function probe(e: React.FormEvent) {
+    e.preventDefault();
+    const kw = secret.trim();
+    if (!kw || probing) return;
+    setProbing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await discoverByKeyword(kw);
+      if (res.error) {
+        setError(res.error);
+      } else {
+        setSecret("");
+        if (res.notice) setNotice(res.notice);
+        if (res.found) router.refresh(); // 새로 열린 장소가 이동 목록에 뜨도록
+      }
+    } catch {
+      setError("조사에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -368,6 +395,30 @@ ${body}
             className="shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-50"
           >
             전송
+          </button>
+        </div>
+      </form>
+
+      {/* 비밀 키워드 — 채팅과 분리. 입력값은 누구에게도 보이지 않는다. */}
+      <form onSubmit={probe} className="border-t border-line px-3 py-2.5">
+        <div className="mb-1.5 flex items-center gap-1 px-1 text-[11px] font-semibold text-violet-500">
+          🔮 은밀한 조사
+          <span className="font-normal text-faint">— 들은 단서를 조용히 읊어본다 (채팅엔 안 보여요)</span>
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            maxLength={60}
+            placeholder="단서가 되는 말…"
+            className="min-w-0 flex-1 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 px-4 py-2 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+          />
+          <button
+            type="submit"
+            disabled={probing || secret.trim().length === 0}
+            className="shrink-0 rounded-xl border border-violet-300 bg-surface px-4 py-2 text-sm font-bold text-violet-600 transition hover:bg-violet-50 disabled:opacity-50"
+          >
+            {probing ? "조사 중…" : "조사"}
           </button>
         </div>
       </form>

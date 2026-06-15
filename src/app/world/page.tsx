@@ -191,9 +191,21 @@ export default async function WorldPage() {
   const hereLife = parseLocationLife(here.lifeJson);
   const badges = activityBadges(hereLife);
   const discovered = parseJsonArray(sheet.discoveredJson);
+  // 정방향 연결(현재 장소가 가리키는 곳) + 발견한 히든(자기 연결에 현재 장소를 적어둔 곳, 역방향 진입)
   const destinations = (
-    await prisma.location.findMany({ where: { id: { in: connIds } }, orderBy: { order: "asc" } })
-  ).filter((d) => !d.hidden || discovered.includes(d.id));
+    await prisma.location.findMany({
+      where: {
+        OR: [
+          { id: { in: connIds } },
+          ...(discovered.length ? [{ hidden: true, id: { in: discovered } }] : []),
+        ],
+      },
+      orderBy: { order: "asc" },
+    })
+  ).filter((d) => {
+    if (d.hidden && !discovered.includes(d.id)) return false;
+    return connIds.includes(d.id) || (d.hidden && parseJsonArray(d.connJson).includes(here.id));
+  });
 
   const others = await prisma.characterSheet.findMany({
     where: { locationId: here.id, userId: { not: user.id } },

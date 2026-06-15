@@ -345,12 +345,14 @@ export async function runActionCommand(
   return {};
 }
 
+// 비밀 키워드로 히든 장소를 발견한다. 완전 비공개 —
+// 키워드 입력도, 판정도, 발견 사실도 채팅(공개)에 절대 노출하지 않고
+// 결과는 오직 본인에게 notice 로만 돌려준다.
 export async function tryKeywordSpeech(
   userId: string,
-  nickname: string,
   sheet: CharacterSheet,
   content: string,
-): Promise<{ notice?: string; changed?: boolean }> {
+): Promise<{ notice?: string; found?: boolean }> {
   const locationId = sheet.locationId!;
   const here = await prisma.location.findUnique({ where: { id: locationId } });
   if (!here) return {};
@@ -383,17 +385,15 @@ export async function tryKeywordSpeech(
     }
     return hereConns.includes(h.id) || hConns.includes(here.id);
   });
-  if (!target) return {};
+  // 틀린 키워드/조건 미충족도 조용히 — 시도 자체가 남에게 보이지 않는다.
+  if (!target) return { notice: "…아무런 반응이 없다." };
 
+  const foundText = `🗺️ 숨겨진 장소를 발견했다: ${target.emoji ?? "📍"} ${target.name}! 이제 그곳으로 이동할 수 있다.`;
   const discover = async () => {
     await prisma.characterSheet.update({
       where: { userId },
       data: { discoveredJson: JSON.stringify([...discovered, target.id]) },
     });
-    await postSystem(
-      locationId,
-      `🗺️ ${nickname}님이 숨겨진 장소를 발견했다: ${target.emoji ?? "📍"} ${target.name}!`,
-    );
   };
 
   const cond = (target.cond ?? "").trim();
@@ -406,9 +406,9 @@ export async function tryKeywordSpeech(
         })
       : null;
     if (!entry)
-      return { notice: "무언가 희미하게 반응하지만... 열쇠가 되어줄 무언가가 필요해 보인다." };
+      return { notice: "무언가 희미하게 반응하지만… 열쇠가 되어줄 무언가가 필요해 보인다." };
     await discover();
-    return { changed: true };
+    return { notice: foundText, found: true };
   }
 
   if (cond.startsWith("판정")) {
@@ -427,6 +427,7 @@ export async function tryKeywordSpeech(
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
     const success = total >= dc;
+    // 판정 굴림은 개인 기록에만 남기고(공개 채팅 X), AP 차감.
     await Promise.all([
       prisma.roll.create({
         data: {
@@ -445,14 +446,14 @@ export async function tryKeywordSpeech(
       }),
     ]);
 
-    await postSystem(
-      locationId,
-      `🔍 ${nickname}님의 탐색 판정 — ${diceText(dice, mod, total, dc)} ${success ? "성공!" : "실패..."}`,
-    );
-    if (success) await discover();
-    return { changed: true };
+    const rollText = diceText(dice, mod, total, dc);
+    if (success) {
+      await discover();
+      return { notice: `${rollText} 성공! ${foundText}`, found: true };
+    }
+    return { notice: `${rollText} 실패… 아직 길이 보이지 않는다.`, found: false };
   }
 
   await discover();
-  return { changed: true };
+  return { notice: foundText, found: true };
 }
