@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import {
   appendSheetGold,
+  appendSheetItem,
   inventoryWeightTotal,
   type SheetInventory,
   type SheetInventoryItem,
@@ -38,9 +39,17 @@ export type StorageState = { error?: string; ok?: string } | undefined;
 export type LifeShopState = { error?: string; ok?: string } | undefined;
 export type MarketState = { error?: string; ok?: string } | undefined;
 export type HousingState = { error?: string; ok?: string } | undefined;
+export type CookingState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
 const MOON_FRAGMENT = "달의 파편";
+const COOKING_AP_COST = 10;
+const FAILED_DISH = {
+  name: "실패한 요리",
+  effect: "정체를 알 수 없는 요리 실패작. 판매는 가능하다.",
+  weight: 1,
+  sellPrice: 1,
+};
 
 const LIFE_SHOP_ITEMS = [
   { id: "fish_bag_20", kind: "낚시", type: "bag", name: "낚시꾼 가방 20칸", price: 2000, maxWeight: 20 },
@@ -54,15 +63,15 @@ const LIFE_SHOP_ITEMS = [
 ] as const satisfies readonly LifeShopProduct[];
 
 const FOOD_ITEMS = [
-  { id: "egg", name: "달걀", buyPrice: 20, sellPrice: 10, weight: 1, desc: "요리용 식재료" },
-  { id: "milk", name: "우유", buyPrice: 30, sellPrice: 15, weight: 1, desc: "요리용 식재료" },
-  { id: "meat", name: "고기", buyPrice: 80, sellPrice: 40, weight: 1, desc: "요리용 식재료" },
-  { id: "vegetable", name: "채소", buyPrice: 35, sellPrice: 18, weight: 1, desc: "요리용 식재료" },
-  { id: "fruit", name: "과일", buyPrice: 45, sellPrice: 22, weight: 1, desc: "요리용 식재료" },
-  { id: "water", name: "물", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
-  { id: "wheat", name: "밀", buyPrice: 25, sellPrice: 12, weight: 1, desc: "요리용 식재료" },
-  { id: "salt", name: "소금", buyPrice: 15, sellPrice: 8, weight: 1, desc: "요리용 식재료" },
-  { id: "spice", name: "향신료", buyPrice: 60, sellPrice: 30, weight: 1, desc: "요리용 식재료" },
+  { id: "egg", name: "달걀", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
+  { id: "milk", name: "우유", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
+  { id: "meat", name: "고기", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
+  { id: "vegetable", name: "채소", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
+  { id: "fruit", name: "과일", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
+  { id: "water", name: "물", buyPrice: 5, sellPrice: 2, weight: 1, desc: "요리용 식재료" },
+  { id: "wheat", name: "밀", buyPrice: 20, sellPrice: 10, weight: 1, desc: "요리용 식재료" },
+  { id: "salt", name: "소금", buyPrice: 30, sellPrice: 15, weight: 1, desc: "요리용 식재료" },
+  { id: "spice", name: "향신료", buyPrice: 50, sellPrice: 25, weight: 1, desc: "요리용 식재료" },
   { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25, weight: 1, desc: "요리용 식재료" },
 ] as const;
 
@@ -275,6 +284,8 @@ async function currentSheet(): Promise<{
   nickname: string;
   tab: string;
   locationId: string | null;
+  ap: number | null;
+  apResetAt: Date | null;
   curGold: number | null;
   inv: SheetInventory;
   invFromSheet: boolean;
@@ -291,6 +302,8 @@ async function currentSheet(): Promise<{
     nickname: user.nickname,
     tab: sheet.sheetTab,
     locationId: sheet.locationId,
+    ap: sheet.ap,
+    apResetAt: sheet.apResetAt,
     curGold: sheet.curGold,
     inv: parseInv(sheet.invJson),
     invFromSheet: !!sheet.invJson,
@@ -303,6 +316,100 @@ function lifeShopProduct(productId: string): LifeShopProduct | null {
 
 function foodProduct(productId: string) {
   return FOOD_ITEMS.find((item) => item.id === productId) ?? null;
+}
+
+function parseRecipeIngredients(value: string): { name: string; qty: number }[] {
+  try {
+    return JSON.parse(value) as { name: string; qty: number }[];
+  } catch {
+    return [];
+  }
+}
+
+function ingredientKey(items: { name: string; qty: number }[]): string {
+  return items
+    .filter((item) => item.qty > 0)
+    .map((item) => ({ name: item.name.trim(), qty: item.qty }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"))
+    .map((item) => `${item.name}x${item.qty}`)
+    .join("|");
+}
+
+function ingredientsFromForm(formData: FormData): { name: string; qty: number }[] {
+  const names = formData
+    .getAll("ingredient")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const byName = new Map<string, number>();
+  for (const name of names) byName.set(name, (byName.get(name) ?? 0) + 1);
+  return [...byName.entries()]
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+
+async function canUsePublicKitchen(locationId: string | null): Promise<boolean> {
+  if (!locationId) return false;
+  const [location, actions] = await Promise.all([
+    prisma.location.findUnique({ where: { id: locationId }, select: { id: true, name: true } }),
+    prisma.locationAction.findMany({
+      where: { locationId },
+      select: { kind: true, label: true },
+    }),
+  ]);
+  const source = [location?.id ?? "", location?.name ?? "", ...actions.flatMap((a) => [a.kind, a.label ?? ""])]
+    .join(" ")
+    .toLowerCase();
+  return ["상점", "시장", "주방", "요리", "식료품", "market", "kitchen"].some((keyword) =>
+    source.includes(keyword.toLowerCase()),
+  );
+}
+
+function lifeItemQty(life: ReturnType<typeof parseLifeState>, name: string): number {
+  const target = name.trim();
+  return (["낚시", "채집"] as const).reduce(
+    (sum, kind) =>
+      sum +
+      life.bags[kind].items
+        .filter((item) => item.name.trim() === target)
+        .reduce((inner, item) => inner + Math.max(0, item.qty), 0),
+    0,
+  );
+}
+
+function consumeLifeItem(life: ReturnType<typeof parseLifeState>, name: string, qty: number): number {
+  const target = name.trim();
+  let remaining = qty;
+  for (const kind of ["낚시", "채집"] as const) {
+    for (const item of life.bags[kind].items) {
+      if (item.name.trim() !== target || remaining <= 0) continue;
+      const used = Math.min(item.qty, remaining);
+      item.qty -= used;
+      remaining -= used;
+    }
+    life.bags[kind].items = life.bags[kind].items.filter((item) => item.qty > 0);
+  }
+  return qty - remaining;
+}
+
+function availableIngredientQty(inv: SheetInventory, life: ReturnType<typeof parseLifeState>, name: string): number {
+  return itemQty(inv, name) + lifeItemQty(life, name);
+}
+
+async function consumeIngredient(
+  userId: string,
+  inv: SheetInventory,
+  life: ReturnType<typeof parseLifeState>,
+  name: string,
+  qty: number,
+): Promise<SheetInventory> {
+  let remaining = qty;
+  const fromLife = consumeLifeItem(life, name, remaining);
+  remaining -= fromLife;
+  if (remaining > 0) {
+    consumeInvItem(inv, name, remaining);
+    await decrementDbInventory(userId, name, remaining);
+  }
+  return inv;
 }
 
 function toolTier(toolName: string): number {
@@ -649,6 +756,154 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `${product.name} x${qty} 판매 완료. +${(product.sellPrice * qty).toLocaleString()}G` };
+}
+
+export async function cookDish(_prev: CookingState, formData: FormData): Promise<CookingState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const facility = String(formData.get("facility") ?? "public");
+  const atHome = isHomeLocationId(ctx.locationId);
+  const canPublic = await canUsePublicKitchen(ctx.locationId);
+  const maxIngredients = atHome || facility === "home" ? 4 : 3;
+  if (facility === "home" && !atHome) return { error: "집 주방은 본인 집에서만 사용할 수 있어요." };
+  if (facility !== "home" && !canPublic) return { error: "이 장소에서는 공용 주방을 사용할 수 없어요." };
+
+  const ingredients = ingredientsFromForm(formData);
+  const totalIngredients = ingredients.reduce((sum, item) => sum + item.qty, 0);
+  if (totalIngredients <= 0) return { error: "재료를 하나 이상 넣어주세요." };
+  if (totalIngredients > maxIngredients) {
+    return { error: `이 주방에서는 재료를 최대 ${maxIngredients}개까지만 넣을 수 있어요.` };
+  }
+
+  const fresh = regenFatigue(ctx.ap, ctx.apResetAt);
+  if (fresh.value < COOKING_AP_COST) {
+    return { error: `피로도가 부족합니다. (${fresh.value}/${COOKING_AP_COST})` };
+  }
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { lifeJson: true, achStatsJson: true },
+  });
+  const life = parseLifeState(sheet?.lifeJson);
+  for (const ingredient of ingredients) {
+    const have = availableIngredientQty(ctx.inv, life, ingredient.name);
+    if (have < ingredient.qty) {
+      return { error: `${ingredient.name} 수량이 부족합니다. (${have}/${ingredient.qty})` };
+    }
+  }
+
+  const recipes = await prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } });
+  const key = ingredientKey(ingredients);
+  const recipe =
+    recipes.find((item) => ingredientKey(parseRecipeIngredients(item.ingredientsJson)) === key) ?? null;
+
+  let inv = ctx.inv;
+  for (const ingredient of ingredients) {
+    inv = await consumeIngredient(ctx.userId, inv, life, ingredient.name, ingredient.qty);
+  }
+
+  const result = recipe
+    ? {
+        name: recipe.resultName,
+        qty: recipe.resultQty,
+        effect: recipe.effect
+          ? `${recipe.effect}${recipe.duration ? ` (${recipe.duration})` : ""}\n판매가 ${recipe.sellPrice}G`
+          : `판매가 ${recipe.sellPrice}G`,
+        weight: recipe.weight,
+        sellPrice: recipe.sellPrice,
+      }
+    : { ...FAILED_DISH, qty: 1 };
+  inv = addInvItem(inv, { name: result.name, effect: result.effect, weight: result.weight }, result.qty);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+
+  const discovered = recipe
+    ? await prisma.userRecipe
+        .create({
+          data: { userId: ctx.userId, recipeId: recipe.id },
+        })
+        .then(() => true)
+        .catch(() => false)
+    : false;
+
+  let achStats = recipe ? bumpStat(sheet?.achStatsJson, "요리성공횟수") : (sheet?.achStatsJson ?? null);
+  if (discovered) achStats = bumpStat(achStats, "요리레시피수");
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        ap: fresh.value - COOKING_AP_COST,
+        apResetAt: fresh.at,
+        invJson: JSON.stringify(inv),
+        lifeJson: JSON.stringify(life),
+        achStatsJson: achStats,
+      },
+    }),
+    incrementDbInventory(ctx.userId, result.name, result.qty),
+  ]);
+  void appendSheetItem(ctx.tab, result.name, result.qty, {
+    effect: result.effect,
+    weight: result.weight,
+  });
+  void checkAndGrant(ctx.userId);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  if (!recipe) {
+    return { ok: `조합이 맞지 않았어요. ${FAILED_DISH.name} x1 획득. 피로도 -${COOKING_AP_COST}` };
+  }
+  return {
+    ok: discovered
+      ? `새 레시피 발견! ${recipe.name} 완성. ${result.name} x${result.qty} 획득.`
+      : `${recipe.name} 완성. ${result.name} x${result.qty} 획득.`,
+  };
+}
+
+export async function sellCookedFood(
+  _prev: CookingState,
+  formData: FormData,
+): Promise<CookingState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  const qty = formQty(formData);
+  if (!itemName) return { error: "판매할 요리가 올바르지 않습니다." };
+  if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
+
+  const recipe = await prisma.cookingRecipe.findFirst({
+    where: { resultName: itemName },
+    select: { sellPrice: true },
+  });
+  const unitPrice = itemName === FAILED_DISH.name ? FAILED_DISH.sellPrice : recipe?.sellPrice;
+  if (!unitPrice) return { error: "요리 판매가를 찾지 못했습니다." };
+
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  const gain = unitPrice * qty;
+  const nextGold = currentGold + gain;
+  const inv = consumeInvItem(ctx.inv, itemName, qty);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  inv.gold = `${nextGold}G`;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        invJson: JSON.stringify(inv),
+      },
+    }),
+    decrementDbInventory(ctx.userId, itemName, qty),
+  ]);
+  void appendSheetGold(ctx.tab, gain);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
 }
 
 export async function sellLifeCatch(_prev: MarketState, formData: FormData): Promise<MarketState> {

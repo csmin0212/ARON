@@ -32,6 +32,10 @@ model User {
   inventory    InventoryEntry[]
   storageBox   StorageBox?
   achievements UserAchievement[]
+  recipes      UserRecipe[]
+  tradeOffersSent TradeOffer[] @relation("TradeOfferFrom")
+  tradeOffersReceived TradeOffer[] @relation("TradeOfferTo")
+  tradeMessages TradeMessage[]
 }
 
 // 업적 정의 (GM 시트 '업적' 탭에서 동기화)
@@ -60,6 +64,83 @@ model UserAchievement {
 
   @@unique([userId, achId])
   @@index([userId])
+}
+
+// 요리 레시피 정의 (GM 시트 '레시피' 탭에서 동기화)
+model CookingRecipe {
+  id              String   @id // 레시피ID
+  name            String
+  category        String
+  rank            String
+  facility        String
+  ingredientsJson String // [{ name, qty }]
+  resultName      String
+  resultQty       Int      @default(1)
+  effect          String?
+  duration        String?
+  skillExp        Int      @default(0)
+  tags            String?
+  sellPrice       Int      @default(1)
+  weight          Int      @default(1)
+  isPublic        Boolean  @default(false)
+  order           Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@index([resultName])
+}
+
+// 유저별 발견한 레시피
+model UserRecipe {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipeId   String // CookingRecipe.id (FK 아님 — 동기화 교체에 안전)
+  discoveredAt DateTime @default(now())
+
+  @@unique([userId, recipeId])
+  @@index([userId])
+}
+
+// 캐릭터 간 직접 거래 제안. 수락 시점에 인벤토리·골드를 다시 검증한 뒤 이동한다.
+model TradeOffer {
+  id              String   @id @default(cuid())
+  fromUserId      String
+  fromUser        User     @relation("TradeOfferFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId        String
+  toUser          User     @relation("TradeOfferTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  offerItemName   String?
+  offerItemEffect String?
+  offerItemWeight Int?
+  offerItemQty    Int      @default(0)
+  offerGold       Int      @default(0)
+  requestGold     Int      @default(0)
+  message         String?
+  fromOfferJson   String? // 거래방 제안 [{ name, effect, weight, qty }]
+  toOfferJson     String?
+  fromGold        Int      @default(0)
+  toGold          Int      @default(0)
+  fromConfirmed   Boolean  @default(false)
+  toConfirmed     Boolean  @default(false)
+  status          String   @default("PENDING") // PENDING | ACCEPTED | DECLINED | CANCELLED
+  messages        TradeMessage[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fromUserId, status, createdAt])
+  @@index([toUserId, status, createdAt])
+}
+
+model TradeMessage {
+  id        String     @id @default(cuid())
+  tradeId   String
+  trade     TradeOffer @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  system    Boolean    @default(false)
+  content   String
+  createdAt DateTime   @default(now())
+
+  @@index([tradeId, createdAt])
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)

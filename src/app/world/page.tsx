@@ -23,6 +23,7 @@ import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
   type ByproductView,
+  type CookingView,
   type HousingView,
   type InnView,
   type LifeShopView,
@@ -103,6 +104,14 @@ function parseLocationLife(value: string | null | undefined): LocationLifeConfig
     return value ? (JSON.parse(value) as LocationLifeConfig) : null;
   } catch {
     return null;
+  }
+}
+
+function parseRecipeIngredients(value: string): { name: string; qty: number }[] {
+  try {
+    return JSON.parse(value) as { name: string; qty: number }[];
+  } catch {
+    return [];
   }
 }
 
@@ -441,6 +450,52 @@ export default async function WorldPage() {
     })),
   };
   const canHousing = atHome || isBellTowerLocation(here);
+  const cookingEnabled = canMarket || atHome;
+  const cookingFacility = atHome ? "home" : "public";
+  const allRecipes = cookingEnabled
+    ? await prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } })
+    : [];
+  const discoveredRecipes = cookingEnabled
+    ? await prisma.userRecipe.findMany({
+        where: { userId: user.id },
+        select: { recipeId: true },
+      })
+    : [];
+  const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
+  const knownRecipes = allRecipes
+    .filter((recipe) => recipe.isPublic || discoveredRecipeIds.has(recipe.id))
+    .map((recipe) => ({
+      id: recipe.id,
+      name: recipe.name,
+      rank: recipe.rank,
+      category: recipe.category,
+      ingredients: parseRecipeIngredients(recipe.ingredientsJson)
+        .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
+        .join(", "),
+      resultName: recipe.resultName,
+      sellPrice: recipe.sellPrice,
+      effect: recipe.effect,
+      tags: recipe.tags,
+    }));
+  const cookedPrice = new Map(allRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
+  cookedPrice.set("실패한 요리", 1);
+  const cookedFoods = bagItems
+    .filter((item) => cookedPrice.has(item.name.trim()))
+    .map((item) => ({
+      name: item.name.trim(),
+      qty: item.qty,
+      unitPrice: cookedPrice.get(item.name.trim()) ?? 1,
+      effect: item.effect,
+    }));
+  const cooking: CookingView = {
+    enabled: cookingEnabled,
+    facility: cookingFacility,
+    facilityName: atHome ? "집 주방" : "공용 주방",
+    maxIngredients: atHome ? 4 : 3,
+    ap,
+    knownRecipes,
+    cookedFoods,
+  };
   let gatherPending: PendingGatherView | null = null;
   if (sheet.pendingGatherJson) {
     try {
@@ -676,6 +731,7 @@ export default async function WorldPage() {
             canStorage={canStorage}
             canInn={canInn}
             canHousing={canHousing}
+            cooking={cooking}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}

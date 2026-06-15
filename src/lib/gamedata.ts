@@ -15,6 +15,7 @@ export const ACTIONS_TAB = process.env.ACTIONS_TAB_NAME || "행동";
 export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
 export const ACHIEVEMENTS_TAB = process.env.ACHIEVEMENTS_TAB_NAME || "업적";
 export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
+export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
 
 export type ItemRow = {
   id: string;
@@ -26,6 +27,7 @@ export type ItemRow = {
 };
 
 export type DropEntry = { item: string; qty: number; gold: number; weight: number };
+export type IngredientEntry = { name: string; qty: number };
 
 export type ActionRow = {
   locationId: string;
@@ -72,6 +74,24 @@ export type EventRow = {
   rewards: DropEntry[];
   publicMessage: string | null;
   active: boolean;
+};
+
+export type RecipeRow = {
+  id: string;
+  name: string;
+  category: string;
+  rank: string;
+  facility: string;
+  ingredients: IngredientEntry[];
+  resultName: string;
+  resultQty: number;
+  effect: string | null;
+  duration: string | null;
+  skillExp: number;
+  tags: string | null;
+  sellPrice: number;
+  weight: number;
+  isPublic: boolean;
 };
 
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
@@ -171,6 +191,23 @@ export function parseDrops(spec: string): DropEntry[] {
   }
   if (out.length === 0) throw new Error("드랍테이블이 비어 있어요.");
   return out;
+}
+
+export function parseIngredients(spec: string): IngredientEntry[] {
+  const out: IngredientEntry[] = [];
+  for (const raw of spec.split(/[,，]/)) {
+    const part = raw.trim();
+    if (!part) continue;
+    const m = part.match(/^(.+?)(?:[xX×](\d+))?$/);
+    if (!m) throw new Error(`재료 표기 '${part}' 를 해석할 수 없어요.`);
+    const name = m[1].trim();
+    const qty = m[2] ? parseInt(m[2], 10) : 1;
+    const existing = out.find((item) => item.name === name);
+    if (existing) existing.qty += qty;
+    else out.push({ name, qty });
+  }
+  if (out.length === 0) throw new Error("재료 목록이 비어 있어요.");
+  return out.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
 export function pickDrop(drops: DropEntry[]): DropEntry {
@@ -418,6 +455,68 @@ export function parseEventsGrid(g: string[][], itemIds: Set<string>): EventRow[]
   return rows;
 }
 
+// ── 레시피 탭 ──
+// 레시피ID | 이름 | 분류 | 등급 | 필요시설 | 재료 | 결과 | 판매가 | 중량 | 효과 | 지속 | 숙련도 | 태그 | 공개
+export function parseRecipesGrid(g: string[][]): RecipeRow[] {
+  const h = findHeader(g, ["이름", "재료", "결과"], {
+    레시피ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    분류: "category",
+    등급: "rank",
+    필요시설: "facility",
+    시설: "facility",
+    재료: "ingredients",
+    결과: "result",
+    판매가: "sellPrice",
+    중량: "weight",
+    효과: "effect",
+    지속: "duration",
+    숙련도: "skillExp",
+    태그: "tags",
+    공개: "isPublic",
+  });
+  if (!h) throw new Error("레시피 탭이 없거나 헤더(이름/재료/결과)가 없어요.");
+
+  const rows: RecipeRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    const ingredientsSpec = at(g, r, h.col.ingredients);
+    const resultSpec = at(g, r, h.col.result);
+    if (!name || !ingredientsSpec || !resultSpec) continue;
+
+    const id = at(g, r, h.col.id) || name;
+    if (/[,，]/.test(id)) throw new Error(`레시피ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    if (seen.has(id)) throw new Error(`레시피ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+
+    const result = parseIngredients(resultSpec)[0];
+    if (!result) throw new Error(`레시피 '${id}' 결과가 비어 있어요.`);
+    const publicRaw = at(g, r, h.col.isPublic);
+    rows.push({
+      id,
+      name,
+      category: at(g, r, h.col.category) || "요리",
+      rank: at(g, r, h.col.rank) || "R1",
+      facility: at(g, r, h.col.facility) || "공용 주방",
+      ingredients: parseIngredients(ingredientsSpec),
+      resultName: result.name,
+      resultQty: result.qty,
+      effect: at(g, r, h.col.effect) || null,
+      duration: at(g, r, h.col.duration) || null,
+      skillExp: num(at(g, r, h.col.skillExp)) ?? 0,
+      tags: at(g, r, h.col.tags) || null,
+      sellPrice: num(at(g, r, h.col.sellPrice)) ?? 1,
+      weight: num(at(g, r, h.col.weight)) ?? 1,
+      isPublic: /^(y|yes|true|1|공개)$/i.test(publicRaw),
+    });
+  }
+  if (rows.length === 0) throw new Error("레시피 탭에 레시피가 없어요.");
+  return rows;
+}
+
 // ── 시트에서 불러오기 (탭 없으면 null — 선택 탭) ──
 export async function fetchDungeonsRows(itemIds: Set<string>): Promise<DungeonRow[] | null> {
   const g =
@@ -439,6 +538,13 @@ export async function fetchAchievementsRows(): Promise<AchievementRow[] | null> 
     (await fetchTab(MASTER_SHEET_ID, ACHIEVEMENTS_TAB));
   if (!g) return null;
   return parseAchievementsGrid(g);
+}
+
+export async function fetchRecipesRows(): Promise<RecipeRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, RECIPES_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, RECIPES_TAB));
+  if (!g) return null;
+  return parseRecipesGrid(g);
 }
 
 export async function fetchItemsRows(): Promise<ItemRow[] | null> {

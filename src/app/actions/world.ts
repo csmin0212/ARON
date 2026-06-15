@@ -11,6 +11,7 @@ import {
   fetchDungeonsRows,
   fetchEventsRows,
   fetchAchievementsRows,
+  fetchRecipesRows,
 } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -634,6 +635,39 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "업적 탭 오류");
+  }
+
+  // 7) 레시피 (선택) — 발견 기록(UserRecipe)은 보존하고 정의만 교체.
+  try {
+    const recipes = await fetchRecipesRows();
+    if (recipes) {
+      await prisma.$transaction([
+        prisma.cookingRecipe.deleteMany(),
+        prisma.cookingRecipe.createMany({
+          data: recipes.map((recipe, i) => ({
+            id: recipe.id,
+            name: recipe.name,
+            category: recipe.category,
+            rank: recipe.rank,
+            facility: recipe.facility,
+            ingredientsJson: JSON.stringify(recipe.ingredients),
+            resultName: recipe.resultName,
+            resultQty: recipe.resultQty,
+            effect: recipe.effect,
+            duration: recipe.duration,
+            skillExp: recipe.skillExp,
+            tags: recipe.tags,
+            sellPrice: recipe.sellPrice,
+            weight: recipe.weight,
+            isPublic: recipe.isPublic,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`레시피 ${recipes.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "레시피 탭 오류");
   }
 
   revalidatePath("/world");

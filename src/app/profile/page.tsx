@@ -7,7 +7,9 @@ import ProfileForm from "@/components/forms/ProfileForm";
 import SheetLinkForm from "@/components/forms/SheetLinkForm";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import ProfileHero from "@/components/ProfileHero";
+import ProfileTradePanel, { type TradeOfferView } from "@/components/ProfileTradePanel";
 import { checkAndGrant } from "@/lib/achievements";
+import type { SheetInventory } from "@/lib/googleSheets";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
 
@@ -34,6 +36,48 @@ function HeroStat({
   );
 }
 
+function parseOfferableItems(invJson: string | null | undefined) {
+  try {
+    const inv = invJson ? (JSON.parse(invJson) as SheetInventory) : null;
+    const byName = new Map<string, { name: string; qty: number; effect?: string | null; weight?: number | null }>();
+    for (const item of inv?.items ?? []) {
+      if (!item.name || item.qty <= 0) continue;
+      const existing = byName.get(item.name);
+      if (existing) existing.qty += item.qty;
+      else byName.set(item.name, { name: item.name, qty: item.qty, effect: item.effect, weight: item.weight });
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  } catch {
+    return [];
+  }
+}
+
+function tradeView(offer: {
+  id: string;
+  offerItemName: string | null;
+  offerItemQty: number;
+  offerGold: number;
+  requestGold: number;
+  message: string | null;
+  createdAt: Date;
+  fromUser: { nickname: string; username: string };
+  toUser: { nickname: string; username: string };
+}): TradeOfferView {
+  return {
+    id: offer.id,
+    fromNickname: offer.fromUser.nickname,
+    fromUsername: offer.fromUser.username,
+    toNickname: offer.toUser.nickname,
+    toUsername: offer.toUser.username,
+    offerItemName: offer.offerItemName,
+    offerItemQty: offer.offerItemQty,
+    offerGold: offer.offerGold,
+    requestGold: offer.requestGold,
+    message: offer.message,
+    createdAt: formatFullDate(offer.createdAt),
+  };
+}
+
 export default async function ProfilePage({
   searchParams,
 }: {
@@ -44,9 +88,27 @@ export default async function ProfilePage({
 
   const sp = await searchParams;
   await checkAndGrant(user.id); // 임계값 업적 지연 판정
-  const [counts, sheet] = await Promise.all([
+  const [counts, sheet, incomingRows, outgoingRows] = await Promise.all([
     prisma.post.count({ where: { authorId: user.id } }),
     prisma.characterSheet.findUnique({ where: { userId: user.id } }),
+    prisma.tradeOffer.findMany({
+      where: { toUserId: user.id, status: "PENDING" },
+      include: {
+        fromUser: { select: { nickname: true, username: true } },
+        toUser: { select: { nickname: true, username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.tradeOffer.findMany({
+      where: { fromUserId: user.id, status: "PENDING" },
+      include: {
+        fromUser: { select: { nickname: true, username: true } },
+        toUser: { select: { nickname: true, username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
   ]);
 
   const rank = sheet?.adventurerRank ?? null;
@@ -59,7 +121,7 @@ export default async function ProfilePage({
     sheet?.curGold != null ? `${sheet.curGold.toLocaleString()}G` : sheet?.gold ?? null;
 
   return (
-    <div className="mx-auto max-w-md animate-fadeup space-y-5 py-4">
+    <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
       {/* 히어로 헤더 */}
       <ProfileHero
         nickname={user.nickname}
@@ -111,6 +173,15 @@ export default async function ProfilePage({
           masterUrl={MASTER_SHEET_URL}
         />
       </div>
+
+      <ProfileTradePanel
+        targetUserId={user.id}
+        targetNickname={user.nickname}
+        isOwn
+        offerableItems={parseOfferableItems(sheet?.invJson)}
+        incoming={incomingRows.map(tradeView)}
+        outgoing={outgoingRows.map(tradeView)}
+      />
 
       {/* 프로필 편집 */}
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">

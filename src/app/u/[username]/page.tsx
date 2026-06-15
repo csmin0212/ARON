@@ -3,6 +3,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { formatFullDate } from "@/lib/format";
+import type { SheetInventory } from "@/lib/googleSheets";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
 import { checkAndGrant } from "@/lib/achievements";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
@@ -10,6 +12,7 @@ import CharacterTabs from "@/components/CharacterTabs";
 import LifeSkillPanel from "@/components/LifeSkillPanel";
 import ProfileHero from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
+import ProfileTradePanel, { type TradeOfferView } from "@/components/ProfileTradePanel";
 
 export async function generateMetadata({
   params,
@@ -22,6 +25,48 @@ export async function generateMetadata({
     select: { nickname: true },
   });
   return { title: user ? `${user.nickname} · 캐릭터` : "캐릭터" };
+}
+
+function parseOfferableItems(invJson: string | null | undefined) {
+  try {
+    const inv = invJson ? (JSON.parse(invJson) as SheetInventory) : null;
+    const byName = new Map<string, { name: string; qty: number; effect?: string | null; weight?: number | null }>();
+    for (const item of inv?.items ?? []) {
+      if (!item.name || item.qty <= 0) continue;
+      const existing = byName.get(item.name);
+      if (existing) existing.qty += item.qty;
+      else byName.set(item.name, { name: item.name, qty: item.qty, effect: item.effect, weight: item.weight });
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  } catch {
+    return [];
+  }
+}
+
+function tradeView(offer: {
+  id: string;
+  offerItemName: string | null;
+  offerItemQty: number;
+  offerGold: number;
+  requestGold: number;
+  message: string | null;
+  createdAt: Date;
+  fromUser: { nickname: string; username: string };
+  toUser: { nickname: string; username: string };
+}): TradeOfferView {
+  return {
+    id: offer.id,
+    fromNickname: offer.fromUser.nickname,
+    fromUsername: offer.fromUser.username,
+    toNickname: offer.toUser.nickname,
+    toUsername: offer.toUser.username,
+    offerItemName: offer.offerItemName,
+    offerItemQty: offer.offerItemQty,
+    offerGold: offer.offerGold,
+    requestGold: offer.requestGold,
+    message: offer.message,
+    createdAt: formatFullDate(offer.createdAt),
+  };
 }
 
 export default async function CharacterPage({
@@ -44,9 +89,38 @@ export default async function CharacterPage({
   // 본인 프로필 열람 시 임계값 업적(명성·골드·레벨 등) 지연 판정
   if (isOwn) await checkAndGrant(profile.id);
 
-  const [achs, earnedRows] = await Promise.all([
+  const [achs, earnedRows, mySheet, incomingRows, outgoingRows] = await Promise.all([
     prisma.achievement.findMany({ orderBy: { order: "asc" } }),
     prisma.userAchievement.findMany({ where: { userId: profile.id }, select: { achId: true } }),
+    me
+      ? prisma.characterSheet.findUnique({ where: { userId: me.id }, select: { invJson: true } })
+      : Promise.resolve(null),
+    me
+      ? prisma.tradeOffer.findMany({
+          where: isOwn
+            ? { toUserId: me.id, status: "PENDING" }
+            : { fromUserId: profile.id, toUserId: me.id, status: "PENDING" },
+          include: {
+            fromUser: { select: { nickname: true, username: true } },
+            toUser: { select: { nickname: true, username: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        })
+      : Promise.resolve([]),
+    me
+      ? prisma.tradeOffer.findMany({
+          where: isOwn
+            ? { fromUserId: me.id, status: "PENDING" }
+            : { fromUserId: me.id, toUserId: profile.id, status: "PENDING" },
+          include: {
+            fromUser: { select: { nickname: true, username: true } },
+            toUser: { select: { nickname: true, username: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        })
+      : Promise.resolve([]),
   ]);
   const earnedSet = new Set(earnedRows.map((r) => r.achId));
   const achView: AchView[] = achs.map((a) => ({
@@ -139,6 +213,21 @@ export default async function CharacterPage({
         ]}
         badges={{ life: pendingCount }}
       />
+
+      {me ? (
+        <ProfileTradePanel
+          targetUserId={profile.id}
+          targetNickname={profile.nickname}
+          isOwn={isOwn}
+          offerableItems={parseOfferableItems(mySheet?.invJson)}
+          incoming={incomingRows.map(tradeView)}
+          outgoing={outgoingRows.map(tradeView)}
+        />
+      ) : (
+        <div className="rounded-3xl border border-line bg-surface p-5 text-sm text-faint shadow-sm">
+          로그인하면 이 캐릭터에게 거래를 제안할 수 있어요.
+        </div>
+      )}
     </div>
   );
 }

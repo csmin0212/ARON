@@ -5,16 +5,19 @@ import {
   buyHouse,
   buyFood,
   buyLifeGear,
+  cookDish,
   depositToStorage,
   enchantWeapon,
   restAtHome,
   restAtInn,
+  sellCookedFood,
   sellHouse,
   sellFood,
   sellLifeCatch,
   sellMaterial,
   upgradeWeapon,
   withdrawFromStorage,
+  type CookingState,
   type LifeShopState,
   type HousingState,
   type MarketState,
@@ -31,6 +34,7 @@ type Props = {
   canStorage: boolean;
   canInn: boolean;
   canHousing: boolean;
+  cooking: CookingView;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
@@ -69,6 +73,35 @@ export type HousingView = {
     owned: boolean;
     sellPrice: number;
   }[];
+};
+
+export type KnownRecipeView = {
+  id: string;
+  name: string;
+  rank: string;
+  category: string;
+  ingredients: string;
+  resultName: string;
+  sellPrice: number;
+  effect: string | null;
+  tags: string | null;
+};
+
+export type CookedFoodView = {
+  name: string;
+  qty: number;
+  unitPrice: number;
+  effect: string | null;
+};
+
+export type CookingView = {
+  enabled: boolean;
+  facility: "public" | "home";
+  facilityName: string;
+  maxIngredients: number;
+  ap: number;
+  knownRecipes: KnownRecipeView[];
+  cookedFoods: CookedFoodView[];
 };
 
 export type ByproductView = {
@@ -252,6 +285,24 @@ function MarketStateLine({ state }: { state: MarketState }) {
 }
 
 function HousingStateLine({ state }: { state: HousingState }) {
+  if (state?.error) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+        {state.error}
+      </p>
+    );
+  }
+  if (state?.ok) {
+    return (
+      <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-600">
+        {state.ok}
+      </p>
+    );
+  }
+  return null;
+}
+
+function CookingStateLine({ state }: { state: CookingState }) {
   if (state?.error) {
     return (
       <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
@@ -872,15 +923,15 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
 }
 
 const FOOD_PRODUCTS = [
-  { id: "egg", name: "달걀", buyPrice: 20, sellPrice: 10 },
-  { id: "milk", name: "우유", buyPrice: 30, sellPrice: 15 },
-  { id: "meat", name: "고기", buyPrice: 80, sellPrice: 40 },
-  { id: "vegetable", name: "채소", buyPrice: 35, sellPrice: 18 },
-  { id: "fruit", name: "과일", buyPrice: 45, sellPrice: 22 },
-  { id: "water", name: "물", buyPrice: 10, sellPrice: 5 },
-  { id: "wheat", name: "밀", buyPrice: 25, sellPrice: 12 },
-  { id: "salt", name: "소금", buyPrice: 15, sellPrice: 8 },
-  { id: "spice", name: "향신료", buyPrice: 60, sellPrice: 30 },
+  { id: "egg", name: "달걀", buyPrice: 10, sellPrice: 5 },
+  { id: "milk", name: "우유", buyPrice: 10, sellPrice: 5 },
+  { id: "meat", name: "고기", buyPrice: 10, sellPrice: 5 },
+  { id: "vegetable", name: "채소", buyPrice: 10, sellPrice: 5 },
+  { id: "fruit", name: "과일", buyPrice: 10, sellPrice: 5 },
+  { id: "water", name: "물", buyPrice: 5, sellPrice: 2 },
+  { id: "wheat", name: "밀", buyPrice: 20, sellPrice: 10 },
+  { id: "salt", name: "소금", buyPrice: 30, sellPrice: 15 },
+  { id: "spice", name: "향신료", buyPrice: 50, sellPrice: 25 },
   { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25 },
 ] as const;
 
@@ -970,6 +1021,190 @@ function FoodMarket({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CookingKitchen({
+  cooking,
+  inventoryItems,
+  lifeStorageItems,
+  onClose,
+}: {
+  cooking: CookingView;
+  inventoryItems: SheetInventoryItem[];
+  lifeStorageItems: LifeStorageItemView[];
+  onClose: () => void;
+}) {
+  const [cookState, cookAction, cookPending] = useActionState<CookingState, FormData>(
+    cookDish,
+    undefined,
+  );
+  const [sellState, sellAction, sellPending] = useActionState<CookingState, FormData>(
+    sellCookedFood,
+    undefined,
+  );
+  const ingredientOptions = useMemo(
+    () => mergeItems([...inventoryItems, ...lifeStorageItems]).filter((item) => item.qty > 0),
+    [inventoryItems, lifeStorageItems],
+  );
+  const slots = Array.from({ length: cooking.maxIngredients }, (_, index) => index);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="요리"
+        className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Cooking
+          </p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
+            <span>🍳 {cooking.facilityName}</span>
+            <span className="text-xs font-bold text-amber-500">
+              피로도 {cooking.ap} · 조리 -10
+            </span>
+          </h3>
+          <p className="mt-2 text-xs font-semibold text-muted">
+            재료를 최대 {cooking.maxIngredients}개까지 넣어 조리합니다. 조합이 맞으면 레시피가
+            해금돼요.
+          </p>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <CookingStateLine state={cookState} />
+          <CookingStateLine state={sellState} />
+
+          <section className="rounded-2xl border border-line bg-subtle p-4">
+            <h4 className="mb-3 text-sm font-extrabold text-content">재료 넣기</h4>
+            <form action={cookAction} className="space-y-3">
+              <input type="hidden" name="facility" value={cooking.facility} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                {slots.map((slot) => (
+                  <select
+                    key={slot}
+                    name="ingredient"
+                    className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
+                    defaultValue=""
+                  >
+                    <option value="">재료 선택 안 함</option>
+                    {ingredientOptions.map((item) => (
+                      <option key={`${slot}-${item.name}`} value={item.name}>
+                        {item.name} x{item.qty}
+                      </option>
+                    ))}
+                  </select>
+                ))}
+              </div>
+              <button
+                type="submit"
+                disabled={cookPending || ingredientOptions.length === 0 || cooking.ap < 10}
+                className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-brand-600 disabled:opacity-50"
+              >
+                {cookPending ? "조리 중..." : "조리하기 (-피로도 10)"}
+              </button>
+            </form>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2">
+              <h4 className="text-sm font-extrabold text-content">
+                발견한 레시피 {cooking.knownRecipes.length}개
+              </h4>
+              {cooking.knownRecipes.length === 0 ? (
+                <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+                  아직 발견한 레시피가 없어요.
+                </p>
+              ) : (
+                <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {cooking.knownRecipes.map((recipe) => (
+                    <li key={recipe.id} className="rounded-2xl border border-line bg-subtle p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-extrabold text-content">{recipe.name}</p>
+                          <p className="mt-0.5 text-[11px] font-bold text-brand-600">
+                            {recipe.rank} · {recipe.category} · 판매가 {recipe.sellPrice}G
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-muted">
+                          {recipe.resultName}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-muted">재료: {recipe.ingredients}</p>
+                      {recipe.effect && (
+                        <p className="mt-1 line-clamp-2 text-xs text-faint">{recipe.effect}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-extrabold text-content">요리 판매</h4>
+              {cooking.cookedFoods.length === 0 ? (
+                <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+                  판매할 요리가 없어요.
+                </p>
+              ) : (
+                <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {cooking.cookedFoods.map((food) => (
+                    <li key={food.name} className="rounded-2xl border border-line bg-subtle p-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-extrabold text-content">{food.name}</p>
+                          <p className="mt-0.5 text-[11px] font-bold text-emerald-600">
+                            판매가 {food.unitPrice}G · 보유 x{food.qty}
+                          </p>
+                          {food.effect && (
+                            <p className="mt-0.5 line-clamp-2 text-xs text-faint">{food.effect}</p>
+                          )}
+                        </div>
+                      </div>
+                      <form action={sellAction} className="grid grid-cols-[1fr_5rem] gap-2">
+                        <input type="hidden" name="itemName" value={food.name} />
+                        <input
+                          name="qty"
+                          type="number"
+                          min="1"
+                          max={food.qty}
+                          defaultValue="1"
+                          className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
+                        />
+                        <button
+                          type="submit"
+                          disabled={sellPending}
+                          className="rounded-xl bg-surface px-3 py-2 text-sm font-extrabold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
+                        >
+                          판매
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+
         <div className="border-t border-line px-5 py-3">
           <button
             type="button"
@@ -1216,6 +1451,7 @@ export default function WorldServices({
   canStorage,
   canInn,
   canHousing,
+  cooking,
   inventoryItems,
   lifeStorageItems,
   lifeShop,
@@ -1231,6 +1467,7 @@ export default function WorldServices({
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [byproductOpen, setByproductOpen] = useState(false);
+  const [cookingOpen, setCookingOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
@@ -1251,7 +1488,7 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled) return null;
 
   function closeForge() {
     setOpen(false);
@@ -1312,6 +1549,21 @@ export default function WorldServices({
                 </span>
               </button>
             </>
+          )}
+          {cooking.enabled && (
+            <button
+              type="button"
+              onClick={() => setCookingOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🍳</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">요리</span>
+                <span className="text-[11px] text-faint">
+                  {cooking.facilityName} · 재료 최대 {cooking.maxIngredients}개 · 피로도 10
+                </span>
+              </span>
+            </button>
           )}
           {canStorage && (
             <button
@@ -1394,6 +1646,15 @@ export default function WorldServices({
       {questOpen && <QuestBoard onClose={() => setQuestOpen(false)} />}
 
       {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
+
+      {cookingOpen && (
+        <CookingKitchen
+          cooking={cooking}
+          inventoryItems={inventoryItems}
+          lifeStorageItems={lifeStorageItems}
+          onClose={() => setCookingOpen(false)}
+        />
+      )}
 
       {byproductOpen && (
         <ByproductMarket
