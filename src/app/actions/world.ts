@@ -14,6 +14,26 @@ export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
 export type DiscoverState = { error?: string; notice?: string; found?: boolean };
 
+// 은밀한 조사 쿨다운 — 같은 키워드는 30분에 한 번만 시도 가능.
+// 정보가 풀리는 걸 막고, 무차별 키워드 찔러보기를 어렵게 한다.
+const PROBE_COOLDOWN_MS = 30 * 60_000;
+const normKeyword = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
+function parseProbeMap(json: string | null): Record<string, number> {
+  try {
+    if (!json) return {};
+    const raw = JSON.parse(json) as Record<string, string | number>;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      const t = typeof v === "number" ? v : Date.parse(String(v));
+      if (Number.isFinite(t)) out[k] = t;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 // 비밀 키워드로 히든 장소 발견 — 채팅과 분리된 전용 입력칸에서 호출.
 // 입력 키워드는 공개 채팅에 남기지 않고, 결과는 본인에게만 notice 로 돌려준다.
 export async function discoverByKeyword(keyword: string): Promise<DiscoverState> {
@@ -26,6 +46,25 @@ export async function discoverByKeyword(keyword: string): Promise<DiscoverState>
 
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.locationId) return { error: "월드에 입장한 상태에서만 조사할 수 있어요." };
+
+  // 키워드별 쿨다운 체크 (만료된 기록은 정리)
+  const now = Date.now();
+  const key = normKeyword(trimmed);
+  const probes = parseProbeMap(sheet.probeJson);
+  for (const [k, t] of Object.entries(probes)) {
+    if (now - t >= PROBE_COOLDOWN_MS) delete probes[k];
+  }
+  const last = probes[key];
+  if (last != null && now - last < PROBE_COOLDOWN_MS) {
+    const leftMin = Math.ceil((PROBE_COOLDOWN_MS - (now - last)) / 60_000);
+    return { notice: `같은 단서는 다시 살펴볼 게 없다. (약 ${leftMin}분 후 다시 시도)` };
+  }
+
+  probes[key] = now;
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: { probeJson: JSON.stringify(probes) },
+  });
 
   const result = await tryKeywordSpeech(user.id, sheet, trimmed);
   if (result.found) revalidatePath("/world");

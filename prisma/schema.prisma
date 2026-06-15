@@ -60,6 +60,7 @@ model CharacterSheet {
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
   dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
+  probeJson      String? // 은밀한 조사 키워드별 마지막 시도 시각 JSON { 정규화키워드: ISO시각 } — 키워드당 쿨다운
   lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
   adventurerRank String    @default("D") // 모험가 길드 등급
   fame           Int       @default(0) // 다음 등급까지 누적 명성치
