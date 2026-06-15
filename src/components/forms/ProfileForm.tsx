@@ -33,10 +33,13 @@ export default function ProfileForm({
   const fileRef = useRef<HTMLInputElement>(null);
   const isUrl = avatar !== "" && !avatar.startsWith("preset:");
 
-  const accentStyle = isHexColor(color) ? ({ "--accent": color } as CSSProperties) : undefined;
+  const hasColor = isHexColor(color);
+  const accentStyle = hasColor ? ({ "--accent": color } as CSSProperties) : undefined;
   const coverStyle: CSSProperties | undefined = cover
     ? { backgroundImage: `url("${cover}")`, backgroundSize: "cover", backgroundPosition: "center" }
-    : undefined;
+    : hasColor
+      ? { backgroundImage: `linear-gradient(120deg, ${color}, color-mix(in srgb, ${color} 55%, #000))` }
+      : undefined;
 
   async function uploadCover(file: File) {
     setUploading(true);

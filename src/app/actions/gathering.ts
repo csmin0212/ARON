@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
+import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
   lifeSkillCategory,
@@ -114,8 +115,13 @@ async function grant(userId: string, nickname: string, locationId: string | null
   await ensureItem(p);
   await prisma.characterSheet.update({
     where: { userId },
-    data: { lifeJson: JSON.stringify(life), pendingGatherJson: null },
+    data: {
+      lifeJson: JSON.stringify(life),
+      pendingGatherJson: null,
+      achStatsJson: bumpStat(sheet?.achStatsJson, "채집성공횟수"),
+    },
   });
+  void checkAndGrant(userId);
   const sell = lifeSkillMarketPrice(GATHER, { rank: p.rank, price: p.price } as never);
   if (locationId) {
     await postSystem(

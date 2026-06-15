@@ -13,6 +13,7 @@ import {
   inventoryWeightTotal,
   type SheetInventory,
 } from "./googleSheets";
+import { bumpStat, checkAndGrant } from "./achievements";
 import {
   lifeSkillCategory,
   lifeSkillExpGain,
@@ -330,6 +331,7 @@ export async function runActionCommand(
           where: { userId },
           data: {
             invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty, { effect }),
+            achStatsJson: bumpStat(sheet.achStatsJson, "아이템획득수", drop.qty),
           },
         });
         void appendSheetItem(sheet.sheetTab, itemName, drop.qty, { effect });
@@ -344,6 +346,7 @@ export async function runActionCommand(
   });
 
   await postSystem(locationId, `${emoji} ${nickname}님의 ${label}${rollLine}${resultLine}`);
+  void checkAndGrant(userId);
   return {};
 }
 

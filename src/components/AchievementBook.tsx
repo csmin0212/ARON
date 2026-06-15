@@ -59,7 +59,8 @@ export default function AchievementBook({
               </p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {g.items.map((a) => {
-                  const hidden = a.secret && !a.earned && !isOwn;
+                  // HIDDEN 업적은 달성 전까지 누구에게도 내용을 보이지 않음
+                  const hidden = a.secret && !a.earned;
                   const equipped =
                     a.earned && a.rewardTitle != null && a.rewardTitle === equippedTitle;
                   return (

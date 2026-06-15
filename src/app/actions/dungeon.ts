@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
+import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { rollDice } from "@/lib/dice";
 import { dungeonWeekKey } from "@/lib/world";
 import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
@@ -133,10 +134,15 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   const total = dice[0] + dice[1] + mod;
   const success = total >= dungeon.dc;
 
-  // AP·주간 횟수 차감
+  // AP·주간 횟수 차감 + 업적 카운터 (입장 / 성공 시 클리어)
+  let achStats = bumpStat(sheet.achStatsJson, "던전입장");
+  if (success) {
+    achStats = bumpStat(achStats, "던전클리어");
+    achStats = bumpStat(achStats, "주간던전클리어");
+  }
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { ap: ap - DUNGEON_AP, apResetAt, dungeonWeek: week, dungeonRuns: runs + 1 },
+    data: { ap: ap - DUNGEON_AP, apResetAt, dungeonWeek: week, dungeonRuns: runs + 1, achStatsJson: achStats },
   });
 
   // 경험점은 성공·실패 동일 지급 (범위면 랜덤). 시트 수식 끝에 +N
@@ -186,6 +192,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     );
   }
 
+  void checkAndGrant(user.id);
   revalidatePath("/world");
   revalidatePath("/profile");
   return {

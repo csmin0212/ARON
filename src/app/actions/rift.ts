@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { postSystem } from "@/lib/play";
+import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import { RIFT_CAPACITY, RIFT_EMOJI, isRiftType, riftInteriorId } from "@/lib/rift";
 
 export type RiftActionState = { error?: string; ok?: string } | undefined;
@@ -64,7 +65,7 @@ export async function enterRift(riftId: string): Promise<RiftActionState> {
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
-    select: { locationId: true },
+    select: { locationId: true, visitedJson: true, achStatsJson: true },
   });
   const rift = await prisma.rift.findUnique({ where: { id: riftId } });
   if (!rift || rift.status !== "open") return { error: "열린 균열이 아니에요." };
@@ -89,8 +90,14 @@ export async function enterRift(riftId: string): Promise<RiftActionState> {
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: rift.interiorId, enteredAt: new Date() },
+    data: {
+      locationId: rift.interiorId,
+      enteredAt: new Date(),
+      visitedJson: addVisited(sheet?.visitedJson, rift.interiorId),
+      achStatsJson: bumpStat(sheet?.achStatsJson, "균열입장"),
+    },
   });
+  void checkAndGrant(user.id);
   await Promise.all([
     postSystem(rift.originId, `🌀 ${user.nickname}님이 '${rift.type}' 균열에 진입합니다.`),
     postSystem(rift.interiorId, `🌀 ${user.nickname}님이 균열에 진입했다.`),

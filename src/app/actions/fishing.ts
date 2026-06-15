@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
+import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
   lifeSkillCategory,
@@ -168,7 +169,11 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   const locationId = sheet.locationId;
 
   if (!landed) {
-    await prisma.characterSheet.update({ where: { userId: user.id }, data: { pendingCatchJson: null } });
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { pendingCatchJson: null, achStatsJson: bumpStat(sheet.achStatsJson, "낚시실패횟수") },
+    });
+    void checkAndGrant(user.id);
     if (locationId) {
       await postSystem(locationId, `🎣 ${user.nickname}님 — 놓쳤다! 미끼만 물고 달아났다…`);
     }
@@ -195,8 +200,13 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   await ensureItem(pending);
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { lifeJson: JSON.stringify(life), pendingCatchJson: null },
+    data: {
+      lifeJson: JSON.stringify(life),
+      pendingCatchJson: null,
+      achStatsJson: bumpStat(sheet.achStatsJson, "낚시성공횟수"),
+    },
   });
+  void checkAndGrant(user.id);
 
   const sell = lifeSkillMarketPrice(FISH, { rank: pending.rank, price: pending.price } as never);
   if (locationId) {

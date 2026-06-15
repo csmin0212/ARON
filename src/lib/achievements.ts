@@ -150,10 +150,6 @@ export async function checkAndGrant(
         return n != null && (life.bags.채집?.maxWeight ?? 0) >= n;
       case "가구배치수":
         return n != null && furnitureCount >= n;
-      case "이동횟수":
-        return n != null && (stats["이동횟수"] ?? 0) >= n;
-      case "조사성공횟수":
-        return n != null && (stats["조사성공횟수"] ?? 0) >= n;
       case "최초발견":
         return n != null && discoveredCount >= n;
       case "칭호보유수":
@@ -182,7 +178,10 @@ export async function checkAndGrant(
       case "히든장소방문":
         return !!v && !!visitTokens && visitTokens.has(norm(v));
       default:
-        return false; // 미구현 조건타입 (요리/길드/카운터 등) — 추후 배선
+        // 누적 카운터형 — condType 이름과 같은 카운터를 그때그때 bumpStat 하면 자동 작동.
+        // (이동횟수·조사성공/실패·낚시/채집 성공/실패·던전/균열 클리어·입장·집휴식·월드채팅·아이템획득 …)
+        // 아직 카운터를 안 올리는 미구현 조건은 0이라 자동으로 잠금 유지.
+        return n != null && (stats[a.condType] ?? 0) >= n;
     }
   }
 

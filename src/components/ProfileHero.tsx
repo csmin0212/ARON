@@ -31,12 +31,13 @@ export default function ProfileHero({
   action?: ReactNode;
   footer?: ReactNode;
 }) {
-  const accentStyle = isHexColor(color ?? undefined)
-    ? ({ "--accent": color } as CSSProperties)
-    : undefined;
+  const hasColor = isHexColor(color ?? undefined);
+  const accentStyle = hasColor ? ({ "--accent": color } as CSSProperties) : undefined;
   const coverStyle: CSSProperties | undefined = cover
     ? { backgroundImage: `url("${cover}")`, backgroundSize: "cover", backgroundPosition: "center" }
-    : undefined;
+    : hasColor
+      ? { backgroundImage: `linear-gradient(120deg, ${color}, color-mix(in srgb, ${color} 55%, #000))` }
+      : undefined;
 
   return (
     <div

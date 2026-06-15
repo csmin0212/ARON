@@ -21,6 +21,7 @@ import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
+import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import {
   homeTierFromLocationId,
   houseOption,
@@ -937,6 +938,7 @@ export async function restAtHome(): Promise<HousingState> {
       housingJson: true,
       houseRestedAt: true,
       locationId: true,
+      achStatsJson: true,
     },
   });
   const currentTier = homeTierFromLocationId(sheet?.locationId) ?? houseOption(sheet?.houseTier)?.tier ?? null;
@@ -968,8 +970,10 @@ export async function restAtHome(): Promise<HousingState> {
       ap: newAp,
       apResetAt: fresh.at,
       houseRestedAt: now,
+      achStatsJson: bumpStat(sheet.achStatsJson, "집휴식횟수"),
     },
   });
+  void checkAndGrant(user.id);
 
   revalidatePath("/world");
   revalidatePath("/profile");

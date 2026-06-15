@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { runActionCommand } from "@/lib/play";
+import { bumpStat, checkAndGrant } from "@/lib/achievements";
 
 export type ChatMessage = {
   id: number;
@@ -104,6 +105,11 @@ export async function POST(req: Request) {
     data: { locationId: sheet.locationId, userId: user.id, content },
     include: MSG_INCLUDE,
   });
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: { achStatsJson: bumpStat(sheet.achStatsJson, "월드채팅횟수") },
+  });
+  void checkAndGrant(user.id);
 
   return Response.json({
     message: serialize(msg),
