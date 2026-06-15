@@ -24,8 +24,10 @@ import { postSystem } from "@/lib/play";
 import {
   homeTierFromLocationId,
   houseOption,
+  houseSellPrice,
   isBellTowerLocation,
   isHomeLocationId,
+  ownedHouseOptions,
   parseHousingState,
   serializeHousingState,
 } from "@/lib/housing";
@@ -813,18 +815,24 @@ export async function buyHouse(
     select: { houseTier: true, housingJson: true },
   });
   const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
-  if (housing.owned.includes(selected.tier)) {
+  const owned = ownedHouseOptions(housing);
+  const alreadyOwned = housing.owned.includes(selected.tier);
+  if (owned.length === 1 && alreadyOwned) {
     return { error: `이미 ${selected.name}을 보유 중입니다.` };
   }
+  const refund = owned
+    .filter((option) => option.tier !== selected.tier)
+    .reduce((sum, option) => sum + houseSellPrice(option.tier), 0);
+  const cost = alreadyOwned ? 0 : selected.price;
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
-  if (currentGold < selected.price) {
+  if (currentGold + refund < cost) {
     return {
-      error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${selected.price.toLocaleString()}G)`,
+      error: `골드가 부족합니다. (${(currentGold + refund).toLocaleString()}G/${cost.toLocaleString()}G, 기존 집 매각금 포함)`,
     };
   }
 
-  const nextGold = currentGold - selected.price;
+  const nextGold = currentGold + refund - cost;
   const inv = ctx.inv;
   inv.gold = `${nextGold}G`;
   await prisma.characterSheet.update({
@@ -835,19 +843,85 @@ export async function buyHouse(
       gold: `${nextGold}G`,
       invJson: JSON.stringify(inv),
       housingJson: serializeHousingState({
-        ...housing,
-        owned: [...housing.owned, selected.tier],
+        owned: [selected.tier],
+        furniture: { [selected.tier]: housing.furniture[selected.tier] ?? [] },
       }),
     },
   });
-  void appendSheetGold(ctx.tab, -selected.price);
+  void appendSheetGold(ctx.tab, refund - cost);
 
   if (ctx.locationId) {
-    await postSystem(ctx.locationId, `🏠 ${ctx.nickname}님이 ${selected.name}을 구매했습니다.`);
+    await postSystem(
+      ctx.locationId,
+      refund > 0
+        ? `🏠 ${ctx.nickname}님이 기존 집을 매각하고 ${selected.name}을 구매했습니다.`
+        : `🏠 ${ctx.nickname}님이 ${selected.name}을 구매했습니다.`,
+    );
   }
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: `${selected.name} 구매 완료. 종탑 거리에서 본인 집으로 이동할 수 있어요.` };
+  return {
+    ok:
+      refund > 0
+        ? `${selected.name} 구매 완료. 기존 집 매각금 +${refund.toLocaleString()}G 반영.`
+        : `${selected.name} 구매 완료. 종탑 거리에서 본인 집으로 이동할 수 있어요.`,
+  };
+}
+
+export async function sellHouse(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const selected = houseOption(String(formData.get("tier") ?? ""));
+  if (!selected) return { error: "판매할 집을 찾지 못했습니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { houseTier: true, housingJson: true, locationId: true },
+  });
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  if (!housing.owned.includes(selected.tier)) {
+    return { error: `${selected.name}을 보유하고 있지 않습니다.` };
+  }
+
+  const refund = houseSellPrice(selected.tier);
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  const nextGold = currentGold + refund;
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
+  const remaining = housing.owned.filter((tier) => tier !== selected.tier);
+  const nextFurniture = { ...housing.furniture };
+  delete nextFurniture[selected.tier];
+
+  let nextLocationId = sheet?.locationId ?? ctx.locationId;
+  if (homeTierFromLocationId(nextLocationId) === selected.tier) {
+    const locations = await prisma.location.findMany({
+      select: { id: true, name: true },
+      orderBy: { order: "asc" },
+    });
+    nextLocationId = locations.find((location) => isBellTowerLocation(location))?.id ?? null;
+  }
+
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      houseTier: remaining[0] ?? null,
+      housingJson: serializeHousingState({ owned: remaining, furniture: nextFurniture }),
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      invJson: JSON.stringify(inv),
+      locationId: nextLocationId,
+      enteredAt: nextLocationId !== sheet?.locationId ? new Date() : undefined,
+    },
+  });
+  void appendSheetGold(ctx.tab, refund);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${selected.name} 판매 완료. +${refund.toLocaleString()}G` };
 }
 
 export async function restAtHome(): Promise<HousingState> {

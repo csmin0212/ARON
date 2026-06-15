@@ -5,10 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { fetchWorldRows, regenFatigue } from "@/lib/world";
-import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows } from "@/lib/gamedata";
+import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows, fetchEventsRows } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
-import type { ActionRow } from "@/lib/gamedata";
+import type { ActionRow, DropEntry } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
+import {
+  appendSheetGold,
+  appendSheetItem,
+  inventoryWeightTotal,
+  type SheetInventory,
+} from "@/lib/googleSheets";
 import {
   homeLocationId,
   houseOption,
@@ -82,6 +88,140 @@ export async function discoverByKeyword(keyword: string): Promise<DiscoverState>
 function freshAp(ap: number | null, apResetAt: Date | null): { ap: number; apResetAt: Date } {
   const r = regenFatigue(ap, apResetAt);
   return { ap: r.value, apResetAt: r.at };
+}
+
+function parseInv(value: string | null): SheetInventory {
+  try {
+    if (value) return JSON.parse(value) as SheetInventory;
+  } catch {
+    // fallback below
+  }
+  return { gold: null, curWeight: null, maxWeight: null, items: [] };
+}
+
+function addInvSnapshotItem(
+  inv: SheetInventory,
+  item: { name: string; effect: string | null; weight: number | null },
+  qty: number,
+): SheetInventory {
+  const existing = inv.items.find(
+    (entry) =>
+      entry.name.trim() === item.name.trim() &&
+      (entry.effect ?? null) === item.effect &&
+      (entry.weight ?? null) === item.weight,
+  );
+  if (existing) existing.qty += qty;
+  else inv.items.push({ ...item, qty });
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  return inv;
+}
+
+async function incrementDbItem(userId: string, itemName: string, qty: number): Promise<void> {
+  const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
+  if (!item) return;
+  const existing = await prisma.inventoryEntry.findFirst({
+    where: { userId, itemId: item.id, meta: null },
+  });
+  if (existing) {
+    await prisma.inventoryEntry.update({
+      where: { id: existing.id },
+      data: { qty: existing.qty + qty },
+    });
+  } else {
+    await prisma.inventoryEntry.create({
+      data: { userId, itemId: item.id, qty },
+    });
+  }
+}
+
+async function grantEventRewards(
+  userId: string,
+  sheet: { sheetTab: string | null; curGold: number | null; invJson: string | null },
+  rewards: DropEntry[],
+): Promise<string[]> {
+  const latest =
+    (await prisma.characterSheet.findUnique({
+      where: { userId },
+      select: { sheetTab: true, curGold: true, invJson: true },
+    })) ?? sheet;
+  const inv = parseInv(latest.invJson);
+  let goldGain = 0;
+  const lines: string[] = [];
+
+  for (const reward of rewards) {
+    if (reward.item === "꽝") continue;
+    if (reward.item === "골드") {
+      goldGain += reward.gold;
+      if (reward.gold > 0) lines.push(`${reward.gold.toLocaleString()}G`);
+      continue;
+    }
+
+    const item = await prisma.item.findFirst({
+      where: { OR: [{ id: reward.item }, { name: reward.item }] },
+      select: { id: true, name: true, desc: true },
+    });
+    const itemName = item?.name ?? reward.item;
+    await incrementDbItem(userId, itemName, reward.qty);
+    addInvSnapshotItem(inv, { name: itemName, effect: item?.desc ?? null, weight: null }, reward.qty);
+    void appendSheetItem(latest.sheetTab, itemName, reward.qty, { effect: item?.desc ?? null });
+    lines.push(`${itemName} x${reward.qty}`);
+  }
+
+  const nextGold = (latest.curGold ?? 0) + goldGain;
+  if (goldGain > 0) {
+    inv.gold = `${nextGold}G`;
+    void appendSheetGold(latest.sheetTab, goldGain);
+  }
+
+  await prisma.characterSheet.update({
+    where: { userId },
+    data: {
+      ...(goldGain > 0 ? { curGold: nextGold, gold: `${nextGold}G` } : {}),
+      invJson: JSON.stringify(inv),
+    },
+  });
+
+  return lines;
+}
+
+async function triggerFirstVisitEvents(
+  user: { id: string; nickname: string },
+  sheet: { sheetTab: string | null; curGold: number | null; invJson: string | null },
+  locationId: string,
+): Promise<void> {
+  const events = await prisma.worldEvent.findMany({
+    where: { locationId, type: "최초방문", active: true },
+    orderBy: { order: "asc" },
+  });
+  for (const event of events) {
+    try {
+      await prisma.worldEventClaim.create({
+        data: { eventId: event.id, locationId, userId: user.id },
+      });
+    } catch {
+      continue;
+    }
+
+    let rewards: DropEntry[] = [];
+    try {
+      rewards = JSON.parse(event.rewardsJson) as DropEntry[];
+    } catch {
+      rewards = [];
+    }
+    const rewardLines = await grantEventRewards(user.id, sheet, rewards);
+    const publicLine =
+      event.publicMessage?.replaceAll("{닉네임}", user.nickname) ??
+      `${user.nickname}님이 ${event.name}의 첫 발견자가 되었습니다.`;
+    await postSystem(locationId, `✨ ${publicLine}`);
+    if (event.message || rewardLines.length > 0) {
+      await postSystem(
+        locationId,
+        `🎁 ${event.name}${event.message ? ` — ${event.message}` : ""}${
+          rewardLines.length > 0 ? ` (보상: ${rewardLines.join(", ")})` : ""
+        }`,
+      );
+    }
+  }
 }
 
 function actionKey(action: Pick<ActionRow, "locationId" | "kind" | "label">): string {
@@ -158,6 +298,7 @@ export async function enterWorld(): Promise<void> {
     data: { locationId: start.id, enteredAt: new Date(), ap, apResetAt },
   });
   await postSystem(start.id, `🌟 ${user.nickname}님이 월드에 입장하셨습니다!`);
+  await triggerFirstVisitEvents(user, sheet, start.id);
   revalidatePath("/world");
 }
 
@@ -209,6 +350,7 @@ export async function moveTo(formData: FormData): Promise<void> {
     postSystem(here.id, `📤 ${user.nickname}님이 자리를 떠났습니다.`),
     postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`),
   ]);
+  await triggerFirstVisitEvents(user, sheet, target);
   revalidatePath("/world");
 }
 
@@ -399,6 +541,40 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "던전 탭 오류");
+  }
+
+  // 5) 이벤트 (선택) — 지급 기록(WorldEventClaim)은 보존하고 정의만 교체.
+  try {
+    if (!itemIds) {
+      const existing = await prisma.item.findMany({ select: { id: true, name: true } });
+      itemIds = new Set(existing.flatMap((it) => [it.id, it.name]));
+    }
+    const events = await fetchEventsRows(itemIds);
+    if (events) {
+      const locIds = new Set(rows.map((r) => r.id));
+      const valid = events.filter((event) => locIds.has(event.locationId));
+      const skipped = events.length - valid.length;
+      await prisma.$transaction([
+        prisma.worldEvent.deleteMany(),
+        prisma.worldEvent.createMany({
+          data: valid.map((event, i) => ({
+            id: event.id,
+            locationId: event.locationId,
+            type: event.type,
+            name: event.name,
+            message: event.message,
+            rewardsJson: JSON.stringify(event.rewards),
+            publicMessage: event.publicMessage,
+            active: event.active,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`이벤트 ${valid.length}개`);
+      if (skipped > 0) warns.push(`이벤트 ${skipped}개는 장소가 맵에 없어 건너뜀`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "이벤트 탭 오류");
   }
 
   revalidatePath("/world");

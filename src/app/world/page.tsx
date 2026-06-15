@@ -41,6 +41,7 @@ import {
   homeLocationId,
   homeTierFromLocationId,
   houseOption,
+  houseSellPrice,
   isBellTowerLocation,
   isHomeLocationId,
   parseHousingState,
@@ -250,7 +251,9 @@ export default async function WorldPage() {
     return connIds.includes(d.id) || (d.hidden && parseJsonArray(d.connJson).includes(here.id));
   });
   const canEnterHome = !atHome && isBellTowerLocation(here) && housingState.owned.length > 0;
-  const ownedHouseOptions = HOUSE_OPTIONS.filter((option) => housingState.owned.includes(option.tier));
+  const ownedHouseOptions = house
+    ? [house]
+    : HOUSE_OPTIONS.filter((option) => housingState.owned.includes(option.tier)).slice(0, 1);
 
   const others = await prisma.characterSheet.findMany({
     where: { locationId: here.id, userId: { not: user.id } },
@@ -433,7 +436,8 @@ export default async function WorldPage() {
       price: option.price,
       restAmount: option.restAmount,
       note: option.note,
-      owned: housingState.owned.includes(option.tier),
+      owned: option.tier === house?.tier,
+      sellPrice: houseSellPrice(option.tier),
     })),
   };
   const canHousing = atHome || isBellTowerLocation(here);

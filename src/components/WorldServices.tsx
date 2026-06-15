@@ -9,6 +9,7 @@ import {
   enchantWeapon,
   restAtHome,
   restAtInn,
+  sellHouse,
   sellFood,
   sellLifeCatch,
   sellMaterial,
@@ -66,6 +67,7 @@ export type HousingView = {
     restAmount: number;
     note: string;
     owned: boolean;
+    sellPrice: number;
   }[];
 };
 
@@ -682,7 +684,12 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
     restAtHome,
     undefined,
   );
+  const [sellState, sellAction, sellPending] = useActionState<HousingState, FormData>(
+    sellHouse,
+    undefined,
+  );
   const owned = housing.options.some((option) => option.owned);
+  const ownedOption = housing.options.find((option) => option.owned) ?? null;
 
   return (
     <div
@@ -712,6 +719,7 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <HousingStateLine state={buyState} />
           <HousingStateLine state={restState} />
+          <HousingStateLine state={sellState} />
 
           {owned ? (
             <section className="rounded-2xl border border-line bg-subtle p-4">
@@ -767,14 +775,34 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
 
           <section className="space-y-2">
             <h4 className="text-sm font-extrabold text-content">주택 목록</h4>
+            {ownedOption && (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-700">
+                소유 주택은 인당 1개입니다. 다른 집을 구매하면 기존 집을 자동 판매하고
+                판매가의 50%인 {ownedOption.sellPrice.toLocaleString()}G를 돌려받습니다.
+              </p>
+            )}
             <div className="grid gap-2">
               {housing.options.map((option) => (
-                <form key={option.tier} action={option.owned ? enterHome : buyAction}>
+                <div
+                  key={option.tier}
+                  className="rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50"
+                >
+                  <form
+                    action={option.owned ? enterHome : buyAction}
+                    onSubmit={(e) => {
+                      if (option.owned) return;
+                      if (!ownedOption) return;
+                      const ok = window.confirm(
+                        `소유 주택은 인당 1개입니다. 기존 집(${ownedOption.name})을 판매해 ${ownedOption.sellPrice.toLocaleString()}G를 돌려받고 ${option.name}을 구매합니다. 진행하시겠습니까?`,
+                      );
+                      if (!ok) e.preventDefault();
+                    }}
+                  >
                   <input type="hidden" name="tier" value={option.tier} />
                   <button
                     type="submit"
                     disabled={buyPending}
-                    className="flex w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
+                    className="flex w-full items-start gap-3 text-left disabled:opacity-50"
                   >
                     <span className="text-xl">🏡</span>
                     <span className="min-w-0 flex-1">
@@ -794,6 +822,28 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
                     </span>
                   </button>
                 </form>
+                  {option.owned && (
+                    <form
+                      action={sellAction}
+                      onSubmit={(e) => {
+                        const ok = window.confirm(
+                          `${option.name}을 판매하고 ${option.sellPrice.toLocaleString()}G를 돌려받습니다. 진행하시겠습니까?`,
+                        );
+                        if (!ok) e.preventDefault();
+                      }}
+                      className="mt-2"
+                    >
+                      <input type="hidden" name="tier" value={option.tier} />
+                      <button
+                        type="submit"
+                        disabled={sellPending}
+                        className="w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                      >
+                        판매하고 {option.sellPrice.toLocaleString()}G 받기
+                      </button>
+                    </form>
+                  )}
+                </div>
               ))}
             </div>
           </section>

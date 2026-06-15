@@ -13,6 +13,7 @@ import { lifeSkillKindOf } from "./lifeSkillData";
 export const ITEMS_TAB = process.env.ITEMS_TAB_NAME || "아이템";
 export const ACTIONS_TAB = process.env.ACTIONS_TAB_NAME || "행동";
 export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
+export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 
 export type ItemRow = {
   id: string;
@@ -46,6 +47,17 @@ export type DungeonRow = {
   drops: DropEntry[]; // 확정 보상 (전부 지급)
   rollDrops: DropEntry[]; // 확률 보상 (가중치로 하나 추첨)
   floor: number;
+};
+
+export type EventRow = {
+  id: string;
+  locationId: string;
+  type: string;
+  name: string;
+  message: string | null;
+  rewards: DropEntry[];
+  publicMessage: string | null;
+  active: boolean;
 };
 
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
@@ -290,12 +302,77 @@ export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonR
   return rows;
 }
 
+const no = (value: string): boolean => /^(n|no|x|false|0)$/i.test(value.trim());
+
+// ── 이벤트 탭 ──  이벤트ID | 장소ID | 타입 | 이름 | 문구 | 보상 | 공개문구 | 활성
+export function parseEventsGrid(g: string[][], itemIds: Set<string>): EventRow[] {
+  const h = findHeader(g, ["이벤트ID", "장소ID"], {
+    이벤트ID: "id",
+    ID: "id",
+    id: "id",
+    장소ID: "locationId",
+    장소: "locationId",
+    타입: "type",
+    종류: "type",
+    이름: "name",
+    제목: "name",
+    문구: "message",
+    개인문구: "message",
+    보상: "rewards",
+    공개문구: "publicMessage",
+    활성: "active",
+    사용: "active",
+  });
+  if (!h) throw new Error("이벤트 탭이 없거나 헤더(이벤트ID/장소ID)가 없어요.");
+
+  const rows: EventRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const id = at(g, r, h.col.id);
+    const locationId = at(g, r, h.col.locationId);
+    if (!id || !locationId) continue;
+    if (/[,，]/.test(id)) throw new Error(`이벤트ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    if (seen.has(id)) throw new Error(`이벤트ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+
+    const type = (at(g, r, h.col.type) || "최초방문").replace(/\s+/g, "");
+    const name = at(g, r, h.col.name) || id;
+    const rewardsSpec = at(g, r, h.col.rewards);
+    if (!rewardsSpec) throw new Error(`이벤트 '${id}' 보상이 비어 있어요.`);
+    const rewards = parseDrops(rewardsSpec);
+    for (const d of rewards) {
+      if (d.item !== "꽝" && d.item !== "골드" && !itemIds.has(d.item))
+        throw new Error(`이벤트 '${id}' 보상의 '${d.item}' 이 아이템 탭에 없어요.`);
+    }
+
+    const activeRaw = at(g, r, h.col.active);
+    rows.push({
+      id,
+      locationId,
+      type,
+      name,
+      message: at(g, r, h.col.message) || null,
+      rewards,
+      publicMessage: at(g, r, h.col.publicMessage) || null,
+      active: activeRaw ? !no(activeRaw) : true,
+    });
+  }
+  return rows;
+}
+
 // ── 시트에서 불러오기 (탭 없으면 null — 선택 탭) ──
 export async function fetchDungeonsRows(itemIds: Set<string>): Promise<DungeonRow[] | null> {
   const g =
     (await fetchTab(WORLD_SHEET_ID, DUNGEON_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, DUNGEON_TAB));
   if (!g) return null;
   return parseDungeonsGrid(g, itemIds);
+}
+
+export async function fetchEventsRows(itemIds: Set<string>): Promise<EventRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, EVENTS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, EVENTS_TAB));
+  if (!g) return null;
+  return parseEventsGrid(g, itemIds);
 }
 
 export async function fetchItemsRows(): Promise<ItemRow[] | null> {

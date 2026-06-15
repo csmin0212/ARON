@@ -159,6 +159,35 @@ model LocationAction {
   @@index([locationId])
 }
 
+// 월드 이벤트 — GM 시트 '이벤트' 탭에서 동기화.
+// 현재 타입: 최초방문. 보상은 DropEntry[] JSON.
+model WorldEvent {
+  id            String   @id // 이벤트ID
+  locationId    String
+  type          String
+  name          String
+  message       String?
+  rewardsJson   String
+  publicMessage String?
+  active        Boolean  @default(true)
+  order         Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@index([locationId, type, active])
+}
+
+// 최초방문 이벤트 지급 기록. eventId unique로 서버 전체에서 1명만 수령.
+model WorldEventClaim {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  locationId String
+  userId     String
+  claimedAt  DateTime @default(now())
+
+  @@index([locationId])
+  @@index([userId])
+}
+
 // 플레이어 인벤토리
 model InventoryEntry {
   id        String   @id @default(cuid())

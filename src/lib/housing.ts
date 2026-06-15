@@ -38,6 +38,15 @@ export function houseOption(tier: string | null | undefined): HouseOption | null
   return HOUSE_OPTIONS.find((option) => option.tier === tier) ?? null;
 }
 
+export function houseSellPrice(tier: string | null | undefined): number {
+  const option = houseOption(tier);
+  return option ? Math.floor(option.price / 2) : 0;
+}
+
+export function ownedHouseOptions(state: HousingStateData): HouseOption[] {
+  return HOUSE_OPTIONS.filter((option) => state.owned.includes(option.tier));
+}
+
 export type HousingStateData = {
   owned: HouseTier[];
   furniture: Partial<Record<HouseTier, unknown[]>>;
