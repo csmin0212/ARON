@@ -5,8 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { fetchWorldRows, regenFatigue } from "@/lib/world";
-import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows, fetchEventsRows } from "@/lib/gamedata";
+import {
+  fetchItemsRows,
+  fetchActionsRows,
+  fetchDungeonsRows,
+  fetchEventsRows,
+  fetchAchievementsRows,
+} from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
+import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import type { ActionRow, DropEntry } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
 import {
@@ -80,8 +87,19 @@ export async function discoverByKeyword(keyword: string): Promise<DiscoverState>
   });
 
   const result = await tryKeywordSpeech(user.id, sheet, trimmed);
-  if (result.found) revalidatePath("/world");
-  return { notice: result.notice, found: result.found };
+  let earnedNote = "";
+  if (result.found) {
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { achStatsJson: bumpStat(sheet.achStatsJson, "조사성공횟수") },
+    });
+    const earned = await checkAndGrant(user.id);
+    if (earned.length > 0)
+      earnedNote = ` · 🏅 업적 달성: ${earned.map((e) => `${e.badge ?? "🏅"} ${e.name}`).join(", ")}`;
+    revalidatePath("/world");
+  }
+  const notice = [result.notice, earnedNote].filter(Boolean).join("") || undefined;
+  return { notice, found: result.found };
 }
 
 // 현재 피로도 계산 (lazy 자연 회복)
@@ -295,10 +313,17 @@ export async function enterWorld(): Promise<void> {
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: start.id, enteredAt: new Date(), ap, apResetAt },
+    data: {
+      locationId: start.id,
+      enteredAt: new Date(),
+      ap,
+      apResetAt,
+      visitedJson: addVisited(sheet.visitedJson, start.id),
+    },
   });
   await postSystem(start.id, `🌟 ${user.nickname}님이 월드에 입장하셨습니다!`);
   await triggerFirstVisitEvents(user, sheet, start.id);
+  void checkAndGrant(user.id);
   revalidatePath("/world");
 }
 
@@ -341,8 +366,14 @@ export async function moveTo(formData: FormData): Promise<void> {
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: target, enteredAt: new Date() },
+    data: {
+      locationId: target,
+      enteredAt: new Date(),
+      visitedJson: addVisited(sheet.visitedJson, target),
+      achStatsJson: bumpStat(sheet.achStatsJson, "이동횟수"),
+    },
   });
+  void checkAndGrant(user.id);
   // 일반 이동으로 균열을 벗어나면 멤버십 해제
   await prisma.riftMember.deleteMany({ where: { userId: user.id } });
   // 퇴장/입장 알림 (목적지는 노출하지 않음 — 히든 보호)
@@ -575,6 +606,34 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "이벤트 탭 오류");
+  }
+
+  // 6) 업적 (선택) — 정의만 교체, 유저 달성기록(UserAchievement)은 보존.
+  try {
+    const achievements = await fetchAchievementsRows();
+    if (achievements) {
+      await prisma.$transaction([
+        prisma.achievement.deleteMany(),
+        prisma.achievement.createMany({
+          data: achievements.map((a, i) => ({
+            id: a.id,
+            category: a.category,
+            name: a.name,
+            desc: a.desc,
+            condType: a.condType,
+            condValue: a.condValue,
+            rewardTitle: a.rewardTitle,
+            rewardFame: a.rewardFame,
+            badge: a.badge,
+            secret: a.secret,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`업적 ${achievements.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "업적 탭 오류");
   }
 
   revalidatePath("/world");

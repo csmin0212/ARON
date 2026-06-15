@@ -13,6 +13,7 @@ import { lifeSkillKindOf } from "./lifeSkillData";
 export const ITEMS_TAB = process.env.ITEMS_TAB_NAME || "아이템";
 export const ACTIONS_TAB = process.env.ACTIONS_TAB_NAME || "행동";
 export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
+export const ACHIEVEMENTS_TAB = process.env.ACHIEVEMENTS_TAB_NAME || "업적";
 export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 
 export type ItemRow = {
@@ -47,6 +48,19 @@ export type DungeonRow = {
   drops: DropEntry[]; // 확정 보상 (전부 지급)
   rollDrops: DropEntry[]; // 확률 보상 (가중치로 하나 추첨)
   floor: number;
+};
+
+export type AchievementRow = {
+  id: string;
+  category: string;
+  name: string;
+  desc: string | null;
+  condType: string;
+  condValue: string | null;
+  rewardTitle: string | null;
+  rewardFame: number;
+  badge: string | null;
+  secret: boolean; // 공개=HIDDEN
 };
 
 export type EventRow = {
@@ -302,6 +316,50 @@ export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonR
   return rows;
 }
 
+// ── 업적 탭 ──  업적ID | 분류 | 이름 | 설명 | 조건타입 | 조건값 | 보상칭호 | 보상명성 | 배지 | 공개
+export function parseAchievementsGrid(g: string[][]): AchievementRow[] {
+  const h = findHeader(g, ["이름", "조건타입"], {
+    업적ID: "id",
+    ID: "id",
+    id: "id",
+    분류: "category",
+    이름: "name",
+    설명: "desc",
+    조건타입: "condType",
+    조건값: "condValue",
+    보상칭호: "rewardTitle",
+    보상명성: "rewardFame",
+    배지: "badge",
+    공개: "isPublic",
+  });
+  if (!h) throw new Error("업적 탭이 없거나 헤더(이름/조건타입)가 없어요.");
+
+  const rows: AchievementRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    const condType = at(g, r, h.col.condType);
+    if (!name || !condType) continue;
+    const id = at(g, r, h.col.id) || name;
+    if (seen.has(id)) throw new Error(`업적 ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+    rows.push({
+      id,
+      category: at(g, r, h.col.category) || "기타",
+      name,
+      desc: at(g, r, h.col.desc) || null,
+      condType: condType.replace(/\s+/g, ""),
+      condValue: at(g, r, h.col.condValue) || null,
+      rewardTitle: at(g, r, h.col.rewardTitle) || null,
+      rewardFame: num(at(g, r, h.col.rewardFame)) ?? 0,
+      badge: at(g, r, h.col.badge) || null,
+      secret: /hidden|비공개/i.test(at(g, r, h.col.isPublic)),
+    });
+  }
+  if (rows.length === 0) throw new Error("업적 탭에 업적이 없어요.");
+  return rows;
+}
+
 const no = (value: string): boolean => /^(n|no|x|false|0)$/i.test(value.trim());
 
 // ── 이벤트 탭 ──  이벤트ID | 장소ID | 타입 | 이름 | 문구 | 보상 | 공개문구 | 활성
@@ -373,6 +431,14 @@ export async function fetchEventsRows(itemIds: Set<string>): Promise<EventRow[] 
     (await fetchTab(WORLD_SHEET_ID, EVENTS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, EVENTS_TAB));
   if (!g) return null;
   return parseEventsGrid(g, itemIds);
+}
+
+export async function fetchAchievementsRows(): Promise<AchievementRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, ACHIEVEMENTS_TAB)) ??
+    (await fetchTab(MASTER_SHEET_ID, ACHIEVEMENTS_TAB));
+  if (!g) return null;
+  return parseAchievementsGrid(g);
 }
 
 export async function fetchItemsRows(): Promise<ItemRow[] | null> {

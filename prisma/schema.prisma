@@ -20,6 +20,8 @@ model User {
   avatar       String? // 캐릭터 사진(이미지 URL 또는 프리셋 키)
   profileColor String? // 프로필 꾸미기 강조색 (#rrggbb) — 히어로 배너에 반영
   profileCover String? // 프로필 커버 이미지 URL (또는 /api/image/{id})
+  equippedTitle String? // 장착한 대표 칭호 (업적 보상)
+  equippedBadge String? // 장착한 대표 배지 (이모지)
   createdAt    DateTime  @default(now())
   posts        Post[]
   comments     Comment[]
@@ -29,6 +31,35 @@ model User {
   worldMsgs    WorldMessage[]
   inventory    InventoryEntry[]
   storageBox   StorageBox?
+  achievements UserAchievement[]
+}
+
+// 업적 정의 (GM 시트 '업적' 탭에서 동기화)
+model Achievement {
+  id          String   @id // 업적ID
+  category    String // 분류
+  name        String
+  desc        String?
+  condType    String // 조건타입 (장소방문/이동횟수/명성 …)
+  condValue   String? // 조건값
+  rewardTitle String? // 보상칭호
+  rewardFame  Int      @default(0) // 보상명성
+  badge       String? // 배지 이모지
+  secret      Boolean  @default(false) // 공개=HIDDEN 이면 true (달성 전 비공개)
+  order       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+// 유저별 달성 기록
+model UserAchievement {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achId    String // Achievement.id (FK 아님 — 동기화 교체에 안전)
+  earnedAt DateTime @default(now())
+
+  @@unique([userId, achId])
+  @@index([userId])
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
@@ -65,6 +96,8 @@ model CharacterSheet {
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
   dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
+  visitedJson    String? // 방문한 모든 장소 ID 목록 JSON (업적 판정용)
+  achStatsJson   String? // 업적용 누적 카운터 JSON { 이동횟수, 조사성공횟수 … }
   probeJson      String? // 은밀한 조사 키워드별 마지막 시도 시각 JSON { 정규화키워드: ISO시각 } — 키워드당 쿨다운
   lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
   adventurerRank String    @default("D") // 모험가 길드 등급

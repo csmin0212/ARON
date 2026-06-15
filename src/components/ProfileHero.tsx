@@ -13,6 +13,8 @@ export default function ProfileHero({
   tags = [],
   color,
   cover,
+  title,
+  badge,
   action,
   footer,
 }: {
@@ -24,6 +26,8 @@ export default function ProfileHero({
   tags?: string[];
   color?: string | null;
   cover?: string | null;
+  title?: string | null;
+  badge?: string | null;
   action?: ReactNode;
   footer?: ReactNode;
 }) {
@@ -70,6 +74,13 @@ export default function ProfileHero({
           )}
         </div>
         <p className="text-sm text-faint">@{username}</p>
+
+        {(title || badge) && (
+          <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-bold text-brand-600">
+            {badge && <span>{badge}</span>}
+            {title && <span>{title}</span>}
+          </p>
+        )}
 
         {tags.length > 0 && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">

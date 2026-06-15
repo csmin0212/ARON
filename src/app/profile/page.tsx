@@ -7,6 +7,7 @@ import ProfileForm from "@/components/forms/ProfileForm";
 import SheetLinkForm from "@/components/forms/SheetLinkForm";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import ProfileHero from "@/components/ProfileHero";
+import { checkAndGrant } from "@/lib/achievements";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
 
@@ -42,6 +43,7 @@ export default async function ProfilePage({
   if (!user) redirect("/login");
 
   const sp = await searchParams;
+  await checkAndGrant(user.id); // 임계값 업적 지연 판정
   const [counts, sheet] = await Promise.all([
     prisma.post.count({ where: { authorId: user.id } }),
     prisma.characterSheet.findUnique({ where: { userId: user.id } }),
@@ -68,6 +70,8 @@ export default async function ProfilePage({
         tags={tags}
         color={user.profileColor}
         cover={user.profileCover}
+        title={user.equippedTitle}
+        badge={user.equippedBadge}
         footer={
           <div className="grid grid-cols-3 gap-2">
             <HeroStat label="작성한 글" value={`${counts}`} />

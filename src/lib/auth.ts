@@ -52,6 +52,8 @@ export type SessionUser = {
   avatar: string | null;
   profileColor: string | null;
   profileCover: string | null;
+  equippedTitle: string | null;
+  equippedBadge: string | null;
 };
 
 // 현재 로그인 유저 (요청 단위 캐시)
@@ -73,6 +75,8 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
         avatar: true,
         profileColor: true,
         profileCover: true,
+        equippedTitle: true,
+        equippedBadge: true,
       },
     });
     return user;
