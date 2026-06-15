@@ -21,11 +21,13 @@ import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
+import { HOUSE_OPTIONS, homeLocationId, houseOption, isBellTowerLocation, isHomeLocationId } from "@/lib/housing";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
 export type StorageState = { error?: string; ok?: string } | undefined;
 export type LifeShopState = { error?: string; ok?: string } | undefined;
 export type MarketState = { error?: string; ok?: string } | undefined;
+export type HousingState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
 const MOON_FRAGMENT = "달의 파편";
@@ -744,7 +746,7 @@ export async function restAtInn(): Promise<MarketState> {
 
   const now = new Date();
   if (restedTodayKst(sheet.restedAt, now)) {
-    return { error: "오늘은 이미 휴식했어요. (하루 1회)" };
+    return { error: "오늘은 이미 여관에서 휴식했어요. (KST 자정 초기화)" };
   }
 
   const currentGold = sheet.curGold ?? 0;
@@ -777,6 +779,113 @@ export async function restAtInn(): Promise<MarketState> {
   return {
     ok: `포근한 침대에서 푹 쉬었어요. 피로도 +${gained} (${newAp}/${FATIGUE_MAX}) · -${INN_REST_COST}G`,
   };
+}
+
+export async function buyHouse(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const selected = houseOption(String(formData.get("tier") ?? ""));
+  if (!selected) return { error: "판매 목록에 없는 집입니다." };
+
+  const location = ctx.locationId
+    ? await prisma.location.findUnique({
+        where: { id: ctx.locationId },
+        select: { id: true, name: true },
+      })
+    : null;
+  if (!isBellTowerLocation(location)) {
+    return { error: "집은 종탑 거리에서만 구매할 수 있어요." };
+  }
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { houseTier: true },
+  });
+  const current = houseOption(sheet?.houseTier);
+  if (current && current.price >= selected.price) {
+    return { error: `이미 ${current.name}을 보유 중입니다.` };
+  }
+
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  if (currentGold < selected.price) {
+    return {
+      error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${selected.price.toLocaleString()}G)`,
+    };
+  }
+
+  const nextGold = currentGold - selected.price;
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      houseTier: selected.tier,
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      invJson: JSON.stringify(inv),
+      housingJson: "{}",
+    },
+  });
+  void appendSheetGold(ctx.tab, -selected.price);
+
+  if (ctx.locationId) {
+    await postSystem(ctx.locationId, `🏠 ${ctx.nickname}님이 ${selected.name}을 구매했습니다.`);
+  }
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${selected.name} 구매 완료. 종탑 거리에서 본인 집으로 이동할 수 있어요.` };
+}
+
+export async function restAtHome(): Promise<HousingState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: {
+      ap: true,
+      apResetAt: true,
+      houseTier: true,
+      houseRestedAt: true,
+      locationId: true,
+    },
+  });
+  if (!sheet?.houseTier) return { error: "보유한 집이 없어요." };
+  if (!isHomeLocationId(sheet.locationId) || sheet.locationId !== homeLocationId(user.id)) {
+    return { error: "본인 집에서만 휴식할 수 있어요." };
+  }
+
+  const option = houseOption(sheet.houseTier);
+  if (!option) return { error: "집 정보가 올바르지 않아요." };
+
+  const now = new Date();
+  if (restedTodayKst(sheet.houseRestedAt, now)) {
+    return { error: "오늘은 이미 집에서 휴식했어요. (KST 자정 초기화)" };
+  }
+
+  const fresh = regenFatigue(sheet.ap, sheet.apResetAt, now);
+  if (fresh.value >= FATIGUE_MAX) {
+    return { error: "피로도가 이미 가득 찼어요." };
+  }
+
+  const newAp = Math.min(FATIGUE_MAX, fresh.value + option.restAmount);
+  const gained = newAp - fresh.value;
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      ap: newAp,
+      apResetAt: fresh.at,
+      houseRestedAt: now,
+    },
+  });
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${option.name}에서 휴식했어요. 피로도 +${gained} (${newAp}/${FATIGUE_MAX})` };
 }
 
 export async function buyLifeGear(

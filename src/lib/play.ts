@@ -246,13 +246,15 @@ export async function runActionCommand(
       const regionBase = locationPool.weights
         ? locationPool.weights.map((weight, rank) => (levelBase[rank] > 0 ? weight : 0))
         : levelBase;
-      const caught = pickLifeSkillCatch(
-        lifeSkillKind,
-        {
+      let caught;
+      try {
+        caught = pickLifeSkillCatch(lifeSkillKind, {
           ...locationPool,
           weights: adjustedRankWeights(mods, regionBase),
-        },
-      );
+        });
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : `${lifeSkillKind} 목록 설정을 확인해주세요.` };
+      }
       const item = caught.item;
 
       const bag = life.bags[lifeSkillKind];

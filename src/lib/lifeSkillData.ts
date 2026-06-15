@@ -296,6 +296,7 @@ export function pickLifeSkillCatch(
   const excluded = new Set(config?.exclude?.map((name) => name.trim()).filter(Boolean));
   const rankSet = new Set(config?.ranks);
   const water = config?.water ?? "민물";
+  const usesAllowList = allowed.size > 0;
   const pool = poolFor(kind).filter((item) => {
     if (allowed.size > 0 && !allowed.has(item.name)) return false;
     if (excluded.has(item.name)) return false;
@@ -303,6 +304,9 @@ export function pickLifeSkillCatch(
     if (kind === "낚시" && !waterAllowed(item, water)) return false;
     return true;
   });
+  if (usesAllowList && pool.length === 0) {
+    throw new Error(`${kind} 가능 목록에 현재 조건으로 나올 수 있는 항목이 없어요. 이름/수역/랭크를 확인해주세요.`);
+  }
   const fallback = pool.length > 0 ? pool : poolFor(kind).filter((item) => kind !== "낚시" || !SEA_FISH.has(item.name));
   const availableRanks = new Set(fallback.map((item) => item.rank));
   const rankWeights = (config?.weights ?? undefined)?.map((weight, rank) =>

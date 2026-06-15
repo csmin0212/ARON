@@ -9,6 +9,7 @@ import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows } from "@/lib/gamed
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import type { ActionRow } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { homeLocationId, isBellTowerLocation, isHomeLocationId } from "@/lib/housing";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
@@ -202,6 +203,59 @@ export async function moveTo(formData: FormData): Promise<void> {
     postSystem(here.id, `📤 ${user.nickname}님이 자리를 떠났습니다.`),
     postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`),
   ]);
+  revalidatePath("/world");
+}
+
+async function bellTowerLocation() {
+  const locations = await prisma.location.findMany({
+    select: { id: true, name: true },
+    orderBy: { order: "asc" },
+  });
+  return locations.find((location) => isBellTowerLocation(location)) ?? null;
+}
+
+export async function enterHome(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { locationId: true, houseTier: true },
+  });
+  if (!sheet?.houseTier || !sheet.locationId) return;
+
+  const here = await prisma.location.findUnique({
+    where: { id: sheet.locationId },
+    select: { id: true, name: true },
+  });
+  if (!isBellTowerLocation(here)) return;
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: { locationId: homeLocationId(user.id), enteredAt: new Date() },
+  });
+  await postSystem(sheet.locationId, `📤 ${user.nickname}님이 자리를 떠났습니다.`);
+  revalidatePath("/world");
+}
+
+export async function leaveHome(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { locationId: true },
+  });
+  if (!isHomeLocationId(sheet?.locationId)) return;
+
+  const dest = await bellTowerLocation();
+  if (!dest) return;
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: { locationId: dest.id, enteredAt: new Date() },
+  });
+  await postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`);
   revalidatePath("/world");
 }
 

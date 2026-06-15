@@ -110,7 +110,12 @@ export async function startFishing(): Promise<FishingStart> {
   const regionBase = pool.weights
     ? pool.weights.map((w, rank) => (levelBase[rank] > 0 ? w : 0))
     : levelBase;
-  const caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+  let caught;
+  try {
+    caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "낚시 목록 설정을 확인해주세요." };
+  }
   const item = caught.item;
 
   const bag = life.bags[FISH];

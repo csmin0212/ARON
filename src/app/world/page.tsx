@@ -10,7 +10,7 @@ import {
   restedTodayKst,
 } from "@/lib/world";
 import { ABILITY_LABELS_KO, type DropEntry } from "@/lib/gamedata";
-import { enterWorld, moveTo } from "@/app/actions/world";
+import { enterHome, enterWorld, leaveHome, moveTo } from "@/app/actions/world";
 import DungeonPanel, { type DungeonAbility, type DungeonView } from "@/components/DungeonPanel";
 import BagInventory from "@/components/BagInventory";
 import GatheringStatus from "@/components/GatheringStatus";
@@ -23,6 +23,7 @@ import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
   type ByproductView,
+  type HousingView,
   type InnView,
   type LifeShopView,
   type LifeStorageItemView,
@@ -35,6 +36,7 @@ import { lifeSkillItemKind, lifeSkillSellPrice, type LocationLifeConfig } from "
 import { isNonSellable } from "@/lib/shop";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { parseGoldToInt } from "@/lib/dice";
+import { HOUSE_OPTIONS, homeLocationId, houseOption, isBellTowerLocation, isHomeLocationId } from "@/lib/housing";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -157,9 +159,38 @@ export default async function WorldPage() {
 
   const ap = effectiveAp(sheet.ap, sheet.apResetAt);
   const nextRegenMin = nextFatigueRegenMinutes(sheet.ap, sheet.apResetAt);
-  const here = sheet.locationId
-    ? await prisma.location.findUnique({ where: { id: sheet.locationId } })
-    : null;
+  const atHome = isHomeLocationId(sheet.locationId);
+  const bellTowerLocations =
+    atHome || sheet.houseTier
+      ? await prisma.location.findMany({
+          select: { id: true, name: true, emoji: true },
+          orderBy: { order: "asc" },
+        })
+      : [];
+  const bellTower = bellTowerLocations.find((location) => isBellTowerLocation(location)) ?? null;
+  const dbHere =
+    sheet.locationId && !atHome
+      ? await prisma.location.findUnique({ where: { id: sheet.locationId } })
+      : null;
+  const house = houseOption(sheet.houseTier);
+  const here =
+    atHome && house
+      ? {
+          id: homeLocationId(user.id),
+          name: "본인 집",
+          emoji: "🏠",
+          desc: `${house.name}입니다. 하우징 메뉴에서 휴식하고, 이후 가구를 배치할 수 있어요.`,
+          image: null,
+          connJson: bellTower ? JSON.stringify([bellTower.id]) : "[]",
+          hidden: false,
+          keyword: null,
+          cond: null,
+          lifeJson: null,
+          isStart: false,
+          order: 0,
+          updatedAt: new Date(),
+        }
+      : dbHere;
 
   if (!here) {
     const start = await prisma.location.findFirst({ where: { isStart: true } });
@@ -193,19 +224,22 @@ export default async function WorldPage() {
   const discovered = parseJsonArray(sheet.discoveredJson);
   // 정방향 연결(현재 장소가 가리키는 곳) + 발견한 히든(자기 연결에 현재 장소를 적어둔 곳, 역방향 진입)
   const destinations = (
-    await prisma.location.findMany({
-      where: {
-        OR: [
-          { id: { in: connIds } },
-          ...(discovered.length ? [{ hidden: true, id: { in: discovered } }] : []),
-        ],
-      },
-      orderBy: { order: "asc" },
-    })
+    atHome
+      ? []
+      : await prisma.location.findMany({
+          where: {
+            OR: [
+              { id: { in: connIds } },
+              ...(discovered.length ? [{ hidden: true, id: { in: discovered } }] : []),
+            ],
+          },
+          orderBy: { order: "asc" },
+        })
   ).filter((d) => {
     if (d.hidden && !discovered.includes(d.id)) return false;
     return connIds.includes(d.id) || (d.hidden && parseJsonArray(d.connJson).includes(here.id));
   });
+  const canEnterHome = !!house && !atHome && isBellTowerLocation(here);
 
   const others = await prisma.characterSheet.findMany({
     where: { locationId: here.id, userId: { not: user.id } },
@@ -373,6 +407,24 @@ export default async function WorldPage() {
     maxAp: FATIGUE_MAX,
     restedToday: restedTodayKst(sheet.restedAt),
   };
+  const housing: HousingView = {
+    gold: sheet.curGold ?? (parseGoldToInt(sheetInventory?.gold) || 0),
+    ap,
+    maxAp: FATIGUE_MAX,
+    tier: house?.tier ?? null,
+    name: house?.name ?? null,
+    restAmount: house?.restAmount ?? null,
+    restedToday: restedTodayKst(sheet.houseRestedAt),
+    atHome,
+    options: HOUSE_OPTIONS.map((option) => ({
+      tier: option.tier,
+      name: option.name,
+      price: option.price,
+      restAmount: option.restAmount,
+      note: option.note,
+    })),
+  };
+  const canHousing = atHome || isBellTowerLocation(here);
   let gatherPending: PendingGatherView | null = null;
   if (sheet.pendingGatherJson) {
     try {
@@ -530,10 +582,41 @@ export default async function WorldPage() {
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
               🧭 이동 가능 구역
             </h2>
-            {destinations.length === 0 ? (
+            {destinations.length === 0 && !canEnterHome && !atHome ? (
               <p className="py-3 text-center text-sm text-faint">이동할 수 있는 곳이 없어요.</p>
             ) : (
               <div className="space-y-2">
+                {atHome && bellTower && (
+                  <form action={leaveHome}>
+                    <button
+                      type="submit"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50"
+                    >
+                      <span className="text-xl">{bellTower.emoji ?? "🕰️"}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-content">
+                          종탑 거리로 나가기
+                        </span>
+                      </span>
+                      <span className="ml-auto text-faint2">→</span>
+                    </button>
+                  </form>
+                )}
+                {canEnterHome && (
+                  <form action={enterHome}>
+                    <button
+                      type="submit"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50"
+                    >
+                      <span className="text-xl">🏠</span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-content">본인 집</span>
+                        <span className="text-[11px] text-faint">{house?.name}</span>
+                      </span>
+                      <span className="ml-auto text-faint2">→</span>
+                    </button>
+                  </form>
+                )}
                 {destinations.map((d) => (
                   <form key={d.id} action={moveTo}>
                     <input type="hidden" name="target" value={d.id} />
@@ -572,12 +655,14 @@ export default async function WorldPage() {
             canMarket={canMarket}
             canStorage={canStorage}
             canInn={canInn}
+            canHousing={canHousing}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}
             byproducts={byproducts}
             materials={materials}
             inn={inn}
+            housing={housing}
             storage={storage}
           />
 

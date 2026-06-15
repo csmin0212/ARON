@@ -2,10 +2,12 @@
 
 import { useMemo, useState, useActionState } from "react";
 import {
+  buyHouse,
   buyFood,
   buyLifeGear,
   depositToStorage,
   enchantWeapon,
+  restAtHome,
   restAtInn,
   sellFood,
   sellLifeCatch,
@@ -13,6 +15,7 @@ import {
   upgradeWeapon,
   withdrawFromStorage,
   type LifeShopState,
+  type HousingState,
   type MarketState,
   type ServiceState,
   type StorageState,
@@ -25,12 +28,14 @@ type Props = {
   canMarket: boolean;
   canStorage: boolean;
   canInn: boolean;
+  canHousing: boolean;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
   byproducts: ByproductView[];
   materials: MaterialView[];
   inn: InnView;
+  housing: HousingView;
   storage: StorageView;
 };
 
@@ -43,6 +48,24 @@ export type InnView = {
 
 const INN_REST_COST = 100;
 const INN_REST_AMOUNT = 60;
+
+export type HousingView = {
+  gold: number;
+  ap: number;
+  maxAp: number;
+  tier: string | null;
+  name: string | null;
+  restAmount: number | null;
+  restedToday: boolean;
+  atHome: boolean;
+  options: {
+    tier: string;
+    name: string;
+    price: number;
+    restAmount: number;
+    note: string;
+  }[];
+};
 
 export type ByproductView = {
   kind: "낚시" | "채집";
@@ -207,6 +230,24 @@ function LifeShopStateLine({ state }: { state: LifeShopState }) {
 }
 
 function MarketStateLine({ state }: { state: MarketState }) {
+  if (state?.error) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+        {state.error}
+      </p>
+    );
+  }
+  if (state?.ok) {
+    return (
+      <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-600">
+        {state.ok}
+      </p>
+    );
+  }
+  return null;
+}
+
+function HousingStateLine({ state }: { state: HousingState }) {
   if (state?.error) {
     return (
       <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
@@ -630,6 +671,148 @@ function QuestBoard({ onClose }: { onClose: () => void }) {
   );
 }
 
+function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () => void }) {
+  const [buyState, buyAction, buyPending] = useActionState<HousingState, FormData>(
+    buyHouse,
+    undefined,
+  );
+  const [restState, restAction, restPending] = useActionState<HousingState, FormData>(
+    restAtHome,
+    undefined,
+  );
+  const owned = housing.tier != null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="하우징"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Housing
+          </p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
+            <span>🏠 하우징</span>
+            <span className="text-sm font-bold text-emerald-500">
+              {housing.gold.toLocaleString()}G
+            </span>
+          </h3>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <HousingStateLine state={buyState} />
+          <HousingStateLine state={restState} />
+
+          {owned ? (
+            <section className="rounded-2xl border border-line bg-subtle p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-lg font-extrabold text-content">{housing.name}</p>
+                  <p className="mt-1 text-sm text-muted">
+                    가구를 배치해 생활 보너스를 얻는 공간입니다.
+                  </p>
+                </div>
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
+                  보유중
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <p className="text-xs font-bold text-faint">휴식 회복</p>
+                  <p className="mt-1 text-lg font-extrabold text-content">
+                    +{housing.restAmount}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <p className="text-xs font-bold text-faint">현재 피로도</p>
+                  <p className="mt-1 text-lg font-extrabold text-content">
+                    {housing.ap}/{housing.maxAp}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <p className="text-xs font-bold text-faint">초기화</p>
+                  <p className="mt-1 text-sm font-extrabold text-content">KST 자정</p>
+                </div>
+              </div>
+              <form action={restAction} className="mt-4">
+                <button
+                  type="submit"
+                  disabled={restPending || housing.restedToday || !housing.atHome}
+                  className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {housing.atHome
+                    ? housing.restedToday
+                      ? "오늘 집 휴식 완료"
+                      : "집에서 휴식"
+                    : "본인 집에서만 휴식 가능"}
+                </button>
+              </form>
+            </section>
+          ) : (
+            <p className="rounded-2xl bg-subtle px-4 py-3 text-sm text-muted">
+              종탑 거리의 중개인을 통해 집을 구매할 수 있어요. 집을 사면 이동 가능 구역에
+              본인 집이 생깁니다.
+            </p>
+          )}
+
+          <section className="space-y-2">
+            <h4 className="text-sm font-extrabold text-content">집 구매</h4>
+            <div className="grid gap-2">
+              {housing.options.map((option) => (
+                <form key={option.tier} action={buyAction}>
+                  <input type="hidden" name="tier" value={option.tier} />
+                  <button
+                    type="submit"
+                    disabled={buyPending}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
+                  >
+                    <span className="text-xl">🏡</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-extrabold text-content">
+                        {option.name}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-faint">{option.note}</span>
+                    </span>
+                    <span className="shrink-0 text-xs font-black text-emerald-500">
+                      {option.price.toLocaleString()}G
+                    </span>
+                  </button>
+                </form>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-dashed border-line p-4">
+            <p className="text-sm font-extrabold text-content">🪑 가구 배치</p>
+            <p className="mt-1 text-sm text-faint">
+              준비 중입니다. 이후 침대, 책상, 조리대 같은 가구를 추가하고 보너스를 붙일 수
+              있게 확장할 예정입니다.
+            </p>
+          </section>
+        </div>
+
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const FOOD_PRODUCTS = [
   { id: "egg", name: "달걀", buyPrice: 20, sellPrice: 10 },
   { id: "milk", name: "우유", buyPrice: 30, sellPrice: 15 },
@@ -974,12 +1157,14 @@ export default function WorldServices({
   canMarket,
   canStorage,
   canInn,
+  canHousing,
   inventoryItems,
   lifeStorageItems,
   lifeShop,
   byproducts,
   materials,
   inn,
+  housing,
   storage,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -989,6 +1174,7 @@ export default function WorldServices({
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [byproductOpen, setByproductOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
+  const [housingOpen, setHousingOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -1007,7 +1193,7 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing) return null;
 
   function closeForge() {
     setOpen(false);
@@ -1112,6 +1298,25 @@ export default function WorldServices({
               </span>
             </button>
           )}
+          {canHousing && (
+            <button
+              type="button"
+              onClick={() => setHousingOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🏠</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">
+                  {housing.tier ? "하우징" : "집 구매"}
+                </span>
+                <span className="text-[11px] text-faint">
+                  {housing.tier
+                    ? `${housing.name} · 휴식 +${housing.restAmount}`
+                    : "종탑 거리 부동산"}
+                </span>
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1141,6 +1346,8 @@ export default function WorldServices({
       )}
 
       {innOpen && <InnRest inn={inn} onClose={() => setInnOpen(false)} />}
+
+      {housingOpen && <HousingPanel housing={housing} onClose={() => setHousingOpen(false)} />}
 
       {open && (
         <div

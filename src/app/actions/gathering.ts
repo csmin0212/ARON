@@ -162,7 +162,12 @@ export async function startGathering(): Promise<GatherStart> {
   const regionBase = pool.weights
     ? pool.weights.map((w, rank) => (levelBase[rank] > 0 ? w : 0))
     : levelBase;
-  const caught = pickLifeSkillCatch(GATHER, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+  let caught;
+  try {
+    caught = pickLifeSkillCatch(GATHER, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "채집 목록 설정을 확인해주세요." };
+  }
   const item = caught.item;
 
   const bag = life.bags[GATHER];

@@ -54,7 +54,10 @@ model CharacterSheet {
   enteredAt      DateTime? // 현재 장소 진입 시각 (이후 채팅만 보임)
   ap             Int? // 행동치 (매일 KST 5시 회복)
   apResetAt      DateTime? // 마지막 행동치 회복 시각
-  restedAt       DateTime? // 여관 휴식 마지막 시각 (일일 1회 판정, KST 기준)
+  restedAt       DateTime? // 여관 휴식 마지막 시각 (일일 1회 판정, KST 자정 기준)
+  houseTier      String? // small | standard | luxury
+  houseRestedAt  DateTime? // 집 휴식 마지막 시각 (여관과 별도, KST 자정 기준)
+  housingJson    String? // 하우징 상태 JSON — 가구/효과 확장용
   pendingCatchJson String? // 낚시 미니게임 진행 중 걸린 어종(서버 추첨 결과) — 성공 시 지급
   pendingGatherJson String? // 채집 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
