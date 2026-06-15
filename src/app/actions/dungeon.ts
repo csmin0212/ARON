@@ -6,9 +6,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
 import { rollDice } from "@/lib/dice";
 import { dungeonWeekKey } from "@/lib/world";
-import { ABILITY_LABELS_KO, type DropEntry } from "@/lib/gamedata";
+import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
 import {
   appendSheetFormula,
+  appendSheetGold,
   inventoryWeightTotal,
   type SheetInventory,
 } from "@/lib/googleSheets";
@@ -65,6 +66,43 @@ async function incDbItem(userId: string, name: string, qty: number): Promise<voi
   }
 }
 
+function parseDropList(json: string | null): DropEntry[] {
+  try {
+    return json ? (JSON.parse(json) as DropEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+// 드랍 한 건을 인벤토리/도감에 반영하고, 골드 드랍이면 그 양을 반환(나중에 합산 지급).
+async function giveDrop(
+  userId: string,
+  inv: SheetInventory,
+  d: DropEntry,
+  rewards: string[],
+): Promise<number> {
+  if (d.item === "꽝") return 0;
+  if (d.item === "골드") {
+    if (d.gold > 0) rewards.push(`${d.gold}G`);
+    return d.gold;
+  }
+  const catalog = await prisma.item.findFirst({
+    where: { OR: [{ id: d.item }, { name: d.item }] },
+    select: { name: true, desc: true },
+  });
+  const itemName = catalog?.name ?? d.item;
+  const found = inv.items.find((i) => i.name.trim() === itemName.trim());
+  if (found) {
+    found.qty += d.qty;
+    if (!found.effect && catalog?.desc) found.effect = catalog.desc;
+  } else {
+    inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty: d.qty });
+  }
+  await incDbItem(userId, d.item, d.qty);
+  rewards.push(`${itemName} x${d.qty}`);
+  return 0;
+}
+
 export async function challengeDungeon(dungeonId: string, ability: string): Promise<DungeonResult> {
   const user = await getCurrentUser();
   if (!user) return { error: "로그인이 필요해요." };
@@ -108,39 +146,35 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
       : dungeon.exp;
   if (expGain > 0) await appendSheetFormula(sheet.sheetTab, EXP_CELL, expGain);
 
-  // 성공 시 보상(포션 등) 지급
+  // 성공 시 보상 지급 — 확정 보상은 전부, 확률 보상은 가중치로 하나 추첨.
   const rewards: string[] = [];
   if (success) {
-    let drops: DropEntry[] = [];
-    try {
-      drops = JSON.parse(dungeon.dropsJson) as DropEntry[];
-    } catch {
-      drops = [];
-    }
+    const guaranteed = parseDropList(dungeon.dropsJson);
+    const rollPool = parseDropList(dungeon.rollDropsJson);
+    const picks = [...guaranteed];
+    if (rollPool.length > 0) picks.push(pickDrop(rollPool));
+
     const inv = parseInv(sheet.invJson);
-    for (const d of drops) {
-      if (d.item === "꽝") continue;
-      if (d.item === "골드") continue; // 던전 골드 보상은 후속
-      const catalog = await prisma.item.findFirst({
-        where: { OR: [{ id: d.item }, { name: d.item }] },
-        select: { name: true, desc: true },
-      });
-      const itemName = catalog?.name ?? d.item;
-      const found = inv.items.find((i) => i.name.trim() === itemName.trim());
-      if (found) {
-        found.qty += d.qty;
-        if (!found.effect && catalog?.desc) found.effect = catalog.desc;
-      } else {
-        inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty: d.qty });
-      }
-      await incDbItem(user.id, d.item, d.qty);
-      rewards.push(`${itemName} x${d.qty}`);
+    let goldGain = 0;
+    for (const d of picks) {
+      goldGain += await giveDrop(user.id, inv, d, rewards);
     }
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
-    await prisma.characterSheet.update({
-      where: { userId: user.id },
-      data: { invJson: JSON.stringify(inv) },
-    });
+
+    if (goldGain > 0) {
+      const nextGold = (sheet.curGold ?? 0) + goldGain;
+      inv.gold = `${nextGold}G`;
+      await prisma.characterSheet.update({
+        where: { userId: user.id },
+        data: { invJson: JSON.stringify(inv), curGold: nextGold, gold: `${nextGold}G` },
+      });
+      void appendSheetGold(sheet.sheetTab, goldGain);
+    } else {
+      await prisma.characterSheet.update({
+        where: { userId: user.id },
+        data: { invJson: JSON.stringify(inv) },
+      });
+    }
   }
 
   if (sheet.locationId) {

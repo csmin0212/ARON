@@ -43,7 +43,8 @@ export type DungeonRow = {
   dc: number;
   exp: number; // 최소
   expMax: number; // 최대 (exp보다 크면 범위 랜덤)
-  drops: DropEntry[];
+  drops: DropEntry[]; // 확정 보상 (전부 지급)
+  rollDrops: DropEntry[]; // 확률 보상 (가중치로 하나 추첨)
   floor: number;
 };
 
@@ -239,6 +240,8 @@ export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonR
     달성치: "dc",
     경험점: "exp",
     보상: "drops",
+    확정보상: "drops",
+    확률보상: "rollDrops",
     층: "floor",
   });
   if (!h) throw new Error("던전 탭이 없거나 헤더(이름/장소)가 없어요.");
@@ -255,7 +258,9 @@ export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonR
 
     const dropsSpec = at(g, r, h.col.drops);
     const drops = dropsSpec ? parseDrops(dropsSpec) : [];
-    for (const d of drops) {
+    const rollSpec = at(g, r, h.col.rollDrops);
+    const rollDrops = rollSpec ? parseDrops(rollSpec) : [];
+    for (const d of [...drops, ...rollDrops]) {
       if (d.item !== "꽝" && d.item !== "골드" && !itemIds.has(d.item))
         throw new Error(`던전 '${id}' 보상의 '${d.item}' 이 아이템 탭에 없어요.`);
     }
@@ -278,6 +283,7 @@ export function parseDungeonsGrid(g: string[][], itemIds: Set<string>): DungeonR
       exp,
       expMax,
       drops,
+      rollDrops,
       floor: num(at(g, r, h.col.floor)) ?? 1,
     });
   }
