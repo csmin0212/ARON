@@ -10,10 +10,21 @@ import {
   destroySession,
   getCurrentUser,
 } from "@/lib/auth";
+import { isHexColor } from "@/lib/theme";
 
 export type FormState = { error?: string } | undefined;
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/;
+
+// 커버 이미지 주소 검증 — 빈값이면 null(제거), 업로드 이미지(/api/image/..)나
+// http(s) 링크면 허용, 그 외엔 undefined(거부).
+function cleanCover(v: string): string | null | undefined {
+  if (!v) return null;
+  if (v.length > 800) return undefined;
+  if (v.startsWith("/api/image/")) return v;
+  if (/^https?:\/\//i.test(v)) return v;
+  return undefined;
+}
 
 export async function register(_prev: FormState, formData: FormData): Promise<FormState> {
   const username = String(formData.get("username") ?? "").trim();
@@ -72,9 +83,16 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
   if (nickname.length < 1 || nickname.length > 12)
     return { error: "닉네임은 1~12자로 입력해주세요." };
 
+  const colorRaw = String(formData.get("profileColor") ?? "").trim();
+  const profileColor = isHexColor(colorRaw) ? colorRaw : null;
+
+  const profileCover = cleanCover(String(formData.get("profileCover") ?? "").trim());
+  if (profileCover === undefined)
+    return { error: "커버 이미지 주소가 올바르지 않아요. (http(s) 링크 또는 업로드 이미지)" };
+
   await prisma.user.update({
     where: { id: user.id },
-    data: { nickname, avatar: avatar || null },
+    data: { nickname, avatar: avatar || null, profileColor, profileCover },
   });
 
   revalidatePath("/", "layout");

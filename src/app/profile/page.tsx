@@ -6,8 +6,32 @@ import { MASTER_SHEET_URL } from "@/lib/charsheet";
 import ProfileForm from "@/components/forms/ProfileForm";
 import SheetLinkForm from "@/components/forms/SheetLinkForm";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
+import ProfileHero from "@/components/ProfileHero";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
+
+function HeroStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl bg-subtle px-3 py-2.5 text-center">
+      <p className="text-[11px] font-bold text-faint">{label}</p>
+      <p
+        className={`mt-0.5 truncate text-sm font-extrabold ${
+          accent ? "text-emerald-500" : "text-content"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
 
 export default async function ProfilePage({
   searchParams,
@@ -23,32 +47,48 @@ export default async function ProfilePage({
     prisma.characterSheet.findUnique({ where: { userId: user.id } }),
   ]);
 
+  const rank = sheet?.adventurerRank ?? null;
+  const tags = (
+    sheet
+      ? [sheet.charClass, sheet.race, sheet.attribute && `속성 ${sheet.attribute}`]
+      : []
+  ).filter(Boolean) as string[];
+  const gold =
+    sheet?.curGold != null ? `${sheet.curGold.toLocaleString()}G` : sheet?.gold ?? null;
+
   return (
     <div className="mx-auto max-w-md animate-fadeup space-y-5 py-4">
-      <div>
-        <h1 className="mb-1 text-2xl font-extrabold text-content">프로필 설정</h1>
-        <p className="text-sm text-faint">
-          @{user.username} · 작성한 글 {counts}개
-        </p>
-      </div>
+      {/* 히어로 헤더 */}
+      <ProfileHero
+        nickname={user.nickname}
+        username={user.username}
+        avatar={user.avatar}
+        level={sheet?.level}
+        rank={rank}
+        tags={tags}
+        color={user.profileColor}
+        cover={user.profileCover}
+        footer={
+          <div className="grid grid-cols-3 gap-2">
+            <HeroStat label="작성한 글" value={`${counts}`} />
+            <HeroStat label="레벨" value={sheet?.level != null ? `Lv.${sheet.level}` : "-"} />
+            <HeroStat label="소지금" value={gold ?? "-"} accent />
+          </div>
+        }
+      />
 
       {sp.saved && (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-600">
+        <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-600">
           ✅ 프로필이 저장되었어요.
         </p>
       )}
-
-      {/* 프로필 (닉네임 / 아바타) */}
-      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-        <ProfileForm initialNickname={user.nickname} initialAvatar={user.avatar} />
-      </div>
 
       {/* 캐릭터 시트 */}
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
         <div className="mb-1 flex items-center gap-2">
           <h2 className="text-lg font-extrabold text-content">캐릭터 시트</h2>
           <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-600">
-            맵 기능 연동 예정
+            구글 시트 연동
           </span>
         </div>
         <p className="mb-4 text-sm text-faint">
@@ -65,6 +105,17 @@ export default async function ProfilePage({
           initialTab={sheet?.sheetTab}
           syncedAt={sheet?.syncedAt ? formatFullDate(sheet.syncedAt) : null}
           masterUrl={MASTER_SHEET_URL}
+        />
+      </div>
+
+      {/* 프로필 편집 */}
+      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+        <h2 className="mb-4 text-lg font-extrabold text-content">프로필 편집</h2>
+        <ProfileForm
+          initialNickname={user.nickname}
+          initialAvatar={user.avatar}
+          initialColor={user.profileColor}
+          initialCover={user.profileCover}
         />
       </div>
     </div>

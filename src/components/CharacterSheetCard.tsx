@@ -22,21 +22,36 @@ export type SheetData = {
 function Stat({ s }: { s: StatEntry }) {
   const mod = s.mod ?? 0;
   return (
-    <div className="rounded-xl border border-line bg-subtle px-2 py-2 text-center">
+    <div className="rounded-2xl border border-line bg-subtle px-2 py-2 text-center transition hover:border-brand-300 hover:bg-brand-50">
       <div className="text-[11px] font-bold text-faint">{s.label}</div>
       <div className="text-lg font-extrabold text-content">{s.value ?? "-"}</div>
-      <div className="text-[10px] font-semibold text-brand-600">
+      <div className="mt-0.5 inline-block rounded-full bg-brand-100 px-1.5 text-[10px] font-bold text-brand-700">
         2D{mod >= 0 ? `+${mod}` : mod}
       </div>
     </div>
   );
 }
 
-function Vital({ label, value, color }: { label: string; value: string | number | null; color: string }) {
+function Vital({
+  icon,
+  label,
+  value,
+  color,
+  bg,
+}: {
+  icon: string;
+  label: string;
+  value: string | number | null;
+  color: string;
+  bg: string;
+}) {
   return (
-    <div className="flex-1 rounded-xl bg-subtle px-3 py-2 text-center">
-      <div className="text-[11px] font-bold text-faint">{label}</div>
-      <div className={`text-lg font-extrabold ${color}`}>{value ?? "-"}</div>
+    <div className={`flex-1 rounded-2xl ${bg} px-2 py-2.5 text-center`}>
+      <div className="text-[11px] font-bold text-faint">
+        <span className="mr-0.5">{icon}</span>
+        {label}
+      </div>
+      <div className={`mt-0.5 text-base font-extrabold ${color}`}>{value ?? "-"}</div>
     </div>
   );
 }
@@ -127,20 +142,32 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
       {/* HP / MP / 페이트 / 소지금 (라이브 상태 우선) */}
       <div className="flex gap-2">
         <Vital
+          icon="❤️"
           label="HP"
           value={currentMaxValue(sheet.curHp, sheet.hp)}
           color="text-rose-500"
+          bg="bg-rose-500/10"
         />
         <Vital
+          icon="💧"
           label="MP"
           value={currentMaxValue(sheet.curMp, sheet.mp)}
           color="text-sky-500"
+          bg="bg-sky-500/10"
         />
-        <Vital label="페이트" value={sheet.fate} color="text-amber-500" />
         <Vital
+          icon="🍀"
+          label="페이트"
+          value={sheet.fate}
+          color="text-amber-500"
+          bg="bg-amber-500/10"
+        />
+        <Vital
+          icon="🪙"
           label="소지금"
           value={sheet.curGold != null ? `${sheet.curGold.toLocaleString()}G` : sheet.gold}
           color="text-emerald-500"
+          bg="bg-emerald-500/10"
         />
       </div>
 

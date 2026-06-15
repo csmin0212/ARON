@@ -4,10 +4,10 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
-import Avatar from "@/components/Avatar";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import CharacterTabs from "@/components/CharacterTabs";
 import LifeSkillPanel from "@/components/LifeSkillPanel";
+import ProfileHero from "@/components/ProfileHero";
 
 export async function generateMetadata({
   params,
@@ -42,6 +42,16 @@ export default async function CharacterPage({
   const life = parseLifeState(profile.sheet?.lifeJson);
   const pendingCount = isOwn ? life.pending.length : 0;
 
+  const tags = (
+    profile.sheet
+      ? [
+          profile.sheet.charClass,
+          profile.sheet.race,
+          profile.sheet.attribute && `속성 ${profile.sheet.attribute}`,
+        ]
+      : []
+  ).filter(Boolean) as string[];
+
   // ── 탭 내용 ──
   const sheetTab = (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
@@ -69,21 +79,26 @@ export default async function CharacterPage({
   return (
     <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
       {/* 프로필 헤더 */}
-      <div className="flex items-center gap-4 rounded-3xl border border-line bg-surface p-6 shadow-sm">
-        <Avatar name={profile.nickname} avatar={profile.avatar} size={64} />
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-extrabold text-content">{profile.nickname}</h1>
-          <p className="text-sm text-faint">@{profile.username}</p>
-        </div>
-        {isOwn && (
-          <Link
-            href="/profile"
-            className="ml-auto rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
-          >
-            프로필 편집
-          </Link>
-        )}
-      </div>
+      <ProfileHero
+        nickname={profile.nickname}
+        username={profile.username}
+        avatar={profile.avatar}
+        level={profile.sheet?.level}
+        rank={profile.sheet?.adventurerRank}
+        tags={tags}
+        color={profile.profileColor}
+        cover={profile.profileCover}
+        action={
+          isOwn ? (
+            <Link
+              href="/profile"
+              className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
+            >
+              프로필 편집
+            </Link>
+          ) : undefined
+        }
+      />
 
       <CharacterTabs
         tabs={[

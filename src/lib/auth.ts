@@ -50,6 +50,8 @@ export type SessionUser = {
   username: string;
   nickname: string;
   avatar: string | null;
+  profileColor: string | null;
+  profileCover: string | null;
 };
 
 // 현재 로그인 유저 (요청 단위 캐시)
@@ -64,7 +66,14 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     if (!uid) return null;
     const user = await prisma.user.findUnique({
       where: { id: uid },
-      select: { id: true, username: true, nickname: true, avatar: true },
+      select: {
+        id: true,
+        username: true,
+        nickname: true,
+        avatar: true,
+        profileColor: true,
+        profileCover: true,
+      },
     });
     return user;
   } catch {
