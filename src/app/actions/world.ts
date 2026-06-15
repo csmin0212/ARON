@@ -9,7 +9,13 @@ import { fetchItemsRows, fetchActionsRows, fetchDungeonsRows } from "@/lib/gamed
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import type { ActionRow } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
-import { homeLocationId, isBellTowerLocation, isHomeLocationId } from "@/lib/housing";
+import {
+  homeLocationId,
+  houseOption,
+  isBellTowerLocation,
+  isHomeLocationId,
+  parseHousingState,
+} from "@/lib/housing";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
@@ -214,15 +220,21 @@ async function bellTowerLocation() {
   return locations.find((location) => isBellTowerLocation(location)) ?? null;
 }
 
-export async function enterHome(): Promise<void> {
+export async function enterHome(formData: FormData): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
 
+  const tier = houseOption(String(formData.get("tier") ?? ""));
+  if (!tier) return;
+
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
-    select: { locationId: true, houseTier: true },
+    select: { locationId: true, houseTier: true, housingJson: true },
   });
-  if (!sheet?.houseTier || !sheet.locationId) return;
+  if (!sheet?.locationId) return;
+
+  const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+  if (!housing.owned.includes(tier.tier)) return;
 
   const here = await prisma.location.findUnique({
     where: { id: sheet.locationId },
@@ -232,7 +244,7 @@ export async function enterHome(): Promise<void> {
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { locationId: homeLocationId(user.id), enteredAt: new Date() },
+    data: { locationId: homeLocationId(user.id, tier.tier), houseTier: tier.tier, enteredAt: new Date() },
   });
   await postSystem(sheet.locationId, `📤 ${user.nickname}님이 자리를 떠났습니다.`);
   revalidatePath("/world");

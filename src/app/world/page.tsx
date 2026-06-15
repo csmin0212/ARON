@@ -36,7 +36,15 @@ import { lifeSkillItemKind, lifeSkillSellPrice, type LocationLifeConfig } from "
 import { isNonSellable } from "@/lib/shop";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { parseGoldToInt } from "@/lib/dice";
-import { HOUSE_OPTIONS, homeLocationId, houseOption, isBellTowerLocation, isHomeLocationId } from "@/lib/housing";
+import {
+  HOUSE_OPTIONS,
+  homeLocationId,
+  homeTierFromLocationId,
+  houseOption,
+  isBellTowerLocation,
+  isHomeLocationId,
+  parseHousingState,
+} from "@/lib/housing";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -160,8 +168,10 @@ export default async function WorldPage() {
   const ap = effectiveAp(sheet.ap, sheet.apResetAt);
   const nextRegenMin = nextFatigueRegenMinutes(sheet.ap, sheet.apResetAt);
   const atHome = isHomeLocationId(sheet.locationId);
+  const housingState = parseHousingState(sheet.housingJson, sheet.houseTier);
+  const activeHomeTier = homeTierFromLocationId(sheet.locationId) ?? sheet.houseTier;
   const bellTowerLocations =
-    atHome || sheet.houseTier
+    atHome || housingState.owned.length > 0
       ? await prisma.location.findMany({
           select: { id: true, name: true, emoji: true },
           orderBy: { order: "asc" },
@@ -172,11 +182,11 @@ export default async function WorldPage() {
     sheet.locationId && !atHome
       ? await prisma.location.findUnique({ where: { id: sheet.locationId } })
       : null;
-  const house = houseOption(sheet.houseTier);
+  const house = houseOption(activeHomeTier);
   const here =
     atHome && house
       ? {
-          id: homeLocationId(user.id),
+          id: homeLocationId(user.id, house.tier),
           name: "본인 집",
           emoji: "🏠",
           desc: `${house.name}입니다. 하우징 메뉴에서 휴식하고, 이후 가구를 배치할 수 있어요.`,
@@ -239,7 +249,8 @@ export default async function WorldPage() {
     if (d.hidden && !discovered.includes(d.id)) return false;
     return connIds.includes(d.id) || (d.hidden && parseJsonArray(d.connJson).includes(here.id));
   });
-  const canEnterHome = !!house && !atHome && isBellTowerLocation(here);
+  const canEnterHome = !atHome && isBellTowerLocation(here) && housingState.owned.length > 0;
+  const ownedHouseOptions = HOUSE_OPTIONS.filter((option) => housingState.owned.includes(option.tier));
 
   const others = await prisma.characterSheet.findMany({
     where: { locationId: here.id, userId: { not: user.id } },
@@ -422,6 +433,7 @@ export default async function WorldPage() {
       price: option.price,
       restAmount: option.restAmount,
       note: option.note,
+      owned: housingState.owned.includes(option.tier),
     })),
   };
   const canHousing = atHome || isBellTowerLocation(here);
@@ -602,21 +614,25 @@ export default async function WorldPage() {
                     </button>
                   </form>
                 )}
-                {canEnterHome && (
-                  <form action={enterHome}>
-                    <button
-                      type="submit"
-                      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50"
-                    >
-                      <span className="text-xl">🏠</span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-bold text-content">본인 집</span>
-                        <span className="text-[11px] text-faint">{house?.name}</span>
-                      </span>
-                      <span className="ml-auto text-faint2">→</span>
-                    </button>
-                  </form>
-                )}
+                {canEnterHome &&
+                  ownedHouseOptions.map((option) => (
+                    <form key={option.tier} action={enterHome}>
+                      <input type="hidden" name="tier" value={option.tier} />
+                      <button
+                        type="submit"
+                        className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:border-brand-400 hover:bg-brand-50"
+                      >
+                        <span className="text-xl">🏠</span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-bold text-content">
+                            {option.name}
+                          </span>
+                          <span className="text-[11px] text-faint">본인 집</span>
+                        </span>
+                        <span className="ml-auto text-faint2">→</span>
+                      </button>
+                    </form>
+                  ))}
                 {destinations.map((d) => (
                   <form key={d.id} action={moveTo}>
                     <input type="hidden" name="target" value={d.id} />

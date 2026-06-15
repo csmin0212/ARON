@@ -20,6 +20,7 @@ import {
   type ServiceState,
   type StorageState,
 } from "@/app/actions/services";
+import { enterHome } from "@/app/actions/world";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -64,6 +65,7 @@ export type HousingView = {
     price: number;
     restAmount: number;
     note: string;
+    owned: boolean;
   }[];
 };
 
@@ -680,7 +682,7 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
     restAtHome,
     undefined,
   );
-  const owned = housing.tier != null;
+  const owned = housing.options.some((option) => option.owned);
 
   return (
     <div
@@ -764,10 +766,10 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
           )}
 
           <section className="space-y-2">
-            <h4 className="text-sm font-extrabold text-content">집 구매</h4>
+            <h4 className="text-sm font-extrabold text-content">주택 목록</h4>
             <div className="grid gap-2">
               {housing.options.map((option) => (
-                <form key={option.tier} action={buyAction}>
+                <form key={option.tier} action={option.owned ? enterHome : buyAction}>
                   <input type="hidden" name="tier" value={option.tier} />
                   <button
                     type="submit"
@@ -781,8 +783,14 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
                       </span>
                       <span className="mt-0.5 block text-[11px] text-faint">{option.note}</span>
                     </span>
-                    <span className="shrink-0 text-xs font-black text-emerald-500">
-                      {option.price.toLocaleString()}G
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${
+                        option.owned
+                          ? "bg-brand-50 text-brand-600"
+                          : "bg-emerald-50 text-emerald-600"
+                      }`}
+                    >
+                      {option.owned ? "입장" : `${option.price.toLocaleString()}G`}
                     </span>
                   </button>
                 </form>

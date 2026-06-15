@@ -38,12 +38,65 @@ export function houseOption(tier: string | null | undefined): HouseOption | null
   return HOUSE_OPTIONS.find((option) => option.tier === tier) ?? null;
 }
 
-export function homeLocationId(userId: string): string {
-  return `${HOME_LOCATION_PREFIX}${userId}`;
+export type HousingStateData = {
+  owned: HouseTier[];
+  furniture: Partial<Record<HouseTier, unknown[]>>;
+};
+
+export function parseHousingState(
+  value: string | null | undefined,
+  legacyTier?: string | null,
+): HousingStateData {
+  const owned = new Set<HouseTier>();
+  const legacy = houseOption(legacyTier);
+  if (legacy) owned.add(legacy.tier);
+
+  let furniture: Partial<Record<HouseTier, unknown[]>> = {};
+  try {
+    if (value) {
+      const raw = JSON.parse(value) as Partial<HousingStateData>;
+      if (Array.isArray(raw.owned)) {
+        for (const tier of raw.owned) {
+          if (houseOption(tier)) owned.add(tier);
+        }
+      }
+      if (raw.furniture && typeof raw.furniture === "object") {
+        furniture = raw.furniture;
+      }
+    }
+  } catch {
+    // use legacy fallback
+  }
+
+  return {
+    owned: HOUSE_OPTIONS.map((option) => option.tier).filter((tier) => owned.has(tier)),
+    furniture,
+  };
+}
+
+export function serializeHousingState(state: HousingStateData): string {
+  return JSON.stringify({
+    owned: HOUSE_OPTIONS.map((option) => option.tier).filter((tier) =>
+      state.owned.includes(tier),
+    ),
+    furniture: state.furniture ?? {},
+  });
+}
+
+export function homeLocationId(userId: string, tier: HouseTier): string {
+  return `${HOME_LOCATION_PREFIX}${userId}:${tier}`;
 }
 
 export function isHomeLocationId(locationId: string | null | undefined): boolean {
   return !!locationId?.startsWith(HOME_LOCATION_PREFIX);
+}
+
+export function homeTierFromLocationId(
+  locationId: string | null | undefined,
+): HouseTier | null {
+  if (!isHomeLocationId(locationId)) return null;
+  const tier = locationId?.split(":")[2];
+  return houseOption(tier)?.tier ?? null;
 }
 
 export function isBellTowerLocation(location: { id?: string | null; name?: string | null } | null): boolean {

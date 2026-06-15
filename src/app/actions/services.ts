@@ -21,7 +21,14 @@ import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
-import { HOUSE_OPTIONS, homeLocationId, houseOption, isBellTowerLocation, isHomeLocationId } from "@/lib/housing";
+import {
+  homeTierFromLocationId,
+  houseOption,
+  isBellTowerLocation,
+  isHomeLocationId,
+  parseHousingState,
+  serializeHousingState,
+} from "@/lib/housing";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
 export type StorageState = { error?: string; ok?: string } | undefined;
@@ -803,11 +810,11 @@ export async function buyHouse(
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: ctx.userId },
-    select: { houseTier: true },
+    select: { houseTier: true, housingJson: true },
   });
-  const current = houseOption(sheet?.houseTier);
-  if (current && current.price >= selected.price) {
-    return { error: `이미 ${current.name}을 보유 중입니다.` };
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  if (housing.owned.includes(selected.tier)) {
+    return { error: `이미 ${selected.name}을 보유 중입니다.` };
   }
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
@@ -827,7 +834,10 @@ export async function buyHouse(
       curGold: nextGold,
       gold: `${nextGold}G`,
       invJson: JSON.stringify(inv),
-      housingJson: "{}",
+      housingJson: serializeHousingState({
+        ...housing,
+        owned: [...housing.owned, selected.tier],
+      }),
     },
   });
   void appendSheetGold(ctx.tab, -selected.price);
@@ -850,16 +860,20 @@ export async function restAtHome(): Promise<HousingState> {
       ap: true,
       apResetAt: true,
       houseTier: true,
+      housingJson: true,
       houseRestedAt: true,
       locationId: true,
     },
   });
-  if (!sheet?.houseTier) return { error: "보유한 집이 없어요." };
-  if (!isHomeLocationId(sheet.locationId) || sheet.locationId !== homeLocationId(user.id)) {
+  const currentTier = homeTierFromLocationId(sheet?.locationId) ?? houseOption(sheet?.houseTier)?.tier ?? null;
+  if (!sheet || !currentTier) return { error: "본인 집에서만 휴식할 수 있어요." };
+  const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+  if (!housing.owned.includes(currentTier)) return { error: "보유한 집이 아니에요." };
+  if (!isHomeLocationId(sheet.locationId)) {
     return { error: "본인 집에서만 휴식할 수 있어요." };
   }
 
-  const option = houseOption(sheet.houseTier);
+  const option = houseOption(currentTier);
   if (!option) return { error: "집 정보가 올바르지 않아요." };
 
   const now = new Date();
