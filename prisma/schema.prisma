@@ -36,6 +36,7 @@ model User {
   tradeOffersSent TradeOffer[] @relation("TradeOfferFrom")
   tradeOffersReceived TradeOffer[] @relation("TradeOfferTo")
   tradeMessages TradeMessage[]
+  notifications Notification[]
 }
 
 // 업적 정의 (GM 시트 '업적' 탭에서 동기화)
@@ -141,6 +142,20 @@ model TradeMessage {
   createdAt DateTime   @default(now())
 
   @@index([tradeId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String    @default("info")
+  title     String
+  body      String?
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)

@@ -181,6 +181,32 @@ async function systemMessage(tradeId: string, content: string): Promise<void> {
   await prisma.tradeMessage.create({ data: { tradeId, system: true, content } });
 }
 
+async function notifyUser(
+  userId: string,
+  data: { title: string; body?: string | null; href?: string | null },
+): Promise<void> {
+  await prisma.notification.create({
+    data: {
+      userId,
+      kind: "trade",
+      title: data.title,
+      body: data.body ?? null,
+      href: data.href ?? null,
+    },
+  });
+  revalidatePath("/notifications");
+  revalidatePath("/", "layout");
+}
+
+async function notifyTradePartner(
+  trade: { id: string; fromUserId: string; toUserId: string },
+  actorUserId: string,
+  data: { title: string; body?: string | null },
+): Promise<void> {
+  const targetUserId = trade.fromUserId === actorUserId ? trade.toUserId : trade.fromUserId;
+  await notifyUser(targetUserId, { ...data, href: `/trade/${trade.id}` });
+}
+
 export async function createTradeOffer(
   _prev: TradeActionState,
   formData: FormData,
@@ -214,6 +240,12 @@ export async function createTradeOffer(
       },
     },
     select: { id: true },
+  });
+
+  await notifyUser(target.id, {
+    title: "새 거래 요청",
+    body: `${me.nickname}님이 거래방을 열었습니다.`,
+    href: `/trade/${trade.id}`,
   });
 
   refreshTrade(trade.id, me.username, target.username);
@@ -272,6 +304,10 @@ export async function updateTradeOffer(
           },
   });
   await systemMessage(trade.id, `${me.nickname}님이 거래 조건을 갱신했습니다. 양쪽 확정이 해제됩니다.`);
+  await notifyTradePartner(trade, me.id, {
+    title: "거래 조건 갱신",
+    body: `${me.nickname}님이 거래 조건을 바꿨습니다.`,
+  });
 
   refreshTrade(trade.id, trade.fromUser.username, trade.toUser.username);
   return { ok: true, message: "거래 조건을 갱신했습니다." };
@@ -347,6 +383,19 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
     }),
   ]);
 
+  await Promise.all([
+    notifyUser(trade.fromUserId, {
+      title: "거래 완료",
+      body: `${trade.toUser.nickname}님과의 거래가 완료되었습니다.`,
+      href: `/trade/${trade.id}`,
+    }),
+    notifyUser(trade.toUserId, {
+      title: "거래 완료",
+      body: `${trade.fromUser.nickname}님과의 거래가 완료되었습니다.`,
+      href: `/trade/${trade.id}`,
+    }),
+  ]);
+
   for (const item of fromItems) {
     await decrementDbInventory(trade.fromUserId, item.name, item.qty);
     await incrementDbInventory(trade.toUserId, item.name, item.qty);
@@ -390,6 +439,10 @@ export async function confirmTradeOffer(
     data: side === "from" ? { fromConfirmed: true } : { toConfirmed: true },
   });
   await systemMessage(trade.id, `${me.nickname}님이 거래를 확정했습니다.`);
+  await notifyTradePartner(trade, me.id, {
+    title: "거래 확정",
+    body: `${me.nickname}님이 거래를 확정했습니다.`,
+  });
 
   refreshTrade(trade.id, trade.fromUser.username, trade.toUser.username);
   return completeTrade(trade.id);
@@ -421,6 +474,10 @@ export async function sendTradeMessage(
   if (trade.status !== PENDING) return { ok: false, message: "종료된 거래입니다." };
 
   await prisma.tradeMessage.create({ data: { tradeId: trade.id, userId: me.id, content } });
+  await notifyTradePartner(trade, me.id, {
+    title: "거래 메시지",
+    body: `${me.nickname}: ${content}`,
+  });
   refreshTrade(trade.id, trade.fromUser.username, trade.toUser.username);
   return { ok: true, message: "전송했습니다." };
 }
@@ -453,6 +510,10 @@ export async function cancelTradeOffer(
       data: { tradeId: trade.id, system: true, content: `${me.nickname}님이 거래를 취소했습니다.` },
     }),
   ]);
+  await notifyTradePartner(trade, me.id, {
+    title: "거래 취소",
+    body: `${me.nickname}님이 거래를 취소했습니다.`,
+  });
   refreshTrade(trade.id, trade.fromUser.username, trade.toUser.username);
   return { ok: true, message: "거래를 취소했습니다." };
 }

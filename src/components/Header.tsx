@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { logout } from "@/app/actions/auth";
 import Avatar from "./Avatar";
 import ThemeControls from "./ThemeControls";
@@ -15,6 +16,9 @@ import {
 
 export default async function Header() {
   const user = await getCurrentUser();
+  const unreadNotifications = user
+    ? await prisma.notification.count({ where: { userId: user.id, readAt: null } })
+    : 0;
   const store = await cookies();
   const themeCookie = store.get(THEME_COOKIE)?.value;
   const accentCookie = store.get(ACCENT_COOKIE)?.value;
@@ -62,6 +66,19 @@ export default async function Header() {
 
           {user ? (
             <div className="flex items-center gap-2">
+              <Link
+                href="/notifications"
+                className="relative grid h-10 w-10 place-items-center rounded-full text-lg transition hover:bg-subtle-hover"
+                aria-label="알림"
+                title="알림"
+              >
+                🔔
+                {unreadNotifications > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 text-[10px] font-black leading-5 text-white shadow-sm">
+                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                  </span>
+                )}
+              </Link>
               <Link
                 href={`/u/${encodeURIComponent(user.username)}`}
                 className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 transition hover:bg-subtle-hover"

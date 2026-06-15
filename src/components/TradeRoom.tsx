@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import {
   cancelTradeOffer,
   confirmTradeOffer,
@@ -33,6 +33,13 @@ type MessageView = {
   content: string;
   system: boolean;
   createdAt: string;
+};
+
+type TradeSnapshot = {
+  status: string;
+  fromSide: SideView;
+  toSide: SideView;
+  messages: MessageView[];
 };
 
 function StateLine({ state }: { state: TradeActionState }) {
@@ -293,8 +300,37 @@ export default function TradeRoom({
   currentGold: number;
   messages: MessageView[];
 }) {
-  const mine = currentUserId === fromSide.userId ? fromSide : toSide;
-  const isOpen = status === "PENDING";
+  const initialSnapshot = useMemo(
+    () => ({ status, fromSide, toSide, messages }),
+    [status, fromSide, toSide, messages],
+  );
+  const [live, setLive] = useState<TradeSnapshot>(initialSnapshot);
+  const mine = currentUserId === live.fromSide.userId ? live.fromSide : live.toSide;
+  const isOpen = live.status === "PENDING";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/trade/${encodeURIComponent(tradeId)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const next = (await res.json()) as TradeSnapshot;
+        if (!cancelled) setLive(next);
+      } catch {
+        // 다음 주기에서 다시 시도한다.
+      }
+    }
+
+    const timer = window.setInterval(poll, 2000);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [tradeId]);
 
   return (
     <div className="mx-auto max-w-5xl animate-fadeup space-y-5 py-4">
@@ -303,7 +339,7 @@ export default function TradeRoom({
           <div>
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-faint">TRADE ROOM</p>
             <h1 className="mt-1 text-2xl font-black text-content">
-              {fromSide.nickname} ↔ {toSide.nickname}
+              {live.fromSide.nickname} ↔ {live.toSide.nickname}
             </h1>
             <p className="mt-1 text-sm text-faint">
               양쪽이 확정하면 즉시 거래가 완료됩니다. 조건이 바뀌면 확정은 자동 해제됩니다.
@@ -313,19 +349,19 @@ export default function TradeRoom({
             className={`rounded-full px-4 py-2 text-sm font-extrabold ${
               isOpen
                 ? "bg-brand-50 text-brand-600"
-                : status === "ACCEPTED"
+                : live.status === "ACCEPTED"
                   ? "bg-emerald-500/10 text-emerald-600"
                   : "bg-rose-500/10 text-rose-600"
             }`}
           >
-            {isOpen ? "진행 중" : status === "ACCEPTED" ? "완료" : "취소됨"}
+            {isOpen ? "진행 중" : live.status === "ACCEPTED" ? "완료" : "취소됨"}
           </span>
         </div>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <OfferSide side={fromSide} mine={currentUserId === fromSide.userId} />
-        <OfferSide side={toSide} mine={currentUserId === toSide.userId} />
+        <OfferSide side={live.fromSide} mine={currentUserId === live.fromSide.userId} />
+        <OfferSide side={live.toSide} mine={currentUserId === live.toSide.userId} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -337,7 +373,7 @@ export default function TradeRoom({
           currentGold={currentGold}
           disabled={!isOpen}
         />
-        <ChatPanel tradeId={tradeId} messages={messages} disabled={!isOpen} />
+        <ChatPanel tradeId={tradeId} messages={live.messages} disabled={!isOpen} />
       </div>
     </div>
   );
