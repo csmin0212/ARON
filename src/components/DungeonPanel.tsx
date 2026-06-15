@@ -12,6 +12,7 @@ export type DungeonView = {
   expMax: number;
   floor: number;
   rewards: string[];
+  hasRandom: boolean;
 };
 export type DungeonAbility = { label: string; mod: number | null };
 
@@ -47,9 +48,12 @@ function DungeonCard({
             {d.name} <span className="text-[11px] font-bold text-faint">{d.floor}층</span>
           </p>
           <p className="text-[11px] text-faint">
-            달성치 {d.dc} · 경험점 +{d.exp}
+            {d.dc > 0 && `달성치 ${d.dc} · `}경험점 +{d.exp}
             {d.expMax > d.exp ? `~${d.expMax}` : ""}
             {d.rewards.length > 0 && ` · 성공 보상 ${d.rewards.join(", ")}`}
+            {d.hasRandom && (
+              <span className="font-semibold text-violet-500"> + 랜덤 아이템</span>
+            )}
           </p>
         </div>
       </div>

@@ -404,6 +404,12 @@ export default async function WorldPage() {
       } catch {
         drops = [];
       }
+      let rollDrops: DropEntry[] = [];
+      try {
+        rollDrops = d.rollDropsJson ? (JSON.parse(d.rollDropsJson) as DropEntry[]) : [];
+      } catch {
+        rollDrops = [];
+      }
       return {
         id: d.id,
         name: d.name,
@@ -414,6 +420,7 @@ export default async function WorldPage() {
         rewards: drops
           .filter((x) => x.item !== "꽝")
           .map((x) => (x.item === "골드" ? `${x.gold}G` : `${x.item} x${x.qty}`)),
+        hasRandom: rollDrops.some((x) => x.item !== "꽝"),
       };
     });
     let stats: { label: string; mod: number | null }[] = [];
@@ -544,11 +551,6 @@ export default async function WorldPage() {
                         <span className="block truncate text-sm font-bold text-content">
                           {d.name}
                         </span>
-                        {d.hidden && (
-                          <span className="text-[11px] font-semibold text-violet-500">
-                            발견한 장소
-                          </span>
-                        )}
                       </span>
                       <span className="ml-auto text-faint2">→</span>
                     </button>
