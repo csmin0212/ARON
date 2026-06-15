@@ -472,7 +472,14 @@ export default async function WorldPage() {
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-6 pb-4 pt-12">
-            <p className="text-[11px] font-semibold text-white/70">현재 위치</p>
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-white/70">
+              현재 위치
+              {here.hidden && (
+                <span className="rounded bg-violet-500/85 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-white">
+                  [히든]
+                </span>
+              )}
+            </p>
             <h1 className="flex items-center gap-2 text-2xl font-extrabold text-white drop-shadow">
               {here.emoji && <span>{here.emoji}</span>} {here.name}
             </h1>
@@ -529,6 +536,11 @@ export default async function WorldPage() {
                     >
                       <span className="text-xl">{d.emoji ?? "📍"}</span>
                       <span className="min-w-0">
+                        {d.hidden && (
+                          <span className="block text-[10px] font-extrabold tracking-wide text-violet-400">
+                            [히든]
+                          </span>
+                        )}
                         <span className="block truncate text-sm font-bold text-content">
                           {d.name}
                         </span>
