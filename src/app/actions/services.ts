@@ -7,6 +7,7 @@ import {
   appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
+  pushInventoryToSheet,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
@@ -287,6 +288,7 @@ async function currentSheet(): Promise<{
   ap: number | null;
   apResetAt: Date | null;
   curGold: number | null;
+  achStatsJson: string | null;
   inv: SheetInventory;
   invFromSheet: boolean;
 } | null> {
@@ -305,6 +307,7 @@ async function currentSheet(): Promise<{
     ap: sheet.ap,
     apResetAt: sheet.apResetAt,
     curGold: sheet.curGold,
+    achStatsJson: sheet.achStatsJson,
     inv: parseInv(sheet.invJson),
     invFromSheet: !!sheet.invJson,
   };
@@ -544,6 +547,7 @@ export async function depositToStorage(
     inv = consumeInvItem(ctx.inv, item.name, qty);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   }
+  const achStatsJson = bumpStat(ctx.achStatsJson, "창고보관횟수");
 
   const existing = await prisma.storageEntry.findFirst({
     where: {
@@ -577,12 +581,16 @@ export async function depositToStorage(
         }),
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
-      data: sourceKind ? { lifeJson: nextLifeJson } : { invJson: JSON.stringify(inv) },
+      data: sourceKind
+        ? { lifeJson: nextLifeJson, achStatsJson }
+        : { invJson: JSON.stringify(inv), achStatsJson },
     }),
     sourceKind ? Promise.resolve() : decrementDbInventory(ctx.userId, item.name, qty),
   ]);
 
+  await checkAndGrant(ctx.userId);
   revalidatePath("/world");
+  revalidatePath("/profile");
   return { ok: `${item.name} x${qty} 보관 완료.` };
 }
 
@@ -828,6 +836,12 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     : false;
 
   let achStats = recipe ? bumpStat(sheet?.achStatsJson, "요리성공횟수") : (sheet?.achStatsJson ?? null);
+  if (recipe) {
+    achStats = setMaxStat(achStats, "요리최고등급", recipeRankNumber(recipe.rank));
+    for (const tag of cookingTagTokens(recipe)) {
+      achStats = bumpStat(achStats, `요리태그:${tag}`);
+    }
+  }
   if (discovered) achStats = bumpStat(achStats, "요리레시피수");
 
   await Promise.all([
@@ -847,7 +861,7 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     effect: result.effect,
     weight: result.weight,
   });
-  void checkAndGrant(ctx.userId);
+  await checkAndGrant(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -904,6 +918,175 @@ export async function sellCookedFood(
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
+}
+
+function parseFatigueRecovery(effect: string): number | null {
+  const match = effect.match(/피로도\s*(\d+)\s*회복/);
+  if (!match) return null;
+  const n = Number.parseInt(match[1], 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function parseLifeLuck(effect: string): { kind: LifeSkillKind | "both"; amount: number } | null {
+  const match = effect.match(/(?:낚시·채집|낚시|채집)\s*행운\s*\+(\d+)/);
+  if (!match) return null;
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (effect.includes("낚시·채집")) return { kind: "both", amount };
+  if (effect.includes("낚시")) return { kind: "낚시", amount };
+  if (effect.includes("채집")) return { kind: "채집", amount };
+  return null;
+}
+
+function parseSessionBuff(effect: string): string | null {
+  const match = effect.match(/세션\s*버프\s*:\s*([^\n(]+)/);
+  return match?.[1]?.trim() || null;
+}
+
+function recipeRankNumber(rank: string | null | undefined): number {
+  const match = String(rank ?? "").match(/R\s*(\d+)/i);
+  return match ? Number.parseInt(match[1], 10) || 0 : 0;
+}
+
+function cookingTagTokens(recipe: { category: string; tags: string | null }): string[] {
+  const tokens = new Set<string>();
+  if (recipe.category.includes("생선")) tokens.add("생선");
+  if (recipe.category.includes("채집")) tokens.add("채집");
+  for (const tag of (recipe.tags ?? "").split(/[,，]/)) {
+    const t = tag.trim();
+    if (t) tokens.add(t);
+  }
+  return [...tokens];
+}
+
+function setMaxStat(json: string | null | undefined, name: string, value: number): string {
+  let stats: Record<string, number> = {};
+  try {
+    if (json) stats = JSON.parse(json) as Record<string, number>;
+  } catch {
+    stats = {};
+  }
+  stats[name] = Math.max(stats[name] ?? 0, value);
+  return JSON.stringify(stats);
+}
+
+export async function useCookingItem(
+  _prev: CookingState,
+  formData: FormData,
+): Promise<CookingState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  if (!itemName) return { error: "사용할 요리가 올바르지 않습니다." };
+  if (itemQty(ctx.inv, itemName) < 1) return { error: `${itemName}을 보유하고 있지 않습니다.` };
+
+  const recipe = await prisma.cookingRecipe.findFirst({
+    where: { resultName: itemName },
+    select: { effect: true, duration: true, tags: true },
+  });
+  const rawEffect = recipe?.effect || findInvItem(ctx.inv, itemName)?.effect || "";
+  if (!rawEffect || itemName === FAILED_DISH.name) {
+    return { error: "사용할 수 있는 요리 효과가 없습니다." };
+  }
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { ap: true, apResetAt: true, lifeJson: true, achStatsJson: true },
+  });
+  if (!sheet) return { error: "캐릭터 시트를 찾지 못했습니다." };
+
+  const now = new Date();
+  const life = parseLifeState(sheet.lifeJson);
+  life.cookingBuffs.lifeLuck = life.cookingBuffs.lifeLuck.filter(
+    (buff) => Date.parse(buff.until) > now.getTime(),
+  );
+
+  let ok = "";
+  const fatigue = parseFatigueRecovery(rawEffect);
+  const lifeLuck = parseLifeLuck(rawEffect);
+  const sessionBuff = parseSessionBuff(rawEffect);
+
+  if (fatigue != null) {
+    const fresh = regenFatigue(sheet.ap, sheet.apResetAt, now);
+    if (fresh.value >= FATIGUE_MAX) return { error: "피로도가 이미 가득 찼어요." };
+    const nextAp = Math.min(FATIGUE_MAX, fresh.value + fatigue);
+    ok = `${itemName}을 사용했습니다. 피로도 +${nextAp - fresh.value} (${nextAp}/${FATIGUE_MAX})`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          ap: nextAp,
+          apResetAt: fresh.at,
+          invJson: JSON.stringify(inv),
+          lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else if (lifeLuck) {
+    const until = new Date(now.getTime() + 30 * 60 * 1000);
+    life.cookingBuffs.lifeLuck.push({
+      kind: lifeLuck.kind,
+      amount: lifeLuck.amount,
+      until: until.toISOString(),
+      source: itemName,
+    });
+    ok = `${itemName}을 사용했습니다. 30분 동안 ${
+      lifeLuck.kind === "both" ? "낚시·채집" : lifeLuck.kind
+    } 행운 +${lifeLuck.amount}`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else if (sessionBuff) {
+    life.cookingBuffs.session.unshift({
+      source: itemName,
+      effect: sessionBuff,
+      usedAt: now.toISOString(),
+    });
+    life.cookingBuffs.session = life.cookingBuffs.session.slice(0, 12);
+    ok = `${itemName}을 사용했습니다. 세션 버프: ${sessionBuff}`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else {
+    return { error: "아직 자동 적용할 수 없는 요리 효과입니다." };
+  }
+
+  await checkAndGrant(ctx.userId);
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok };
 }
 
 export async function sellLifeCatch(_prev: MarketState, formData: FormData): Promise<MarketState> {

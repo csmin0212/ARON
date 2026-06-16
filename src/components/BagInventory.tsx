@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
+import { useCookingItem, type CookingState } from "@/app/actions/services";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 export type LifeBagPocket = {
@@ -40,10 +41,32 @@ function weightText(item: SheetInventoryItem): string {
   return item.qty > 1 ? `${item.weight} / 합계 ${total}` : String(item.weight);
 }
 
+function canUseItem(item: SheetInventoryItem): boolean {
+  const effect = item.effect ?? "";
+  return /피로도\s*\d+\s*회복|행운\s*\+\d+|세션\s*버프/.test(effect);
+}
+
+function CookingStateLine({ state }: { state: CookingState }) {
+  if (!state?.error && !state?.ok) return null;
+  return (
+    <p
+      className={`rounded-2xl px-3 py-2 text-sm font-semibold ${
+        state.error ? "bg-rose-500/10 text-rose-600" : "bg-emerald-500/10 text-emerald-600"
+      }`}
+    >
+      {state.error ?? state.ok}
+    </p>
+  );
+}
+
 export default function BagInventory({ gold, weight, items, lifeBags = [] }: Props) {
   const mergedItems = useMemo(() => mergeItems(items), [items]);
   const [selected, setSelected] = useState<SheetInventoryItem | null>(null);
   const [openedBag, setOpenedBag] = useState<LifeBagPocket | null>(null);
+  const [useStateResult, useAction, usePending] = useActionState<CookingState, FormData>(
+    useCookingItem,
+    undefined,
+  );
   const openedItems = useMemo(() => mergeItems(openedBag?.items ?? []), [openedBag]);
 
   return (
@@ -199,6 +222,7 @@ export default function BagInventory({ gold, weight, items, lifeBags = [] }: Pro
               <h3 className="mt-1 text-xl font-extrabold text-content">{selected.name}</h3>
             </div>
             <div className="space-y-3 px-5 py-4">
+              <CookingStateLine state={useStateResult} />
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-2xl bg-subtle px-3 py-2">
                   <p className="text-[11px] font-bold text-faint">갯수</p>
@@ -215,6 +239,18 @@ export default function BagInventory({ gold, weight, items, lifeBags = [] }: Pro
                   {selected.effect || "아직 등록된 효과가 없어요."}
                 </p>
               </div>
+              {canUseItem(selected) && (
+                <form action={useAction}>
+                  <input type="hidden" name="itemName" value={selected.name} />
+                  <button
+                    type="submit"
+                    disabled={usePending}
+                    className="w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    {usePending ? "사용 중..." : "사용하기"}
+                  </button>
+                </form>
+              )}
             </div>
             <div className="border-t border-line px-5 py-3">
               <button

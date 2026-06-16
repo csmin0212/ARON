@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import {
   appendSheetGold,
   inventoryWeightTotal,
@@ -328,11 +329,11 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const [fromSheet, toSheet] = await Promise.all([
     prisma.characterSheet.findUnique({
       where: { userId: trade.fromUserId },
-      select: { sheetTab: true, invJson: true, curGold: true },
+      select: { sheetTab: true, invJson: true, curGold: true, achStatsJson: true },
     }),
     prisma.characterSheet.findUnique({
       where: { userId: trade.toUserId },
-      select: { sheetTab: true, invJson: true, curGold: true },
+      select: { sheetTab: true, invJson: true, curGold: true, achStatsJson: true },
     }),
   ]);
   if (!fromSheet || !toSheet) return { ok: false, message: "거래 당사자의 캐릭터 시트가 필요합니다." };
@@ -371,11 +372,21 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   await prisma.$transaction([
     prisma.characterSheet.update({
       where: { userId: trade.fromUserId },
-      data: { invJson: JSON.stringify(fromInv), curGold: nextFromGold, gold: `${nextFromGold}G` },
+      data: {
+        invJson: JSON.stringify(fromInv),
+        curGold: nextFromGold,
+        gold: `${nextFromGold}G`,
+        achStatsJson: bumpStat(fromSheet.achStatsJson, "거래완료횟수"),
+      },
     }),
     prisma.characterSheet.update({
       where: { userId: trade.toUserId },
-      data: { invJson: JSON.stringify(toInv), curGold: nextToGold, gold: `${nextToGold}G` },
+      data: {
+        invJson: JSON.stringify(toInv),
+        curGold: nextToGold,
+        gold: `${nextToGold}G`,
+        achStatsJson: bumpStat(toSheet.achStatsJson, "거래완료횟수"),
+      },
     }),
     prisma.tradeOffer.update({ where: { id: trade.id }, data: { status: ACCEPTED } }),
     prisma.tradeMessage.create({
@@ -409,6 +420,8 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   void appendSheetGold(toSheet.sheetTab, -trade.toGold + trade.fromGold);
   void pushInventoryToSheet(fromSheet.sheetTab, fromInv);
   void pushInventoryToSheet(toSheet.sheetTab, toInv);
+  void checkAndGrant(trade.fromUserId);
+  void checkAndGrant(trade.toUserId);
   refreshTrade(trade.id, trade.fromUser.username, trade.toUser.username);
 
   return { ok: true, message: "거래가 완료되었습니다." };

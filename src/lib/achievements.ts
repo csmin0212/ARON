@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "./prisma";
-import { parseLifeState } from "./lifeSkillPerks";
+import { FISH_ITEMS, PLANT_ITEMS } from "./lifeSkillData";
+import { lifeBagWeight, parseLifeState } from "./lifeSkillPerks";
 import { parseHousingState } from "./housing";
 
 // ── 누적 카운터 / 방문 집합 헬퍼 (호출부에서 시트 업데이트에 사용) ──
@@ -36,6 +37,12 @@ export function bumpStat(json: string | null | undefined, name: string, by = 1):
   return JSON.stringify(stats);
 }
 
+export function markStat(json: string | null | undefined, name: string): string {
+  const stats = parseStats(json);
+  stats[name] = 1;
+  return JSON.stringify(stats);
+}
+
 const RANK_ORDER: Record<string, number> = { D: 1, C: 2, B: 3, A: 4, S: 5 };
 const TIER_ORDER: Record<string, number> = { small: 1, standard: 2, luxury: 3 };
 const TOOL_TIER: Record<string, number> = {
@@ -46,6 +53,20 @@ const TOOL_TIER: Record<string, number> = {
 };
 
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+const fishRankByName = new Map(FISH_ITEMS.map((item) => [item.name, item.rank]));
+const plantRankByName = new Map(PLANT_ITEMS.map((item) => [item.name, item.rank]));
+
+function countStatPrefix(stats: Record<string, number>, prefix: string): number {
+  return Object.entries(stats).filter(([key, value]) => key.startsWith(prefix) && value > 0).length;
+}
+
+function maxCount(counts: Record<string, number> | undefined): number {
+  return Math.max(0, ...Object.values(counts ?? {}));
+}
+
+function maxKnownRank(names: string[], rankByName: Map<string, number>): number {
+  return names.reduce((max, name) => Math.max(max, rankByName.get(name) ?? 0), 0);
+}
 
 type AchRow = {
   id: string;
@@ -61,7 +82,7 @@ type AchRow = {
 export async function checkAndGrant(
   userId: string,
 ): Promise<{ id: string; name: string; badge: string | null; rewardTitle: string | null }[]> {
-  const [all, earnedRows, sheet] = await Promise.all([
+  const [all, earnedRows, sheet, userDecor] = await Promise.all([
     prisma.achievement.findMany({
       select: {
         id: true,
@@ -75,6 +96,7 @@ export async function checkAndGrant(
     }),
     prisma.userAchievement.findMany({ where: { userId }, select: { achId: true } }),
     prisma.characterSheet.findUnique({ where: { userId } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { equippedTitle: true, equippedBadge: true } }),
   ]);
   if (all.length === 0) return [];
 
@@ -98,6 +120,14 @@ export async function checkAndGrant(
   );
   const houseMaxTier = housing.owned.reduce((m, t) => Math.max(m, TIER_ORDER[t] ?? 0), 0);
   const toolNames = Object.values((life as { tools?: Record<string, string> }).tools ?? {});
+  const fishingBagWeight = lifeBagWeight(life.bags.낚시);
+  const plantBagWeight = lifeBagWeight(life.bags.채집);
+  const bestFishingRank = maxKnownRank(life.collection.낚시, fishRankByName);
+  const bestPlantRank = maxKnownRank(life.collection.채집, plantRankByName);
+  const bestSameFishing = maxCount(life.catchCounts.낚시);
+  const bestSamePlant = maxCount(life.catchCounts.채집);
+  const fishingAreaCount = countStatPrefix(stats, "낚시지역:");
+  const plantAreaCount = countStatPrefix(stats, "채집지역:");
 
   // 방문 토큰 (id + 정규화 이름) — 장소방문/히든장소방문용
   let visitTokens: Set<string> | null = null;
@@ -122,11 +152,25 @@ export async function checkAndGrant(
     commentCount = await prisma.comment.count({ where: { authorId: userId } });
   if (types.has("추천횟수")) voteCount = await prisma.vote.count({ where: { userId } });
 
+  let storageUsedWeight = 0,
+    storageMaxWeight = 0;
+  if (types.has("창고사용중량") || types.has("창고최대중량")) {
+    const box = await prisma.storageBox.findUnique({
+      where: { userId },
+      include: { entries: true },
+    });
+    storageMaxWeight = box?.maxWeight ?? 0;
+    storageUsedWeight =
+      box?.entries.reduce((sum, entry) => sum + (entry.weight ?? 0) * entry.qty, 0) ?? 0;
+  }
+
   const earnedCount = earned.size;
   const num = (v: string | null) => {
     const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10);
     return Number.isNaN(n) ? null : n;
   };
+  const rankNum = (v: string | null) => num(v);
+  const percent = (current: number, total: number) => (total <= 0 ? 0 : (current / total) * 100);
 
   function satisfied(a: AchRow): boolean {
     const v = a.condValue;
@@ -144,10 +188,34 @@ export async function checkAndGrant(
         return n != null && life.collection.낚시.length >= n;
       case "채집도감등록수":
         return n != null && life.collection.채집.length >= n;
+      case "낚시도감완성률":
+        return n != null && percent(life.collection.낚시.length, FISH_ITEMS.length) >= n;
+      case "채집도감완성률":
+        return n != null && percent(life.collection.채집.length, PLANT_ITEMS.length) >= n;
+      case "희귀도낚시":
+        return rankNum(v) != null && bestFishingRank >= rankNum(v)!;
+      case "희귀도채집":
+        return rankNum(v) != null && bestPlantRank >= rankNum(v)!;
+      case "동일낚시획득":
+        return n != null && bestSameFishing >= n;
+      case "동일채집획득":
+        return n != null && bestSamePlant >= n;
+      case "낚시지역성공수":
+        return n != null && fishingAreaCount >= n;
+      case "채집지역성공수":
+        return n != null && plantAreaCount >= n;
+      case "낚시가방중량":
+        return n != null && fishingBagWeight >= n;
+      case "채집가방중량":
+        return n != null && plantBagWeight >= n;
       case "낚시가방최대중량":
         return n != null && (life.bags.낚시?.maxWeight ?? 0) >= n;
       case "채집가방최대중량":
         return n != null && (life.bags.채집?.maxWeight ?? 0) >= n;
+      case "창고사용중량":
+        return n != null && storageUsedWeight >= n;
+      case "창고최대중량":
+        return n != null && storageMaxWeight >= n;
       case "가구배치수":
         return n != null && furnitureCount >= n;
       case "최초발견":
@@ -174,6 +242,14 @@ export async function checkAndGrant(
           (toolNames.includes(v) ||
             toolNames.some((t) => (TOOL_TIER[t] ?? 0) >= (TOOL_TIER[v] ?? 99)))
         );
+      case "요리등급":
+        return n != null && (stats.요리최고등급 ?? 0) >= n;
+      case "요리태그":
+        return !!v && (stats[`요리태그:${v}`] ?? 0) > 0;
+      case "칭호장착":
+        return !!userDecor?.equippedTitle;
+      case "대표배지장착":
+        return !!userDecor?.equippedBadge;
       case "장소방문":
       case "히든장소방문":
         return !!v && !!visitTokens && visitTokens.has(norm(v));

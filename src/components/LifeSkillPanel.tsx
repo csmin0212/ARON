@@ -201,6 +201,40 @@ function LifeGearPanel({ life }: { life: LifeState }) {
   );
 }
 
+function CookingBuffPanel({ life }: { life: LifeState }) {
+  const activeLuck = life.cookingBuffs.lifeLuck;
+  const sessions = life.cookingBuffs.session;
+  if (activeLuck.length === 0 && sessions.length === 0) return null;
+
+  return (
+    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+      <h2 className="mb-3 text-lg font-extrabold text-content">🍲 요리 효과</h2>
+      <div className="space-y-2">
+        {activeLuck.map((buff, i) => {
+          const until = new Date(buff.until).toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          return (
+            <div key={`${buff.source}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
+              <p className="text-sm font-extrabold text-content">{buff.source}</p>
+              <p className="mt-0.5 text-xs font-bold text-emerald-600">
+                {buff.kind === "both" ? "낚시·채집" : buff.kind} 행운 +{buff.amount} · {until}까지
+              </p>
+            </div>
+          );
+        })}
+        {sessions.map((buff, i) => (
+          <div key={`${buff.source}-${buff.usedAt}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
+            <p className="text-sm font-extrabold text-content">{buff.source}</p>
+            <p className="mt-0.5 text-xs font-bold text-brand-600">세션 버프: {buff.effect}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function LifeSkillPanel({
   life,
   isOwn,
@@ -381,6 +415,7 @@ export default function LifeSkillPanel({
       {view === "profile" && (
         <div className="space-y-5">
           {levelCard}
+          <CookingBuffPanel life={life} />
           <LifeGearPanel life={life} />
         </div>
       )}

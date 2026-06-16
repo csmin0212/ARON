@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
-import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
   lifeSkillCategory,
@@ -113,12 +113,15 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const count = recordLifeCatch(life, GATHER, p.name);
   addLifeBagItem(life, GATHER, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   await ensureItem(p);
+  let achStats = bumpStat(sheet?.achStatsJson, "채집성공횟수");
+  if (locationId) achStats = markStat(achStats, `채집지역:${locationId}`);
+
   await prisma.characterSheet.update({
     where: { userId },
     data: {
       lifeJson: JSON.stringify(life),
       pendingGatherJson: null,
-      achStatsJson: bumpStat(sheet?.achStatsJson, "채집성공횟수"),
+      achStatsJson: achStats,
     },
   });
   void checkAndGrant(userId);

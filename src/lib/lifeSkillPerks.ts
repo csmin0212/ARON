@@ -34,6 +34,23 @@ export type LifeState = {
   bags: Record<LifeSkillKind, LifeBag>;
   tools: Record<LifeSkillKind, string>;
   catchCounts: Record<LifeSkillKind, Record<string, number>>;
+  cookingBuffs: {
+    lifeLuck: CookingLifeLuckBuff[];
+    session: CookingSessionBuff[];
+  };
+};
+
+export type CookingLifeLuckBuff = {
+  kind: LifeSkillKind | "both";
+  amount: number;
+  until: string;
+  source: string;
+};
+
+export type CookingSessionBuff = {
+  source: string;
+  effect: string;
+  usedAt: string;
 };
 
 export type LifeBagItem = {
@@ -179,6 +196,7 @@ const EMPTY: LifeState = {
     낚시: "기본 낚싯대",
   },
   catchCounts: { 채집: {}, 낚시: {} },
+  cookingBuffs: { lifeLuck: [], session: [] },
 };
 
 function defaultBag(kind: LifeSkillKind): LifeBag {
@@ -228,6 +246,14 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       catchCounts: {
         채집: v.catchCounts?.채집 ?? {},
         낚시: v.catchCounts?.낚시 ?? {},
+      },
+      cookingBuffs: {
+        lifeLuck: Array.isArray(v.cookingBuffs?.lifeLuck)
+          ? v.cookingBuffs.lifeLuck.filter((buff) => buff && buff.amount > 0 && buff.until)
+          : [],
+        session: Array.isArray(v.cookingBuffs?.session)
+          ? v.cookingBuffs.session.filter((buff) => buff && buff.source && buff.effect)
+          : [],
       },
     };
   } catch {
@@ -397,6 +423,11 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
       default:
         break; // 도구 숙련·솜씨 발휘·기타 신화는 보유 기록 (후속 시스템에서 사용)
     }
+  }
+  const now = Date.now();
+  for (const buff of state.cookingBuffs.lifeLuck) {
+    if (Date.parse(buff.until) <= now) continue;
+    if (buff.kind === "both" || buff.kind === kind) mods.luck += buff.amount;
   }
   mods.rank0Down = Math.min(mods.rank0Down, 5);
   mods.rank1Down = Math.min(mods.rank1Down, 20);

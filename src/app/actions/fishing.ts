@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
-import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
   lifeSkillCategory,
@@ -198,12 +198,15 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   addLifeBagItem(life, FISH, { name: pending.name, weight: pending.weight, rank: pending.rank, text: pending.text });
 
   await ensureItem(pending);
+  let achStats = bumpStat(sheet.achStatsJson, "낚시성공횟수");
+  if (locationId) achStats = markStat(achStats, `낚시지역:${locationId}`);
+
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: {
       lifeJson: JSON.stringify(life),
       pendingCatchJson: null,
-      achStatsJson: bumpStat(sheet.achStatsJson, "낚시성공횟수"),
+      achStatsJson: achStats,
     },
   });
   void checkAndGrant(user.id);

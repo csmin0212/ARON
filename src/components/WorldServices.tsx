@@ -1059,6 +1059,17 @@ function CookingKitchen({
     [inventoryItems, lifeStorageItems],
   );
   const slots = Array.from({ length: cooking.maxIngredients }, (_, index) => index);
+  const [selectedIngredients, setSelectedIngredients] = useState<string[]>(
+    Array.from({ length: cooking.maxIngredients }, () => ""),
+  );
+  const selectedCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const name of selectedIngredients) {
+      if (!name) continue;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return counts;
+  }, [selectedIngredients]);
 
   return (
     <div
@@ -1098,22 +1109,32 @@ function CookingKitchen({
             <form action={cookAction} className="space-y-3">
               <input type="hidden" name="facility" value={cooking.facility} />
               <div className="grid gap-2 sm:grid-cols-2">
-                {slots.map((slot) => (
-                  <select
-                    key={slot}
-                    name="ingredient"
-                    className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
-                    defaultValue=""
-                  >
-                    <option value="">재료 선택 안 함</option>
-                    {ingredientOptions.map((item) => (
-                      <option key={`${slot}-${item.name}`} value={item.name}>
-                        {item.name} x{item.qty}
-                      </option>
-                    ))}
-                  </select>
-                ))}
-              </div>
+                  {slots.map((slot) => (
+                    <select
+                      key={slot}
+                      name="ingredient"
+                      className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
+                      value={selectedIngredients[slot] ?? ""}
+                      onChange={(e) => {
+                        const next = [...selectedIngredients];
+                        next[slot] = e.target.value;
+                        setSelectedIngredients(next);
+                      }}
+                    >
+                      <option value="">재료 선택 안 함</option>
+                      {ingredientOptions.map((item) => {
+                        const current = selectedIngredients[slot] === item.name ? 1 : 0;
+                        const usedElsewhere = (selectedCounts.get(item.name) ?? 0) - current;
+                        const disabled = usedElsewhere >= item.qty;
+                        return (
+                          <option key={`${slot}-${item.name}`} value={item.name} disabled={disabled}>
+                            {item.name} x{item.qty - usedElsewhere}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ))}
+                </div>
               <button
                 type="submit"
                 disabled={cookPending || ingredientOptions.length === 0 || cooking.ap < 10}
