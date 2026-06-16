@@ -78,7 +78,7 @@ export async function discoverByKeyword(keyword: string): Promise<DiscoverState>
   const last = probes[key];
   if (last != null && now - last < PROBE_COOLDOWN_MS) {
     const leftMin = Math.ceil((PROBE_COOLDOWN_MS - (now - last)) / 60_000);
-    return { notice: `같은 단서는 다시 살펴볼 게 없다. (약 ${leftMin}분 후 다시 시도)` };
+    return { notice: `누군가가 이미 조사한 단서다. ${leftMin}분 후 다시 시도할 수 있다.` };
   }
 
   probes[key] = now;

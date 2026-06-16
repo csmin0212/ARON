@@ -43,6 +43,11 @@ const KIND_META: { kind: "낚시" | "채집"; emoji: string; key: "fishing" | "p
   { kind: "채집", emoji: "🌿", key: "plant" },
 ];
 
+const SKILL_META: { kind: "낚시" | "채집" | "요리"; emoji: string; key: "fishing" | "plant" | "cooking" }[] = [
+  ...KIND_META,
+  { kind: "요리", emoji: "🍳", key: "cooking" },
+];
+
 function RarityBadge({ rarity }: { rarity: PerkRarity }) {
   return (
     <span className={`rounded bg-subtle px-1.5 py-0.5 text-[11px] font-bold ${RARITY_COLORS[rarity]}`}>
@@ -256,8 +261,8 @@ export default function LifeSkillPanel({
   const levelCard = (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <h2 className="mb-4 text-lg font-extrabold text-content">생활 스킬</h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {KIND_META.map(({ kind, emoji, key }) => {
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {SKILL_META.map(({ kind, emoji, key }) => {
           const prog = life[key];
           const need = expForNext(prog.level);
           const pct = Math.min(100, Math.round((prog.exp / need) * 100));

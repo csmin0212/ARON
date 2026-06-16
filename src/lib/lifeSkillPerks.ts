@@ -26,6 +26,7 @@ export type SkillProgress = { exp: number; level: number };
 export type LifeState = {
   fishing: SkillProgress;
   plant: SkillProgress;
+  cooking: SkillProgress;
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
@@ -184,6 +185,7 @@ export function baseWeightsFor(level: number): number[] {
 const EMPTY: LifeState = {
   fishing: { exp: 0, level: 1 },
   plant: { exp: 0, level: 1 },
+  cooking: { exp: 0, level: 1 },
   perks: [],
   pending: [],
   collection: { 채집: [], 낚시: [] },
@@ -229,6 +231,7 @@ export function parseLifeState(json: string | null | undefined): LifeState {
     return {
       fishing: v.fishing ?? { exp: 0, level: 1 },
       plant: v.plant ?? { exp: 0, level: 1 },
+      cooking: v.cooking ?? { exp: 0, level: 1 },
       perks: v.perks ?? [],
       pending: v.pending ?? [],
       collection: {
@@ -349,6 +352,18 @@ export function applyExp(state: LifeState, kind: LifeSkillKind, gained: number):
     if (prog.level % PERK_EVERY === 0) {
       state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind) });
     }
+  }
+  return leveled;
+}
+
+export function applyCookingExp(state: LifeState, gained: number): number[] {
+  const prog = state.cooking;
+  prog.exp += gained;
+  const leveled: number[] = [];
+  while (prog.exp >= expForNext(prog.level)) {
+    prog.exp -= expForNext(prog.level);
+    prog.level += 1;
+    leveled.push(prog.level);
   }
   return leveled;
 }

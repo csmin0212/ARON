@@ -14,6 +14,7 @@ import {
 import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
+  applyCookingExp,
   computeMods,
   lifeBagLimit,
   lifeBagWeight,
@@ -877,6 +878,8 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
         .catch(() => false)
     : false;
 
+  const cookingLevels = recipe ? applyCookingExp(life, Math.max(1, recipe.skillExp)) : [];
+
   let achStats = recipe ? bumpStat(sheet?.achStatsJson, "요리성공횟수") : (sheet?.achStatsJson ?? null);
   if (recipe) {
     achStats = setMaxStat(achStats, "요리최고등급", recipeRankNumber(recipe.rank));
@@ -911,9 +914,15 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     return { ok: `조합이 맞지 않았어요. ${FAILED_DISH.name} x1 획득. 피로도 -${COOKING_AP_COST}` };
   }
   return {
-    ok: discovered
-      ? `새 레시피 발견! ${recipe.name} 완성. ${result.name} x${result.qty} 획득.`
-      : `${recipe.name} 완성. ${result.name} x${result.qty} 획득.`,
+    ok: [
+      discovered
+        ? `새 레시피 발견! ${recipe.name} 완성. ${result.name} x${result.qty} 획득.`
+        : `${recipe.name} 완성. ${result.name} x${result.qty} 획득.`,
+      `요리 숙련도 +${Math.max(1, recipe.skillExp)}`,
+      cookingLevels.length > 0 ? `요리 Lv.${cookingLevels.at(-1)} 달성.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }
 

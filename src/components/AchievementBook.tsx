@@ -81,7 +81,7 @@ export default function AchievementBook({
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm font-bold text-content">
-                          {hidden ? "숨겨진 업적" : a.name}
+                          {hidden ? "숨겨진 업적입니다!" : a.name}
                           {equipped && (
                             <span className="rounded bg-brand-500 px-1.5 text-[10px] font-bold text-white">
                               대표
@@ -89,7 +89,7 @@ export default function AchievementBook({
                           )}
                         </p>
                         <p className="truncate text-[11px] text-faint">
-                          {hidden ? "조건을 만족하면 공개돼요." : a.desc ?? ""}
+                          {hidden ? "아직 내용을 확인할 수 없어요." : a.desc ?? ""}
                         </p>
                         {a.earned && a.rewardTitle && (
                           <p className="mt-0.5 text-[11px] font-semibold text-brand-600">

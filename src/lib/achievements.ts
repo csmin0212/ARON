@@ -184,6 +184,9 @@ export async function checkAndGrant(
         return n != null && life.fishing.level >= n;
       case "채집레벨":
         return n != null && life.plant.level >= n;
+      case "요리레벨":
+      case "요리숙련레벨":
+        return n != null && life.cooking.level >= n;
       case "낚시도감등록수":
         return n != null && life.collection.낚시.length >= n;
       case "채집도감등록수":

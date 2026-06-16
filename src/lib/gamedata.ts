@@ -124,52 +124,6 @@ const num = (v: string): number | null => {
   return Number.isNaN(n) ? null : n;
 };
 
-const NUMERIC_ACHIEVEMENT_TYPES = new Set([
-  "명성",
-  "골드보유",
-  "낚시레벨",
-  "채집레벨",
-  "낚시도감등록수",
-  "채집도감등록수",
-  "낚시가방최대중량",
-  "채집가방최대중량",
-  "가구배치수",
-  "최초발견",
-  "칭호보유수",
-  "업적달성수",
-  "게시글작성수",
-  "댓글작성수",
-  "추천횟수",
-  "집구매",
-  "요리등급",
-  "이동횟수",
-  "조사성공횟수",
-  "낚시성공횟수",
-  "낚시실패횟수",
-  "채집성공횟수",
-  "요리성공횟수",
-  "요리레시피수",
-  "요리버프사용",
-  "던전입장",
-  "던전클리어",
-  "주간던전클리어",
-  "균열입장",
-  "균열클리어",
-  "집휴식횟수",
-  "월드채팅횟수",
-  "아이템획득수",
-  "거래완료횟수",
-]);
-
-function inferAchievementCondValue(id: string, condType: string, raw: string): string | null {
-  if (raw) return raw;
-  if (!NUMERIC_ACHIEVEMENT_TYPES.has(condType)) return null;
-  const numericSuffix = id.match(/_(\d+)$/);
-  if (numericSuffix) return numericSuffix[1];
-  if (/(^|_)first($|_)/i.test(id)) return "1";
-  return null;
-}
-
 async function fetchTab(sheetId: string, tab: string): Promise<string[][] | null> {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(tab)}`;
   const res = await fetch(url, { redirect: "follow", cache: "no-store" });
@@ -434,17 +388,19 @@ export function parseAchievementsGrid(g: string[][]): AchievementRow[] {
     const id = at(g, r, h.col.id) || name;
     if (seen.has(id)) throw new Error(`업적 ID '${id}' 가 중복됐어요.`);
     seen.add(id);
+    const publicRaw = at(g, r, h.col.isPublic);
+    const isPublic = /^(true|yes|y|1|공개)$/i.test(publicRaw);
     rows.push({
       id,
       category: at(g, r, h.col.category) || "기타",
       name,
       desc: at(g, r, h.col.desc) || null,
       condType,
-      condValue: inferAchievementCondValue(id, condType, at(g, r, h.col.condValue)),
+      condValue: at(g, r, h.col.condValue) || null,
       rewardTitle: at(g, r, h.col.rewardTitle) || null,
       rewardFame: num(at(g, r, h.col.rewardFame)) ?? 0,
       badge: at(g, r, h.col.badge) || null,
-      secret: /hidden|비공개/i.test(at(g, r, h.col.isPublic)),
+      secret: !isPublic,
     });
   }
   if (rows.length === 0) throw new Error("업적 탭에 업적이 없어요.");
