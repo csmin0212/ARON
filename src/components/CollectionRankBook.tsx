@@ -3,9 +3,13 @@
 import { useMemo, useState } from "react";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
 
+export type CollectionKind = LifeSkillKind | "요리";
+
 export type CollectionBookEntry = {
-  kind: LifeSkillKind;
+  id?: string;
+  kind: CollectionKind;
   name: string;
+  category?: string;
   rank: number;
   rarity: string;
   price: number;
@@ -13,11 +17,16 @@ export type CollectionBookEntry = {
   text: string;
   discovered: boolean;
   count: number;
+  resultName?: string;
+  ingredients?: string;
 };
 
-const KIND_META: Record<LifeSkillKind, { title: string; emoji: string }> = {
+const KIND_ORDER: CollectionKind[] = ["낚시", "채집", "요리"];
+
+const KIND_META: Record<CollectionKind, { title: string; emoji: string }> = {
   낚시: { title: "낚시 도감", emoji: "🎣" },
   채집: { title: "채집 도감", emoji: "🌿" },
+  요리: { title: "요리 도감", emoji: "🍳" },
 };
 
 const RANK_TONE = [
@@ -34,25 +43,26 @@ function pct(found: number, total: number): number {
 }
 
 export default function CollectionRankBook({ entries }: { entries: CollectionBookEntry[] }) {
-  const [activeKind, setActiveKind] = useState<LifeSkillKind>("낚시");
-  const [activeRanks, setActiveRanks] = useState<Record<LifeSkillKind, number>>({
+  const [activeKind, setActiveKind] = useState<CollectionKind>("낚시");
+  const [activeRanks, setActiveRanks] = useState<Record<CollectionKind, number>>({
     낚시: 1,
     채집: 1,
+    요리: 1,
   });
 
   const byKind = useMemo(
-    () => ({
-      낚시: entries.filter((entry) => entry.kind === "낚시"),
-      채집: entries.filter((entry) => entry.kind === "채집"),
-    }),
+    () =>
+      Object.fromEntries(
+        KIND_ORDER.map((kind) => [kind, entries.filter((entry) => entry.kind === kind)]),
+      ) as Record<CollectionKind, CollectionBookEntry[]>,
     [entries],
   );
 
   return (
     <div className="space-y-4">
-      {/* 낚시 / 채집 토글 */}
-      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-subtle p-1.5">
-        {(["낚시", "채집"] as LifeSkillKind[]).map((kind) => {
+      {/* 낚시 / 채집 / 요리 토글 */}
+      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-subtle p-1.5">
+        {KIND_ORDER.map((kind) => {
           const group = byKind[kind];
           const found = group.filter((e) => e.discovered).length;
           const active = activeKind === kind;
@@ -78,14 +88,14 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
         })}
       </div>
 
-      {([activeKind] as LifeSkillKind[]).map((kind) => {
+      {([activeKind] as CollectionKind[]).map((kind) => {
         const group = byKind[kind].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
         const found = group.filter((entry) => entry.discovered).length;
         const activeRank = activeRanks[kind];
         const rankItems = group.filter((entry) => entry.rank === activeRank);
         const rankFound = rankItems.filter((entry) => entry.discovered).length;
         const meta = KIND_META[kind];
-        const countLabel = kind === "낚시" ? "낚은 횟수" : "채집 횟수";
+        const countLabel = kind === "낚시" ? "낚은 횟수" : kind === "채집" ? "채집 횟수" : "레시피";
 
         return (
           <section key={kind} className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
@@ -153,15 +163,28 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
-                        {entry.discovered ? `${countLabel} ${Math.max(1, entry.count)}회` : "미발견"}
+                        {entry.discovered
+                          ? kind === "요리"
+                            ? `${countLabel} 발견`
+                            : `${countLabel} ${Math.max(1, entry.count)}회`
+                          : "미발견"}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
                       <span className="rounded bg-surface px-2 py-0.5">중량 {entry.weight}</span>
                       <span className="rounded bg-surface px-2 py-0.5">판매가 {entry.price}G</span>
+                      {kind === "요리" && entry.discovered && entry.resultName && (
+                        <span className="rounded bg-surface px-2 py-0.5">{entry.resultName}</span>
+                      )}
                     </div>
-                    <p className="mt-2 line-clamp-3 min-h-[3.75rem] text-xs leading-relaxed text-muted">
-                      {entry.discovered ? entry.text : "아직 발견하지 못한 항목입니다."}
+                    <p className="mt-2 line-clamp-3 min-h-[3.75rem] whitespace-pre-line text-xs leading-relaxed text-muted">
+                      {entry.discovered
+                        ? kind === "요리" && entry.ingredients
+                          ? `재료: ${entry.ingredients}\n${entry.text}`
+                          : entry.text
+                        : kind === "요리"
+                          ? "아직 발견하지 못한 레시피입니다."
+                          : "아직 발견하지 못한 항목입니다."}
                     </p>
                   </article>
                 ))}

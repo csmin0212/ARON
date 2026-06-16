@@ -7,6 +7,22 @@ import CollectionRankBook, { type CollectionBookEntry } from "@/components/Colle
 
 export const metadata = { title: "도감 · 아리안로드 온라인 갤러리" };
 
+function parseRecipeIngredients(value: string): { name: string; qty: number }[] {
+  try {
+    const parsed = JSON.parse(value) as { name?: string; qty?: number }[];
+    return parsed
+      .filter((item) => item.name && item.qty && item.qty > 0)
+      .map((item) => ({ name: item.name!, qty: item.qty! }));
+  } catch {
+    return [];
+  }
+}
+
+function recipeRankNumber(rank: string | null | undefined): number {
+  const match = String(rank ?? "").match(/R\s*(\d+)/i);
+  return match ? Number.parseInt(match[1], 10) || 0 : 0;
+}
+
 export default async function CollectionPage() {
   const user = await getCurrentUser();
   if (!user) {
@@ -30,29 +46,51 @@ export default async function CollectionPage() {
   const life = parseLifeState(sheet?.lifeJson);
   const items = collectionItems(false);
   const itemNames = items.map(({ item }) => item.name);
-  const entries = await prisma.inventoryEntry.findMany({
-    where: { userId: user.id, itemId: { in: itemNames } },
-    select: { itemId: true, qty: true },
-  });
+  const [entries, recipes, discoveredRecipes] = await Promise.all([
+    prisma.inventoryEntry.findMany({
+      where: { userId: user.id, itemId: { in: itemNames } },
+      select: { itemId: true, qty: true },
+    }),
+    prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } }),
+    prisma.userRecipe.findMany({ where: { userId: user.id }, select: { recipeId: true } }),
+  ]);
   const inventoryCounts = new Map(entries.map((entry) => [entry.itemId, entry.qty]));
+  const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
   const discovered = new Set([
     ...entries.map((entry) => entry.itemId),
     ...life.collection.채집,
     ...life.collection.낚시,
   ]);
-  const found = items.filter(({ item }) => discovered.has(item.name)).length;
-  const pct = items.length > 0 ? Math.round((found / items.length) * 1000) / 10 : 0;
-  const bookEntries: CollectionBookEntry[] = items.map(({ kind, item }) => ({
-    kind,
-    name: item.name,
-    rank: item.rank,
-    rarity: item.rarity,
-    price: lifeSkillMarketPrice(kind, item),
-    weight: item.weight,
-    text: item.text,
-    discovered: discovered.has(item.name),
-    count: life.catchCounts[kind][item.name] ?? inventoryCounts.get(item.name) ?? 0,
+  const lifeEntries: CollectionBookEntry[] = items.map(({ kind, item }) => ({
+      kind,
+      name: item.name,
+      rank: item.rank,
+      rarity: item.rarity,
+      price: lifeSkillMarketPrice(kind, item),
+      weight: item.weight,
+      text: item.text,
+      discovered: discovered.has(item.name),
+      count: life.catchCounts[kind][item.name] ?? inventoryCounts.get(item.name) ?? 0,
+    }));
+  const cookingEntries: CollectionBookEntry[] = recipes.map((recipe) => ({
+    id: recipe.id,
+    kind: "요리",
+    name: recipe.name,
+    rank: recipeRankNumber(recipe.rank),
+    rarity: recipe.rank,
+    price: recipe.sellPrice,
+    weight: recipe.weight,
+    text: recipe.effect || "특별한 효과는 없습니다.",
+    discovered: recipe.isPublic || discoveredRecipeIds.has(recipe.id),
+    count: discoveredRecipeIds.has(recipe.id) ? 1 : 0,
+    resultName: recipe.resultName,
+    ingredients: parseRecipeIngredients(recipe.ingredientsJson)
+      .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
+      .join(", "),
   }));
+  const bookEntries = [...lifeEntries, ...cookingEntries];
+  const found = bookEntries.filter((entry) => entry.discovered).length;
+  const pct = bookEntries.length > 0 ? Math.round((found / bookEntries.length) * 1000) / 10 : 0;
 
   return (
     <div className="animate-fadeup space-y-5 py-1">
@@ -62,13 +100,13 @@ export default async function CollectionPage() {
           <div>
             <h1 className="text-2xl font-black text-content">생활 도감</h1>
             <p className="mt-1 text-sm text-muted">
-              현재 층에서 발견 가능한 채집물과 민물 어종 기준입니다.
+              현재 층에서 발견 가능한 채집물, 민물 어종, 요리 레시피 기준입니다.
             </p>
           </div>
           <div className="rounded-2xl bg-brand-50 px-4 py-2 text-right">
             <p className="text-xs font-bold text-brand-600">총 진행률</p>
             <p className="text-xl font-black text-brand-700">
-              {pct}% <span className="text-sm font-bold text-brand-500">({found}/{items.length})</span>
+              {pct}% <span className="text-sm font-bold text-brand-500">({found}/{bookEntries.length})</span>
             </p>
           </div>
         </div>

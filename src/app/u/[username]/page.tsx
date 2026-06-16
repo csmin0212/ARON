@@ -13,7 +13,7 @@ import LifeSkillPanel from "@/components/LifeSkillPanel";
 import ProfileHero from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
 import ProfileTradePanel, { type TradeOfferView } from "@/components/ProfileTradePanel";
-import type { CookingBookEntry } from "@/components/CookingRecipeBook";
+import type { CollectionBookEntry } from "@/components/CollectionRankBook";
 
 export async function generateMetadata({
   params,
@@ -155,20 +155,21 @@ export default async function CharacterPage({
 
   const life = parseLifeState(profile.sheet?.lifeJson);
   const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
-  const cookingRecipes: CookingBookEntry[] = recipes.map((recipe) => ({
+  const cookingRecipes: CollectionBookEntry[] = recipes.map((recipe) => ({
+    kind: "요리",
     id: recipe.id,
     name: recipe.name,
     rank: recipeRankNumber(recipe.rank),
-    rankLabel: recipe.rank,
+    rarity: recipe.rank,
     category: recipe.category,
     ingredients: parseRecipeIngredients(recipe.ingredientsJson)
       .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
       .join(", "),
     resultName: recipe.resultName,
-    resultQty: recipe.resultQty,
-    effect: recipe.effect,
-    sellPrice: recipe.sellPrice,
+    price: recipe.sellPrice,
     weight: recipe.weight,
+    text: recipe.effect || "특별한 효과는 없습니다.",
+    count: discoveredRecipeIds.has(recipe.id) ? 1 : 0,
     discovered: recipe.isPublic || discoveredRecipeIds.has(recipe.id),
   }));
   const pendingCount = isOwn ? life.pending.length : 0;

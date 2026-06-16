@@ -14,21 +14,29 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { collectionItems, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
-import CookingRecipeBook, { type CookingBookEntry } from "@/components/CookingRecipeBook";
 
-function CollectionBook({ life }: { life: LifeState }) {
+function CollectionBook({
+  life,
+  cookingRecipes,
+}: {
+  life: LifeState;
+  cookingRecipes: CollectionBookEntry[];
+}) {
   const all = collectionItems(false); // 바다 어종은 아직 도감에 미포함 (상위 층 해금 예정)
-  const entries: CollectionBookEntry[] = all.map(({ kind, item }) => ({
-    kind,
-    name: item.name,
-    rank: item.rank,
-    rarity: item.rarity,
-    price: lifeSkillMarketPrice(kind, item),
-    weight: item.weight,
-    text: item.text,
-    discovered: life.collection[kind].includes(item.name),
-    count: life.catchCounts[kind][item.name] ?? 0,
-  }));
+  const entries: CollectionBookEntry[] = [
+    ...all.map(({ kind, item }) => ({
+      kind,
+      name: item.name,
+      rank: item.rank,
+      rarity: item.rarity,
+      price: lifeSkillMarketPrice(kind, item),
+      weight: item.weight,
+      text: item.text,
+      discovered: life.collection[kind].includes(item.name),
+      count: life.catchCounts[kind][item.name] ?? 0,
+    })),
+    ...cookingRecipes,
+  ];
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
@@ -248,7 +256,7 @@ export default function LifeSkillPanel({
 }: {
   life: LifeState;
   isOwn: boolean;
-  cookingRecipes?: CookingBookEntry[];
+  cookingRecipes?: CollectionBookEntry[];
 }) {
   const [state, formAction, pending] = useActionState<LifeActionState, FormData>(
     chooseLifePerk,
@@ -428,10 +436,7 @@ export default function LifeSkillPanel({
         </div>
       )}
       {view === "book" && (
-        <div className="space-y-5">
-          <CollectionBook life={life} />
-          <CookingRecipeBook entries={cookingRecipes} />
-        </div>
+        <CollectionBook life={life} cookingRecipes={cookingRecipes} />
       )}
       {view === "skill" && skillSection}
     </div>
