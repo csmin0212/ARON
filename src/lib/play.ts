@@ -38,6 +38,7 @@ import {
   recordLifeCatch,
   recordCollection,
 } from "./lifeSkillPerks";
+import { fetchLifeSkillCatalog } from "./skillCatalog";
 
 export const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
@@ -268,7 +269,7 @@ export async function runActionCommand(
       }
 
       const expGained = Math.max(1, Math.round(lifeSkillExpGain(lifeSkillKind, item.exp) * mods.expMult));
-      const leveled = applyExp(life, lifeSkillKind, expGained);
+      const leveled = applyExp(life, lifeSkillKind, expGained, await fetchLifeSkillCatalog());
       const firstCatch = recordCollection(life, lifeSkillKind, item.name);
       const caughtCount = recordLifeCatch(life, lifeSkillKind, item.name);
       addLifeBagItem(life, lifeSkillKind, {

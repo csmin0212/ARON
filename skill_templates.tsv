@@ -1,0 +1,75 @@
+스킬ID	이름	계열	직업/종류	타입	등급	설명	효과키	효과값	소모품	공개유무	활성
+life_fishing_common_exp_mult	숙련도 배율 증가	생활	낚시	특성	일반	낚시 숙련도 배율이 5% 증가한다.	exp_mult_pct	5		TRUE	TRUE
+life_fishing_common_rank0_down	운의 축적 1	생활	낚시	특성	일반	0성 등장 확률이 0.5% 감소한다. (최대 5%)	rank0_down_pct	0.5		TRUE	TRUE
+life_fishing_common_rank1_down	운의 축적 2	생활	낚시	특성	일반	1성 등장 확률이 1% 감소한다. (최대 20%)	rank1_down_pct	1		TRUE	TRUE
+life_fishing_common_rank2_down	운의 축적 3	생활	낚시	특성	일반	2성 등장 확률이 1% 감소한다. (최대 20%)	rank2_down_pct	1		TRUE	TRUE
+life_fishing_common_tool_efficiency	낚싯대 숙련	생활	낚시	특성	일반	낚싯대 효율 공식이 20% 개선된다.	tool_efficiency_pct	20		TRUE	TRUE
+life_fishing_common_time_reduce	솜씨 발휘	생활	낚시	특성	일반	낚시 시간 -1초	time_reduce_sec	1		TRUE	TRUE
+life_fishing_rare_exp_mult	숙련도 배율 증가	생활	낚시	특성	레어	낚시 숙련도 배율이 10% 증가한다.	exp_mult_pct	10		TRUE	TRUE
+life_fishing_rare_rank0_down	운의 축적 1	생활	낚시	특성	레어	0성 등장 확률이 1% 감소한다. (최대 5%)	rank0_down_pct	1		TRUE	TRUE
+life_fishing_rare_rank1_down	운의 축적 2	생활	낚시	특성	레어	1성 등장 확률이 2% 감소한다. (최대 20%)	rank1_down_pct	2		TRUE	TRUE
+life_fishing_rare_rank2_down	운의 축적 3	생활	낚시	특성	레어	2성 등장 확률이 2% 감소한다. (최대 20%)	rank2_down_pct	2		TRUE	TRUE
+life_fishing_rare_tool_efficiency	낚싯대 숙련	생활	낚시	특성	레어	낚싯대 효율 공식이 40% 개선된다.	tool_efficiency_pct	40		TRUE	TRUE
+life_fishing_rare_time_reduce	솜씨 발휘	생활	낚시	특성	레어	낚시 시간 -2초	time_reduce_sec	2		TRUE	TRUE
+life_fishing_rare_weight_bonus	효율적인 정리	생활	낚시	특성	레어	최대 중량 +1	bag_weight_bonus	1		TRUE	TRUE
+life_fishing_rare_luck	행운아	생활	낚시	특성	레어	낚시 행운 공식이 1% 개선된다.	luck_formula_pct	1		TRUE	TRUE
+life_fishing_unique_exp_mult	숙련도 배율 증가	생활	낚시	특성	유니크	낚시 숙련도 배율이 15% 증가한다.	exp_mult_pct	15		TRUE	TRUE
+life_fishing_unique_rank0_down	운의 축적 1	생활	낚시	특성	유니크	0성 등장 확률이 1.5% 감소한다. (최대 5%)	rank0_down_pct	1.5		TRUE	TRUE
+life_fishing_unique_rank1_down	운의 축적 2	생활	낚시	특성	유니크	1성 등장 확률이 3% 감소한다. (최대 20%)	rank1_down_pct	3		TRUE	TRUE
+life_fishing_unique_rank2_down	운의 축적 3	생활	낚시	특성	유니크	2성 등장 확률이 3% 감소한다. (최대 20%)	rank2_down_pct	3		TRUE	TRUE
+life_fishing_unique_tool_efficiency	낚싯대 숙련	생활	낚시	특성	유니크	낚싯대 효율 공식이 60% 개선된다.	tool_efficiency_pct	60		TRUE	TRUE
+life_fishing_unique_time_reduce	솜씨 발휘	생활	낚시	특성	유니크	낚시 시간 -3초	time_reduce_sec	3		TRUE	TRUE
+life_fishing_unique_weight_bonus	효율적인 정리	생활	낚시	특성	유니크	최대 중량 +2	bag_weight_bonus	2		TRUE	TRUE
+life_fishing_unique_luck	행운아	생활	낚시	특성	유니크	낚시 행운 공식이 2% 개선된다.	luck_formula_pct	2		TRUE	TRUE
+life_fishing_legend_exp_mult	숙련도 배율 증가	생활	낚시	특성	전설	낚시 숙련도 배율이 20% 증가한다.	exp_mult_pct	20		TRUE	TRUE
+life_fishing_legend_rank0_down	운의 축적 1	생활	낚시	특성	전설	0성 등장 확률이 2% 감소한다. (최대 5%)	rank0_down_pct	2		TRUE	TRUE
+life_fishing_legend_rank1_down	운의 축적 2	생활	낚시	특성	전설	1성 등장 확률이 4% 감소한다. (최대 20%)	rank1_down_pct	4		TRUE	TRUE
+life_fishing_legend_rank2_down	운의 축적 3	생활	낚시	특성	전설	2성 등장 확률이 4% 감소한다. (최대 20%)	rank2_down_pct	4		TRUE	TRUE
+life_fishing_legend_tool_efficiency	낚싯대 숙련	생활	낚시	특성	전설	낚싯대 효율 공식이 80% 개선된다.	tool_efficiency_pct	80		TRUE	TRUE
+life_fishing_legend_time_reduce	솜씨 발휘	생활	낚시	특성	전설	낚시 시간 -4초	time_reduce_sec	4		TRUE	TRUE
+life_fishing_legend_weight_bonus	효율적인 정리	생활	낚시	특성	전설	최대 중량 +3	bag_weight_bonus	3		TRUE	TRUE
+life_fishing_legend_luck	행운아	생활	낚시	특성	전설	낚시 행운 공식이 3% 개선된다.	luck_formula_pct	3		TRUE	TRUE
+life_fishing_myth_no_trash	행운의 부적	생활	낚시	특성	신화	0성이 영구적으로 등장하지 않게 된다.	no_trash	TRUE		TRUE	FALSE
+life_fishing_myth_rank5_up	신의 어부	생활	낚시	특성	신화	5성 등장 확률이 0.3% 증가한다. (중복 x)	rank5_up_pct	0.3		TRUE	FALSE
+life_fishing_myth_blessing	천상의 축복	생활	낚시	특성	신화	숙련도 배율이 30%, 낚싯대 효율 공식이 100%, 환전 골드가 5% 증가한다. (중복 x)	blessing	exp_mult_pct:30,tool_efficiency_pct:100,gold_mult_pct:5		TRUE	FALSE
+life_fishing_myth_rial	리알의 가호	생활	낚시	특성	신화	비밀스러운 바다의 힘을 목도하라.	unlock_hint	secret_sea		TRUE	FALSE
+life_fishing_myth_vip	명예 VIP 훈장	생활	낚시	특성	신화	항구에 가지 않아도 판매를 할 수 있게 된다.	remote_sell	TRUE		TRUE	FALSE
+life_fishing_myth_fate	운명	생활	낚시	특성	신화	운명의 낚싯대를 취득한다.	grant_tool	운명의 낚싯대		TRUE	FALSE
+life_fishing_myth_otherworld	이계	생활	낚시	특성	신화	이계의 낚시 가방을 취득한다.	grant_bag	이계의 낚시 가방		TRUE	FALSE
+life_gather_common_exp_mult	숙련도 배율 증가	생활	채집	특성	일반	채집 숙련도 배율이 5% 증가한다.	exp_mult_pct	5		TRUE	TRUE
+life_gather_common_rank0_down	운의 축적 1	생활	채집	특성	일반	0성 등장 확률이 0.5% 감소한다. (최대 5%)	rank0_down_pct	0.5		TRUE	TRUE
+life_gather_common_rank1_down	운의 축적 2	생활	채집	특성	일반	1성 등장 확률이 1% 감소한다. (최대 20%)	rank1_down_pct	1		TRUE	TRUE
+life_gather_common_rank2_down	운의 축적 3	생활	채집	특성	일반	2성 등장 확률이 1% 감소한다. (최대 20%)	rank2_down_pct	1		TRUE	TRUE
+life_gather_common_tool_efficiency	채집 숙련	생활	채집	특성	일반	채집 도구 효율 공식이 20% 개선된다.	tool_efficiency_pct	20		TRUE	TRUE
+life_gather_common_time_reduce	솜씨 발휘	생활	채집	특성	일반	채집 시간 -1초	time_reduce_sec	1		TRUE	TRUE
+life_gather_rare_exp_mult	숙련도 배율 증가	생활	채집	특성	레어	채집 숙련도 배율이 10% 증가한다.	exp_mult_pct	10		TRUE	TRUE
+life_gather_rare_rank0_down	운의 축적 1	생활	채집	특성	레어	0성 등장 확률이 1% 감소한다. (최대 5%)	rank0_down_pct	1		TRUE	TRUE
+life_gather_rare_rank1_down	운의 축적 2	생활	채집	특성	레어	1성 등장 확률이 2% 감소한다. (최대 20%)	rank1_down_pct	2		TRUE	TRUE
+life_gather_rare_rank2_down	운의 축적 3	생활	채집	특성	레어	2성 등장 확률이 2% 감소한다. (최대 20%)	rank2_down_pct	2		TRUE	TRUE
+life_gather_rare_tool_efficiency	채집 숙련	생활	채집	특성	레어	채집 도구 효율 공식이 40% 개선된다.	tool_efficiency_pct	40		TRUE	TRUE
+life_gather_rare_time_reduce	솜씨 발휘	생활	채집	특성	레어	채집 시간 -2초	time_reduce_sec	2		TRUE	TRUE
+life_gather_rare_weight_bonus	효율적인 정리	생활	채집	특성	레어	최대 중량 +1	bag_weight_bonus	1		TRUE	TRUE
+life_gather_rare_luck	행운아	생활	채집	특성	레어	채집 행운 공식이 1% 개선된다.	luck_formula_pct	1		TRUE	TRUE
+life_gather_unique_exp_mult	숙련도 배율 증가	생활	채집	특성	유니크	채집 숙련도 배율이 15% 증가한다.	exp_mult_pct	15		TRUE	TRUE
+life_gather_unique_rank0_down	운의 축적 1	생활	채집	특성	유니크	0성 등장 확률이 1.5% 감소한다. (최대 5%)	rank0_down_pct	1.5		TRUE	TRUE
+life_gather_unique_rank1_down	운의 축적 2	생활	채집	특성	유니크	1성 등장 확률이 3% 감소한다. (최대 20%)	rank1_down_pct	3		TRUE	TRUE
+life_gather_unique_rank2_down	운의 축적 3	생활	채집	특성	유니크	2성 등장 확률이 3% 감소한다. (최대 20%)	rank2_down_pct	3		TRUE	TRUE
+life_gather_unique_tool_efficiency	채집 숙련	생활	채집	특성	유니크	채집 도구 효율 공식이 60% 개선된다.	tool_efficiency_pct	60		TRUE	TRUE
+life_gather_unique_time_reduce	솜씨 발휘	생활	채집	특성	유니크	채집 시간 -3초	time_reduce_sec	3		TRUE	TRUE
+life_gather_unique_weight_bonus	효율적인 정리	생활	채집	특성	유니크	최대 중량 +2	bag_weight_bonus	2		TRUE	TRUE
+life_gather_unique_luck	행운아	생활	채집	특성	유니크	채집 행운 공식이 2% 개선된다.	luck_formula_pct	2		TRUE	TRUE
+life_gather_legend_exp_mult	숙련도 배율 증가	생활	채집	특성	전설	채집 숙련도 배율이 20% 증가한다.	exp_mult_pct	20		TRUE	TRUE
+life_gather_legend_rank0_down	운의 축적 1	생활	채집	특성	전설	0성 등장 확률이 2% 감소한다. (최대 5%)	rank0_down_pct	2		TRUE	TRUE
+life_gather_legend_rank1_down	운의 축적 2	생활	채집	특성	전설	1성 등장 확률이 4% 감소한다. (최대 20%)	rank1_down_pct	4		TRUE	TRUE
+life_gather_legend_rank2_down	운의 축적 3	생활	채집	특성	전설	2성 등장 확률이 4% 감소한다. (최대 20%)	rank2_down_pct	4		TRUE	TRUE
+life_gather_legend_tool_efficiency	채집 숙련	생활	채집	특성	전설	채집 도구 효율 공식이 80% 개선된다.	tool_efficiency_pct	80		TRUE	TRUE
+life_gather_legend_time_reduce	솜씨 발휘	생활	채집	특성	전설	채집 시간 -4초	time_reduce_sec	4		TRUE	TRUE
+life_gather_legend_weight_bonus	효율적인 정리	생활	채집	특성	전설	최대 중량 +3	bag_weight_bonus	3		TRUE	TRUE
+life_gather_legend_luck	행운아	생활	채집	특성	전설	채집 행운 공식이 3% 개선된다.	luck_formula_pct	3		TRUE	TRUE
+life_gather_myth_no_trash	행운의 부적	생활	채집	특성	신화	0성이 영구적으로 등장하지 않게 된다.	no_trash	TRUE		TRUE	FALSE
+life_gather_myth_rank5_up	신의 채집가	생활	채집	특성	신화	5성 등장 확률이 0.3% 증가한다. (중복 x)	rank5_up_pct	0.3		TRUE	FALSE
+life_gather_myth_blessing	천상의 축복	생활	채집	특성	신화	숙련도 배율이 30%, 채집 도구 효율 공식이 100%, 환전 골드가 5% 증가한다. (중복 x)	blessing	exp_mult_pct:30,tool_efficiency_pct:100,gold_mult_pct:5		TRUE	FALSE
+life_gather_myth_rial	리알의 가호	생활	채집	특성	신화	비밀스러운 숲의 힘을 목도하라.	unlock_hint	secret_forest		TRUE	FALSE
+life_gather_myth_vip	명예 VIP 훈장	생활	채집	특성	신화	길드에 가지 않아도 판매를 할 수 있게 된다.	remote_sell	TRUE		TRUE	FALSE
+life_gather_myth_fate	운명	생활	채집	특성	신화	운명의 채집 도구를 취득한다.	grant_tool	운명의 채집 도구		TRUE	FALSE
+life_gather_myth_otherworld	이계	생활	채집	특성	신화	이계의 약초꾼 가방을 취득한다.	grant_bag	이계의 약초꾼 가방		TRUE	FALSE

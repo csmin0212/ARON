@@ -90,6 +90,26 @@ model CookingRecipe {
   @@index([resultName])
 }
 
+// 스킬 정의 (GM 시트 '스킬' 탭에서 동기화). 생활 특성, 스킬북, 전투/직업 스킬까지 확장 가능.
+model Skill {
+  id          String   @id // 스킬ID
+  name        String
+  category    String // 생활 | 전투 | 직업 | 기타
+  kind        String // 낚시 | 채집 | 요리 | 어콜라이트 등
+  type        String? // 특성 | 액티브 | 패시브 | 스킬북
+  rarity      String? // 일반 | 레어 | 유니크 | 전설 | 신화
+  description String?
+  effectKey   String?
+  effectValue String?
+  sourceItem  String?
+  isPublic    Boolean  @default(true)
+  enabled     Boolean  @default(true)
+  order       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@index([category, kind, rarity, enabled])
+}
+
 // 유저별 발견한 레시피
 model UserRecipe {
   id         String   @id @default(cuid())

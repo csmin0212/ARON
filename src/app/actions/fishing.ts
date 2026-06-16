@@ -27,6 +27,7 @@ import {
   recordCollection,
   recordLifeCatch,
 } from "@/lib/lifeSkillPerks";
+import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 
 const FISH = "낚시" as const;
 
@@ -192,7 +193,7 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   }
 
   const expGained = Math.max(1, Math.round(lifeSkillExpGain(FISH, pending.exp) * mods.expMult));
-  const leveled = applyExp(life, FISH, expGained);
+  const leveled = applyExp(life, FISH, expGained, await fetchLifeSkillCatalog());
   const firstCatch = recordCollection(life, FISH, pending.name);
   const caughtCount = recordLifeCatch(life, FISH, pending.name);
   addLifeBagItem(life, FISH, { name: pending.name, weight: pending.weight, rank: pending.rank, text: pending.text });

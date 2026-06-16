@@ -13,6 +13,10 @@ export type LifePerk = {
   text: string;
 };
 
+export type LifeSkillCatalogEntry = LifePerk & {
+  kind: LifeSkillKind;
+};
+
 export type OwnedPerk = LifePerk & { kind: LifeSkillKind };
 
 export type PendingChoice = {
@@ -323,13 +327,21 @@ function isMyth(p: { rarity: PerkRarity }): boolean {
 }
 
 // 레벨업 선택지 3개 생성 (희귀도 개별 추첨)
-export function rollPerkOptions(state: LifeState, kind: LifeSkillKind): LifePerk[] {
+export function rollPerkOptions(
+  state: LifeState,
+  kind: LifeSkillKind,
+  catalog?: LifeSkillCatalogEntry[],
+): LifePerk[] {
   const ownedMyth = new Set(state.perks.filter(isMyth).map((p) => p.name));
   const options: LifePerk[] = [];
   let guard = 0;
   while (options.length < 3 && guard++ < 60) {
     const rarity = rollRarity();
-    const pool = tierPerks(kind, rarity).filter(
+    const catalogPool =
+      catalog
+        ?.filter((p) => p.kind === kind && p.rarity === rarity)
+        .map(({ name, rarity, text }) => ({ name, rarity, text })) ?? [];
+    const pool = (catalogPool.length > 0 ? catalogPool : tierPerks(kind, rarity)).filter(
       (p) => !(p.rarity === "신화" && ownedMyth.has(p.name)),
     );
     if (pool.length === 0) continue;
@@ -341,7 +353,12 @@ export function rollPerkOptions(state: LifeState, kind: LifeSkillKind): LifePerk
 }
 
 // 경험치 적용 → 레벨업 시 도달 레벨 반환. 특성 선택지는 PERK_EVERY 레벨마다 적재.
-export function applyExp(state: LifeState, kind: LifeSkillKind, gained: number): number[] {
+export function applyExp(
+  state: LifeState,
+  kind: LifeSkillKind,
+  gained: number,
+  catalog?: LifeSkillCatalogEntry[],
+): number[] {
   const prog = progressOf(state, kind);
   prog.exp += gained;
   const leveled: number[] = [];
@@ -350,7 +367,7 @@ export function applyExp(state: LifeState, kind: LifeSkillKind, gained: number):
     prog.level += 1;
     leveled.push(prog.level);
     if (prog.level % PERK_EVERY === 0) {
-      state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind) });
+      state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind, catalog) });
     }
   }
   return leveled;

@@ -12,6 +12,7 @@ import {
   fetchEventsRows,
   fetchAchievementsRows,
   fetchRecipesRows,
+  fetchSkillsRows,
 } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -668,6 +669,36 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "레시피 탭 오류");
+  }
+
+  // 8) 스킬 (선택) — 유저가 이미 획득한 특성 기록은 보존하고 정의만 교체.
+  try {
+    const skills = await fetchSkillsRows();
+    if (skills) {
+      await prisma.$transaction([
+        prisma.skill.deleteMany(),
+        prisma.skill.createMany({
+          data: skills.map((skill, i) => ({
+            id: skill.id,
+            name: skill.name,
+            category: skill.category,
+            kind: skill.kind,
+            type: skill.type,
+            rarity: skill.rarity,
+            description: skill.desc,
+            effectKey: skill.effectKey,
+            effectValue: skill.effectValue,
+            sourceItem: skill.sourceItem,
+            isPublic: skill.isPublic,
+            enabled: skill.enabled,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`스킬 ${skills.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "스킬 탭 오류");
   }
 
   revalidatePath("/world");

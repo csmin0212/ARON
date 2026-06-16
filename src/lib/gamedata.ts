@@ -16,6 +16,7 @@ export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
 export const ACHIEVEMENTS_TAB = process.env.ACHIEVEMENTS_TAB_NAME || "업적";
 export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
+export const SKILLS_TAB = process.env.SKILLS_TAB_NAME || "스킬";
 
 export type ItemRow = {
   id: string;
@@ -92,6 +93,21 @@ export type RecipeRow = {
   sellPrice: number;
   weight: number;
   isPublic: boolean;
+};
+
+export type SkillRow = {
+  id: string;
+  name: string;
+  category: string;
+  kind: string;
+  type: string | null;
+  rarity: string | null;
+  desc: string | null;
+  effectKey: string | null;
+  effectValue: string | null;
+  sourceItem: string | null;
+  isPublic: boolean;
+  enabled: boolean;
 };
 
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
@@ -411,7 +427,8 @@ export function parseAchievementsGrid(g: string[][]): AchievementRow[] {
   return rows;
 }
 
-const no = (value: string): boolean => /^(n|no|x|false|0)$/i.test(value.trim());
+const yes = (value: string): boolean => /^(y|yes|true|1|공개|사용|활성)$/i.test(value.trim());
+const no = (value: string): boolean => /^(n|no|x|false|0|비공개|비활성)$/i.test(value.trim());
 
 // ── 이벤트 탭 ──  이벤트ID | 장소ID | 타입 | 이름 | 문구 | 보상 | 공개문구 | 활성
 export function parseEventsGrid(g: string[][], itemIds: Set<string>): EventRow[] {
@@ -535,6 +552,75 @@ export function parseRecipesGrid(g: string[][]): RecipeRow[] {
   return rows;
 }
 
+// ── 스킬 탭 ──
+// 스킬ID | 이름 | 계열 | 직업/종류 | 타입 | 등급 | 설명 | 효과키 | 효과값 | 소모품 | 공개유무 | 활성
+export function parseSkillsGrid(g: string[][]): SkillRow[] {
+  const h = findHeader(g, ["이름", "계열"], {
+    스킬ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    계열: "category",
+    분류: "category",
+    "직업/종류": "kind",
+    직업: "kind",
+    종류: "kind",
+    대상: "kind",
+    타입: "type",
+    유형: "type",
+    등급: "rarity",
+    희귀도: "rarity",
+    설명: "desc",
+    효과키: "effectKey",
+    "효과 키": "effectKey",
+    효과값: "effectValue",
+    "효과 값": "effectValue",
+    값: "effectValue",
+    소모품: "sourceItem",
+    출처아이템: "sourceItem",
+    공개: "isPublic",
+    공개유무: "isPublic",
+    "공개 유무": "isPublic",
+    공개여부: "isPublic",
+    "공개 여부": "isPublic",
+    활성: "enabled",
+    사용: "enabled",
+  });
+  if (!h) throw new Error("스킬 탭이 없거나 헤더(이름/계열)가 없어요.");
+
+  const rows: SkillRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    const category = at(g, r, h.col.category);
+    if (!name || !category) continue;
+
+    const id = at(g, r, h.col.id) || name;
+    if (/[,，]/.test(id)) throw new Error(`스킬ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    if (seen.has(id)) throw new Error(`스킬ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+
+    const publicRaw = at(g, r, h.col.isPublic);
+    const enabledRaw = at(g, r, h.col.enabled);
+    rows.push({
+      id,
+      name,
+      category,
+      kind: at(g, r, h.col.kind) || "공용",
+      type: at(g, r, h.col.type) || null,
+      rarity: at(g, r, h.col.rarity) || null,
+      desc: at(g, r, h.col.desc) || null,
+      effectKey: at(g, r, h.col.effectKey) || null,
+      effectValue: at(g, r, h.col.effectValue) || null,
+      sourceItem: at(g, r, h.col.sourceItem) || null,
+      isPublic: publicRaw ? yes(publicRaw) : true,
+      enabled: enabledRaw ? !no(enabledRaw) : true,
+    });
+  }
+  if (rows.length === 0) throw new Error("스킬 탭에 스킬이 없어요.");
+  return rows;
+}
+
 // ── 시트에서 불러오기 (탭 없으면 null — 선택 탭) ──
 export async function fetchDungeonsRows(itemIds: Set<string>): Promise<DungeonRow[] | null> {
   const g =
@@ -563,6 +649,13 @@ export async function fetchRecipesRows(): Promise<RecipeRow[] | null> {
     (await fetchTab(WORLD_SHEET_ID, RECIPES_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, RECIPES_TAB));
   if (!g) return null;
   return parseRecipesGrid(g);
+}
+
+export async function fetchSkillsRows(): Promise<SkillRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, SKILLS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, SKILLS_TAB));
+  if (!g) return null;
+  return parseSkillsGrid(g);
 }
 
 export async function fetchItemsRows(): Promise<ItemRow[] | null> {
