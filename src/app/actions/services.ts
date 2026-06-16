@@ -11,7 +11,7 @@ import {
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
-import { parseGoldToInt } from "@/lib/dice";
+import { parseGoldToInt, rollDice } from "@/lib/dice";
 import {
   addLifeBagItem,
   applyCookingExp,
@@ -972,9 +972,18 @@ export async function sellCookedFood(
 }
 
 function parseFatigueRecovery(effect: string): number | null {
-  const match = effect.match(/피로도\s*(\d+)\s*회복/);
-  if (!match) return null;
-  const n = Number.parseInt(match[1], 10);
+  const diceMatch = effect.match(/피로도(?:를)?\s*\[?(\d+)D\]?\s*점?\s*회복/);
+  if (diceMatch) {
+    const diceCount = Number.parseInt(diceMatch[1], 10);
+    if (!Number.isFinite(diceCount) || diceCount <= 0 || diceCount > 20) return null;
+    return rollDice(diceCount).reduce((sum, die) => sum + die, 0);
+  }
+
+  const fixedMatch = effect.match(
+    /피로도(?:를)?\s*\+?(\d+)\s*점?\s*회복|피로도\s*회복\s*(\d+)|피로도\s*\+(\d+)/,
+  );
+  if (!fixedMatch) return null;
+  const n = Number.parseInt(fixedMatch[1] ?? fixedMatch[2] ?? fixedMatch[3], 10);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
