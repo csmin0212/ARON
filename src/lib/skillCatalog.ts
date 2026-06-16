@@ -21,6 +21,8 @@ export async function fetchLifeSkillCatalog(): Promise<LifeSkillCatalogEntry[] |
         name: true,
         rarity: true,
         description: true,
+        effectKey: true,
+        effectValue: true,
       },
       orderBy: { order: "asc" },
     });
@@ -34,6 +36,8 @@ export async function fetchLifeSkillCatalog(): Promise<LifeSkillCatalogEntry[] |
           name: row.name,
           rarity: row.rarity as PerkRarity,
           text: row.description ?? "",
+          effectKey: row.effectKey,
+          effectValue: row.effectValue,
         },
       ];
     });

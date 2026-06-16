@@ -11,6 +11,8 @@ export type LifePerk = {
   name: string;
   rarity: PerkRarity;
   text: string;
+  effectKey?: string | null;
+  effectValue?: string | null;
 };
 
 export type LifeSkillCatalogEntry = LifePerk & {
@@ -340,7 +342,13 @@ export function rollPerkOptions(
     const catalogPool =
       catalog
         ?.filter((p) => p.kind === kind && p.rarity === rarity)
-        .map(({ name, rarity, text }) => ({ name, rarity, text })) ?? [];
+        .map(({ name, rarity, text, effectKey, effectValue }) => ({
+          name,
+          rarity,
+          text,
+          effectKey,
+          effectValue,
+        })) ?? [];
     const pool = (catalogPool.length > 0 ? catalogPool : tierPerks(kind, rarity)).filter(
       (p) => !(p.rarity === "신화" && ownedMyth.has(p.name)),
     );
@@ -407,6 +415,53 @@ const VAL: Record<string, Record<string, number>> = {
   행운아: { 레어: 1, 유니크: 2, 전설: 3 },
 };
 
+function numValue(value: string | null | undefined): number {
+  if (!value) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function applyEffectKey(mods: LifeMods, key: string | null | undefined, value: string | null | undefined): boolean {
+  if (!key) return false;
+  switch (key) {
+    case "exp_mult_pct":
+      mods.expMult += numValue(value) / 100;
+      return true;
+    case "gold_mult_pct":
+      mods.goldMult += numValue(value) / 100;
+      return true;
+    case "rank0_down_pct":
+      mods.rank0Down += numValue(value);
+      return true;
+    case "rank1_down_pct":
+      mods.rank1Down += numValue(value);
+      return true;
+    case "rank2_down_pct":
+      mods.rank2Down += numValue(value);
+      return true;
+    case "luck_formula_pct":
+      mods.luck += numValue(value);
+      return true;
+    case "rank5_up_pct":
+      mods.rank5Up += numValue(value);
+      return true;
+    case "bag_weight_bonus":
+      mods.weightBonus += numValue(value);
+      return true;
+    case "no_trash":
+      mods.noTrash = true;
+      return true;
+    case "blessing":
+      for (const part of (value ?? "").split(",")) {
+        const [childKey, childValue] = part.split(":").map((s) => s.trim());
+        if (childKey) applyEffectKey(mods, childKey, childValue);
+      }
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
   const mods: LifeMods = {
     expMult: 1,
@@ -421,6 +476,7 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
   };
   for (const p of state.perks) {
     if (p.kind !== kind) continue;
+    if (applyEffectKey(mods, p.effectKey, p.effectValue)) continue;
     const v = VAL[p.name]?.[p.rarity] ?? 0;
     switch (p.name) {
       case "숙련도 배율 증가":
