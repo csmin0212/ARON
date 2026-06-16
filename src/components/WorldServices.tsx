@@ -8,6 +8,7 @@ import {
   cookDish,
   depositToStorage,
   enchantWeapon,
+  promoteAdventurerRank,
   restAtHome,
   restAtInn,
   sellCookedFood,
@@ -18,6 +19,7 @@ import {
   upgradeWeapon,
   withdrawFromStorage,
   type CookingState,
+  type GuildState,
   type LifeShopState,
   type HousingState,
   type MarketState,
@@ -25,6 +27,7 @@ import {
   type StorageState,
 } from "@/app/actions/services";
 import { enterHome } from "@/app/actions/world";
+import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -43,6 +46,7 @@ type Props = {
   inn: InnView;
   housing: HousingView;
   storage: StorageView;
+  guild: GuildView;
 };
 
 export type InnView = {
@@ -122,6 +126,11 @@ export type StorageView = {
   maxWeight: number;
   usedWeight: number;
   items: StorageItemView[];
+};
+
+export type GuildView = {
+  rank: string;
+  fame: number;
 };
 
 export type StorageItemView = SheetInventoryItem & {
@@ -658,7 +667,26 @@ function LifeGearShop({
   );
 }
 
-function QuestBoard({ onClose }: { onClose: () => void }) {
+function GuildStateLine({ state }: { state?: { ok?: string; error?: string } }) {
+  if (!state?.ok && !state?.error) return null;
+  return (
+    <p className={`mt-2 text-xs font-bold ${state.error ? "text-rose-500" : "text-emerald-500"}`}>
+      {state.error ?? state.ok}
+    </p>
+  );
+}
+
+function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void }) {
+  const [rankState, rankAction, rankPending] = useActionState<GuildState, FormData>(
+    promoteAdventurerRank,
+    undefined,
+  );
+  const rank = normalizeAdventurerRank(guild.rank);
+  const goal = adventurerRankGoal(rank);
+  const nextRank = nextAdventurerRank(rank);
+  const ready = !!nextRank && guild.fame >= goal;
+  const pct = goal > 0 ? Math.min(100, Math.round((guild.fame / goal) * 100)) : 100;
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
@@ -678,7 +706,49 @@ function QuestBoard({ onClose }: { onClose: () => void }) {
           </p>
           <h3 className="mt-1 text-2xl font-extrabold text-content">📜 의뢰 게시판</h3>
         </div>
-        <div className="px-5 py-4">
+        <div className="space-y-3 px-5 py-4">
+          <section className="rounded-2xl border border-line bg-subtle p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-faint">모험가 랭크</p>
+                <p className="mt-0.5 text-lg font-extrabold text-content">
+                  길드 등급 {rank}
+                  {nextRank ? <span className="text-faint"> → {nextRank}</span> : null}
+                </p>
+              </div>
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-2xl font-black text-white shadow-sm">
+                {rank}
+              </span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-400 to-brand-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs font-bold text-faint">
+              <span>{nextRank ? `승급 필요 명성 ${goal.toLocaleString()}` : "최고 등급"}</span>
+              <span>
+                {guild.fame.toLocaleString()} / {goal.toLocaleString()}
+              </span>
+            </div>
+            <form action={rankAction} className="mt-3">
+              <button
+                type="submit"
+                disabled={!ready || rankPending}
+                className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:bg-subtle-hover disabled:text-faint"
+              >
+                {nextRank
+                  ? rankPending
+                    ? "승급 처리 중..."
+                    : ready
+                      ? `${nextRank} 등급으로 승급`
+                      : "명성이 부족합니다"
+                  : "최고 등급입니다"}
+              </button>
+              <GuildStateLine state={rankState} />
+            </form>
+          </section>
           <article className="rounded-2xl border border-line bg-subtle p-4">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
@@ -1481,6 +1551,7 @@ export default function WorldServices({
   inn,
   housing,
   storage,
+  guild,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
@@ -1664,7 +1735,7 @@ export default function WorldServices({
         <LifeGearShop lifeShop={lifeShop} onClose={() => setLifeShopOpen(false)} />
       )}
 
-      {questOpen && <QuestBoard onClose={() => setQuestOpen(false)} />}
+      {questOpen && <QuestBoard guild={guild} onClose={() => setQuestOpen(false)} />}
 
       {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
 

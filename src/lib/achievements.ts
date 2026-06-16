@@ -268,13 +268,6 @@ export async function checkAndGrant(
     data: newly.map((a) => ({ userId, achId: a.id })),
     skipDuplicates: true,
   });
-  const fameGain = newly.reduce((s, a) => s + a.rewardFame, 0);
-  if (fameGain > 0 && sheet) {
-    await prisma.characterSheet.update({
-      where: { userId },
-      data: { fame: { increment: fameGain } },
-    });
-  }
   return newly.map((a) => ({
     id: a.id,
     name: a.name,

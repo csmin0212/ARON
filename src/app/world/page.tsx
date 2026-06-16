@@ -29,6 +29,7 @@ import WorldServices, {
   type LifeShopView,
   type LifeStorageItemView,
   type MaterialView,
+  type GuildView,
   type StorageView,
 } from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
@@ -401,6 +402,10 @@ export default async function WorldPage() {
     };
   });
   const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
+  const guild: GuildView = {
+    rank: sheet.adventurerRank,
+    fame: sheet.fame ?? 0,
+  };
   const canMarket = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
@@ -740,6 +745,7 @@ export default async function WorldPage() {
             inn={inn}
             housing={housing}
             storage={storage}
+            guild={guild}
           />
 
           <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} lifeBags={lifeBags} />

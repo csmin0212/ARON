@@ -1,4 +1,5 @@
 import type { StatEntry } from "@/lib/charsheet";
+import { adventurerRankGoal, normalizeAdventurerRank } from "@/lib/adventurerRank";
 
 export type SheetData = {
   charName: string | null;
@@ -61,14 +62,6 @@ function currentMaxValue(current: number | null | undefined, max: number | null)
   return current === max ? max : `${current}/${max}`;
 }
 
-const RANK_GOALS: Record<string, number> = {
-  D: 10,
-  C: 25,
-  B: 60,
-  A: 100,
-  S: 0,
-};
-
 export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
   let stats: StatEntry[] = [];
   try {
@@ -80,9 +73,9 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
   const tags = [sheet.charClass, sheet.race, sheet.attribute && `속성 ${sheet.attribute}`].filter(
     Boolean,
   ) as string[];
-  const rank = sheet.adventurerRank ?? "D";
+  const rank = normalizeAdventurerRank(sheet.adventurerRank);
   const fame = sheet.fame ?? 0;
-  const rankGoal = RANK_GOALS[rank] ?? 1000;
+  const rankGoal = adventurerRankGoal(rank);
   const rankPct = rankGoal > 0 ? Math.min(100, Math.round((fame / rankGoal) * 100)) : 100;
 
   return (

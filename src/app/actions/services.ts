@@ -24,6 +24,7 @@ import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import {
   homeTierFromLocationId,
   houseOption,
@@ -41,6 +42,7 @@ export type LifeShopState = { error?: string; ok?: string } | undefined;
 export type MarketState = { error?: string; ok?: string } | undefined;
 export type HousingState = { error?: string; ok?: string } | undefined;
 export type CookingState = { error?: string; ok?: string } | undefined;
+export type GuildState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
 const MOON_FRAGMENT = "달의 파편";
@@ -319,6 +321,46 @@ function lifeShopProduct(productId: string): LifeShopProduct | null {
 
 function foodProduct(productId: string) {
   return FOOD_ITEMS.find((item) => item.id === productId) ?? null;
+}
+
+export async function promoteAdventurerRank(
+  _prev: GuildState,
+  _formData: FormData,
+): Promise<GuildState> {
+  void _prev;
+  void _formData;
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { adventurerRank: true, fame: true },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+
+  const current = normalizeAdventurerRank(sheet.adventurerRank);
+  const next = nextAdventurerRank(current);
+  if (!next) return { error: "이미 최고 등급입니다." };
+
+  const goal = adventurerRankGoal(current);
+  const fame = sheet.fame ?? 0;
+  if (fame < goal) {
+    return { error: `명성이 부족합니다. (${fame.toLocaleString()} / ${goal.toLocaleString()})` };
+  }
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      adventurerRank: next,
+      fame: fame - goal,
+    },
+  });
+  await checkAndGrant(user.id);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  revalidatePath(`/u/${user.username}`);
+  return { ok: `길드 등급이 ${current}에서 ${next}로 상승했습니다.` };
 }
 
 function parseRecipeIngredients(value: string): { name: string; qty: number }[] {
