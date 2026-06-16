@@ -376,6 +376,10 @@ export function parseAchievementsGrid(g: string[][]): AchievementRow[] {
     보상명성: "rewardFame",
     배지: "badge",
     공개: "isPublic",
+    공개유무: "isPublic",
+    "공개 유무": "isPublic",
+    공개여부: "isPublic",
+    "공개 여부": "isPublic",
   });
   if (!h) throw new Error("업적 탭이 없거나 헤더(이름/조건타입)가 없어요.");
 
@@ -486,6 +490,10 @@ export function parseRecipesGrid(g: string[][]): RecipeRow[] {
     숙련도: "skillExp",
     태그: "tags",
     공개: "isPublic",
+    공개유무: "isPublic",
+    "공개 유무": "isPublic",
+    공개여부: "isPublic",
+    "공개 여부": "isPublic",
   });
   if (!h) throw new Error("레시피 탭이 없거나 헤더(이름/재료/결과)가 없어요.");
 

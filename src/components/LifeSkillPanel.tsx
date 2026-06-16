@@ -14,6 +14,7 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { collectionItems, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
+import CookingRecipeBook, { type CookingBookEntry } from "@/components/CookingRecipeBook";
 
 function CollectionBook({ life }: { life: LifeState }) {
   const all = collectionItems(false); // 바다 어종은 아직 도감에 미포함 (상위 층 해금 예정)
@@ -243,9 +244,11 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
 export default function LifeSkillPanel({
   life,
   isOwn,
+  cookingRecipes = [],
 }: {
   life: LifeState;
   isOwn: boolean;
+  cookingRecipes?: CookingBookEntry[];
 }) {
   const [state, formAction, pending] = useActionState<LifeActionState, FormData>(
     chooseLifePerk,
@@ -424,7 +427,12 @@ export default function LifeSkillPanel({
           <LifeGearPanel life={life} />
         </div>
       )}
-      {view === "book" && <CollectionBook life={life} />}
+      {view === "book" && (
+        <div className="space-y-5">
+          <CollectionBook life={life} />
+          <CookingRecipeBook entries={cookingRecipes} />
+        </div>
+      )}
       {view === "skill" && skillSection}
     </div>
   );

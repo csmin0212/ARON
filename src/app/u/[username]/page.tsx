@@ -13,6 +13,7 @@ import LifeSkillPanel from "@/components/LifeSkillPanel";
 import ProfileHero from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
 import ProfileTradePanel, { type TradeOfferView } from "@/components/ProfileTradePanel";
+import type { CookingBookEntry } from "@/components/CookingRecipeBook";
 
 export async function generateMetadata({
   params,
@@ -41,6 +42,22 @@ function parseOfferableItems(invJson: string | null | undefined) {
   } catch {
     return [];
   }
+}
+
+function parseRecipeIngredients(value: string): { name: string; qty: number }[] {
+  try {
+    const parsed = JSON.parse(value) as { name?: string; qty?: number }[];
+    return parsed
+      .filter((item) => item.name && item.qty && item.qty > 0)
+      .map((item) => ({ name: item.name!, qty: item.qty! }));
+  } catch {
+    return [];
+  }
+}
+
+function recipeRankNumber(rank: string | null | undefined): number {
+  const match = String(rank ?? "").match(/R\s*(\d+)/i);
+  return match ? Number.parseInt(match[1], 10) || 0 : 0;
 }
 
 function tradeView(offer: {
@@ -89,7 +106,7 @@ export default async function CharacterPage({
   // 본인 프로필 열람 시 임계값 업적(명성·골드·레벨 등) 지연 판정
   if (isOwn) await checkAndGrant(profile.id);
 
-  const [achs, earnedRows, mySheet, incomingRows, outgoingRows] = await Promise.all([
+  const [achs, earnedRows, mySheet, incomingRows, outgoingRows, recipes, discoveredRecipes] = await Promise.all([
     prisma.achievement.findMany({ orderBy: { order: "asc" } }),
     prisma.userAchievement.findMany({ where: { userId: profile.id }, select: { achId: true } }),
     me
@@ -121,6 +138,8 @@ export default async function CharacterPage({
           take: 20,
         })
       : Promise.resolve([]),
+    prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } }),
+    prisma.userRecipe.findMany({ where: { userId: profile.id }, select: { recipeId: true } }),
   ]);
   const earnedSet = new Set(earnedRows.map((r) => r.achId));
   const achView: AchView[] = achs.map((a) => ({
@@ -135,6 +154,23 @@ export default async function CharacterPage({
   }));
 
   const life = parseLifeState(profile.sheet?.lifeJson);
+  const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
+  const cookingRecipes: CookingBookEntry[] = recipes.map((recipe) => ({
+    id: recipe.id,
+    name: recipe.name,
+    rank: recipeRankNumber(recipe.rank),
+    rankLabel: recipe.rank,
+    category: recipe.category,
+    ingredients: parseRecipeIngredients(recipe.ingredientsJson)
+      .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
+      .join(", "),
+    resultName: recipe.resultName,
+    resultQty: recipe.resultQty,
+    effect: recipe.effect,
+    sellPrice: recipe.sellPrice,
+    weight: recipe.weight,
+    discovered: recipe.isPublic || discoveredRecipeIds.has(recipe.id),
+  }));
   const pendingCount = isOwn ? life.pending.length : 0;
 
   const tags = (
@@ -169,7 +205,7 @@ export default async function CharacterPage({
     </div>
   );
 
-  const lifeTab = <LifeSkillPanel life={life} isOwn={isOwn} />;
+  const lifeTab = <LifeSkillPanel life={life} isOwn={isOwn} cookingRecipes={cookingRecipes} />;
 
   const achTab = (
     <AchievementBook
