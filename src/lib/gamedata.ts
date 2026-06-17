@@ -114,6 +114,7 @@ export type SkillRow = {
 export type CombatSkillRow = {
   id: string;
   name: string;
+  job: string | null;
   category: string | null;
   subCategory: string | null;
   sl: string | null;
@@ -648,7 +649,8 @@ export function parseSkillsGrid(g: string[][]): SkillRow[] {
 }
 
 // ── 전투스킬 탭 ──
-// 스킬ID | 이름 | 분류 | 추가분류 | SL | SL상한 | 타이밍 | 사거리 | 판정 | 대상 | 코스트 | 사용조건 | 효과 | 크리티컬 | 출처아이템
+// 스킬ID | 직업 | 이름 | 분류 | 추가분류 | SL | SL상한 | 타이밍 | 사거리 | 판정 | 대상 | 코스트 | 사용조건 | 효과 | 크리티컬 | 출처아이템
+// 직업: 클래스 전용 제한(캐릭터 클래스와 대조). 분류: 마술/주가 등(시트에 기입).
 // 출처아이템 칸에 아이템 ID 를 적으면, 그 스킬북을 사용했을 때 이 스킬을 시트에 기입한다.
 export function parseCombatSkillsGrid(g: string[][]): CombatSkillRow[] {
   const h = findHeader(g, ["이름", "효과"], {
@@ -658,6 +660,8 @@ export function parseCombatSkillsGrid(g: string[][]): CombatSkillRow[] {
     이름: "name",
     스킬이름: "name",
     스킬명: "name",
+    직업: "job",
+    클래스: "job",
     분류: "category",
     계열: "category",
     추가분류: "subCategory",
@@ -702,6 +706,7 @@ export function parseCombatSkillsGrid(g: string[][]): CombatSkillRow[] {
     rows.push({
       id,
       name,
+      job: at(g, r, h.col.job) || null,
       category: at(g, r, h.col.category) || null,
       subCategory: at(g, r, h.col.subCategory) || null,
       sl: at(g, r, h.col.sl) || null,

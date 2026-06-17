@@ -712,6 +712,7 @@ export async function syncWorldMap(
           data: combatSkills.map((skill, i) => ({
             id: skill.id,
             name: skill.name,
+            job: skill.job,
             category: skill.category,
             subCategory: skill.subCategory,
             sl: skill.sl,

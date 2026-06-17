@@ -51,8 +51,8 @@ export async function useSkillBook(
   const line = inv.items.find((i) => i.name.trim() === itemName);
   if (!line || line.qty <= 0) return { error: `${itemName}이(가) 가방에 없어요.` };
 
-  // 클래스 전용 — 스킬 분류(직업)가 내 클래스(메인/서브)와 맞아야 함
-  const requiredClass = skill.category?.trim();
+  // 클래스 전용 — 스킬 '직업'이 내 클래스(메인/서브)와 맞아야 함
+  const requiredClass = skill.job?.trim();
   if (requiredClass) {
     const myClasses = await readSheetClasses(sheet.sheetTab);
     const norm = (s: string) => s.replace(/\s+/g, "");

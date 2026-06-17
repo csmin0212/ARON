@@ -115,7 +115,8 @@ model Skill {
 model CombatSkill {
   id          String   @id // 스킬ID
   name        String
-  category    String? // 분류
+  job         String? // 직업 (클래스 전용 제한 — 캐릭터 클래스와 대조)
+  category    String? // 분류 (마술/주가 등 — 캐릭터 시트에 기입)
   subCategory String? // 추가분류
   sl          String? // SL
   slMax       String? // SL상한
