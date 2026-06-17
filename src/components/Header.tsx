@@ -59,6 +59,12 @@ export default async function Header() {
             📖 도감
           </Link>
           <Link
+            href="/market"
+            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
+          >
+            🏪 거래소
+          </Link>
+          <Link
             href="/hall"
             className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
           >

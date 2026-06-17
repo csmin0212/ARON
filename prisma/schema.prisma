@@ -38,6 +38,7 @@ model User {
   tradeMessages TradeMessage[]
   notifications Notification[]
   mails         Mail[]
+  marketListings MarketListing[]
 }
 
 // 업적 정의 (GM 시트 '업적' 탭에서 동기화)
@@ -202,6 +203,27 @@ model Notification {
   createdAt DateTime  @default(now())
 
   @@index([userId, readAt, createdAt])
+}
+
+// 거래소 등록 매물. 등록 시 판매자 인벤에서 빼서 보관(에스크로), 판매되면 대금은 우편으로 지급.
+model MarketListing {
+  id         String    @id @default(cuid())
+  sellerId   String
+  seller     User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerName String // 표시용 판매자 닉네임
+  itemName   String
+  itemEffect String?
+  itemWeight Int?
+  qty        Int       @default(1)
+  price      Int // 묶음 전체 가격 (골드)
+  status     String    @default("OPEN") // OPEN | SOLD | CANCELLED
+  buyerId    String?
+  buyerName  String?
+  createdAt  DateTime  @default(now())
+  soldAt     DateTime?
+
+  @@index([status, createdAt])
+  @@index([sellerId, status])
 }
 
 // 우편함 — GM/시스템이 보내는 우편. 골드·아이템 첨부를 수령(claim)하면 인벤토리/시트에 지급.
