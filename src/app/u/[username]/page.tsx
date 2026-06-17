@@ -213,6 +213,7 @@ export default async function CharacterPage({
       achievements={achView}
       isOwn={isOwn}
       equippedTitle={profile.equippedTitle}
+      equippedBadge={profile.equippedBadge}
     />
   );
 

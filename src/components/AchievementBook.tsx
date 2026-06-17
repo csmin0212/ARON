@@ -15,11 +15,16 @@ export default function AchievementBook({
   achievements,
   isOwn,
   equippedTitle,
+  equippedBadge,
 }: {
   achievements: AchView[];
   isOwn: boolean;
   equippedTitle: string | null;
+  equippedBadge: string | null;
 }) {
+  // 대표로 장착한 항목 식별 — 칭호·배지 둘 다 일치해야 함.
+  // (칭호 없이 배지만 있는 업적도 정상 인식되도록 양쪽을 본다.)
+  const hasEquipped = equippedTitle != null || equippedBadge != null;
   const earnedCount = achievements.filter((a) => a.earned).length;
   const total = achievements.length;
 
@@ -62,7 +67,10 @@ export default function AchievementBook({
                   // HIDDEN 업적은 달성 전까지 누구에게도 내용을 보이지 않음
                   const hidden = a.secret && !a.earned;
                   const equipped =
-                    a.earned && a.rewardTitle != null && a.rewardTitle === equippedTitle;
+                    a.earned &&
+                    hasEquipped &&
+                    (a.rewardTitle ?? null) === equippedTitle &&
+                    (a.badge ?? null) === equippedBadge;
                   return (
                     <div
                       key={a.id}
@@ -117,13 +125,13 @@ export default function AchievementBook({
         </div>
       )}
 
-      {isOwn && equippedTitle && (
+      {isOwn && hasEquipped && (
         <form action={unequipAchievement} className="mt-4">
           <button
             type="submit"
             className="text-xs font-semibold text-faint transition hover:text-rose-500"
           >
-            대표 칭호 해제
+            대표 해제
           </button>
         </form>
       )}

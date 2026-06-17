@@ -171,8 +171,8 @@ export function expForNext(level: number): number {
   return Math.round(20 * Math.pow(level, 1.6));
 }
 
-// 특성은 5레벨마다 선택
-export const PERK_EVERY = 5;
+// 특성은 3레벨마다 선택
+export const PERK_EVERY = 3;
 
 // ── 등급 등장 구간표 (레벨 구간별 기본 가중치 [0성..5성]) ──
 // 여기 숫자만 고치면 밸런스가 바뀐다. 상위 구간은 추후 천천히 설계.
