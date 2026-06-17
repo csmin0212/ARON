@@ -687,9 +687,17 @@ export function parseCombatSkillsGrid(g: string[][]): CombatSkillRow[] {
   for (let r = h.row + 1; r < g.length; r++) {
     const name = at(g, r, h.col.name);
     if (!name) continue;
-    const id = at(g, r, h.col.id) || name;
+    // 스킬ID 는 동기화 시 고유키로만 쓰임(사용 조회는 출처아이템 기준).
+    // 비워두면 이름을 쓰고, 그래도 겹치면 자동으로 번호를 붙여 고유화한다.
+    const rawId = at(g, r, h.col.id);
+    let id = rawId || name;
     if (/[,，]/.test(id)) throw new Error(`전투스킬 ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
-    if (seen.has(id)) throw new Error(`전투스킬 ID '${id}' 가 중복됐어요.`);
+    if (seen.has(id)) {
+      if (rawId) throw new Error(`전투스킬 ID '${id}' 가 중복됐어요.`);
+      let n = 2;
+      while (seen.has(`${id}-${n}`)) n++;
+      id = `${id}-${n}`;
+    }
     seen.add(id);
     rows.push({
       id,

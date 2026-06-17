@@ -116,7 +116,7 @@ export default function DungeonPanel({
       </div>
       {runsLeft <= 0 && (
         <p className="px-1 text-[11px] text-rose-500">
-          이번 주 도전을 다 썼어요. 월요일 05시에 초기화돼요.
+          이번 주 도전을 다 썼어요. 월요일 0시(일요일 자정)에 초기화돼요.
         </p>
       )}
       {dungeons.map((d) => (

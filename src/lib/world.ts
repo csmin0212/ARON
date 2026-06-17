@@ -47,10 +47,10 @@ export function restedTodayKst(restedAt: Date | null, now: Date = new Date()): b
   return restedAt != null && kstDayKey(restedAt) === kstDayKey(now);
 }
 
-// 던전 주간 키 — 한국시간 월요일 05:00 기준. 같은 키면 같은 주.
+// 던전 주간 키 — 한국시간 월요일 0시(일요일→월요일 자정) 기준. 같은 키면 같은 주.
 export function dungeonWeekKey(now: Date = new Date()): string {
-  // KST로 옮긴 뒤, 05:00 이전은 전날로 치도록 5시간 당겨서 '주의 월요일' 계산
-  const shifted = new Date(now.getTime() + 9 * 60 * 60_000 - 5 * 60 * 60_000);
+  // KST 기준 그 주의 월요일 날짜 (월요일 자정에 주가 바뀐다)
+  const shifted = new Date(now.getTime() + 9 * 60 * 60_000);
   const dow = shifted.getUTCDay(); // 0=일 .. 6=토
   const daysSinceMon = (dow + 6) % 7; // 월=0
   shifted.setUTCDate(shifted.getUTCDate() - daysSinceMon);

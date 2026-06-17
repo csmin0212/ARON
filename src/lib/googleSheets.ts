@@ -379,6 +379,22 @@ export async function appendSheetItem(
   return false;
 }
 
+// 캐릭터 클래스(직업) 읽기 — B36:E37(메인), F36:I37(서브) 병합 셀의 값.
+export async function readSheetClasses(tab: string | null): Promise<string[]> {
+  if (!tab) return [];
+  try {
+    const v = await getValues(`${quoteSheet(tab)}!B36:I36`);
+    if (!v) return [];
+    const row = v[0] ?? [];
+    const main = cell(row, 0); // B36
+    const sub = cell(row, 4); // F36
+    return [main, sub].filter((c) => c.length > 0);
+  } catch (error) {
+    console.warn("Failed to read sheet classes", error);
+    return [];
+  }
+}
+
 // ── 전투스킬 기입 (스킬북 사용) ──
 // 헤더는 B63:AK64(2행 병합), 데이터는 65~104행. 헤더 라벨을 읽어 컬럼을 자동 매핑한다.
 export type SheetSkill = {

@@ -120,7 +120,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   const week = dungeonWeekKey();
   const runs = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
   if (runs >= WEEKLY_LIMIT) {
-    return { error: `이번 주 던전 도전을 모두 사용했어요. (${WEEKLY_LIMIT}/${WEEKLY_LIMIT}) 월요일 05시에 초기화돼요.` };
+    return { error: `이번 주 던전 도전을 모두 사용했어요. (${WEEKLY_LIMIT}/${WEEKLY_LIMIT}) 월요일 0시(일요일 자정)에 초기화돼요.` };
   }
 
   // AP

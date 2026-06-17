@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { postSystem } from "@/lib/play";
 import {
   consumeSheetItem,
+  readSheetClasses,
   writeSkillRowToSheet,
   type SheetInventory,
 } from "@/lib/googleSheets";
@@ -49,6 +50,19 @@ export async function useSkillBook(
   const inv = parseInv(sheet.invJson);
   const line = inv.items.find((i) => i.name.trim() === itemName);
   if (!line || line.qty <= 0) return { error: `${itemName}이(가) 가방에 없어요.` };
+
+  // 클래스 전용 — 스킬 분류(직업)가 내 클래스(메인/서브)와 맞아야 함
+  const requiredClass = skill.category?.trim();
+  if (requiredClass) {
+    const myClasses = await readSheetClasses(sheet.sheetTab);
+    const norm = (s: string) => s.replace(/\s+/g, "");
+    const canLearn = myClasses.some((c) => norm(c) === norm(requiredClass));
+    if (!canLearn) {
+      return {
+        error: `${requiredClass} 전용 스킬이에요. (내 클래스: ${myClasses.join(" / ") || "없음"})`,
+      };
+    }
+  }
 
   // 시트에 스킬 기입 — 중복·가득참은 여기서 막고, 실패 시 소모하지 않음
   const write = await writeSkillRowToSheet(sheet.sheetTab, {
