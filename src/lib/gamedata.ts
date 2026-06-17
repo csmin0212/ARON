@@ -123,7 +123,8 @@ function findHeader(
     if (required.every((h) => cells.includes(h))) {
       const col: Record<string, number> = {};
       cells.forEach((h, c) => {
-        const key = aliases[h];
+        // 정확 일치 우선. 없으면 헤더 끝의 괄호 주석 "보상(확정)" → "보상" 을 떼고 재시도.
+        const key = aliases[h] ?? aliases[h.replace(/\s*[(（].*?[)）]\s*$/, "").trim()];
         if (key && col[key] == null) col[key] = c;
       });
       return { row: r, col };
