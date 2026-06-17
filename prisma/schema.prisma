@@ -37,6 +37,7 @@ model User {
   tradeOffersReceived TradeOffer[] @relation("TradeOfferTo")
   tradeMessages TradeMessage[]
   notifications Notification[]
+  mails         Mail[]
 }
 
 // 업적 정의 (GM 시트 '업적' 탭에서 동기화)
@@ -201,6 +202,24 @@ model Notification {
   createdAt DateTime  @default(now())
 
   @@index([userId, readAt, createdAt])
+}
+
+// 우편함 — GM/시스템이 보내는 우편. 골드·아이템 첨부를 수령(claim)하면 인벤토리/시트에 지급.
+model Mail {
+  id          String    @id @default(cuid())
+  recipientId String
+  recipient   User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  senderName  String    @default("GM") // 표시용 보낸이
+  subject     String
+  body        String?
+  gold        Int       @default(0) // 첨부 골드
+  itemName    String? // 첨부 아이템 (Item.id 또는 이름)
+  itemQty     Int       @default(0)
+  claimedAt   DateTime? // 첨부 수령 시각 (null = 미수령)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([recipientId, createdAt])
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)

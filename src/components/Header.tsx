@@ -19,6 +19,9 @@ export default async function Header() {
   const unreadNotifications = user
     ? await prisma.notification.count({ where: { userId: user.id, readAt: null } })
     : 0;
+  const unreadMail = user
+    ? await prisma.mail.count({ where: { recipientId: user.id, readAt: null } })
+    : 0;
   const store = await cookies();
   const themeCookie = store.get(THEME_COOKIE)?.value;
   const accentCookie = store.get(ACCENT_COOKIE)?.value;
@@ -66,6 +69,19 @@ export default async function Header() {
 
           {user ? (
             <div className="flex items-center gap-2">
+              <Link
+                href="/mail"
+                className="relative grid h-10 w-10 place-items-center rounded-full text-lg transition hover:bg-subtle-hover"
+                aria-label="우편함"
+                title="우편함"
+              >
+                📬
+                {unreadMail > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 text-[10px] font-black leading-5 text-white shadow-sm">
+                    {unreadMail > 99 ? "99+" : unreadMail}
+                  </span>
+                )}
+              </Link>
               <Link
                 href="/notifications"
                 className="relative grid h-10 w-10 place-items-center rounded-full text-lg transition hover:bg-subtle-hover"

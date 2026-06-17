@@ -10,6 +10,7 @@ import {
   type WorldCleanupState,
 } from "@/app/actions/world";
 import { openRift, closeRift, type RiftActionState } from "@/app/actions/rift";
+import { sendMail, type MailState } from "@/app/actions/mail";
 import { RIFT_TYPES } from "@/lib/rift";
 
 export type AdminRift = { id: string; type: string; originName: string; count: number };
@@ -47,6 +48,10 @@ export default function WorldAdmin({
   >(resetWeeklyDungeons, undefined);
   const [fatigueState, fatigueAction, fatiguePending] = useActionState<WorldCleanupState, FormData>(
     restoreAllFatigue,
+    undefined,
+  );
+  const [mailState, mailAction, mailPending] = useActionState<MailState, FormData>(
+    sendMail,
     undefined,
   );
 
@@ -196,6 +201,71 @@ export default function WorldAdmin({
         {(fatigueState?.error || fatigueState?.ok) && (
           <p className={`mt-2 text-xs font-medium ${fatigueState.error ? "text-rose-600" : "text-emerald-600"}`}>
             {fatigueState.error ?? `✅ ${fatigueState.ok}`}
+          </p>
+        )}
+      </div>
+
+      {/* 우편 보내기 */}
+      <div className="mt-3 border-t border-brand-200/70 pt-3">
+        <p className="text-xs font-bold text-brand-700">📬 우편 보내기</p>
+        <p className="text-xs text-muted">골드·아이템을 첨부하면 받는 사람이 우편함에서 수령합니다.</p>
+        <form action={mailAction} className="mt-2 space-y-2">
+          <select
+            name="userId"
+            defaultValue=""
+            className="w-full rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs font-semibold text-content outline-none"
+          >
+            <option value="">— 전체 플레이어 —</option>
+            {players.map((p) => (
+              <option key={p.userId} value={p.userId}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input
+            name="subject"
+            placeholder="제목"
+            required
+            className="w-full rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs text-content outline-none"
+          />
+          <textarea
+            name="body"
+            placeholder="내용 (선택)"
+            rows={2}
+            className="w-full rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs text-content outline-none"
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <input
+              name="gold"
+              type="number"
+              min={0}
+              placeholder="골드"
+              className="rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs text-content outline-none"
+            />
+            <input
+              name="itemName"
+              placeholder="아이템(이름/ID)"
+              className="rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs text-content outline-none"
+            />
+            <input
+              name="itemQty"
+              type="number"
+              min={1}
+              placeholder="수량"
+              className="rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs text-content outline-none"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={mailPending}
+            className="w-full rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
+          >
+            {mailPending ? "보내는 중…" : "우편 보내기"}
+          </button>
+        </form>
+        {(mailState?.error || mailState?.ok) && (
+          <p className={`mt-2 text-xs font-medium ${mailState.error ? "text-rose-600" : "text-emerald-600"}`}>
+            {mailState.error ?? `✅ ${mailState.ok}`}
           </p>
         )}
       </div>
