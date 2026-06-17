@@ -36,6 +36,7 @@ import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } fr
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { lifeSkillItemKind, lifeSkillSellPrice, type LocationLifeConfig } from "@/lib/lifeSkillData";
 import { isNonSellable } from "@/lib/shop";
+import { SKILLBOOK_META } from "@/lib/skillbook";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { parseGoldToInt } from "@/lib/dice";
 import {
@@ -299,20 +300,18 @@ export default async function WorldPage() {
     ).map((it) => [it.id, it.name]),
   );
 
-  // 스킬북 — 전투스킬의 출처아이템(아이템 ID)을 인벤토리 표시 이름으로 변환
-  const combatSkillSources = await prisma.combatSkill.findMany({
-    where: { sourceItem: { not: null } },
-    select: { sourceItem: true },
+  // 스킬북 — 서버가 정상 지급한 토큰을 보유한 것만 "사용" 대상 (시트 위조 차단)
+  const skillBookTokens = await prisma.inventoryEntry.findMany({
+    where: { userId: user.id, meta: SKILLBOOK_META, qty: { gt: 0 } },
+    select: { itemId: true },
   });
-  const sourceItemIds = [
-    ...new Set(combatSkillSources.map((c) => c.sourceItem).filter((v): v is string => !!v)),
-  ];
-  const skillBookNames = sourceItemIds.length
+  const tokenItemIds = [...new Set(skillBookTokens.map((t) => t.itemId))];
+  const skillBookNames = tokenItemIds.length
     ? [
         ...new Set(
           (
             await prisma.item.findMany({
-              where: { OR: [{ id: { in: sourceItemIds } }, { name: { in: sourceItemIds } }] },
+              where: { id: { in: tokenItemIds } },
               select: { name: true },
             })
           ).map((it) => it.name),

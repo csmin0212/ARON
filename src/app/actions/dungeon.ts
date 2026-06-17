@@ -8,6 +8,7 @@ import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { rollDice } from "@/lib/dice";
 import { dungeonWeekKey } from "@/lib/world";
 import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
+import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 import {
   appendSheetFormula,
   appendSheetGold,
@@ -89,7 +90,7 @@ async function giveDrop(
   }
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: d.item }, { name: d.item }] },
-    select: { name: true, desc: true },
+    select: { id: true, name: true, desc: true },
   });
   const itemName = catalog?.name ?? d.item;
   const found = inv.items.find((i) => i.name.trim() === itemName.trim());
@@ -100,6 +101,9 @@ async function giveDrop(
     inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty: d.qty });
   }
   await incDbItem(userId, d.item, d.qty);
+  // 스킬북이면 서버 전용 토큰도 지급 — 시트 위조로는 못 얻게 (악용 방지)
+  const bookItemId = catalog?.id ?? d.item;
+  if (await isSkillBookItem(bookItemId)) await grantSkillBookToken(userId, bookItemId, d.qty);
   rewards.push(`${itemName} x${d.qty}`);
   return 0;
 }

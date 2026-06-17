@@ -10,6 +10,7 @@ import {
   writeSkillRowToSheet,
   type SheetInventory,
 } from "@/lib/googleSheets";
+import { consumeSkillBookToken, hasSkillBookToken } from "@/lib/skillbook";
 
 export type SkillBookState = { ok?: string; error?: string } | undefined;
 
@@ -46,11 +47,6 @@ export async function useSkillBook(
   });
   if (!skill) return { error: "이 아이템에 연결된 스킬이 없어요." };
 
-  // 보유 확인 (시트 인벤토리)
-  const inv = parseInv(sheet.invJson);
-  const line = inv.items.find((i) => i.name.trim() === itemName);
-  if (!line || line.qty <= 0) return { error: `${itemName}이(가) 가방에 없어요.` };
-
   // 클래스 전용 — 스킬 '직업'이 내 클래스(메인/서브)와 맞아야 함
   const requiredClass = skill.job?.trim();
   if (requiredClass) {
@@ -62,6 +58,12 @@ export async function useSkillBook(
         error: `${requiredClass} 전용 스킬이에요. (내 클래스: ${myClasses.join(" / ") || "없음"})`,
       };
     }
+  }
+
+  // 보유 확인 — 서버가 정상 지급한 스킬북 토큰만 인정 (시트 위조로는 얻을 수 없음)
+  const bookIds = [skill.sourceItem, ...ids].filter((v): v is string => !!v);
+  if (!(await hasSkillBookToken(user.id, bookIds))) {
+    return { error: "정상적으로 획득한 스킬북이 없어요. (던전 등에서 획득해야 사용할 수 있어요)" };
   }
 
   // 시트에 스킬 기입 — 중복·가득참은 여기서 막고, 실패 시 소모하지 않음
@@ -82,25 +84,17 @@ export async function useSkillBook(
   });
   if (!write.ok) return { error: write.error ?? "스킬을 시트에 기록하지 못했어요." };
 
-  // 소모 — 시트 수량 칸 + invJson + DB 인벤토리
-  await consumeSheetItem(sheet.sheetTab, itemName, 1);
-  line.qty -= 1;
-  const nextItems = inv.items.filter((i) => i.qty > 0);
-  await prisma.characterSheet.update({
-    where: { userId: user.id },
-    data: { invJson: JSON.stringify({ ...inv, items: nextItems }) },
-  });
-  for (const it of items) {
-    const entry = await prisma.inventoryEntry.findFirst({
-      where: { userId: user.id, itemId: it.id },
+  // 소모 — 서버 토큰(정본) 차감 + 시트 표시용 가방/칸 정리
+  await consumeSkillBookToken(user.id, bookIds);
+  const inv = parseInv(sheet.invJson);
+  const line = inv.items.find((i) => i.name.trim() === itemName);
+  if (line && line.qty > 0) {
+    await consumeSheetItem(sheet.sheetTab, itemName, 1);
+    line.qty -= 1;
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { invJson: JSON.stringify({ ...inv, items: inv.items.filter((i) => i.qty > 0) }) },
     });
-    if (!entry) continue;
-    if (entry.qty > 1) {
-      await prisma.inventoryEntry.update({ where: { id: entry.id }, data: { qty: entry.qty - 1 } });
-    } else {
-      await prisma.inventoryEntry.delete({ where: { id: entry.id } });
-    }
-    break;
   }
 
   if (sheet.locationId) {
