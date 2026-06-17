@@ -299,6 +299,27 @@ export default async function WorldPage() {
     ).map((it) => [it.id, it.name]),
   );
 
+  // 스킬북 — 전투스킬의 출처아이템(아이템 ID)을 인벤토리 표시 이름으로 변환
+  const combatSkillSources = await prisma.combatSkill.findMany({
+    where: { sourceItem: { not: null } },
+    select: { sourceItem: true },
+  });
+  const sourceItemIds = [
+    ...new Set(combatSkillSources.map((c) => c.sourceItem).filter((v): v is string => !!v)),
+  ];
+  const skillBookNames = sourceItemIds.length
+    ? [
+        ...new Set(
+          (
+            await prisma.item.findMany({
+              where: { OR: [{ id: { in: sourceItemIds } }, { name: { in: sourceItemIds } }] },
+              select: { name: true },
+            })
+          ).map((it) => it.name),
+        ),
+      ]
+    : [];
+
   const sheetInventory = parseSheetInventory(sheet.invJson);
   const rawBagItems: SheetInventoryItem[] =
     sheetInventory
@@ -748,7 +769,13 @@ export default async function WorldPage() {
             guild={guild}
           />
 
-          <BagInventory gold={bagGold} weight={bagWeight} items={bagItems} lifeBags={lifeBags} />
+          <BagInventory
+            gold={bagGold}
+            weight={bagWeight}
+            items={bagItems}
+            lifeBags={lifeBags}
+            skillBooks={skillBookNames}
+          />
 
           <SheetSync />
 

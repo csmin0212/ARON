@@ -17,6 +17,7 @@ export const ACHIEVEMENTS_TAB = process.env.ACHIEVEMENTS_TAB_NAME || "업적";
 export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
 export const SKILLS_TAB = process.env.SKILLS_TAB_NAME || "스킬";
+export const COMBAT_SKILLS_TAB = process.env.COMBAT_SKILLS_TAB_NAME || "전투스킬";
 
 export type ItemRow = {
   id: string;
@@ -110,6 +111,24 @@ export type SkillRow = {
   enabled: boolean;
 };
 
+export type CombatSkillRow = {
+  id: string;
+  name: string;
+  category: string | null;
+  subCategory: string | null;
+  sl: string | null;
+  slMax: string | null;
+  timing: string | null;
+  range: string | null;
+  check: string | null;
+  target: string | null;
+  cost: string | null;
+  condition: string | null;
+  effect: string | null;
+  critical: string | null;
+  sourceItem: string | null;
+};
+
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
 
 // ── 공용 ──
@@ -123,8 +142,14 @@ function findHeader(
     if (required.every((h) => cells.includes(h))) {
       const col: Record<string, number> = {};
       cells.forEach((h, c) => {
-        // 정확 일치 우선. 없으면 헤더 끝의 괄호 주석 "보상(확정)" → "보상" 을 떼고 재시도.
-        const key = aliases[h] ?? aliases[h.replace(/\s*[(（].*?[)）]\s*$/, "").trim()];
+        // 정확 일치 우선. 없으면 헤더 끝의 괄호 주석 "보상(확정)" → "보상",
+        // 그래도 없으면 띄어쓰기 무시("추가 분류" → "추가분류") 로 재시도.
+        const stripParen = h.replace(/\s*[(（].*?[)）]\s*$/, "").trim();
+        const key =
+          aliases[h] ??
+          aliases[stripParen] ??
+          aliases[h.replace(/\s+/g, "")] ??
+          aliases[stripParen.replace(/\s+/g, "")];
         if (key && col[key] == null) col[key] = c;
       });
       return { row: r, col };
@@ -622,6 +647,72 @@ export function parseSkillsGrid(g: string[][]): SkillRow[] {
   return rows;
 }
 
+// ── 전투스킬 탭 ──
+// 스킬ID | 이름 | 분류 | 추가분류 | SL | SL상한 | 타이밍 | 사거리 | 판정 | 대상 | 코스트 | 사용조건 | 효과 | 크리티컬 | 출처아이템
+// 출처아이템 칸에 아이템 ID 를 적으면, 그 스킬북을 사용했을 때 이 스킬을 시트에 기입한다.
+export function parseCombatSkillsGrid(g: string[][]): CombatSkillRow[] {
+  const h = findHeader(g, ["이름", "효과"], {
+    스킬ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    스킬이름: "name",
+    스킬명: "name",
+    분류: "category",
+    계열: "category",
+    추가분류: "subCategory",
+    SL: "sl",
+    SL상한: "slMax",
+    타이밍: "timing",
+    사거리: "range",
+    거리: "range",
+    판정: "check",
+    대상: "target",
+    코스트: "cost",
+    비용: "cost",
+    사용조건: "condition",
+    조건: "condition",
+    효과: "effect",
+    크리티컬: "critical",
+    크리: "critical",
+    출처아이템: "sourceItem",
+    출처: "sourceItem",
+    소모품: "sourceItem",
+    스킬북: "sourceItem",
+  });
+  if (!h) throw new Error("전투스킬 탭이 없거나 헤더(이름/효과)가 없어요.");
+
+  const rows: CombatSkillRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    if (!name) continue;
+    const id = at(g, r, h.col.id) || name;
+    if (/[,，]/.test(id)) throw new Error(`전투스킬 ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    if (seen.has(id)) throw new Error(`전투스킬 ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+    rows.push({
+      id,
+      name,
+      category: at(g, r, h.col.category) || null,
+      subCategory: at(g, r, h.col.subCategory) || null,
+      sl: at(g, r, h.col.sl) || null,
+      slMax: at(g, r, h.col.slMax) || null,
+      timing: at(g, r, h.col.timing) || null,
+      range: at(g, r, h.col.range) || null,
+      check: at(g, r, h.col.check) || null,
+      target: at(g, r, h.col.target) || null,
+      cost: at(g, r, h.col.cost) || null,
+      condition: at(g, r, h.col.condition) || null,
+      effect: at(g, r, h.col.effect) || null,
+      critical: at(g, r, h.col.critical) || null,
+      sourceItem: at(g, r, h.col.sourceItem) || null,
+    });
+  }
+  if (rows.length === 0) throw new Error("전투스킬 탭에 스킬이 없어요.");
+  return rows;
+}
+
 // ── 시트에서 불러오기 (탭 없으면 null — 선택 탭) ──
 export async function fetchDungeonsRows(itemIds: Set<string>): Promise<DungeonRow[] | null> {
   const g =
@@ -657,6 +748,14 @@ export async function fetchSkillsRows(): Promise<SkillRow[] | null> {
     (await fetchTab(WORLD_SHEET_ID, SKILLS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, SKILLS_TAB));
   if (!g) return null;
   return parseSkillsGrid(g);
+}
+
+export async function fetchCombatSkillsRows(): Promise<CombatSkillRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, COMBAT_SKILLS_TAB)) ??
+    (await fetchTab(MASTER_SHEET_ID, COMBAT_SKILLS_TAB));
+  if (!g) return null;
+  return parseCombatSkillsGrid(g);
 }
 
 export async function fetchItemsRows(): Promise<ItemRow[] | null> {

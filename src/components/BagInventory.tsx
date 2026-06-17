@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { useCookingItem, type CookingState } from "@/app/actions/services";
+import { useSkillBook, type SkillBookState } from "@/app/actions/skills";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 export type LifeBagPocket = {
@@ -16,6 +17,7 @@ type Props = {
   weight: string | null;
   items: SheetInventoryItem[];
   lifeBags?: LifeBagPocket[];
+  skillBooks?: string[]; // 스킬북 아이템 이름 목록 (사용 시 전투스킬 습득)
 };
 
 function mergeItems(items: SheetInventoryItem[]): SheetInventoryItem[] {
@@ -59,7 +61,7 @@ function CookingStateLine({ state }: { state: CookingState }) {
   );
 }
 
-export default function BagInventory({ gold, weight, items, lifeBags = [] }: Props) {
+export default function BagInventory({ gold, weight, items, lifeBags = [], skillBooks = [] }: Props) {
   const mergedItems = useMemo(() => mergeItems(items), [items]);
   const [selected, setSelected] = useState<SheetInventoryItem | null>(null);
   const [openedBag, setOpenedBag] = useState<LifeBagPocket | null>(null);
@@ -67,6 +69,12 @@ export default function BagInventory({ gold, weight, items, lifeBags = [] }: Pro
     useCookingItem,
     undefined,
   );
+  const [skillResult, skillAction, skillPending] = useActionState<SkillBookState, FormData>(
+    useSkillBook,
+    undefined,
+  );
+  const skillBookSet = useMemo(() => new Set(skillBooks), [skillBooks]);
+  const isSkillBook = (item: SheetInventoryItem) => skillBookSet.has(item.name.trim());
   const openedItems = useMemo(() => mergeItems(openedBag?.items ?? []), [openedBag]);
 
   return (
@@ -223,6 +231,7 @@ export default function BagInventory({ gold, weight, items, lifeBags = [] }: Pro
             </div>
             <div className="space-y-3 px-5 py-4">
               <CookingStateLine state={useStateResult} />
+              <CookingStateLine state={skillResult} />
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-2xl bg-subtle px-3 py-2">
                   <p className="text-[11px] font-bold text-faint">갯수</p>
@@ -248,6 +257,18 @@ export default function BagInventory({ gold, weight, items, lifeBags = [] }: Pro
                     className="w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-emerald-600 disabled:opacity-50"
                   >
                     {usePending ? "사용 중..." : "사용하기"}
+                  </button>
+                </form>
+              )}
+              {isSkillBook(selected) && (
+                <form action={skillAction}>
+                  <input type="hidden" name="itemName" value={selected.name} />
+                  <button
+                    type="submit"
+                    disabled={skillPending}
+                    className="w-full rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-violet-600 disabled:opacity-50"
+                  >
+                    {skillPending ? "습득 중..." : "📖 스킬 습득"}
                   </button>
                 </form>
               )}

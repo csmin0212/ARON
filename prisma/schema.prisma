@@ -110,6 +110,30 @@ model Skill {
   @@index([category, kind, rarity, enabled])
 }
 
+// 전투/직업 스킬 카탈로그 (GM 시트 '전투스킬' 탭에서 동기화)
+// 스킬북 아이템 사용 시 sourceItem 으로 연결된 스킬을 캐릭터 시트에 기입한다.
+model CombatSkill {
+  id          String   @id // 스킬ID
+  name        String
+  category    String? // 분류
+  subCategory String? // 추가분류
+  sl          String? // SL
+  slMax       String? // SL상한
+  timing      String? // 타이밍
+  range       String? // 사거리
+  check       String? // 판정
+  target      String? // 대상
+  cost        String? // 코스트
+  condition   String? // 사용조건
+  effect      String? // 효과
+  critical    String? // 크리티컬
+  sourceItem  String? // 이 스킬을 가르치는 아이템 ID (Item.id)
+  order       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@index([sourceItem])
+}
+
 // 유저별 발견한 레시피
 model UserRecipe {
   id         String   @id @default(cuid())

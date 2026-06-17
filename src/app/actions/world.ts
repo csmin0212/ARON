@@ -13,6 +13,7 @@ import {
   fetchAchievementsRows,
   fetchRecipesRows,
   fetchSkillsRows,
+  fetchCombatSkillsRows,
 } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -699,6 +700,39 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "스킬 탭 오류");
+  }
+
+  // 9) 전투스킬 (선택) — 스킬북 아이템이 가르치는 스킬 카탈로그. 정의만 교체.
+  try {
+    const combatSkills = await fetchCombatSkillsRows();
+    if (combatSkills) {
+      await prisma.$transaction([
+        prisma.combatSkill.deleteMany(),
+        prisma.combatSkill.createMany({
+          data: combatSkills.map((skill, i) => ({
+            id: skill.id,
+            name: skill.name,
+            category: skill.category,
+            subCategory: skill.subCategory,
+            sl: skill.sl,
+            slMax: skill.slMax,
+            timing: skill.timing,
+            range: skill.range,
+            check: skill.check,
+            target: skill.target,
+            cost: skill.cost,
+            condition: skill.condition,
+            effect: skill.effect,
+            critical: skill.critical,
+            sourceItem: skill.sourceItem,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`전투스킬 ${combatSkills.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "전투스킬 탭 오류");
   }
 
   revalidatePath("/world");

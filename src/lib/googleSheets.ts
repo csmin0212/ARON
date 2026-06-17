@@ -379,6 +379,106 @@ export async function appendSheetItem(
   return false;
 }
 
+// ── 전투스킬 기입 (스킬북 사용) ──
+// 헤더는 B63:AK64(2행 병합), 데이터는 65~104행. 헤더 라벨을 읽어 컬럼을 자동 매핑한다.
+export type SheetSkill = {
+  name: string;
+  category?: string | null;
+  subCategory?: string | null;
+  sl?: string | null;
+  slMax?: string | null;
+  timing?: string | null;
+  range?: string | null;
+  check?: string | null;
+  target?: string | null;
+  cost?: string | null;
+  condition?: string | null;
+  effect?: string | null;
+  critical?: string | null;
+};
+
+const SKILL_HEADER_A1 = "B63:AK64";
+const SKILL_DATA_A1 = "B65:AK104";
+const SKILL_DATA_START_ROW = 65;
+const SKILL_COL_COUNT = 36; // B..AK
+
+// 시트 헤더 라벨(띄어쓰기·대소문자 무시) → SheetSkill 키
+const SKILL_FIELD_BY_LABEL: Record<string, keyof SheetSkill> = {
+  스킬이름: "name",
+  이름: "name",
+  스킬명: "name",
+  분류: "category",
+  추가분류: "subCategory",
+  sl: "sl",
+  sl상한: "slMax",
+  타이밍: "timing",
+  사거리: "range",
+  판정: "check",
+  대상: "target",
+  코스트: "cost",
+  사용조건: "condition",
+  효과: "effect",
+  크리티컬: "critical",
+};
+
+const normSkillLabel = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
+export async function writeSkillRowToSheet(
+  tab: string | null,
+  skill: SheetSkill,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!tab) return { ok: false, error: "캐릭터 시트 연동이 필요합니다." };
+
+  try {
+    const header = await getValues(`${quoteSheet(tab)}!${SKILL_HEADER_A1}`);
+    if (!header) return { ok: false, error: "시트 인증이 필요합니다." };
+
+    // 병합 2행 헤더 — 컬럼마다 두 행 중 채워진 라벨을 채택
+    const fieldCol: Partial<Record<keyof SheetSkill, number>> = {};
+    for (let c = 0; c < SKILL_COL_COUNT; c++) {
+      const label = cell(header[0], c) || cell(header[1], c);
+      if (!label) continue;
+      const field = SKILL_FIELD_BY_LABEL[normSkillLabel(label)];
+      if (field && fieldCol[field] == null) fieldCol[field] = c;
+    }
+    const nameCol = fieldCol.name;
+    if (nameCol == null)
+      return { ok: false, error: "스킬 표 헤더(63~64행)에서 '이름' 칸을 찾지 못했어요." };
+
+    const data = (await getValues(`${quoteSheet(tab)}!${SKILL_DATA_A1}`)) ?? [];
+    const target = skill.name.trim();
+
+    // 중복 — 이미 같은 이름의 스킬이 있으면 거부
+    for (const row of data) {
+      if (cell(row, nameCol) === target) return { ok: false, error: "이미 배운 스킬이에요." };
+    }
+
+    // 빈 행 찾기
+    let emptyIdx = -1;
+    for (let i = 0; i < data.length; i++) {
+      if (!cell(data[i], nameCol)) {
+        emptyIdx = i;
+        break;
+      }
+    }
+    if (emptyIdx === -1 && data.length < 40) emptyIdx = data.length;
+    if (emptyIdx === -1) return { ok: false, error: "스킬 칸(65~104행)이 가득 찼어요." };
+
+    const rowNumber = SKILL_DATA_START_ROW + emptyIdx;
+    const arr = new Array<string>(SKILL_COL_COUNT).fill("");
+    (Object.keys(fieldCol) as (keyof SheetSkill)[]).forEach((field) => {
+      const c = fieldCol[field];
+      if (c != null) arr[c] = String(skill[field] ?? "");
+    });
+
+    const ok = await updateValues(`${quoteSheet(tab)}!B${rowNumber}:AK${rowNumber}`, [arr]);
+    return ok ? { ok: true } : { ok: false, error: "시트 쓰기에 실패했어요." };
+  } catch (error) {
+    console.warn("Failed to write skill row", error);
+    return { ok: false, error: "스킬 기입 중 오류가 발생했어요." };
+  }
+}
+
 export async function consumeSheetItem(
   tab: string | null,
   itemName: string,
