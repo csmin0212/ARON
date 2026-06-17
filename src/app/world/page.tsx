@@ -588,7 +588,16 @@ export default async function WorldPage() {
 
   let adminLocations: { id: string; name: string }[] = [];
   let adminRifts: AdminRift[] = [];
+  let adminPlayers: { userId: string; label: string }[] = [];
   if (isGm) {
+    const playerSheets = await prisma.characterSheet.findMany({
+      select: { userId: true, sheetTab: true, user: { select: { nickname: true } } },
+      orderBy: { updatedAt: "desc" },
+    });
+    adminPlayers = playerSheets.map((s) => ({
+      userId: s.userId,
+      label: `${s.user.nickname} · ${s.sheetTab}`,
+    }));
     adminLocations = await prisma.location.findMany({
       select: { id: true, name: true },
       orderBy: { order: "asc" },
@@ -793,7 +802,9 @@ export default async function WorldPage() {
         </div>
       </div>
 
-      {isGm && <WorldAdmin locations={adminLocations} openRifts={adminRifts} />}
+      {isGm && (
+        <WorldAdmin locations={adminLocations} openRifts={adminRifts} players={adminPlayers} />
+      )}
     </div>
   );
 }

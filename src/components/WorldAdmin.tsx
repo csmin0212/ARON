@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   cleanupOldWorldMessages,
   resetWeeklyDungeons,
@@ -13,14 +13,18 @@ import { openRift, closeRift, type RiftActionState } from "@/app/actions/rift";
 import { RIFT_TYPES } from "@/lib/rift";
 
 export type AdminRift = { id: string; type: string; originName: string; count: number };
+export type AdminPlayer = { userId: string; label: string };
 
 export default function WorldAdmin({
   locations = [],
   openRifts = [],
+  players = [],
 }: {
   locations?: { id: string; name: string }[];
   openRifts?: AdminRift[];
+  players?: AdminPlayer[];
 }) {
+  const [targetUserId, setTargetUserId] = useState("");
   const [state, formAction, pending] = useActionState<WorldActionState, FormData>(
     syncWorldMap,
     undefined,
@@ -149,9 +153,22 @@ export default function WorldAdmin({
       {/* 플레이어 관리 */}
       <div className="mt-3 border-t border-brand-200/70 pt-3">
         <p className="text-xs font-bold text-brand-700">👥 플레이어 관리</p>
-        <p className="text-xs text-muted">전체 플레이어에게 한 번에 적용됩니다.</p>
+        <p className="text-xs text-muted">대상을 고르고 적용하세요. ‘전체’면 모든 플레이어에게 적용됩니다.</p>
+        <select
+          value={targetUserId}
+          onChange={(e) => setTargetUserId(e.target.value)}
+          className="mt-2 w-full rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs font-semibold text-content outline-none"
+        >
+          <option value="">— 전체 플레이어 —</option>
+          {players.map((p) => (
+            <option key={p.userId} value={p.userId}>
+              {p.label}
+            </option>
+          ))}
+        </select>
         <div className="mt-2 flex flex-wrap gap-2">
           <form action={dungeonResetAction}>
+            <input type="hidden" name="userId" value={targetUserId} />
             <button
               type="submit"
               disabled={dungeonResetPending}
@@ -161,12 +178,13 @@ export default function WorldAdmin({
             </button>
           </form>
           <form action={fatigueAction}>
+            <input type="hidden" name="userId" value={targetUserId} />
             <button
               type="submit"
               disabled={fatiguePending}
               className="rounded-xl border border-brand-300 bg-surface px-3.5 py-2 text-xs font-bold text-brand-700 shadow-sm transition hover:bg-brand-50 disabled:opacity-60"
             >
-              {fatiguePending ? "회복 중…" : "⚡ 전체 피로도 회복"}
+              {fatiguePending ? "회복 중…" : "⚡ 피로도 회복"}
             </button>
           </form>
         </div>

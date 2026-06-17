@@ -761,38 +761,48 @@ export async function cleanupOldWorldMessages(
   return { ok: `90일 지난 월드 채팅 ${result.count.toLocaleString("ko-KR")}개를 정리했어요.` };
 }
 
-// GM — 전체 플레이어의 주간 던전 도전 횟수를 즉시 초기화
+// GM — 주간 던전 도전 횟수 초기화. userId 가 있으면 그 캐릭터만, 없으면 전체.
 export async function resetWeeklyDungeons(
   _prev: WorldCleanupState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<WorldCleanupState> {
   void _prev;
-  void _formData;
   const user = await getCurrentUser();
   if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
 
+  const targetId = String(formData.get("userId") ?? "").trim();
   const result = await prisma.characterSheet.updateMany({
+    where: targetId ? { userId: targetId } : {},
     data: { dungeonRuns: 0, dungeonWeek: dungeonWeekKey() },
   });
 
   revalidatePath("/world");
-  return { ok: `${result.count.toLocaleString("ko-KR")}명의 주간 던전 횟수를 초기화했어요.` };
+  return {
+    ok: targetId
+      ? "해당 캐릭터의 주간 던전 횟수를 초기화했어요."
+      : `전체 ${result.count.toLocaleString("ko-KR")}명의 주간 던전 횟수를 초기화했어요.`,
+  };
 }
 
-// GM — 전체 플레이어의 피로도를 가득 채움
+// GM — 피로도를 가득 채움. userId 가 있으면 그 캐릭터만, 없으면 전체.
 export async function restoreAllFatigue(
   _prev: WorldCleanupState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<WorldCleanupState> {
   void _prev;
-  void _formData;
   const user = await getCurrentUser();
   if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
 
+  const targetId = String(formData.get("userId") ?? "").trim();
   const result = await prisma.characterSheet.updateMany({
+    where: targetId ? { userId: targetId } : {},
     data: { ap: FATIGUE_MAX, apResetAt: new Date() },
   });
 
   revalidatePath("/world");
-  return { ok: `${result.count.toLocaleString("ko-KR")}명의 피로도를 ${FATIGUE_MAX}로 채웠어요.` };
+  return {
+    ok: targetId
+      ? `해당 캐릭터의 피로도를 ${FATIGUE_MAX}로 채웠어요.`
+      : `전체 ${result.count.toLocaleString("ko-KR")}명의 피로도를 ${FATIGUE_MAX}로 채웠어요.`,
+  };
 }
