@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import {
   cleanupOldWorldMessages,
+  resetWeeklyDungeons,
+  restoreAllFatigue,
   syncWorldMap,
   type WorldActionState,
   type WorldCleanupState,
@@ -33,6 +35,14 @@ export default function WorldAdmin({
   );
   const [riftCloseState, riftCloseAction, riftClosePending] = useActionState<RiftActionState, FormData>(
     closeRift,
+    undefined,
+  );
+  const [dungeonResetState, dungeonResetAction, dungeonResetPending] = useActionState<
+    WorldCleanupState,
+    FormData
+  >(resetWeeklyDungeons, undefined);
+  const [fatigueState, fatigueAction, fatiguePending] = useActionState<WorldCleanupState, FormData>(
+    restoreAllFatigue,
     undefined,
   );
 
@@ -133,6 +143,42 @@ export default function WorldAdmin({
         )}
         {riftCloseState?.error && (
           <p className="mt-2 text-xs font-medium text-rose-600">{riftCloseState.error}</p>
+        )}
+      </div>
+
+      {/* 플레이어 관리 */}
+      <div className="mt-3 border-t border-brand-200/70 pt-3">
+        <p className="text-xs font-bold text-brand-700">👥 플레이어 관리</p>
+        <p className="text-xs text-muted">전체 플레이어에게 한 번에 적용됩니다.</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <form action={dungeonResetAction}>
+            <button
+              type="submit"
+              disabled={dungeonResetPending}
+              className="rounded-xl border border-brand-300 bg-surface px-3.5 py-2 text-xs font-bold text-brand-700 shadow-sm transition hover:bg-brand-50 disabled:opacity-60"
+            >
+              {dungeonResetPending ? "초기화 중…" : "⚔️ 주간 던전 횟수 초기화"}
+            </button>
+          </form>
+          <form action={fatigueAction}>
+            <button
+              type="submit"
+              disabled={fatiguePending}
+              className="rounded-xl border border-brand-300 bg-surface px-3.5 py-2 text-xs font-bold text-brand-700 shadow-sm transition hover:bg-brand-50 disabled:opacity-60"
+            >
+              {fatiguePending ? "회복 중…" : "⚡ 전체 피로도 회복"}
+            </button>
+          </form>
+        </div>
+        {(dungeonResetState?.error || dungeonResetState?.ok) && (
+          <p className={`mt-2 text-xs font-medium ${dungeonResetState.error ? "text-rose-600" : "text-emerald-600"}`}>
+            {dungeonResetState.error ?? `✅ ${dungeonResetState.ok}`}
+          </p>
+        )}
+        {(fatigueState?.error || fatigueState?.ok) && (
+          <p className={`mt-2 text-xs font-medium ${fatigueState.error ? "text-rose-600" : "text-emerald-600"}`}>
+            {fatigueState.error ?? `✅ ${fatigueState.ok}`}
+          </p>
         )}
       </div>
 
