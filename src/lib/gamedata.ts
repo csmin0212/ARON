@@ -133,6 +133,21 @@ export type CombatSkillRow = {
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
 
 // ── 공용 ──
+// 헤더 셀 한 칸에서 별칭으로 매칭해볼 후보들을 만든다.
+// 셀에 줄바꿈+예시("확률보상(추첨)\n다이아몬드:5,…")가 섞여 있거나, 끝에 괄호 주석,
+// 내부 띄어쓰기("추가 분류")가 있어도 첫 줄·괄호 제거·공백 제거판까지 모두 시도.
+function headerKeyCandidates(raw: string): string[] {
+  const firstLine = raw.split(/[\r\n]/)[0].trim();
+  const noParen = firstLine.replace(/\s*[(（].*?[)）]\s*$/, "").trim();
+  return [
+    raw.trim(),
+    firstLine,
+    noParen,
+    firstLine.replace(/\s+/g, ""),
+    noParen.replace(/\s+/g, ""),
+  ].filter(Boolean);
+}
+
 function findHeader(
   g: string[][],
   required: string[],
@@ -140,18 +155,17 @@ function findHeader(
 ): { row: number; col: Record<string, number> } | null {
   for (let r = 0; r < Math.min(g.length, 10); r++) {
     const cells = (g[r] || []).map((v) => (v ?? "").trim());
-    if (required.every((h) => cells.includes(h))) {
+    const candsPerCell = cells.map(headerKeyCandidates);
+    if (required.every((req) => candsPerCell.some((cands) => cands.includes(req)))) {
       const col: Record<string, number> = {};
-      cells.forEach((h, c) => {
-        // 정확 일치 우선. 없으면 헤더 끝의 괄호 주석 "보상(확정)" → "보상",
-        // 그래도 없으면 띄어쓰기 무시("추가 분류" → "추가분류") 로 재시도.
-        const stripParen = h.replace(/\s*[(（].*?[)）]\s*$/, "").trim();
-        const key =
-          aliases[h] ??
-          aliases[stripParen] ??
-          aliases[h.replace(/\s+/g, "")] ??
-          aliases[stripParen.replace(/\s+/g, "")];
-        if (key && col[key] == null) col[key] = c;
+      candsPerCell.forEach((cands, c) => {
+        for (const cand of cands) {
+          const key = aliases[cand];
+          if (key) {
+            if (col[key] == null) col[key] = c;
+            break;
+          }
+        }
       });
       return { row: r, col };
     }
