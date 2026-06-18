@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { logout } from "@/app/actions/auth";
 import Avatar from "./Avatar";
 import ThemeControls from "./ThemeControls";
+import MobileNav from "./MobileNav";
 import {
   THEME_COOKIE,
   ACCENT_COOKIE,
@@ -48,13 +49,13 @@ export default async function Header() {
         <nav className="flex items-center gap-2 text-sm">
           <Link
             href="/world"
-            className="rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600"
+            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
           >
             🗺️ 월드
           </Link>
           <Link
             href="/collection"
-            className="rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600"
+            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
           >
             📖 도감
           </Link>
@@ -103,14 +104,14 @@ export default async function Header() {
               </Link>
               <Link
                 href={`/u/${encodeURIComponent(user.username)}`}
-                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 transition hover:bg-subtle-hover"
+                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-1 transition hover:bg-subtle-hover sm:pr-3"
               >
                 <Avatar name={user.nickname} avatar={user.avatar} size={30} />
-                <span className="max-w-[90px] truncate text-sm font-semibold text-content">
+                <span className="hidden max-w-[90px] truncate text-sm font-semibold text-content sm:inline">
                   {user.nickname}
                 </span>
               </Link>
-              <form action={logout}>
+              <form action={logout} className="hidden sm:block">
                 <button
                   type="submit"
                   className="rounded-lg px-2.5 py-2 text-faint transition hover:bg-subtle-hover hover:text-content"
@@ -118,21 +119,23 @@ export default async function Header() {
                   로그아웃
                 </button>
               </form>
+              <MobileNav loggedIn username={user.username} />
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <Link
                 href="/login"
-                className="rounded-lg px-3 py-2 font-semibold text-content transition hover:bg-subtle-hover"
+                className="hidden rounded-lg px-3 py-2 font-semibold text-content transition hover:bg-subtle-hover sm:inline-block"
               >
                 로그인
               </Link>
               <Link
                 href="/register"
-                className="rounded-lg border border-line px-3 py-2 font-semibold text-content transition hover:bg-subtle"
+                className="hidden rounded-lg border border-line px-3 py-2 font-semibold text-content transition hover:bg-subtle sm:inline-block"
               >
                 회원가입
               </Link>
+              <MobileNav loggedIn={false} />
             </div>
           )}
         </nav>
