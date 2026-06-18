@@ -683,6 +683,22 @@ export default async function WorldPage() {
         </div>
 
         <div className="space-y-4">
+          {here.name.includes("광장") && (
+            <Link
+              href="/hall"
+              className="flex items-center gap-3 rounded-3xl border border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100/60 p-4 shadow-sm transition hover:border-amber-400 hover:shadow"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-200 text-2xl">
+                🏛️
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">명예의 전당</span>
+                <span className="block text-xs text-muted">
+                  광장 비석에 새겨진 분야별 랭킹을 봅니다 →
+                </span>
+              </span>
+            </Link>
+          )}
           <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <h2 className="mb-3 px-1 text-sm font-extrabold text-content">
               🧭 이동 가능 구역
