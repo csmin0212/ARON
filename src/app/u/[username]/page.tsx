@@ -9,7 +9,7 @@ import { parseLifeState } from "@/lib/lifeSkillPerks";
 import { checkAndGrant } from "@/lib/achievements";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import CharacterTabs from "@/components/CharacterTabs";
-import LifeSkillPanel from "@/components/LifeSkillPanel";
+import LifeSkillPanel, { type LifeTreeNodeView } from "@/components/LifeSkillPanel";
 import ProfileHero from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
 import ProfileTradePanel, { type TradeOfferView } from "@/components/ProfileTradePanel";
@@ -206,7 +206,29 @@ export default async function CharacterPage({
     </div>
   );
 
-  const lifeTab = <LifeSkillPanel life={life} isOwn={isOwn} cookingRecipes={cookingRecipes} />;
+  const treeNodeRows = await prisma.lifeSkillNode.findMany({ orderBy: { order: "asc" } });
+  const treeNodes: LifeTreeNodeView[] = treeNodeRows.map((n) => {
+    let prereq: string[] = [];
+    try {
+      if (n.prereqJson) prereq = JSON.parse(n.prereqJson) as string[];
+    } catch {
+      /* noop */
+    }
+    return {
+      id: n.id,
+      job: n.job as "낚시" | "채집" | "요리",
+      name: n.name,
+      rarity: n.rarity,
+      cost: n.cost,
+      prereq,
+      row: n.row,
+      col: n.col,
+      description: n.description,
+    };
+  });
+  const lifeTab = (
+    <LifeSkillPanel life={life} isOwn={isOwn} cookingRecipes={cookingRecipes} treeNodes={treeNodes} />
+  );
 
   const achTab = (
     <AchievementBook

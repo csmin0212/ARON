@@ -33,8 +33,10 @@ export type LifeState = {
   fishing: SkillProgress;
   plant: SkillProgress;
   cooking: SkillProgress;
-  perks: OwnedPerk[];
-  pending: PendingChoice[];
+  perks: OwnedPerk[]; // 트리에서 해금한 낚시·채집 노드 효과(컴퓨트 입력)
+  pending: PendingChoice[]; // (구) 랜덤 드래프트 잔재 — 트리 전환 후 미사용
+  treeNodes: string[]; // 해금한 트리 노드 ID (전 직군)
+  cookingExpMult: number; // 요리 트리로 누적된 요리 숙련 배율(기본 1)
   // 도감 — 한 번이라도 획득한 아이템 이름
   collection: { 채집: string[]; 낚시: string[] };
   // 생활 전용 임시 가방 — 일반 시트 소지품과 별도로 중량 제한을 둔다.
@@ -194,6 +196,8 @@ const EMPTY: LifeState = {
   cooking: { exp: 0, level: 1 },
   perks: [],
   pending: [],
+  treeNodes: [],
+  cookingExpMult: 1,
   collection: { 채집: [], 낚시: [] },
   bags: {
     채집: { name: "약초꾼 가방", maxWeight: 10, items: [] },
@@ -240,6 +244,8 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       cooking: v.cooking ?? { exp: 0, level: 1 },
       perks: v.perks ?? [],
       pending: v.pending ?? [],
+      treeNodes: Array.isArray(v.treeNodes) ? v.treeNodes : [],
+      cookingExpMult: typeof v.cookingExpMult === "number" ? v.cookingExpMult : 1,
       collection: {
         채집: v.collection?.채집 ?? [],
         낚시: v.collection?.낚시 ?? [],
@@ -360,13 +366,15 @@ export function rollPerkOptions(
   return options;
 }
 
-// 경험치 적용 → 레벨업 시 도달 레벨 반환. 특성 선택지는 PERK_EVERY 레벨마다 적재.
+// 경험치 적용 → 레벨업 시 도달 레벨 반환. 레벨업마다 1포인트(트리에서 사용).
+// (catalog 인자는 구 랜덤 드래프트 호환용 — 트리 전환 후 미사용)
 export function applyExp(
   state: LifeState,
   kind: LifeSkillKind,
   gained: number,
   catalog?: LifeSkillCatalogEntry[],
 ): number[] {
+  void catalog;
   const prog = progressOf(state, kind);
   prog.exp += gained;
   const leveled: number[] = [];
@@ -374,16 +382,13 @@ export function applyExp(
     prog.exp -= expForNext(prog.level);
     prog.level += 1;
     leveled.push(prog.level);
-    if (prog.level % PERK_EVERY === 0) {
-      state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind, catalog) });
-    }
   }
   return leveled;
 }
 
 export function applyCookingExp(state: LifeState, gained: number): number[] {
   const prog = state.cooking;
-  prog.exp += gained;
+  prog.exp += Math.round(gained * (state.cookingExpMult ?? 1));
   const leveled: number[] = [];
   while (prog.exp >= expForNext(prog.level)) {
     prog.exp -= expForNext(prog.level);
@@ -391,6 +396,15 @@ export function applyCookingExp(state: LifeState, gained: number): number[] {
     leveled.push(prog.level);
   }
   return leveled;
+}
+
+// ── 트리 포인트 ──
+// 직군별 보유 포인트 = 레벨, 사용 포인트 = 보유 노드 비용 합. (비용은 노드 카탈로그에서)
+export function lifeJobLevel(state: LifeState, job: string): number {
+  if (job === "낚시") return state.fishing.level;
+  if (job === "채집") return state.plant.level;
+  if (job === "요리") return state.cooking.level;
+  return 1;
 }
 
 // ── 보유 특성 → 게임 수치 변환 ──

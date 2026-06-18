@@ -14,6 +14,7 @@ import {
   fetchRecipesRows,
   fetchSkillsRows,
   fetchCombatSkillsRows,
+  fetchLifeTreeRows,
 } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -734,6 +735,35 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "전투스킬 탭 오류");
+  }
+
+  // 10) 생활트리 (선택) — 정의만 교체. 유저 해금 기록(lifeJson)은 보존.
+  try {
+    const nodes = await fetchLifeTreeRows();
+    if (nodes) {
+      await prisma.$transaction([
+        prisma.lifeSkillNode.deleteMany(),
+        prisma.lifeSkillNode.createMany({
+          data: nodes.map((n, i) => ({
+            id: n.id,
+            job: n.job,
+            name: n.name,
+            rarity: n.rarity,
+            effectKey: n.effectKey,
+            effectValue: n.effectValue,
+            cost: n.cost,
+            prereqJson: JSON.stringify(n.prereq),
+            row: n.row,
+            col: n.col,
+            description: n.description,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`생활트리 ${nodes.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "생활트리 탭 오류");
   }
 
   revalidatePath("/world");

@@ -136,6 +136,25 @@ model CombatSkill {
   @@index([sourceItem])
 }
 
+// 생활스킬 트리 노드 (GM 시트 '생활트리' 탭에서 동기화). 레벨당 1포인트로 해금.
+model LifeSkillNode {
+  id          String   @id // 노드ID
+  job         String // 낚시 | 채집 | 요리
+  name        String
+  rarity      String?
+  effectKey   String?
+  effectValue String?
+  cost        Int      @default(1) // 해금 비용(포인트)
+  prereqJson  String? // 선행노드 ID 배열 JSON (하나라도 보유 시 해금)
+  row         Int      @default(0)
+  col         Int      @default(0)
+  description String?
+  order       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@index([job])
+}
+
 // 유저별 발견한 레시피
 model UserRecipe {
   id         String   @id @default(cuid())

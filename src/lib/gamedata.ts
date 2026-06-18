@@ -18,6 +18,7 @@ export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
 export const SKILLS_TAB = process.env.SKILLS_TAB_NAME || "스킬";
 export const COMBAT_SKILLS_TAB = process.env.COMBAT_SKILLS_TAB_NAME || "전투스킬";
+export const LIFE_TREE_TAB = process.env.LIFE_TREE_TAB_NAME || "생활트리";
 
 export type ItemRow = {
   id: string;
@@ -128,6 +129,20 @@ export type CombatSkillRow = {
   effect: string | null;
   critical: string | null;
   sourceItem: string | null;
+};
+
+export type LifeTreeNodeRow = {
+  id: string;
+  job: string;
+  name: string;
+  rarity: string | null;
+  effectKey: string | null;
+  effectValue: string | null;
+  cost: number;
+  prereq: string[];
+  row: number;
+  col: number;
+  description: string | null;
 };
 
 export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
@@ -775,6 +790,74 @@ export async function fetchSkillsRows(): Promise<SkillRow[] | null> {
     (await fetchTab(WORLD_SHEET_ID, SKILLS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, SKILLS_TAB));
   if (!g) return null;
   return parseSkillsGrid(g);
+}
+
+// ── 생활트리 탭 ──
+// 직군 | 노드ID | 이름 | 등급 | 효과키 | 효과값 | 비용 | 선행노드 | 행 | 열 | 설명
+// 직군: 낚시 | 채집 | 요리. 선행노드: 쉼표로 나열(하나라도 보유 시 해금). 효과키/값은 특성과 동일 체계.
+export function parseLifeTreeGrid(g: string[][]): LifeTreeNodeRow[] {
+  const h = findHeader(g, ["직군", "이름"], {
+    직군: "job",
+    계열: "job",
+    노드ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    등급: "rarity",
+    희귀도: "rarity",
+    효과키: "effectKey",
+    "효과 키": "effectKey",
+    효과값: "effectValue",
+    "효과 값": "effectValue",
+    값: "effectValue",
+    비용: "cost",
+    포인트: "cost",
+    선행노드: "prereq",
+    선행: "prereq",
+    행: "row",
+    열: "col",
+    설명: "description",
+  });
+  if (!h) throw new Error("생활트리 탭이 없거나 헤더(직군/이름)가 없어요.");
+
+  const rows: LifeTreeNodeRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const job = at(g, r, h.col.job);
+    const name = at(g, r, h.col.name);
+    if (!job || !name) continue;
+    const id = at(g, r, h.col.id) || `${job}-${name}`;
+    if (/[,，]/.test(id)) throw new Error(`생활트리 노드ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    if (seen.has(id)) throw new Error(`생활트리 노드ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+    const prereq = at(g, r, h.col.prereq)
+      .split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    rows.push({
+      id,
+      job,
+      name,
+      rarity: at(g, r, h.col.rarity) || null,
+      effectKey: at(g, r, h.col.effectKey) || null,
+      effectValue: at(g, r, h.col.effectValue) || null,
+      cost: Math.max(1, num(at(g, r, h.col.cost)) ?? 1),
+      prereq,
+      row: num(at(g, r, h.col.row)) ?? 0,
+      col: num(at(g, r, h.col.col)) ?? 0,
+      description: at(g, r, h.col.description) || null,
+    });
+  }
+  if (rows.length === 0) throw new Error("생활트리 탭에 노드가 없어요.");
+  return rows;
+}
+
+export async function fetchLifeTreeRows(): Promise<LifeTreeNodeRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, LIFE_TREE_TAB)) ??
+    (await fetchTab(MASTER_SHEET_ID, LIFE_TREE_TAB));
+  if (!g) return null;
+  return parseLifeTreeGrid(g);
 }
 
 export async function fetchCombatSkillsRows(): Promise<CombatSkillRow[] | null> {

@@ -27,7 +27,6 @@ import {
   recordCollection,
   recordLifeCatch,
 } from "@/lib/lifeSkillPerks";
-import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 
 const GATHER = "채집" as const;
 const SIDE_WAIT_MS = 2 * 60_000; // 사이드 명중 → 2분
@@ -109,7 +108,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
     return { full: true as const };
   }
   const expGained = Math.max(1, Math.round(lifeSkillExpGain(GATHER, p.exp) * mods.expMult));
-  const leveled = applyExp(life, GATHER, expGained, await fetchLifeSkillCatalog());
+  const leveled = applyExp(life, GATHER, expGained);
   const first = recordCollection(life, GATHER, p.name);
   const count = recordLifeCatch(life, GATHER, p.name);
   addLifeBagItem(life, GATHER, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
