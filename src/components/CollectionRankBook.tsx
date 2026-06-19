@@ -89,7 +89,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
       </div>
 
       {([activeKind] as CollectionKind[]).map((kind) => {
-        const group = byKind[kind].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+        const group = [...byKind[kind]].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
         const found = group.filter((entry) => entry.discovered).length;
         const activeRank = activeRanks[kind];
         const rankItems = group.filter((entry) => entry.rank === activeRank);
@@ -146,7 +146,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {rankItems.map((entry) => (
                   <article
-                    key={`${kind}-${entry.name}`}
+                    key={`${kind}-${entry.id ?? entry.name}`}
                     className={`rounded-2xl border px-4 py-3 ${
                       entry.discovered
                         ? "border-line bg-subtle/55"
