@@ -1,29 +1,18 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { allocateLifeNode, resetLifeTree, type LifeActionState } from "@/app/actions/life";
+import { chooseLifePerk, type LifeActionState } from "@/app/actions/life";
 import {
   computeMods,
   expForNext,
   lifeBagLimit,
   lifeBagWeight,
+  PERK_EVERY,
   RARITY_COLORS,
   type LifeState,
   type LifeBag,
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
-
-export type LifeTreeNodeView = {
-  id: string;
-  job: "낚시" | "채집" | "요리";
-  name: string;
-  rarity: string | null;
-  cost: number;
-  prereq: string[];
-  row: number;
-  col: number;
-  description: string | null;
-};
 import { collectionItems, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
@@ -68,6 +57,14 @@ const SKILL_META: { kind: "낚시" | "채집" | "요리"; emoji: string; key: "f
   ...KIND_META,
   { kind: "요리", emoji: "🍳", key: "cooking" },
 ];
+
+function RarityBadge({ rarity }: { rarity: PerkRarity }) {
+  return (
+    <span className={`rounded bg-subtle px-1.5 py-0.5 text-[11px] font-bold ${RARITY_COLORS[rarity]}`}>
+      {rarity}
+    </span>
+  );
+}
 
 function LifeBagModal({
   bag,
@@ -253,181 +250,24 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
   );
 }
 
-const JOB_META: { job: "낚시" | "채집" | "요리"; emoji: string; key: "fishing" | "plant" | "cooking" }[] = [
-  { job: "낚시", emoji: "🎣", key: "fishing" },
-  { job: "채집", emoji: "🌿", key: "plant" },
-  { job: "요리", emoji: "🍳", key: "cooking" },
-];
-
-// 생활스킬 트리 — 레벨당 1포인트로 노드를 해금(직군별)
-function SkillTreePanel({
-  life,
-  nodes,
-  isOwn,
-}: {
-  life: LifeState;
-  nodes: LifeTreeNodeView[];
-  isOwn: boolean;
-}) {
-  const [job, setJob] = useState<"낚시" | "채집" | "요리">("낚시");
-  const [allocState, allocAction, allocPending] = useActionState<LifeActionState, FormData>(
-    allocateLifeNode,
-    undefined,
-  );
-  const [resetState, resetAction, resetPending] = useActionState<LifeActionState, FormData>(
-    resetLifeTree,
-    undefined,
-  );
-
-  const owned = useMemo(() => new Set(life.treeNodes), [life.treeNodes]);
-  const jobNodes = useMemo(() => nodes.filter((n) => n.job === job), [nodes, job]);
-
-  const meta = JOB_META.find((m) => m.job === job)!;
-  const level = life[meta.key].level;
-  const spent = jobNodes.filter((n) => owned.has(n.id)).reduce((s, n) => s + n.cost, 0);
-  const available = level - spent;
-  const maxRow = Math.max(1, ...jobNodes.map((n) => n.row));
-  const maxCol = Math.max(1, ...jobNodes.map((n) => n.col));
-
-  const canUnlock = (n: LifeTreeNodeView) =>
-    isOwn &&
-    !owned.has(n.id) &&
-    (n.prereq.length === 0 || n.prereq.some((p) => owned.has(p))) &&
-    available >= n.cost;
-
-  const msg = allocState?.error ?? resetState?.error ?? allocState?.ok ?? resetState?.ok;
-  const msgError = !!(allocState?.error ?? resetState?.error);
-
-  return (
-    <div className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1.5">
-          {JOB_META.map((m) => (
-            <button
-              key={m.job}
-              type="button"
-              onClick={() => setJob(m.job)}
-              className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                job === m.job ? "bg-brand-500 text-white shadow-sm" : "bg-subtle text-muted hover:text-content"
-              }`}
-            >
-              {m.emoji} {m.job}
-            </button>
-          ))}
-        </div>
-        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-extrabold text-amber-700">
-          남은 포인트 {Math.max(0, available)}
-        </span>
-      </div>
-
-      {msg && (
-        <p
-          className={`mb-3 rounded-lg px-3 py-2 text-xs font-semibold ${
-            msgError ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
-          }`}
-        >
-          {msg}
-        </p>
-      )}
-
-      {jobNodes.length === 0 ? (
-        <p className="py-8 text-center text-sm text-faint">
-          아직 트리가 없어요. GM이 ‘생활트리’ 탭을 동기화하면 나타나요.
-        </p>
-      ) : (
-        <div className="overflow-x-auto pb-2">
-          <div
-            className="grid gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${maxCol}, minmax(76px, 1fr))`,
-              gridTemplateRows: `repeat(${maxRow}, auto)`,
-            }}
-          >
-            {jobNodes.map((n) => {
-              const isOwned = owned.has(n.id);
-              const unlockable = canUnlock(n);
-              const cell = (
-                <div
-                  className={`flex h-full flex-col gap-0.5 rounded-2xl border p-2 text-center transition ${
-                    isOwned
-                      ? "border-brand-400 bg-brand-50"
-                      : unlockable
-                        ? "border-amber-300 bg-amber-50/50 hover:border-amber-400"
-                        : "border-line bg-subtle/40 opacity-60"
-                  }`}
-                >
-                  <span
-                    className={`truncate text-[11px] font-bold ${RARITY_COLORS[(n.rarity as PerkRarity) || "일반"]}`}
-                  >
-                    {n.name}
-                  </span>
-                  <span className="text-[10px] font-semibold text-faint">
-                    {isOwned ? "보유" : `${n.cost}P`}
-                  </span>
-                </div>
-              );
-              return (
-                <div
-                  key={n.id}
-                  style={{ gridColumn: n.col, gridRow: n.row }}
-                  title={n.description ?? n.name}
-                >
-                  {unlockable ? (
-                    <form action={allocAction}>
-                      <input type="hidden" name="nodeId" value={n.id} />
-                      <button type="submit" disabled={allocPending} className="block w-full disabled:opacity-50">
-                        {cell}
-                      </button>
-                    </form>
-                  ) : (
-                    cell
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {isOwn && (
-        <form action={resetAction} className="mt-3 text-right">
-          <input type="hidden" name="job" value={job} />
-          <button
-            type="submit"
-            disabled={resetPending}
-            className="text-[11px] font-semibold text-faint transition hover:text-rose-500"
-          >
-            {job} 특성 초기화(리스펙)
-          </button>
-        </form>
-      )}
-    </div>
-  );
-}
-
 export default function LifeSkillPanel({
   life,
   isOwn,
   cookingRecipes = [],
-  treeNodes = [],
 }: {
   life: LifeState;
   isOwn: boolean;
   cookingRecipes?: CollectionBookEntry[];
-  treeNodes?: LifeTreeNodeView[];
 }) {
-  const [view, setView] = useState<"profile" | "book" | "skill">("profile");
+  const [state, formAction, pending] = useActionState<LifeActionState, FormData>(
+    chooseLifePerk,
+    undefined,
+  );
 
-  const ownedSet = useMemo(() => new Set(life.treeNodes), [life.treeNodes]);
-  const availablePoints = useMemo(() => {
-    const byJob: Record<string, { level: number; spent: number }> = {
-      낚시: { level: life.fishing.level, spent: 0 },
-      채집: { level: life.plant.level, spent: 0 },
-      요리: { level: life.cooking.level, spent: 0 },
-    };
-    for (const n of treeNodes) if (ownedSet.has(n.id) && byJob[n.job]) byJob[n.job].spent += n.cost;
-    return Object.values(byJob).reduce((s, j) => s + Math.max(0, j.level - j.spent), 0);
-  }, [treeNodes, ownedSet, life.fishing.level, life.plant.level, life.cooking.level]);
+  const choice = life.pending[0];
+  const [view, setView] = useState<"profile" | "book" | "skill">("profile");
+  const [perkKind, setPerkKind] = useState<"낚시" | "채집">("낚시");
+  const kindPerks = life.perks.filter((p) => p.kind === perkKind);
 
   // 레벨/숙련도 카드
   const levelCard = (
@@ -464,10 +304,101 @@ export default function LifeSkillPanel({
     </div>
   );
 
+  // 특성 선택(본인·대기 중) + 보유 특성
+  const skillSection = (
+    <div className="space-y-5">
+      {isOwn && choice && (
+        <div className="rounded-3xl border-2 border-amber-300 bg-amber-50/60 p-6 shadow-sm">
+          <h2 className="text-lg font-extrabold text-content">
+            🆙 {choice.kind} Lv.{choice.level} 달성 — 특성을 선택하세요!
+          </h2>
+          <p className="mb-4 mt-1 text-xs text-muted">
+            {life.pending.length > 1 && `대기 중인 선택 ${life.pending.length}개 · `}
+            하나를 고르면 즉시 적용돼요.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {choice.options.map((opt, i) => (
+              <form key={i} action={formAction}>
+                <input type="hidden" name="option" value={i} />
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="flex h-full w-full flex-col gap-1.5 rounded-2xl border border-line bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2">
+                    <RarityBadge rarity={opt.rarity} />
+                    <span className="text-sm font-extrabold text-content">{opt.name}</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted">{opt.text}</p>
+                </button>
+              </form>
+            ))}
+          </div>
+          {state?.error && (
+            <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">
+              {state.error}
+            </p>
+          )}
+          {state?.ok && (
+            <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600">
+              ✨ {state.ok}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-extrabold text-content">보유 특성</h2>
+          <div className="flex gap-1.5">
+            {KIND_META.map(({ kind, emoji }) => {
+              const active = perkKind === kind;
+              const n = life.perks.filter((p) => p.kind === kind).length;
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setPerkKind(kind)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                    active
+                      ? "bg-brand-500 text-white shadow-sm"
+                      : "bg-subtle text-muted hover:text-content"
+                  }`}
+                >
+                  {emoji} {kind} {n > 0 && <span className="opacity-80">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {kindPerks.length === 0 ? (
+          <p className="py-4 text-center text-sm text-faint">
+            {perkKind} 특성이 아직 없어요. 특성은 {PERK_EVERY}레벨마다 선택할 수 있어요!
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {kindPerks.map((p, i) => (
+              <li key={i} className="flex items-start gap-2.5 rounded-xl bg-subtle/60 px-3.5 py-2.5">
+                <span className="mt-0.5 shrink-0 text-sm">{p.kind === "낚시" ? "🎣" : "🌿"}</span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-bold text-content">{p.name}</span>
+                    <RarityBadge rarity={p.rarity} />
+                  </div>
+                  <p className="text-xs text-muted">{p.text}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+
   const TABS: { key: "profile" | "book" | "skill"; label: string; badge?: number }[] = [
     { key: "profile", label: "🧺 프로필" },
     { key: "book", label: "📖 도감" },
-    { key: "skill", label: "🌳 트리", badge: isOwn ? availablePoints : 0 },
+    { key: "skill", label: "✨ 스킬", badge: isOwn ? life.pending.length : 0 },
   ];
 
   return (
@@ -508,7 +439,7 @@ export default function LifeSkillPanel({
       {view === "book" && (
         <CollectionBook life={life} cookingRecipes={cookingRecipes} />
       )}
-      {view === "skill" && <SkillTreePanel life={life} nodes={treeNodes} isOwn={isOwn} />}
+      {view === "skill" && skillSection}
     </div>
   );
 }
