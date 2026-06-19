@@ -138,7 +138,9 @@ export const ABILITY_LABELS_KO = ["근력", "재주", "민첩", "지력", "감�
 // 내부 띄어쓰기("추가 분류")가 있어도 첫 줄·괄호 제거·공백 제거판까지 모두 시도.
 function headerKeyCandidates(raw: string): string[] {
   const firstLine = raw.split(/[\r\n]/)[0].trim();
-  const noParen = firstLine.replace(/\s*[(（].*?[)）]\s*$/, "").trim();
+  // 헤더 뒤에 붙은 장식 주석 제거: (), （）, 《》, 〈〉, 【】, [], <>
+  // 예: "효과 《포르테》" → "효과"
+  const noParen = firstLine.replace(/\s*[(（《〈【[<].*?[)）》〉】\]>]\s*$/, "").trim();
   return [
     raw.trim(),
     firstLine,
