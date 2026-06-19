@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
+import { FATIGUE_MAX } from "@/lib/world";
 import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
@@ -51,6 +52,7 @@ type PendingCatch = {
   exp: number;
   size: number;
   difficulty: number;
+  apCost: number; // 시작 시 소모한 피로도 (실패 시 절반 환급용)
 };
 
 // 등급별 기본 난이도(0~100). 4·5성은 흉악 — 고레벨이라야 잡을 만해진다.
@@ -143,6 +145,7 @@ export async function startFishing(): Promise<FishingStart> {
     exp: item.exp,
     size: caught.size,
     difficulty,
+    apCost: action.apCost,
   };
 
   await prisma.characterSheet.update({
@@ -170,13 +173,25 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   const locationId = sheet.locationId;
 
   if (!landed) {
+    // 실패 — 소모했던 피로도의 절반을 돌려준다.
+    const refund = Math.floor((pending.apCost ?? 0) / 2);
+    const fresh = freshAp(sheet.ap, sheet.apResetAt);
+    const newAp = Math.min(FATIGUE_MAX, fresh.ap + refund);
     await prisma.characterSheet.update({
       where: { userId: user.id },
-      data: { pendingCatchJson: null, achStatsJson: bumpStat(sheet.achStatsJson, "낚시실패횟수") },
+      data: {
+        pendingCatchJson: null,
+        ap: newAp,
+        apResetAt: fresh.apResetAt,
+        achStatsJson: bumpStat(sheet.achStatsJson, "낚시실패횟수"),
+      },
     });
     void checkAndGrant(user.id);
     if (locationId) {
-      await postSystem(locationId, `🎣 ${user.nickname}님 — 놓쳤다! 미끼만 물고 달아났다…`);
+      await postSystem(
+        locationId,
+        `🎣 ${user.nickname}님 — 놓쳤다! 미끼만 물고 달아났다…${refund > 0 ? ` (피로도 ${refund} 환급)` : ""}`,
+      );
     }
     revalidatePath("/world");
     revalidatePath("/profile");

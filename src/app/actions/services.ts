@@ -889,11 +889,13 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   }
   if (discovered) achStats = bumpStat(achStats, "요리레시피수");
 
+  // 실패(레시피 불일치) 시 소모 피로도의 절반을 돌려준다.
+  const apCost = recipe ? COOKING_AP_COST : COOKING_AP_COST - Math.floor(COOKING_AP_COST / 2);
   await Promise.all([
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
       data: {
-        ap: fresh.value - COOKING_AP_COST,
+        ap: fresh.value - apCost,
         apResetAt: fresh.at,
         invJson: JSON.stringify(inv),
         lifeJson: JSON.stringify(life),
@@ -911,7 +913,9 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   revalidatePath("/world");
   revalidatePath("/profile");
   if (!recipe) {
-    return { ok: `조합이 맞지 않았어요. ${FAILED_DISH.name} x1 획득. 피로도 -${COOKING_AP_COST}` };
+    return {
+      ok: `조합이 맞지 않았어요. ${FAILED_DISH.name} x1 획득. 피로도 -${apCost} (실패라 절반만 소모)`,
+    };
   }
   return {
     ok: [
