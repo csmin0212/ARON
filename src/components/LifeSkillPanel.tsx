@@ -289,15 +289,6 @@ function SkillTreePanel({
   const maxRow = Math.max(1, ...jobNodes.map((n) => n.row));
   const maxCol = Math.max(1, ...jobNodes.map((n) => n.col));
 
-  const CELL_W = 96;
-  const CELL_H = 92;
-  const BOX_W = 82;
-  const BOX_H = 62;
-  const boardW = maxCol * CELL_W;
-  const boardH = maxRow * CELL_H;
-  const nodeById = useMemo(() => new Map(jobNodes.map((n) => [n.id, n])), [jobNodes]);
-  const center = (n: LifeTreeNodeView) => ({ x: (n.col - 0.5) * CELL_W, y: (n.row - 0.5) * CELL_H });
-
   const canUnlock = (n: LifeTreeNodeView) =>
     isOwn &&
     !owned.has(n.id) &&
@@ -345,80 +336,52 @@ function SkillTreePanel({
         </p>
       ) : (
         <div className="overflow-x-auto pb-2">
-          <div className="relative mx-auto" style={{ width: boardW, height: boardH }}>
-            <svg
-              className="pointer-events-none absolute inset-0"
-              width={boardW}
-              height={boardH}
-              aria-hidden
-            >
-              {jobNodes.flatMap((n) =>
-                n.prereq
-                  .filter((p) => nodeById.has(p))
-                  .map((p) => {
-                    const a = center(nodeById.get(p)!);
-                    const b = center(n);
-                    const lit = owned.has(n.id) && owned.has(p);
-                    return (
-                      <line
-                        key={`${p}-${n.id}`}
-                        x1={a.x}
-                        y1={a.y}
-                        x2={b.x}
-                        y2={b.y}
-                        stroke="currentColor"
-                        strokeWidth={lit ? 3 : 2}
-                        className={lit ? "text-brand-400" : "text-line"}
-                      />
-                    );
-                  }),
-              )}
-            </svg>
+          <div
+            className="grid gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${maxCol}, minmax(76px, 1fr))`,
+              gridTemplateRows: `repeat(${maxRow}, auto)`,
+            }}
+          >
             {jobNodes.map((n) => {
               const isOwned = owned.has(n.id);
               const unlockable = canUnlock(n);
-              const c = center(n);
-              const style = {
-                position: "absolute" as const,
-                left: c.x - BOX_W / 2,
-                top: c.y - BOX_H / 2,
-                width: BOX_W,
-                height: BOX_H,
-              };
-              const box = (
+              const cell = (
                 <div
-                  className={`flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-2xl border px-1 text-center transition ${
+                  className={`flex h-full flex-col gap-0.5 rounded-2xl border p-2 text-center transition ${
                     isOwned
-                      ? "border-brand-400 bg-brand-50 shadow-sm"
+                      ? "border-brand-400 bg-brand-50"
                       : unlockable
-                        ? "border-amber-300 bg-amber-50/60 hover:border-amber-400 hover:shadow"
-                        : "border-line bg-subtle/40 opacity-55"
+                        ? "border-amber-300 bg-amber-50/50 hover:border-amber-400"
+                        : "border-line bg-subtle/40 opacity-60"
                   }`}
                 >
                   <span
-                    className={`line-clamp-2 text-[10px] font-bold leading-tight ${RARITY_COLORS[(n.rarity as PerkRarity) || "일반"]}`}
+                    className={`truncate text-[11px] font-bold ${RARITY_COLORS[(n.rarity as PerkRarity) || "일반"]}`}
                   >
                     {n.name}
                   </span>
-                  <span className="text-[9px] font-semibold text-faint">
-                    {isOwned ? "✔ 보유" : `${n.cost}P`}
+                  <span className="text-[10px] font-semibold text-faint">
+                    {isOwned ? "보유" : `${n.cost}P`}
                   </span>
                 </div>
               );
-              return unlockable ? (
-                <form key={n.id} action={allocAction} style={style} title={n.description ?? n.name}>
-                  <input type="hidden" name="nodeId" value={n.id} />
-                  <button
-                    type="submit"
-                    disabled={allocPending}
-                    className="block h-full w-full disabled:opacity-50"
-                  >
-                    {box}
-                  </button>
-                </form>
-              ) : (
-                <div key={n.id} style={style} title={n.description ?? n.name}>
-                  {box}
+              return (
+                <div
+                  key={n.id}
+                  style={{ gridColumn: n.col, gridRow: n.row }}
+                  title={n.description ?? n.name}
+                >
+                  {unlockable ? (
+                    <form action={allocAction}>
+                      <input type="hidden" name="nodeId" value={n.id} />
+                      <button type="submit" disabled={allocPending} className="block w-full disabled:opacity-50">
+                        {cell}
+                      </button>
+                    </form>
+                  ) : (
+                    cell
+                  )}
                 </div>
               );
             })}
