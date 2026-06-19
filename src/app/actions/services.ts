@@ -11,7 +11,7 @@ import {
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
-import { parseGoldToInt, rollDice } from "@/lib/dice";
+import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
   applyCookingExp,
@@ -971,22 +971,6 @@ export async function sellCookedFood(
   return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
 }
 
-function parseFatigueRecovery(effect: string): number | null {
-  const diceMatch = effect.match(/피로도(?:를)?\s*\[?(\d+)D\]?\s*점?\s*회복/);
-  if (diceMatch) {
-    const diceCount = Number.parseInt(diceMatch[1], 10);
-    if (!Number.isFinite(diceCount) || diceCount <= 0 || diceCount > 20) return null;
-    return rollDice(diceCount).reduce((sum, die) => sum + die, 0);
-  }
-
-  const fixedMatch = effect.match(
-    /피로도(?:를)?\s*\+?(\d+)\s*점?\s*회복|피로도\s*회복\s*(\d+)|피로도\s*\+(\d+)/,
-  );
-  if (!fixedMatch) return null;
-  const n = Number.parseInt(fixedMatch[1] ?? fixedMatch[2] ?? fixedMatch[3], 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 function parseLifeLuck(effect: string): { kind: LifeSkillKind | "both"; amount: number } | null {
   const match = effect.match(/(?:낚시·채집|낚시|채집)\s*행운\s*\+(\d+)/);
   if (!match) return null;
@@ -1064,33 +1048,12 @@ export async function useCookingItem(
   );
 
   let ok = "";
-  const fatigue = parseFatigueRecovery(rawEffect);
+  // 피로도(AP) 회복은 요리에서 비활성 — 음식으로 AP 상한을 우회하면 밸런스가 깨짐.
+  // AP 회복은 자연회복·여관·집 휴식으로만. (행운·세션 버프는 그대로 유지)
   const lifeLuck = parseLifeLuck(rawEffect);
   const sessionBuff = parseSessionBuff(rawEffect);
 
-  if (fatigue != null) {
-    const fresh = regenFatigue(sheet.ap, sheet.apResetAt, now);
-    if (fresh.value >= FATIGUE_MAX) return { error: "피로도가 이미 가득 찼어요." };
-    const nextAp = Math.min(FATIGUE_MAX, fresh.value + fatigue);
-    ok = `${itemName}을 사용했습니다. 피로도 +${nextAp - fresh.value} (${nextAp}/${FATIGUE_MAX})`;
-
-    const inv = consumeInvItem(ctx.inv, itemName, 1);
-    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
-    await Promise.all([
-      prisma.characterSheet.update({
-        where: { userId: ctx.userId },
-        data: {
-          ap: nextAp,
-          apResetAt: fresh.at,
-          invJson: JSON.stringify(inv),
-          lifeJson: JSON.stringify(life),
-          achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
-        },
-      }),
-      decrementDbInventory(ctx.userId, itemName, 1),
-    ]);
-    void pushInventoryToSheet(ctx.tab, inv);
-  } else if (lifeLuck) {
+  if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
     life.cookingBuffs.lifeLuck.push({
       kind: lifeLuck.kind,

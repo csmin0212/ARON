@@ -45,7 +45,7 @@ function weightText(item: SheetInventoryItem): string {
 
 function canUseItem(item: SheetInventoryItem): boolean {
   const effect = item.effect ?? "";
-  return /피로도(?:를)?\s*(?:\[?\d+D\]?|\+?\d+)\s*점?\s*회복|피로도\s*회복\s*\d+|피로도\s*\+\d+|행운\s*\+\d+|세션\s*버프/.test(effect);
+  return /행운\s*\+\d+|세션\s*버프/.test(effect);
 }
 
 function CookingStateLine({ state }: { state: CookingState }) {
