@@ -12,18 +12,66 @@ import {
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
+import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
+import type { LifeSkillKind } from "@/lib/lifeSkillData";
 
 export type TradeActionState = {
   ok?: boolean;
   message?: string;
 };
 
+// 거래 품목 출처: 기본 가방 / 낚시 가방 / 채집 가방
+export type TradeSource = "basic" | LifeSkillKind;
+const TRADE_SOURCE_SEP = "~@~"; // select value 인코딩 (source~@~name)
+
 export type TradeSideItem = {
   name: string;
   effect: string | null;
   weight: number | null;
   qty: number;
+  source?: TradeSource; // 없으면 basic (구버전 호환)
 };
+
+type Pool = { inv: SheetInventory; life: LifeState };
+
+function isLifeKind(v: string): v is LifeSkillKind {
+  return v === "낚시" || v === "채집";
+}
+
+function lifeBagQty(life: LifeState, kind: LifeSkillKind, name: string): number {
+  const t = name.trim();
+  return life.bags[kind].items
+    .filter((i) => i.name.trim() === t)
+    .reduce((s, i) => s + Math.max(0, i.qty), 0);
+}
+
+function lifeBagFirst(life: LifeState, kind: LifeSkillKind, name: string) {
+  const t = name.trim();
+  return life.bags[kind].items.find((i) => i.name.trim() === t && i.qty > 0) ?? null;
+}
+
+function removeFromLifeBag(life: LifeState, kind: LifeSkillKind, name: string, qty: number): void {
+  const t = name.trim();
+  let remaining = qty;
+  for (const it of life.bags[kind].items) {
+    if (remaining <= 0 || it.name.trim() !== t) continue;
+    const used = Math.min(Math.max(0, it.qty), remaining);
+    it.qty -= used;
+    remaining -= used;
+  }
+  life.bags[kind].items = life.bags[kind].items.filter((i) => i.qty > 0);
+}
+
+function availableQty(pool: Pool, source: TradeSource, name: string): number {
+  return source === "basic" ? itemQty(pool.inv, name) : lifeBagQty(pool.life, source, name);
+}
+
+function parseOfferRef(raw: string): { source: TradeSource; name: string } {
+  const i = raw.indexOf(TRADE_SOURCE_SEP);
+  if (i < 0) return { source: "basic", name: raw.trim() };
+  const src = raw.slice(0, i);
+  return { source: isLifeKind(src) ? src : "basic", name: raw.slice(i + TRADE_SOURCE_SEP.length).trim() };
+}
 
 const PENDING = "PENDING";
 const ACCEPTED = "ACCEPTED";
@@ -101,31 +149,49 @@ function addItem(inv: SheetInventory, item: TradeSideItem, qty = item.qty): Shee
   return inv;
 }
 
-function readOfferItems(inv: SheetInventory, formData: FormData): TradeSideItem[] {
+function readOfferItems(pool: Pool, formData: FormData): TradeSideItem[] {
   const names = formData.getAll("itemName").map((value) => String(value ?? "").trim());
   const qtys = formData.getAll("itemQty");
   const byKey = new Map<string, TradeSideItem>();
 
   for (let i = 0; i < Math.min(names.length, MAX_TRADE_ITEM_ROWS); i++) {
-    const name = names[i];
-    if (!name) continue;
+    const ref = parseOfferRef(names[i]);
+    if (!ref.name) continue;
     const qty = positiveInt(qtys[i] ?? null, 1);
-    const item = firstItem(inv, name);
-    if (!item) continue;
+
+    let effect: string | null = null;
+    let weight: number | null = null;
+    if (ref.source === "basic") {
+      const found = firstItem(pool.inv, ref.name);
+      if (!found) continue;
+      effect = found.effect;
+      weight = found.weight;
+    } else {
+      const lifeItem = lifeBagFirst(pool.life, ref.source, ref.name);
+      if (!lifeItem) continue;
+      effect = `R${lifeItem.rank} · ${lifeItem.text}`;
+      weight = lifeItem.weight;
+    }
+    const item = { name: ref.name, effect, weight };
     const key = `${item.name}\u0000${item.effect ?? ""}\u0000${item.weight ?? ""}`;
     const existing = byKey.get(key);
     if (existing) existing.qty += qty;
-    else byKey.set(key, { name: item.name, effect: item.effect, weight: item.weight, qty });
+    else byKey.set(key, { name: item.name, effect: item.effect, weight: item.weight, qty, source: ref.source });
   }
 
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
-function validateSide(inv: SheetInventory, items: TradeSideItem[]): string | null {
-  const needed = new Map<string, number>();
-  for (const item of items) needed.set(item.name, (needed.get(item.name) ?? 0) + item.qty);
-  for (const [name, qty] of needed) {
-    if (itemQty(inv, name) < qty) return `${name} 수량이 부족합니다.`;
+function validateSide(pool: Pool, items: TradeSideItem[]): string | null {
+  const needed = new Map<string, { source: TradeSource; name: string; qty: number }>();
+  for (const item of items) {
+    const source = item.source ?? "basic";
+    const prev = needed.get(`${source} ${item.name}`);
+    if (prev) prev.qty += item.qty;
+    else needed.set(`${source} ${item.name}`, { source, name: item.name, qty: item.qty });
+  }
+  for (const { source, name, qty } of needed.values()) {
+    if (availableQty(pool, source, name) < qty) return `${name} 수량이 부족합니다.`;
   }
   return null;
 }
@@ -274,16 +340,16 @@ export async function updateTradeOffer(
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: me.id },
-    select: { invJson: true, curGold: true },
+    select: { invJson: true, lifeJson: true, curGold: true },
   });
   if (!sheet) return { ok: false, message: "캐릭터 시트를 먼저 연동해주세요." };
 
-  const inv = parseInv(sheet.invJson);
+  const pool: Pool = { inv: parseInv(sheet.invJson), life: parseLifeState(sheet.lifeJson) };
   const gold = nonNegativeInt(formData.get("gold"));
   if (gold > (sheet.curGold ?? 0)) return { ok: false, message: "올릴 골드가 부족합니다." };
 
-  const items = readOfferItems(inv, formData);
-  const invalid = validateSide(inv, items);
+  const items = readOfferItems(pool, formData);
+  const invalid = validateSide(pool, items);
   if (invalid) return { ok: false, message: invalid };
 
   const side = sideKey(trade, me.id);
@@ -329,11 +395,11 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const [fromSheet, toSheet] = await Promise.all([
     prisma.characterSheet.findUnique({
       where: { userId: trade.fromUserId },
-      select: { sheetTab: true, invJson: true, curGold: true, achStatsJson: true },
+      select: { sheetTab: true, invJson: true, lifeJson: true, curGold: true, achStatsJson: true },
     }),
     prisma.characterSheet.findUnique({
       where: { userId: trade.toUserId },
-      select: { sheetTab: true, invJson: true, curGold: true, achStatsJson: true },
+      select: { sheetTab: true, invJson: true, lifeJson: true, curGold: true, achStatsJson: true },
     }),
   ]);
   if (!fromSheet || !toSheet) return { ok: false, message: "거래 당사자의 캐릭터 시트가 필요합니다." };
@@ -342,19 +408,31 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const toItems = parseTradeItems(trade.toOfferJson);
   const fromInv = parseInv(fromSheet.invJson);
   const toInv = parseInv(toSheet.invJson);
+  const fromLife = parseLifeState(fromSheet.lifeJson);
+  const toLife = parseLifeState(toSheet.lifeJson);
+  const fromPool: Pool = { inv: fromInv, life: fromLife };
+  const toPool: Pool = { inv: toInv, life: toLife };
   const fromGold = fromSheet.curGold ?? 0;
   const toGold = toSheet.curGold ?? 0;
 
   if (trade.fromGold > fromGold) return { ok: false, message: `${trade.fromUser.nickname}님의 골드가 부족합니다.` };
   if (trade.toGold > toGold) return { ok: false, message: `${trade.toUser.nickname}님의 골드가 부족합니다.` };
-  const fromInvalid = validateSide(fromInv, fromItems);
+  const fromInvalid = validateSide(fromPool, fromItems);
   if (fromInvalid) return { ok: false, message: `${trade.fromUser.nickname}: ${fromInvalid}` };
-  const toInvalid = validateSide(toInv, toItems);
+  const toInvalid = validateSide(toPool, toItems);
   if (toInvalid) return { ok: false, message: `${trade.toUser.nickname}: ${toInvalid}` };
 
-  for (const item of fromItems) consumeItem(fromInv, item.name, item.qty);
+  // 보내는 쪽은 출처(기본/생활 가방)에서 차감, 받는 쪽은 기본 가방으로 수령.
+  const removeOffered = (pool: Pool, items: TradeSideItem[]) => {
+    for (const item of items) {
+      const source = item.source ?? "basic";
+      if (source === "basic") consumeItem(pool.inv, item.name, item.qty);
+      else removeFromLifeBag(pool.life, source, item.name, item.qty);
+    }
+  };
+  removeOffered(fromPool, fromItems);
+  removeOffered(toPool, toItems);
   for (const item of toItems) addItem(fromInv, item);
-  for (const item of toItems) consumeItem(toInv, item.name, item.qty);
   for (const item of fromItems) addItem(toInv, item);
 
   if (fromInv.curWeight != null && fromInv.maxWeight != null && fromInv.curWeight > fromInv.maxWeight) {
@@ -374,6 +452,7 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
       where: { userId: trade.fromUserId },
       data: {
         invJson: JSON.stringify(fromInv),
+        lifeJson: JSON.stringify(fromLife),
         curGold: nextFromGold,
         gold: `${nextFromGold}G`,
         achStatsJson: bumpStat(fromSheet.achStatsJson, "거래완료횟수"),
@@ -383,6 +462,7 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
       where: { userId: trade.toUserId },
       data: {
         invJson: JSON.stringify(toInv),
+        lifeJson: JSON.stringify(toLife),
         curGold: nextToGold,
         gold: `${nextToGold}G`,
         achStatsJson: bumpStat(toSheet.achStatsJson, "거래완료횟수"),

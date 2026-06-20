@@ -9,13 +9,21 @@ import {
   updateTradeOffer,
   type TradeActionState,
   type TradeSideItem,
+  type TradeSource,
 } from "@/app/actions/trade";
+
+// trade.ts 의 TRADE_SOURCE_SEP 과 동일해야 함 ("use server" 파일의 값은 클라에서 못 가져옴)
+const SOURCE_SEP = "~@~";
+const SOURCE_EMOJI: Record<TradeSource, string> = { basic: "🎒", 낚시: "🎣", 채집: "🌿" };
+const offerRef = (source: TradeSource | undefined, name: string) =>
+  `${source ?? "basic"}${SOURCE_SEP}${name}`;
 
 type OfferableItem = {
   name: string;
   qty: number;
   effect?: string | null;
   weight?: number | null;
+  source: TradeSource;
 };
 
 type SideView = {
@@ -89,7 +97,9 @@ function OfferSide({ side, mine }: { side: SideView; mine: boolean }) {
             <div key={`${item.name}-${item.effect ?? ""}-${item.weight ?? ""}`} className="rounded-2xl bg-canvas px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-extrabold text-content">{item.name}</p>
+                  <p className="font-extrabold text-content">
+                    {SOURCE_EMOJI[item.source ?? "basic"]} {item.name}
+                  </p>
                   {item.effect && <p className="mt-1 line-clamp-2 text-xs text-faint">{item.effect}</p>}
                 </div>
                 <div className="shrink-0 text-right text-sm font-bold text-muted">
@@ -160,14 +170,17 @@ function OfferEditor({
             <div key={index} className="grid gap-2 sm:grid-cols-[1fr_90px]">
               <select
                 name="itemName"
-                defaultValue={row?.name ?? ""}
+                defaultValue={row ? offerRef(row.source, row.name) : ""}
                 disabled={disabled}
                 className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm font-semibold text-content disabled:opacity-60"
               >
                 <option value="">비우기</option>
                 {offerableItems.map((item) => (
-                  <option key={`${index}-${item.name}-${item.effect ?? ""}-${item.weight ?? ""}`} value={item.name}>
-                    {item.name} x{item.qty}
+                  <option
+                    key={`${index}-${item.source}-${item.name}-${item.effect ?? ""}-${item.weight ?? ""}`}
+                    value={offerRef(item.source, item.name)}
+                  >
+                    {SOURCE_EMOJI[item.source]} {item.name} x{item.qty}
                   </option>
                 ))}
               </select>

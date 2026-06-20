@@ -5,7 +5,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { formatFullDate } from "@/lib/format";
 import type { SheetInventory } from "@/lib/googleSheets";
 import TradeRoom from "@/components/TradeRoom";
-import type { TradeSideItem } from "@/app/actions/trade";
+import type { TradeSideItem, TradeSource } from "@/app/actions/trade";
+import { parseLifeState } from "@/lib/lifeSkillPerks";
 
 export const metadata: Metadata = { title: "거래방 · 아리안로드 온라인 갤러리" };
 
@@ -27,16 +28,48 @@ function parseTradeItems(value: string | null | undefined): TradeSideItem[] {
   }
 }
 
-function offerableItems(invJson: string | null | undefined) {
+type OfferableItem = {
+  name: string;
+  qty: number;
+  effect?: string | null;
+  weight?: number | null;
+  source: TradeSource;
+};
+
+function offerableItems(
+  invJson: string | null | undefined,
+  lifeJson: string | null | undefined,
+): OfferableItem[] {
+  const out: OfferableItem[] = [];
+
+  // 기본 가방
   const inv = parseInv(invJson);
-  const byName = new Map<string, { name: string; qty: number; effect?: string | null; weight?: number | null }>();
+  const byName = new Map<string, OfferableItem>();
   for (const item of inv.items) {
     if (!item.name || item.qty <= 0) continue;
     const existing = byName.get(item.name);
     if (existing) existing.qty += item.qty;
-    else byName.set(item.name, { name: item.name, qty: item.qty, effect: item.effect, weight: item.weight });
+    else byName.set(item.name, { name: item.name, qty: item.qty, effect: item.effect, weight: item.weight, source: "basic" });
   }
-  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  out.push(...[...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "ko")));
+
+  // 생활 가방 (낚시 · 채집)
+  const life = parseLifeState(lifeJson);
+  for (const kind of ["낚시", "채집"] as const) {
+    const items = life.bags[kind].items
+      .filter((it) => it.qty > 0)
+      .map((it) => ({
+        name: it.name,
+        qty: it.qty,
+        effect: `R${it.rank} · ${it.text}`,
+        weight: it.weight,
+        source: kind,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    out.push(...items);
+  }
+
+  return out;
 }
 
 export default async function TradePage({
@@ -65,7 +98,7 @@ export default async function TradePage({
 
   const mySheet = await prisma.characterSheet.findUnique({
     where: { userId: me.id },
-    select: { invJson: true, curGold: true },
+    select: { invJson: true, lifeJson: true, curGold: true },
   });
 
   return (
@@ -74,7 +107,7 @@ export default async function TradePage({
       status={trade.status}
       currentUserId={me.id}
       currentGold={mySheet?.curGold ?? 0}
-      offerableItems={offerableItems(mySheet?.invJson)}
+      offerableItems={offerableItems(mySheet?.invJson, mySheet?.lifeJson)}
       fromSide={{
         userId: trade.fromUser.id,
         nickname: trade.fromUser.nickname,
