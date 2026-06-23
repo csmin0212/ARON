@@ -38,6 +38,7 @@ model User {
   tradeMessages TradeMessage[]
   notifications Notification[]
   mails         Mail[]
+  auctionListings AuctionListing[]
 }
 
 // 업적 정의 (GM 시트 '업적' 탭에서 동기화)
@@ -220,6 +221,29 @@ model Mail {
   createdAt   DateTime  @default(now())
 
   @@index([recipientId, createdAt])
+}
+
+// 경매장(거래 장터) — 즉시구매 전용 MVP.
+// 등록 시 아이템을 판매자 인벤(휴대품/생활가방)에서 빼서 itemMeta 스냅샷으로 에스크로한다.
+// 구매 시 골드 이동(델타) + 아이템을 구매자 휴대품으로 직접 지급. 취소/만료 시 판매자에게 반송.
+model AuctionListing {
+  id        String    @id @default(cuid())
+  sellerId  String
+  seller    User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category  String // 어획물 | 채집품 | 요리 | 재료 | 소비 | 스킬북 | 기타
+  itemName  String
+  itemMeta  String // JSON 스냅샷 { effect, weight, rank, text, sourceKind }
+  quantity  Int       @default(1) // 남은 수량 (부분 구매 시 차감)
+  unitPrice Int // 개당 즉시구매가
+  floor     Int       @default(0) // 등록 당시 즉시매각 하한(참고/검증)
+  status    String    @default("active") // active | sold | cancelled | expired
+  feePaid   Int       @default(0) // 등록 수수료(싱크)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  endedAt   DateTime? // 판매/취소/만료 종료 시각
+
+  @@index([status, category, createdAt])
+  @@index([sellerId, status])
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)

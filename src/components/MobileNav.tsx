@@ -40,6 +40,9 @@ export default function MobileNav({
             <Link href="/hall" onClick={close} className={itemClass}>
               🏛️ 명예의 전당
             </Link>
+            <Link href="/market" onClick={close} className={itemClass}>
+              🏪 경매장
+            </Link>
             {loggedIn ? (
               <>
                 <Link href="/write" onClick={close} className={itemClass}>
