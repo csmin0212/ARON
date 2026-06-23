@@ -6,6 +6,7 @@ import type { ListingView, SellableItem } from "@/lib/auctionServer";
 import {
   buyAuctionListing,
   cancelAuctionListing,
+  instantSell,
   listOnAuction,
   type AuctionState,
 } from "@/app/actions/auction";
@@ -114,12 +115,14 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
   );
 }
 
-// ── 판매(등록) 행 ──
+// ── 판매 행 — 즉시매각(NPC) / 위탁등록 두 레인 ──
 function SellRow({ item }: { item: SellableItem }) {
-  const [state, action, pending] = useActionState<AuctionState, FormData>(listOnAuction, undefined);
+  const [listState, listAction, listPending] = useActionState<AuctionState, FormData>(listOnAuction, undefined);
+  const [sellState, sellAction, sellPending] = useActionState<AuctionState, FormData>(instantSell, undefined);
   const [price, setPrice] = useState(item.floor || 1);
   const [qty, setQty] = useState(1);
   const below = price < item.floor;
+  const canInstant = item.floor > 0;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">
@@ -138,21 +141,37 @@ function SellRow({ item }: { item: SellableItem }) {
         {item.source !== "basic" && <span className="ml-1">· {item.source} 가방</span>}
       </p>
 
-      <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+      <label className="mt-2 flex items-center gap-1 text-[11px] font-bold text-faint">
+        수량
+        <input
+          type="number"
+          min={1}
+          max={item.qty}
+          value={qty}
+          onChange={(e) => setQty(Math.max(1, Math.min(item.qty, Number(e.target.value) || 1)))}
+          className="w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400"
+        />
+      </label>
+
+      {/* 즉시매각 (NPC 바로 판매) */}
+      <form action={sellAction} className="mt-2">
         <input type="hidden" name="source" value={item.source} />
         <input type="hidden" name="itemName" value={item.name} />
-        <label className="flex items-center gap-1 text-[11px] font-bold text-faint">
-          수량
-          <input
-            type="number"
-            name="qty"
-            min={1}
-            max={item.qty}
-            value={qty}
-            onChange={(e) => setQty(Math.max(1, Math.min(item.qty, Number(e.target.value) || 1)))}
-            className="w-14 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400"
-          />
-        </label>
+        <input type="hidden" name="qty" value={qty} />
+        <button
+          type="submit"
+          disabled={sellPending || !canInstant}
+          className="w-full rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
+        >
+          {!canInstant ? "매입 불가" : sellPending ? "판매 중..." : `즉시매각 ${gold(item.floor * qty)}G`}
+        </button>
+      </form>
+
+      {/* 위탁 등록 (경매장에 올리기) */}
+      <form action={listAction} className="mt-2 flex items-center gap-2">
+        <input type="hidden" name="source" value={item.source} />
+        <input type="hidden" name="itemName" value={item.name} />
+        <input type="hidden" name="qty" value={qty} />
         <label className="flex items-center gap-1 text-[11px] font-bold text-faint">
           개당
           <input
@@ -169,13 +188,14 @@ function SellRow({ item }: { item: SellableItem }) {
         </label>
         <button
           type="submit"
-          disabled={pending || below}
+          disabled={listPending || below}
           className="flex-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {pending ? "등록 중..." : below ? "하한 미만" : "등록"}
+          {listPending ? "등록 중..." : below ? "하한 미만" : "위탁등록"}
         </button>
       </form>
-      <StateLine state={state} />
+      <StateLine state={sellState} />
+      <StateLine state={listState} />
     </div>
   );
 }

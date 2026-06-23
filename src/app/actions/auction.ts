@@ -8,6 +8,7 @@ import {
   buyListingCore,
   cancelListingCore,
   createListingCore,
+  instantSellCore,
   type AuctionResult,
 } from "@/lib/auctionServer";
 
@@ -36,6 +37,24 @@ export async function listOnAuction(_prev: AuctionState, formData: FormData): Pr
   const unitPrice = Math.max(0, Math.min(9_999_999, toInt(formData.get("unitPrice"), 0)));
 
   const result = await createListingCore(user.id, { source, name, qty, unitPrice });
+  if (result.ok) {
+    void checkAndGrant(user.id);
+    refreshMarket();
+  }
+  return result;
+}
+
+export async function instantSell(_prev: AuctionState, formData: FormData): Promise<AuctionState> {
+  void _prev;
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const sourceRaw = String(formData.get("source") ?? "basic");
+  const source = isAuctionSource(sourceRaw) ? sourceRaw : "basic";
+  const name = String(formData.get("itemName") ?? "").trim();
+  const qty = Math.max(1, Math.min(999, toInt(formData.get("qty"), 1)));
+
+  const result = await instantSellCore(user.id, { source, name, qty });
   if (result.ok) {
     void checkAndGrant(user.id);
     refreshMarket();

@@ -535,6 +535,50 @@ export async function buyListingCore(
   return { ok: `${listing.itemName} x${qty} 구매 완료. -${total.toLocaleString()}G` };
 }
 
+// 즉시매각 — NPC(상점)에 하한가로 바로 판매. 위탁(등록)과 달리 매물로 가지 않고 즉시 골드 입금.
+export async function instantSellCore(
+  userId: string,
+  params: { source: AuctionSource; name: string; qty: number },
+): Promise<AuctionResult> {
+  const { source, name, qty } = params;
+  if (!name) return { error: "판매할 아이템이 올바르지 않습니다." };
+  if (qty <= 0) return { error: "수량이 올바르지 않습니다." };
+
+  const actor = await loadActorSheet(userId);
+  if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
+
+  const floor = await resolveFloor(name, source);
+  if (floor <= 0) return { error: "이 물건은 매입하지 않아요." };
+
+  let isBasic = false;
+  if (source === "basic") {
+    if (isNonSellable(name)) return { error: "이 물건은 매입하지 않아요." };
+    if (itemQty(actor.inv, name) < qty) return { error: `${name} 수량이 부족합니다.` };
+    consumeInvItem(actor.inv, name, qty);
+    await decrementDbInventory(userId, name, qty);
+    isBasic = true;
+  } else {
+    const removed = removeLifeBagItem(actor.life, source, name, qty);
+    if (!removed) return { error: `${name} 수량이 부족합니다.` };
+  }
+
+  const gain = floor * qty;
+  const nextGold = actor.curGold + gain;
+  await prisma.characterSheet.update({
+    where: { userId },
+    data: {
+      invJson: JSON.stringify(actor.inv),
+      lifeJson: JSON.stringify(actor.life),
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+    },
+  });
+  void appendSheetGold(actor.tab, gain);
+  if (isBasic) void pushInventoryToSheet(actor.tab, actor.inv);
+
+  return { ok: `${name} x${qty} 즉시매각 완료. +${gain.toLocaleString()}G` };
+}
+
 export async function cancelListingCore(userId: string, listingId: string): Promise<AuctionResult> {
   const listing = await prisma.auctionListing.findUnique({ where: { id: listingId } });
   if (!listing || listing.sellerId !== userId) return { error: "취소할 수 없는 등록입니다." };

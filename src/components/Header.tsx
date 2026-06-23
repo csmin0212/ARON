@@ -6,6 +6,7 @@ import { logout } from "@/app/actions/auth";
 import Avatar from "./Avatar";
 import ThemeControls from "./ThemeControls";
 import MobileNav from "./MobileNav";
+import NavMenu from "./NavMenu";
 import {
   THEME_COOKIE,
   ACCENT_COOKIE,
@@ -32,48 +33,25 @@ export default async function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4">
-        <Link href="/" className="group flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-lg shadow-sm ring-1 ring-black/5">
+        <Link href="/" className="group flex min-w-0 items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-lg shadow-sm ring-1 ring-black/5">
             ⚔️
           </span>
-          <span className="flex flex-col leading-none">
-            <span className="text-[15px] font-extrabold tracking-tight text-content group-hover:text-brand-600">
+          <span className="flex min-w-0 flex-col leading-none">
+            <span className="truncate text-[15px] font-extrabold tracking-tight text-content group-hover:text-brand-600">
               아리안로드 온라인 갤러리
             </span>
-            <span className="mt-0.5 text-[11px] font-medium text-faint">
+            <span className="mt-0.5 truncate text-[11px] font-medium text-faint">
               ArianRod Online Gallery
             </span>
           </span>
         </Link>
 
-        <nav className="flex items-center gap-2 text-sm">
-          <Link
-            href="/world"
-            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
-          >
-            🗺️ 월드
-          </Link>
-          <Link
-            href="/collection"
-            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
-          >
-            📖 도감
-          </Link>
-          <Link
-            href="/hall"
-            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
-          >
-            🏛️ 전당
-          </Link>
-          <Link
-            href="/market"
-            className="hidden rounded-lg px-3 py-2 font-bold text-content transition hover:bg-subtle-hover hover:text-brand-600 sm:inline-block"
-          >
-            🏪 경매장
-          </Link>
+        <nav className="flex shrink-0 items-center gap-2 text-sm">
+          <NavMenu />
           <Link
             href="/write"
-            className="hidden rounded-lg bg-brand-500 px-3.5 py-2 font-semibold text-white shadow-sm transition hover:bg-brand-600 sm:inline-block"
+            className="hidden whitespace-nowrap rounded-lg bg-brand-500 px-3.5 py-2 font-semibold text-white shadow-sm transition hover:bg-brand-600 sm:inline-block"
           >
             ✏️ 글쓰기
           </Link>
@@ -120,7 +98,7 @@ export default async function Header() {
               <form action={logout} className="hidden sm:block">
                 <button
                   type="submit"
-                  className="rounded-lg px-2.5 py-2 text-faint transition hover:bg-subtle-hover hover:text-content"
+                  className="whitespace-nowrap rounded-lg px-2.5 py-2 text-faint transition hover:bg-subtle-hover hover:text-content"
                 >
                   로그아웃
                 </button>
