@@ -17,9 +17,11 @@ import {
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { isSkillBookItem } from "@/lib/skillbook";
 import {
+  HQ_PRICE_MULT,
   listingExpiry,
   netProceeds,
   parseAuctionMeta,
+  parseQuality,
   type AuctionCategory,
   type AuctionItemMeta,
   type AuctionSource,
@@ -173,7 +175,8 @@ async function incrementDbInventory(userId: string, itemName: string, qty: numbe
 
 // ── 하한가·카테고리 판정 ──
 export async function resolveFloor(name: string, source: AuctionSource): Promise<number> {
-  const trimmed = name.trim();
+  const { base, isHQ } = parseQuality(name);
+  const trimmed = base;
   if (source === "낚시" || source === "채집") return lifeSkillSellPrice(source, trimmed);
 
   const lifeKind = lifeSkillItemKind(trimmed);
@@ -183,7 +186,7 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
     where: { resultName: trimmed },
     select: { sellPrice: true },
   });
-  if (recipe?.sellPrice) return recipe.sellPrice;
+  if (recipe?.sellPrice) return isHQ ? Math.round(recipe.sellPrice * HQ_PRICE_MULT) : recipe.sellPrice;
 
   if (!isNonSellable(trimmed)) {
     const material = await prisma.item.findFirst({
@@ -196,7 +199,7 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
 }
 
 export async function resolveCategory(name: string, source: AuctionSource): Promise<AuctionCategory> {
-  const trimmed = name.trim();
+  const trimmed = parseQuality(name).base;
   if (source === "낚시") return "어획물";
   if (source === "채집") return "채집품";
 

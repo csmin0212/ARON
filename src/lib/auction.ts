@@ -70,3 +70,20 @@ export function netProceeds(unitPrice: number, quantity: number): number {
 export function listingExpiry(from: Date = new Date()): Date {
   return new Date(from.getTime() + LISTING_DAYS * 24 * 60 * 60 * 1000);
 }
+
+// ── 고품질(요리 숙련도 보상) ──
+// 고품질 요리는 별도 아이템 "{이름} (고품질)" 로 만들어진다. 판매가 ×1.5, 효과 첫 +N 을 +1 강화.
+export const HQ_SUFFIX = " (고품질)";
+export const HQ_PRICE_MULT = 1.5;
+
+export function parseQuality(name: string): { base: string; isHQ: boolean } {
+  const trimmed = name.trim();
+  const isHQ = trimmed.endsWith(HQ_SUFFIX.trim()) || trimmed.endsWith(HQ_SUFFIX);
+  const base = isHQ ? trimmed.replace(/\s*\(고품질\)\s*$/, "").trim() : trimmed;
+  return { base, isHQ };
+}
+
+// 효과 텍스트의 첫 "+N" 을 +1 만큼 강화 (예: "공격 대미지 +1" → "+2", "낚시 행운 +3" → "+4")
+export function enhanceEffectText(effect: string): string {
+  return effect.replace(/\+\s*(\d+)/, (_m, n: string) => `+${Number(n) + 1}`);
+}
