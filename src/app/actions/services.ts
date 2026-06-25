@@ -1023,6 +1023,25 @@ function parseSessionBuff(effect: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
+function rollD6(n: number): number {
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += 1 + Math.floor(Math.random() * 6);
+  return sum;
+}
+
+// "HP [2D] 회복", "MP 3 회복" 등 회복 효과를 파싱해 굴린 회복량 목록을 반환.
+function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number }[] {
+  const out: { resource: "HP" | "MP"; amount: number }[] = [];
+  const re = /\b(HP|MP)\s*(?:\[(\d+)\s*D\]|(\d+))\s*점?\s*회복/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(effect))) {
+    const resource = m[1].toUpperCase() as "HP" | "MP";
+    const amount = m[2] ? rollD6(Number(m[2])) : Number(m[3]);
+    if (amount > 0) out.push({ resource, amount });
+  }
+  return out;
+}
+
 function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
   return match ? Number.parseInt(match[1], 10) || 0 : 0;
@@ -1076,7 +1095,7 @@ export async function useCookingItem(
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: ctx.userId },
-    select: { ap: true, apResetAt: true, lifeJson: true, achStatsJson: true },
+    select: { ap: true, apResetAt: true, lifeJson: true, achStatsJson: true, curHp: true, curMp: true, hp: true, mp: true },
   });
   if (!sheet) return { error: "캐릭터 시트를 찾지 못했습니다." };
 
@@ -1088,9 +1107,10 @@ export async function useCookingItem(
 
   let ok = "";
   // 피로도(AP) 회복은 요리에서 비활성 — 음식으로 AP 상한을 우회하면 밸런스가 깨짐.
-  // AP 회복은 자연회복·여관·집 휴식으로만. (행운·세션 버프는 그대로 유지)
+  // AP 회복은 자연회복·여관·집 휴식으로만. (행운·세션 버프·HP/MP 회복은 유지)
   const lifeLuck = parseLifeLuck(rawEffect);
   const sessionBuff = parseSessionBuff(rawEffect);
+  const recovery = parseRecovery(rawEffect);
 
   if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
@@ -1135,6 +1155,39 @@ export async function useCookingItem(
         data: {
           invJson: JSON.stringify(inv),
           lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else if (recovery.length > 0) {
+    // HP/MP 회복 — 굴린 회복량을 현재치에 더한다. 최대치(hp/mp)가 있으면 초과 방지.
+    let curHp = sheet.curHp ?? sheet.hp ?? 0;
+    let curMp = sheet.curMp ?? sheet.mp ?? 0;
+    const gains: string[] = [];
+    for (const rec of recovery) {
+      if (rec.resource === "HP") {
+        const before = curHp;
+        curHp = sheet.hp != null ? Math.min(sheet.hp, curHp + rec.amount) : curHp + rec.amount;
+        gains.push(`HP +${curHp - before}`);
+      } else {
+        const before = curMp;
+        curMp = sheet.mp != null ? Math.min(sheet.mp, curMp + rec.amount) : curMp + rec.amount;
+        gains.push(`MP +${curMp - before}`);
+      }
+    }
+    ok = `${itemName}을 사용했습니다. ${gains.join(", ")}`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          curHp,
+          curMp,
           achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
         },
       }),

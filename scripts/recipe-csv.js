@@ -32,6 +32,7 @@ function ingredientCost(name) {
 }
 function tierMult(effect, rank) {
   const e = effect || "", r = (String(rank).match(/\d+/) || [0])[0] | 0;
+  if (/회복/.test(e)) return 1.3; // 회복요리 — 얇은 티어 (HP/MP 모두 포함되므로 먼저 판정)
   if (/세션\s*버프|판정|\bHP\b|\bMP\b|공격|방어|지력|근력|이동|중량|감지|행동|모든|수정치/.test(e)) return r >= 3 ? 1.5 : 1.45;
   if (/행운/.test(e)) return 1.4;
   return 1.3;
@@ -53,6 +54,18 @@ const EFFECT = {
   cook_udumbara_tea: "세션 버프: 행운 수정치 +1", cook_mandrake_omelet: "세션 버프: 최대 HP +2",
   cook_ghost_hand_risotto: "세션 버프: 지력 판정 +1", cook_dragon_flower_roast: "세션 버프: 공격 대미지 +1",
   cook_marigold_cookie: "세션 버프: 행운 수정치 +1", cook_waterdrop_flower_cake: "세션 버프: 최대 HP +2, 최대 MP +1",
+
+  // 회복요리(빈 효과 채움) — 가격대(등급)에 맞춘 HP/MP 회복. 고기·생선·달걀=HP, 채소·과일·약초·버섯=MP.
+  cook_boiled_egg: "HP [1D] 회복", cook_milk_porridge: "HP [1D] 회복", cook_vegetable_soup: "MP [1D] 회복",
+  cook_flatbread: "HP [1D] 회복", basic_salted_bread: "HP [1D] 회복", basic_vegetable_soup: "MP [1D] 회복",
+  basic_fruit_milk: "MP [1D] 회복", basic_meat_soup: "HP [1D] 회복", cook_cheese_bread: "HP [2D] 회복",
+  cook_deodeok_grill: "MP [1D] 회복", cook_licorice_milk: "MP [1D] 회복", cook_carp_soup: "HP [2D] 회복",
+  cook_trout_roast: "HP [1D] 회복", cook_tilapia_wrap: "HP [1D] 회복", cook_hot_spring_fish: "HP [2D] 회복",
+  basic_fruit_tart: "MP [2D] 회복", basic_hearty_breakfast: "HP [2D] 회복",
+  cook_sansam_chicken: "HP [1D] 회복, MP [1D] 회복", cook_reishi_hotpot: "MP [1D] 회복",
+  cook_mountain_trout_soup: "HP [2D] 회복", cook_baekyang_elixir_soup: "MP [2D] 회복",
+  cook_hasuo_root_stew: "MP [2D] 회복", cook_heaven_berry_tart: "HP [2D] 회복, MP [2D] 회복",
+  cook_platinum_fish_pie: "HP [4D] 회복",
 };
 
 function parseCsv(text) {
@@ -84,9 +97,11 @@ function parseIngredients(spec) {
   const header = rows[0];
   const idx = (name) => header.indexOf(name);
   const cId = idx("레시피ID"), cEffect = idx("효과"), cIng = idx("재료"), cRank = idx("등급");
+  const cPrice = idx("판매가"); // 시트에 이미 판매가 칸이 있으면 그 자리에 덮어쓰고, 없으면 끝에 추가
   if (cId < 0 || cEffect < 0 || cIng < 0) throw new Error("헤더에서 레시피ID/효과/재료를 못 찾음");
 
-  const out = [[...header, "판매가"].map(enc).join(",")];
+  const outHeader = cPrice >= 0 ? header : [...header, "판매가"];
+  const out = [outHeader.map(enc).join(",")];
   let n = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i].slice();
@@ -96,7 +111,10 @@ function parseIngredients(spec) {
     let cost = 0;
     for (const ing of parseIngredients(r[cIng])) cost += ingredientCost(ing.name) * ing.qty;
     const price = round5(cost * tierMult(r[cEffect], r[cRank]));
-    out.push([...r, String(price)].map(enc).join(","));
+    let rowOut;
+    if (cPrice >= 0) { r[cPrice] = String(price); rowOut = r; }
+    else { rowOut = [...r, String(price)]; }
+    out.push(rowOut.map(enc).join(","));
     n++;
   }
 
