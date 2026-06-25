@@ -22,7 +22,13 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
-import { HQ_SUFFIX, HQ_PRICE_MULT, enhanceEffectText, parseQuality } from "@/lib/auction";
+import {
+  COOK_AFFIXES,
+  buildCookedName,
+  enhanceEffectText,
+  gradeInfo,
+  parseCookedName,
+} from "@/lib/auction";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -815,9 +821,19 @@ const COOK_LEVEL_GATE = [1, 1, 5, 15, 35, 55];
 function requiredCookLevel(rank: string | null | undefined): number {
   return COOK_LEVEL_GATE[recipeRankNumber(rank)] ?? 1;
 }
-// 고품질 확률 — 요리레벨 비례 (Lv1 ~6% → Lv45+ 50% 상한)
-function rollHighQuality(level: number): boolean {
-  return Math.random() * 100 < Math.min(50, 5 + level);
+// 요리 등급 추첨 — 레벨이 높을수록 좋은 등급 확률↑. 명품은 고렙에서만 희귀.
+function rollCookGrade(level: number): string | null {
+  const r = Math.random() * 100;
+  const master = Math.max(0, Math.min(12, (level - 15) * 0.6)); // 명품: Lv15+ 부터, 최대 12%
+  const hq = Math.min(45, 6 + level); // 고품질: Lv1 ~7% → 상한 45%
+  if (r < master) return "명품";
+  if (r < master + hq) return "고품질";
+  return null;
+}
+// 랜덤 작명 접두어 — 35% 확률, 순수 플레이버
+function rollCookAffix(): string | null {
+  if (Math.random() < 0.35) return COOK_AFFIXES[Math.floor(Math.random() * COOK_AFFIXES.length)];
+  return null;
 }
 
 export async function cookDish(_prev: CookingState, formData: FormData): Promise<CookingState> {
@@ -876,18 +892,22 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     inv = await consumeIngredient(ctx.userId, inv, life, ingredient.name, ingredient.qty);
   }
 
-  // 고품질 — 요리레벨 비례 확률. 별도 아이템 "{이름} (고품질)", 효과 +1·판매가 ×1.5.
-  const isHQ = recipe ? rollHighQuality(life.cooking.level) : false;
+  // 등급(고품질·명품)·작명 추첨 — 요리레벨 비례. 등급은 성능·가격↑, 작명은 플레이버.
+  const grade = recipe ? rollCookGrade(life.cooking.level) : null;
+  const affix = recipe ? rollCookAffix() : null;
+  const gi = gradeInfo(grade);
   const result = recipe
     ? (() => {
-        const price = isHQ ? Math.round(recipe.sellPrice * HQ_PRICE_MULT) : recipe.sellPrice;
-        const baseEffect = recipe.effect ? (isHQ ? enhanceEffectText(recipe.effect) : recipe.effect) : "";
+        const bonus = gi?.effectBonus ?? 0;
+        const price = Math.round(recipe.sellPrice * (gi?.priceMult ?? 1));
+        const baseEffect = recipe.effect ? (bonus > 0 ? enhanceEffectText(recipe.effect, bonus) : recipe.effect) : "";
         const durText = recipe.duration ? ` (${recipe.duration})` : "";
+        const tag = grade ? `✨${grade} — ` : "";
         const effect = baseEffect
-          ? `${isHQ ? "✨고품질 — " : ""}${baseEffect}${durText}\n판매가 ${price}G`
-          : `${isHQ ? "✨고품질\n" : ""}판매가 ${price}G`;
+          ? `${tag}${baseEffect}${durText}\n판매가 ${price}G`
+          : `${grade ? `✨${grade}\n` : ""}판매가 ${price}G`;
         return {
-          name: isHQ ? `${recipe.resultName}${HQ_SUFFIX}` : recipe.resultName,
+          name: buildCookedName(recipe.resultName, grade, affix),
           qty: recipe.resultQty,
           effect,
           weight: recipe.weight,
@@ -948,7 +968,7 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   }
   return {
     ok: [
-      isHQ ? "✨고품질 요리 성공!" : "",
+      grade ? `✨${grade} 요리 성공!` : "",
       discovered
         ? `새 레시피 발견! ${recipe.name} 완성. ${result.name} x${result.qty} 획득.`
         : `${recipe.name} 완성. ${result.name} x${result.qty} 획득.`,
@@ -973,14 +993,14 @@ export async function sellCookedFood(
   if (!itemName) return { error: "판매할 요리가 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
 
-  const { base, isHQ } = parseQuality(itemName);
+  const { base, grade } = parseCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
     select: { sellPrice: true },
   });
   const baseUnit = base === FAILED_DISH.name ? FAILED_DISH.sellPrice : recipe?.sellPrice;
   if (!baseUnit) return { error: "요리 판매가를 찾지 못했습니다." };
-  const unitPrice = isHQ ? Math.round(baseUnit * HQ_PRICE_MULT) : baseUnit;
+  const unitPrice = Math.round(baseUnit * (gradeInfo(grade)?.priceMult ?? 1));
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const gain = unitPrice * qty;
@@ -1081,14 +1101,15 @@ export async function useCookingItem(
   if (!itemName) return { error: "사용할 요리가 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < 1) return { error: `${itemName}을 보유하고 있지 않습니다.` };
 
-  const { base, isHQ } = parseQuality(itemName);
+  const { base, grade } = parseCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
     select: { effect: true, duration: true, tags: true },
   });
+  const gradeBonus = gradeInfo(grade)?.effectBonus ?? 0;
   const baseEffect = recipe?.effect || findInvItem(ctx.inv, itemName)?.effect || "";
-  // 고품질이면 효과 수치를 한 단계 강화해 적용 (레시피 기준값에서 +1).
-  const rawEffect = isHQ && recipe?.effect ? enhanceEffectText(baseEffect) : baseEffect;
+  // 등급(고품질·명품)이면 효과 수치를 등급 보너스만큼 강화해 적용.
+  const rawEffect = gradeBonus > 0 && recipe?.effect ? enhanceEffectText(baseEffect, gradeBonus) : baseEffect;
   if (!rawEffect || base === FAILED_DISH.name) {
     return { error: "사용할 수 있는 요리 효과가 없습니다." };
   }
