@@ -41,19 +41,19 @@ const round5 = (n) => Math.max(5, Math.round(n / 5) * 5);
 
 // ── 효과 정리 오버라이드 (변경분만; 나머지 시트값 유지) ──
 const EFFECT = {
-  basic_omelet: "세션 버프: 최대 HP +2", basic_meat_skewer: "세션 버프: 공격 대미지 +1",
-  basic_spiced_meat: "세션 버프: 공격 대미지 +1", basic_cheese_omelet: "세션 버프: 최대 HP +2",
+  basic_omelet: "세션 버프: 최대 HP +5", basic_meat_skewer: "세션 버프: 공격 대미지 +1",
+  basic_spiced_meat: "세션 버프: 공격 대미지 +1", basic_cheese_omelet: "세션 버프: 최대 HP +5",
   basic_cheese_soup: "세션 버프: 물리 방어력 +1", basic_hunter_stew: "세션 버프: 공격 대미지 +1",
   cook_crayfish_cheese: "세션 버프: 공격 대미지 +1", cook_flower_catfish_stew: "세션 버프: 감지 판정 +1",
-  cook_angel_fish_meuniere: "세션 버프: 최대 MP +1", cook_cordyceps_soup: "세션 버프: 최대 HP +2",
-  cook_rockfruit_pie: "세션 버프: 최대 HP +2", cook_arowana_cutlet: "세션 버프: 공격 대미지 +1",
-  cook_green_mandarin_fish: "세션 버프: 민첩 판정 +1", cook_blue_rose_tea: "세션 버프: 최대 MP +1",
+  cook_angel_fish_meuniere: "세션 버프: 최대 MP +5", cook_cordyceps_soup: "세션 버프: 최대 HP +5",
+  cook_rockfruit_pie: "세션 버프: 최대 HP +5", cook_arowana_cutlet: "세션 버프: 공격 대미지 +1",
+  cook_green_mandarin_fish: "세션 버프: 민첩 판정 +1", cook_blue_rose_tea: "세션 버프: 최대 MP +5",
   cook_goliath_fish_platter: "세션 버프: 공격 대미지 +1", cook_adventurer_stew: "세션 버프: 원하는 능력 판정 +1",
   cook_icicle_carp_sorbet: "세션 버프: 마법 방어력 +1", cook_pyrelthus_spicy_grill: "세션 버프: 공격 대미지 +1",
   cook_ruby_star_chowder: "세션 버프: 행운 수정치 +1", cook_rebel_fish_steak: "세션 버프: 공격 대미지 +1",
-  cook_udumbara_tea: "세션 버프: 행운 수정치 +1", cook_mandrake_omelet: "세션 버프: 최대 HP +2",
+  cook_udumbara_tea: "세션 버프: 행운 수정치 +1", cook_mandrake_omelet: "세션 버프: 최대 HP +5",
   cook_ghost_hand_risotto: "세션 버프: 지력 판정 +1", cook_dragon_flower_roast: "세션 버프: 공격 대미지 +1",
-  cook_marigold_cookie: "세션 버프: 행운 수정치 +1", cook_waterdrop_flower_cake: "세션 버프: 최대 HP +2, 최대 MP +1",
+  cook_marigold_cookie: "세션 버프: 행운 수정치 +1", cook_waterdrop_flower_cake: "세션 버프: 최대 HP +5, 최대 MP +5",
 };
 
 // ── 회복요리: 효과를 '판매가'에 맞춰 자동 산정 (등급 R0/R1 무시) ──
@@ -68,16 +68,19 @@ const RECOVERY = {
   cook_heaven_berry_tart: "HP+MP", cook_platinum_fish_pie: "HP",
 };
 
-// 판매가 → [주사위 수, 평탄 보너스]. 1D 기댓값 3.5 기준, +1/+2로 미세조정.
+// 판매가 → [주사위 수, 평탄 보너스]. 포션 골드 곡선 기준(1D≈20, 2D≈30, 4D≈200~300골드).
+// 1D 기댓값 3.5. 회복량이 클수록 가격이 점진적으로(초과비례) 올라가는 구조 — 중량 한계 프리미엄.
 function recoveryLadder(price) {
   if (price <= 22) return [1, 0];   // 3.5
   if (price <= 32) return [1, 1];   // 4.5
-  if (price <= 45) return [2, 0];   // 7
-  if (price <= 60) return [2, 1];   // 8
-  if (price <= 80) return [2, 2];   // 9
-  if (price <= 110) return [3, 0];  // 10.5
-  if (price <= 140) return [3, 1];  // 11.5
-  return [3, 2];                    // 12.5
+  if (price <= 48) return [2, 0];   // 7
+  if (price <= 70) return [2, 1];   // 8
+  if (price <= 100) return [2, 2];  // 9
+  if (price <= 140) return [3, 0];  // 10.5
+  if (price <= 190) return [3, 1];  // 11.5
+  if (price <= 260) return [4, 0];  // 14  (하이포션급)
+  if (price <= 350) return [4, 2];  // 16
+  return [5, 0];                    // 17.5
 }
 const diceText = (d, f) => (f > 0 ? `[${d}D]+${f}` : `[${d}D]`);
 function recoveryEffect(price, theme) {

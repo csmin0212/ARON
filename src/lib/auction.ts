@@ -120,18 +120,17 @@ export function buildCookedName(base: string, grade: string | null, nickname: st
   return base;
 }
 
-// 효과 텍스트를 등급 보너스 n 만큼 강화.
-//  - 회복(주사위 [ND])이면 주사위는 유지하고 평탄 보너스 +n 을 더한다: "[2D] 회복"→"[2D]+n 회복", "[2D]+1"→"[2D]+(1+n)"
-//  - 버프(+N)면 그 수치를 +n: "공격 대미지 +1"→"+1+n"
+// 효과 텍스트를 등급 보너스 n(고품질1·명품2·장인3)만큼 강화 — 종류별 규칙:
+//  - 회복(주사위 [ND]): 모든 주사위에 +nD (평탄 +M 유지). "[2D]+1 회복" → 명품 "[4D]+1 회복"
+//  - 최대 HP/MP 스탯: 5단위로. "최대 HP +5" → 고품질 +10 / 명품 +15 / 장인 +20
+//  - 행운·공격·판정 등 그 외 "+N": 각 수치에 +n (복합이면 전부). "공격 +2, 근력 판정 +1" → 명품 "공격 +4, 근력 판정 +3"
 export function enhanceEffectText(effect: string, n = 1): string {
   if (/\[\d+\s*D\]/.test(effect)) {
-    if (/\[\d+\s*D\]\s*\+\s*\d+/.test(effect)) {
-      return effect.replace(/(\[\d+\s*D\])\s*\+\s*(\d+)/, (_m, dice: string, flat: string) => `${dice}+${Number(flat) + n}`);
-    }
-    return effect.replace(/(\[\d+\s*D\])/, (_m, dice: string) => `${dice}+${n}`);
+    return effect.replace(/\[(\d+)\s*D\]/g, (_m, d: string) => `[${Number(d) + n}D]`);
   }
-  if (/\+\s*\d+/.test(effect)) {
-    return effect.replace(/\+\s*(\d+)/, (_m, d: string) => `+${Number(d) + n}`);
-  }
-  return effect;
+  return effect.replace(
+    /(최대\s*(?:HP|MP)\s*)?\+\s*(\d+)/g,
+    (_m, hpmp: string | undefined, d: string) =>
+      hpmp ? `${hpmp}+${Number(d) + 5 * n}` : `+${Number(d) + n}`,
+  );
 }
