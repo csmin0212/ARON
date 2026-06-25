@@ -1043,11 +1043,12 @@ function rollD6(n: number): number {
 // "HP [2D] 회복", "MP 3 회복" 등 회복 효과를 파싱해 굴린 회복량 목록을 반환.
 function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number }[] {
   const out: { resource: "HP" | "MP"; amount: number }[] = [];
-  const re = /\b(HP|MP)\s*(?:\[(\d+)\s*D\]|(\d+))\s*점?\s*회복/gi;
+  // "HP [2D] 회복", "HP [2D]+1 회복"(주사위+평탄), "MP 3 회복"(평탄) 모두 처리
+  const re = /\b(HP|MP)\s*(?:\[(\d+)\s*D\](?:\s*\+\s*(\d+))?|(\d+))\s*점?\s*회복/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(effect))) {
     const resource = m[1].toUpperCase() as "HP" | "MP";
-    const amount = m[2] ? rollD6(Number(m[2])) : Number(m[3]);
+    const amount = m[2] ? rollD6(Number(m[2])) + (m[3] ? Number(m[3]) : 0) : Number(m[4]);
     if (amount > 0) out.push({ resource, amount });
   }
   return out;

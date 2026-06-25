@@ -54,19 +54,40 @@ const EFFECT = {
   cook_udumbara_tea: "세션 버프: 행운 수정치 +1", cook_mandrake_omelet: "세션 버프: 최대 HP +2",
   cook_ghost_hand_risotto: "세션 버프: 지력 판정 +1", cook_dragon_flower_roast: "세션 버프: 공격 대미지 +1",
   cook_marigold_cookie: "세션 버프: 행운 수정치 +1", cook_waterdrop_flower_cake: "세션 버프: 최대 HP +2, 최대 MP +1",
-
-  // 회복요리(빈 효과 채움) — 가격대(등급)에 맞춘 HP/MP 회복. 고기·생선·달걀=HP, 채소·과일·약초·버섯=MP.
-  cook_boiled_egg: "HP [1D] 회복", cook_milk_porridge: "HP [1D] 회복", cook_vegetable_soup: "MP [1D] 회복",
-  cook_flatbread: "HP [1D] 회복", basic_salted_bread: "HP [1D] 회복", basic_vegetable_soup: "MP [1D] 회복",
-  basic_fruit_milk: "MP [1D] 회복", basic_meat_soup: "HP [1D] 회복", cook_cheese_bread: "HP [2D] 회복",
-  cook_deodeok_grill: "MP [1D] 회복", cook_licorice_milk: "MP [1D] 회복", cook_carp_soup: "HP [2D] 회복",
-  cook_trout_roast: "HP [1D] 회복", cook_tilapia_wrap: "HP [1D] 회복", cook_hot_spring_fish: "HP [2D] 회복",
-  basic_fruit_tart: "MP [2D] 회복", basic_hearty_breakfast: "HP [2D] 회복",
-  cook_sansam_chicken: "HP [1D] 회복, MP [1D] 회복", cook_reishi_hotpot: "MP [1D] 회복",
-  cook_mountain_trout_soup: "HP [2D] 회복", cook_baekyang_elixir_soup: "MP [2D] 회복",
-  cook_hasuo_root_stew: "MP [2D] 회복", cook_heaven_berry_tart: "HP [2D] 회복, MP [2D] 회복",
-  cook_platinum_fish_pie: "HP [4D] 회복",
 };
+
+// ── 회복요리: 효과를 '판매가'에 맞춰 자동 산정 (등급 R0/R1 무시) ──
+// 테마: 고기·생선·달걀=HP, 채소·과일·약초·버섯=MP, 보양/고급=HP+MP 복합.
+const RECOVERY = {
+  cook_boiled_egg: "HP", cook_milk_porridge: "HP", cook_vegetable_soup: "MP", cook_flatbread: "HP",
+  basic_salted_bread: "HP", basic_vegetable_soup: "MP", basic_fruit_milk: "MP", basic_meat_soup: "HP",
+  cook_cheese_bread: "HP", cook_deodeok_grill: "MP", cook_licorice_milk: "MP", cook_carp_soup: "HP",
+  cook_trout_roast: "HP", cook_tilapia_wrap: "HP", cook_hot_spring_fish: "HP", basic_fruit_tart: "MP",
+  basic_hearty_breakfast: "HP", cook_sansam_chicken: "HP+MP", cook_reishi_hotpot: "MP",
+  cook_mountain_trout_soup: "HP", cook_baekyang_elixir_soup: "MP", cook_hasuo_root_stew: "MP",
+  cook_heaven_berry_tart: "HP+MP", cook_platinum_fish_pie: "HP",
+};
+
+// 판매가 → [주사위 수, 평탄 보너스]. 1D 기댓값 3.5 기준, +1/+2로 미세조정.
+function recoveryLadder(price) {
+  if (price <= 22) return [1, 0];   // 3.5
+  if (price <= 32) return [1, 1];   // 4.5
+  if (price <= 45) return [2, 0];   // 7
+  if (price <= 60) return [2, 1];   // 8
+  if (price <= 80) return [2, 2];   // 9
+  if (price <= 110) return [3, 0];  // 10.5
+  if (price <= 140) return [3, 1];  // 11.5
+  return [3, 2];                    // 12.5
+}
+const diceText = (d, f) => (f > 0 ? `[${d}D]+${f}` : `[${d}D]`);
+function recoveryEffect(price, theme) {
+  if (theme === "HP+MP") {
+    const [d, f] = recoveryLadder(Math.round(price * 0.55)); // 복합은 자원당 예산 분배
+    return `HP ${diceText(d, f)} 회복, MP ${diceText(d, f)} 회복`;
+  }
+  const [d, f] = recoveryLadder(price);
+  return `${theme} ${diceText(d, f)} 회복`;
+}
 
 function parseCsv(text) {
   text = text.replace(/^﻿/, "");
@@ -107,10 +128,17 @@ function parseIngredients(spec) {
     const r = rows[i].slice();
     const id = (r[cId] || "").trim();
     if (!id) continue;
-    if (EFFECT[id] !== undefined) r[cEffect] = EFFECT[id];
     let cost = 0;
     for (const ing of parseIngredients(r[cIng])) cost += ingredientCost(ing.name) * ing.qty;
-    const price = round5(cost * tierMult(r[cEffect], r[cRank]));
+    let price;
+    if (RECOVERY[id]) {
+      // 회복요리: 판매가(=원가×1.3) 먼저, 그 가격대에 맞춰 회복 수치 산정
+      price = round5(cost * 1.3);
+      r[cEffect] = recoveryEffect(price, RECOVERY[id]);
+    } else {
+      if (EFFECT[id] !== undefined) r[cEffect] = EFFECT[id];
+      price = round5(cost * tierMult(r[cEffect], r[cRank]));
+    }
     let rowOut;
     if (cPrice >= 0) { r[cPrice] = String(price); rowOut = r; }
     else { rowOut = [...r, String(price)]; }

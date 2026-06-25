@@ -120,10 +120,18 @@ export function buildCookedName(base: string, grade: string | null, nickname: st
   return base;
 }
 
-// 효과 텍스트의 첫 수치를 n 만큼 강화. "+N" 우선, 없으면 회복 주사위 "[ND]" 를 +n.
+// 효과 텍스트를 등급 보너스 n 만큼 강화.
+//  - 회복(주사위 [ND])이면 주사위는 유지하고 평탄 보너스 +n 을 더한다: "[2D] 회복"→"[2D]+n 회복", "[2D]+1"→"[2D]+(1+n)"
+//  - 버프(+N)면 그 수치를 +n: "공격 대미지 +1"→"+1+n"
 export function enhanceEffectText(effect: string, n = 1): string {
+  if (/\[\d+\s*D\]/.test(effect)) {
+    if (/\[\d+\s*D\]\s*\+\s*\d+/.test(effect)) {
+      return effect.replace(/(\[\d+\s*D\])\s*\+\s*(\d+)/, (_m, dice: string, flat: string) => `${dice}+${Number(flat) + n}`);
+    }
+    return effect.replace(/(\[\d+\s*D\])/, (_m, dice: string) => `${dice}+${n}`);
+  }
   if (/\+\s*\d+/.test(effect)) {
     return effect.replace(/\+\s*(\d+)/, (_m, d: string) => `+${Number(d) + n}`);
   }
-  return effect.replace(/\[(\d+)\s*D\]/, (_m, d: string) => `[${Number(d) + n}D]`);
+  return effect;
 }
