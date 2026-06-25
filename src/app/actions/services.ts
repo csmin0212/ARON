@@ -1127,6 +1127,13 @@ export async function useCookingItem(
 
   if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
+    // 중첩 금지 — 새 버프가 영향 주는 종류(낚시/채집)의 기존 버프는 제거하고 최신 1개만 유지.
+    // 낚시·채집은 슬롯이 따로라, 낚시 버프는 채집 버프를 건드리지 않는다. (채광 등 확장 시 동일 규칙 적용)
+    const kindsOf = (k: typeof lifeLuck.kind) => (k === "both" ? ["낚시", "채집"] : [k]);
+    const newKinds = kindsOf(lifeLuck.kind);
+    life.cookingBuffs.lifeLuck = life.cookingBuffs.lifeLuck.filter(
+      (b) => !kindsOf(b.kind).some((k) => newKinds.includes(k)),
+    );
     life.cookingBuffs.lifeLuck.push({
       kind: lifeLuck.kind,
       amount: lifeLuck.amount,
