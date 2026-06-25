@@ -22,13 +22,7 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
-import {
-  COOK_AFFIXES,
-  buildCookedName,
-  enhanceEffectText,
-  gradeInfo,
-  parseCookedName,
-} from "@/lib/auction";
+import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -821,18 +815,16 @@ const COOK_LEVEL_GATE = [1, 1, 5, 15, 35, 55];
 function requiredCookLevel(rank: string | null | undefined): number {
   return COOK_LEVEL_GATE[recipeRankNumber(rank)] ?? 1;
 }
-// 요리 등급 추첨 — 레벨이 높을수록 좋은 등급 확률↑. 명품은 고렙에서만 희귀.
+// 요리 등급 추첨 — 레벨이 높을수록 좋은 등급 확률↑.
+// 장인작(요리사 이름 새김): 고렙에서만 희귀 / 명품: Lv15+ / 고품질: 흔함.
 function rollCookGrade(level: number): string | null {
   const r = Math.random() * 100;
-  const master = Math.max(0, Math.min(12, (level - 15) * 0.6)); // 명품: Lv15+ 부터, 최대 12%
+  const signature = Math.max(0, Math.min(10, (level - 25) * 0.4)); // 장인작: Lv25+, 최대 10%
+  const master = Math.max(0, Math.min(12, (level - 15) * 0.6)); // 명품: Lv15+, 최대 12%
   const hq = Math.min(45, 6 + level); // 고품질: Lv1 ~7% → 상한 45%
-  if (r < master) return "명품";
-  if (r < master + hq) return "고품질";
-  return null;
-}
-// 랜덤 작명 접두어 — 35% 확률, 순수 플레이버
-function rollCookAffix(): string | null {
-  if (Math.random() < 0.35) return COOK_AFFIXES[Math.floor(Math.random() * COOK_AFFIXES.length)];
+  if (r < signature) return "장인";
+  if (r < signature + master) return "명품";
+  if (r < signature + master + hq) return "고품질";
   return null;
 }
 
@@ -892,9 +884,8 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     inv = await consumeIngredient(ctx.userId, inv, life, ingredient.name, ingredient.qty);
   }
 
-  // 등급(고품질·명품)·작명 추첨 — 요리레벨 비례. 등급은 성능·가격↑, 작명은 플레이버.
+  // 등급 추첨 — 요리레벨 비례. 장인작이면 요리사 닉네임이 새겨진다("{닉네임}의 {이름}").
   const grade = recipe ? rollCookGrade(life.cooking.level) : null;
-  const affix = recipe ? rollCookAffix() : null;
   const gi = gradeInfo(grade);
   const result = recipe
     ? (() => {
@@ -902,12 +893,12 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
         const price = Math.round(recipe.sellPrice * (gi?.priceMult ?? 1));
         const baseEffect = recipe.effect ? (bonus > 0 ? enhanceEffectText(recipe.effect, bonus) : recipe.effect) : "";
         const durText = recipe.duration ? ` (${recipe.duration})` : "";
-        const tag = grade ? `✨${grade} — ` : "";
+        const label = grade === "장인" ? `✨${ctx.nickname}의 서명작 — ` : grade ? `✨${grade} — ` : "";
         const effect = baseEffect
-          ? `${tag}${baseEffect}${durText}\n판매가 ${price}G`
+          ? `${label}${baseEffect}${durText}\n판매가 ${price}G`
           : `${grade ? `✨${grade}\n` : ""}판매가 ${price}G`;
         return {
-          name: buildCookedName(recipe.resultName, grade, affix),
+          name: buildCookedName(recipe.resultName, grade, ctx.nickname),
           qty: recipe.resultQty,
           effect,
           weight: recipe.weight,
@@ -968,7 +959,7 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   }
   return {
     ok: [
-      grade ? `✨${grade} 요리 성공!` : "",
+      grade === "장인" ? `✨${ctx.nickname}의 서명작 완성!` : grade ? `✨${grade} 요리 성공!` : "",
       discovered
         ? `새 레시피 발견! ${recipe.name} 완성. ${result.name} x${result.qty} 획득.`
         : `${recipe.name} 완성. ${result.name} x${result.qty} 획득.`,

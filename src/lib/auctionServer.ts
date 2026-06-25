@@ -175,22 +175,23 @@ async function incrementDbInventory(userId: string, itemName: string, qty: numbe
 
 // ── 하한가·카테고리 판정 ──
 export async function resolveFloor(name: string, source: AuctionSource): Promise<number> {
+  // 어획물/약초는 raw 이름으로 먼저 판정 (예: "바다의 전령"이 장인작 파싱과 충돌하지 않도록).
+  const raw = name.trim();
+  if (source === "낚시" || source === "채집") return lifeSkillSellPrice(source, raw);
+
+  const lifeKind = lifeSkillItemKind(raw);
+  if (lifeKind) return lifeSkillSellPrice(lifeKind, raw);
+
   const { base, grade } = parseCookedName(name);
-  const trimmed = base;
-  if (source === "낚시" || source === "채집") return lifeSkillSellPrice(source, trimmed);
-
-  const lifeKind = lifeSkillItemKind(trimmed);
-  if (lifeKind) return lifeSkillSellPrice(lifeKind, trimmed);
-
   const recipe = await prisma.cookingRecipe.findFirst({
-    where: { resultName: trimmed },
+    where: { resultName: base },
     select: { sellPrice: true },
   });
   if (recipe?.sellPrice) return Math.round(recipe.sellPrice * (gradeInfo(grade)?.priceMult ?? 1));
 
-  if (!isNonSellable(trimmed)) {
+  if (!isNonSellable(raw)) {
     const material = await prisma.item.findFirst({
-      where: { name: trimmed, sellPrice: { gt: 0 }, category: { in: SELLABLE_MATERIAL_CATEGORIES } },
+      where: { name: raw, sellPrice: { gt: 0 }, category: { in: SELLABLE_MATERIAL_CATEGORIES } },
       select: { sellPrice: true },
     });
     if (material?.sellPrice) return material.sellPrice;
@@ -199,24 +200,24 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
 }
 
 export async function resolveCategory(name: string, source: AuctionSource): Promise<AuctionCategory> {
-  const trimmed = parseCookedName(name).base;
+  const raw = name.trim();
   if (source === "낚시") return "어획물";
   if (source === "채집") return "채집품";
 
-  const lifeKind = lifeSkillItemKind(trimmed);
+  const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind === "낚시") return "어획물";
   if (lifeKind === "채집") return "채집품";
 
   const recipe = await prisma.cookingRecipe.findFirst({
-    where: { resultName: trimmed },
+    where: { resultName: parseCookedName(name).base },
     select: { id: true },
   });
   if (recipe) return "요리";
 
-  if (await isSkillBookItem(trimmed)) return "스킬북";
+  if (await isSkillBookItem(raw)) return "스킬북";
 
   const item = await prisma.item.findFirst({
-    where: { OR: [{ id: trimmed }, { name: trimmed }] },
+    where: { OR: [{ id: raw }, { name: raw }] },
     select: { category: true },
   });
   const cat = item?.category ?? "";
