@@ -13,31 +13,17 @@ import {
   type LifeBag,
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
-import { collectionItems, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
 function CollectionBook({
-  life,
+  lifeEntries,
   cookingRecipes,
 }: {
-  life: LifeState;
+  lifeEntries: CollectionBookEntry[];
   cookingRecipes: CollectionBookEntry[];
 }) {
-  const all = collectionItems(false); // 바다 어종은 아직 도감에 미포함 (상위 층 해금 예정)
-  const entries: CollectionBookEntry[] = [
-    ...all.map(({ kind, item }) => ({
-      kind,
-      name: item.name,
-      rank: item.rank,
-      rarity: item.rarity,
-      price: lifeSkillMarketPrice(kind, item),
-      weight: item.weight,
-      text: item.text,
-      discovered: life.collection[kind].includes(item.name),
-      count: life.catchCounts[kind][item.name] ?? 0,
-    })),
-    ...cookingRecipes,
-  ];
+  // 어획물/채집물 카탈로그는 서버에서 계산해 전달(시트 동기화본 반영). 클라는 합치기만.
+  const entries: CollectionBookEntry[] = [...lifeEntries, ...cookingRecipes];
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
@@ -254,10 +240,12 @@ export default function LifeSkillPanel({
   life,
   isOwn,
   cookingRecipes = [],
+  lifeEntries = [],
 }: {
   life: LifeState;
   isOwn: boolean;
   cookingRecipes?: CollectionBookEntry[];
+  lifeEntries?: CollectionBookEntry[];
 }) {
   const [state, formAction, pending] = useActionState<LifeActionState, FormData>(
     chooseLifePerk,
@@ -437,7 +425,7 @@ export default function LifeSkillPanel({
         </div>
       )}
       {view === "book" && (
-        <CollectionBook life={life} cookingRecipes={cookingRecipes} />
+        <CollectionBook lifeEntries={lifeEntries} cookingRecipes={cookingRecipes} />
       )}
       {view === "skill" && skillSection}
     </div>

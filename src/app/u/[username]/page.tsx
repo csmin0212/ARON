@@ -6,6 +6,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { formatFullDate } from "@/lib/format";
 import type { SheetInventory } from "@/lib/googleSheets";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
+import { collectionItems, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { checkAndGrant } from "@/lib/achievements";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import CharacterTabs from "@/components/CharacterTabs";
@@ -154,6 +156,19 @@ export default async function CharacterPage({
   }));
 
   const life = parseLifeState(profile.sheet?.lifeJson);
+  await loadLifeItems();
+  // 도감 어획물/채집물 카탈로그를 서버에서 계산(시트 동기화본 반영) → 클라로 prop 전달.
+  const lifeEntries: CollectionBookEntry[] = collectionItems(false).map(({ kind, item }) => ({
+    kind,
+    name: item.name,
+    rank: item.rank,
+    rarity: item.rarity,
+    price: lifeSkillMarketPrice(kind, item),
+    weight: item.weight,
+    text: item.text,
+    discovered: life.collection[kind].includes(item.name),
+    count: life.catchCounts[kind][item.name] ?? 0,
+  }));
   const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
   const cookingRecipes: CollectionBookEntry[] = recipes.map((recipe) => ({
     kind: "요리",
@@ -206,7 +221,9 @@ export default async function CharacterPage({
     </div>
   );
 
-  const lifeTab = <LifeSkillPanel life={life} isOwn={isOwn} cookingRecipes={cookingRecipes} />;
+  const lifeTab = (
+    <LifeSkillPanel life={life} isOwn={isOwn} cookingRecipes={cookingRecipes} lifeEntries={lifeEntries} />
+  );
 
   const achTab = (
     <AchievementBook

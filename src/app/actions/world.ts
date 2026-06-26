@@ -12,6 +12,7 @@ import {
   fetchEventsRows,
   fetchAchievementsRows,
   fetchRecipesRows,
+  fetchLifeItemsRows,
   fetchSkillsRows,
   fetchCombatSkillsRows,
 } from "@/lib/gamedata";
@@ -670,6 +671,35 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "레시피 탭 오류");
+  }
+
+  // 7-2) 물고기·채집 (선택) — 낚시/채집 풀의 단일 진실원.
+  try {
+    const lifeItems = await fetchLifeItemsRows();
+    if (lifeItems) {
+      await prisma.$transaction([
+        prisma.lifeSkillItem.deleteMany(),
+        prisma.lifeSkillItem.createMany({
+          data: lifeItems.map((it, i) => ({
+            kind: it.kind,
+            name: it.name,
+            rank: it.rank,
+            rarity: it.rarity,
+            weight: it.weight,
+            price: it.price,
+            exp: it.exp,
+            sizeBase: it.sizeBase,
+            sizeVar: it.sizeVar,
+            habitat: it.habitat,
+            text: it.text,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`생활아이템 ${lifeItems.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "물고기/채집 탭 오류");
   }
 
   // 8) 스킬 (선택) — 유저가 이미 획득한 특성 기록은 보존하고 정의만 교체.

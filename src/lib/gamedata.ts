@@ -16,6 +16,8 @@ export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
 export const ACHIEVEMENTS_TAB = process.env.ACHIEVEMENTS_TAB_NAME || "업적";
 export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
+export const FISH_TAB = process.env.FISH_TAB_NAME || "물고기";
+export const GATHER_TAB = process.env.GATHER_TAB_NAME || "채집";
 export const SKILLS_TAB = process.env.SKILLS_TAB_NAME || "스킬";
 export const COMBAT_SKILLS_TAB = process.env.COMBAT_SKILLS_TAB_NAME || "전투스킬";
 
@@ -770,6 +772,76 @@ export async function fetchRecipesRows(): Promise<RecipeRow[] | null> {
     (await fetchTab(WORLD_SHEET_ID, RECIPES_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, RECIPES_TAB));
   if (!g) return null;
   return parseRecipesGrid(g);
+}
+
+// ── 물고기/채집 탭 → 생활 아이템 ──
+export type LifeItemRow = {
+  kind: "낚시" | "채집";
+  name: string;
+  rank: number;
+  rarity: string | null;
+  weight: number;
+  price: number;
+  exp: number;
+  sizeBase: number;
+  sizeVar: number;
+  habitat: string | null;
+  text: string | null;
+};
+
+function rankToNum(s: string): number {
+  const m = s.toUpperCase().match(/R?\s*(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집"): LifeItemRow[] {
+  const h = findHeader(g, ["이름", "등급"], {
+    이름: "name",
+    등급: "rank",
+    별등급: "rarity",
+    중량: "weight",
+    판매가: "price",
+    숙련도: "exp",
+    크기기본: "sizeBase",
+    크기편차: "sizeVar",
+    서식지: "habitat",
+    설명: "text",
+  });
+  if (!h) throw new Error(`${kind} 탭 헤더(이름/등급)를 찾지 못했어요.`);
+
+  const rows: LifeItemRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    if (!name) continue;
+    if (seen.has(name)) continue; // 중복 이름은 첫 행만 채택
+    seen.add(name);
+    rows.push({
+      kind,
+      name,
+      rank: rankToNum(at(g, r, h.col.rank)),
+      rarity: at(g, r, h.col.rarity) || null,
+      weight: num(at(g, r, h.col.weight)) ?? 1,
+      price: num(at(g, r, h.col.price)) ?? 0,
+      exp: num(at(g, r, h.col.exp)) ?? 1,
+      sizeBase: num(at(g, r, h.col.sizeBase)) ?? 1,
+      sizeVar: num(at(g, r, h.col.sizeVar)) ?? 1,
+      habitat: at(g, r, h.col.habitat) || null,
+      text: at(g, r, h.col.text) || null,
+    });
+  }
+  if (rows.length === 0) throw new Error(`${kind} 탭에서 항목을 찾지 못했어요.`);
+  return rows;
+}
+
+export async function fetchLifeItemsRows(): Promise<LifeItemRow[] | null> {
+  const fishG = (await fetchTab(WORLD_SHEET_ID, FISH_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, FISH_TAB));
+  const gathG = (await fetchTab(WORLD_SHEET_ID, GATHER_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, GATHER_TAB));
+  if (!fishG && !gathG) return null;
+  const out: LifeItemRow[] = [];
+  if (fishG) out.push(...parseLifeItemsGrid(fishG, "낚시"));
+  if (gathG) out.push(...parseLifeItemsGrid(gathG, "채집"));
+  return out;
 }
 
 export async function fetchSkillsRows(): Promise<SkillRow[] | null> {

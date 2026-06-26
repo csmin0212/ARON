@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "./prisma";
-import { FISH_ITEMS, PLANT_ITEMS } from "./lifeSkillData";
+import { getActiveItems } from "./lifeSkillData";
 import { lifeBagWeight, parseLifeState } from "./lifeSkillPerks";
 import { parseHousingState } from "./housing";
 
@@ -53,8 +53,9 @@ const TOOL_TIER: Record<string, number> = {
 };
 
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
-const fishRankByName = new Map(FISH_ITEMS.map((item) => [item.name, item.rank]));
-const plantRankByName = new Map(PLANT_ITEMS.map((item) => [item.name, item.rank]));
+// 활성 풀(시트 동기화본) 기준으로 매번 구성 — 신규 어종/약초가 도감 판정에 반영되게.
+const rankMapOf = (kind: "낚시" | "채집") =>
+  new Map(getActiveItems(kind).map((item) => [item.name, item.rank]));
 
 function countStatPrefix(stats: Record<string, number>, prefix: string): number {
   return Object.entries(stats).filter(([key, value]) => key.startsWith(prefix) && value > 0).length;
@@ -122,8 +123,8 @@ export async function checkAndGrant(
   const toolNames = Object.values((life as { tools?: Record<string, string> }).tools ?? {});
   const fishingBagWeight = lifeBagWeight(life.bags.낚시);
   const plantBagWeight = lifeBagWeight(life.bags.채집);
-  const bestFishingRank = maxKnownRank(life.collection.낚시, fishRankByName);
-  const bestPlantRank = maxKnownRank(life.collection.채집, plantRankByName);
+  const bestFishingRank = maxKnownRank(life.collection.낚시, rankMapOf("낚시"));
+  const bestPlantRank = maxKnownRank(life.collection.채집, rankMapOf("채집"));
   const bestSameFishing = maxCount(life.catchCounts.낚시);
   const bestSamePlant = maxCount(life.catchCounts.채집);
   const fishingAreaCount = countStatPrefix(stats, "낚시지역:");
@@ -192,9 +193,9 @@ export async function checkAndGrant(
       case "채집도감등록수":
         return n != null && life.collection.채집.length >= n;
       case "낚시도감완성률":
-        return n != null && percent(life.collection.낚시.length, FISH_ITEMS.length) >= n;
+        return n != null && percent(life.collection.낚시.length, getActiveItems("낚시").length) >= n;
       case "채집도감완성률":
-        return n != null && percent(life.collection.채집.length, PLANT_ITEMS.length) >= n;
+        return n != null && percent(life.collection.채집.length, getActiveItems("채집").length) >= n;
       case "희귀도낚시":
         return rankNum(v) != null && bestFishingRank >= rankNum(v)!;
       case "희귀도채집":

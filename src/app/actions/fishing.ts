@@ -7,6 +7,7 @@ import { freshAp, postSystem } from "@/lib/play";
 import { FATIGUE_MAX } from "@/lib/world";
 import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
   lifeSkillCategory,
   lifeSkillExpGain,
@@ -114,6 +115,7 @@ export async function startFishing(): Promise<FishingStart> {
   const regionBase = pool.weights
     ? pool.weights.map((w, rank) => (levelBase[rank] > 0 ? w : 0))
     : levelBase;
+  await loadLifeItems();
   let caught;
   try {
     caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase) });

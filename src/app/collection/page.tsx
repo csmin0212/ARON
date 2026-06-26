@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { collectionItems, isSeaLifeItem, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 
@@ -24,6 +25,7 @@ function recipeRankNumber(rank: string | null | undefined): number {
 }
 
 export default async function CollectionPage() {
+  await loadLifeItems();
   const user = await getCurrentUser();
   if (!user) {
     return (

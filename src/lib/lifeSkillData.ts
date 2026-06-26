@@ -173,6 +173,22 @@ export const FISH_ITEMS: LifeSkillItem[] = [
   { no: 60, name: "크라켄", rank: 5, weight: 6, price: 15, exp: 15, sizeBase: 600, sizeVariance: 10, rarity: "★★★★★", text: "얘는 전투해야 잡을 수 있게 설계할거에요 - 뭇별" },
 ];
 
+// ── 활성 풀 (DB 동기화본으로 교체 가능, 기본은 위 하드코딩 seed) ──
+// 시트→DB 동기화가 있으면 setLifeItems로 덮어쓰고, 없으면 seed로 동작(폴백).
+let activePlant: LifeSkillItem[] = PLANT_ITEMS;
+let activeFish: LifeSkillItem[] = FISH_ITEMS;
+let activeSea: Set<string> = SEA_FISH;
+
+export function setLifeItems(fish: LifeSkillItem[], plant: LifeSkillItem[], seaNames: string[]): void {
+  activeFish = fish;
+  activePlant = plant;
+  activeSea = new Set(seaNames);
+}
+
+export function getActiveItems(kind: LifeSkillKind): LifeSkillItem[] {
+  return kind === "채집" ? activePlant : activeFish;
+}
+
 function rollInt(maxInclusive: number): number {
   return Math.floor(Math.random() * (maxInclusive + 1));
 }
@@ -193,23 +209,23 @@ function pickRank(weights?: number[]): number {
 }
 
 function poolFor(kind: LifeSkillKind): LifeSkillItem[] {
-  return kind === "채집" ? PLANT_ITEMS : FISH_ITEMS;
+  return kind === "채집" ? activePlant : activeFish;
 }
 
 function waterAllowed(item: LifeSkillItem, water: FishWater): boolean {
   if (water === "전체") return true;
-  const sea = SEA_FISH.has(item.name);
+  const sea = activeSea.has(item.name);
   return water === "바다" ? sea : !sea;
 }
 
 export function isSeaLifeItem(item: LifeSkillItem): boolean {
-  return SEA_FISH.has(item.name);
+  return activeSea.has(item.name);
 }
 
 export function collectionItems(includeSea = false): { kind: LifeSkillKind; item: LifeSkillItem }[] {
   return [
-    ...PLANT_ITEMS.map((item) => ({ kind: "채집" as const, item })),
-    ...FISH_ITEMS.filter((item) => includeSea || !isSeaLifeItem(item)).map((item) => ({
+    ...activePlant.map((item) => ({ kind: "채집" as const, item })),
+    ...activeFish.filter((item) => includeSea || !isSeaLifeItem(item)).map((item) => ({
       kind: "낚시" as const,
       item,
     })),
@@ -219,8 +235,8 @@ export function collectionItems(includeSea = false): { kind: LifeSkillKind; item
 export function lifeSkillItemKind(name: string): LifeSkillKind | null {
   const target = name.trim();
   if (!target) return null;
-  if (PLANT_ITEMS.some((item) => item.name === target)) return "채집";
-  if (FISH_ITEMS.some((item) => item.name === target)) return "낚시";
+  if (activePlant.some((item) => item.name === target)) return "채집";
+  if (activeFish.some((item) => item.name === target)) return "낚시";
   return null;
 }
 

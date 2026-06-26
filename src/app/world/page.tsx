@@ -35,6 +35,7 @@ import WorldServices, {
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { lifeSkillItemKind, lifeSkillSellPrice, type LocationLifeConfig } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { isNonSellable } from "@/lib/shop";
 import { SKILLBOOK_META } from "@/lib/skillbook";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
@@ -140,6 +141,7 @@ function hasServiceKeyword(
 export default async function WorldPage() {
   const user = await getCurrentUser();
   const isGm = isGmUsername(user?.username);
+  await loadLifeItems();
 
   if (!user) {
     return (

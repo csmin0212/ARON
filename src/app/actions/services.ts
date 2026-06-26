@@ -21,6 +21,7 @@ import {
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
 import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
@@ -1233,6 +1234,7 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
   const kind: LifeSkillKind | null =
     kindRaw === "낚시" || kindRaw === "채집" ? kindRaw : null;
   if (!kind) return { error: "판매할 부산물 종류가 올바르지 않습니다." };
+  await loadLifeItems();
   const itemName = String(formData.get("itemName") ?? "").trim();
   const qty = formQty(formData);
 

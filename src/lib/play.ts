@@ -14,6 +14,7 @@ import {
   type SheetInventory,
 } from "./googleSheets";
 import { bumpStat, checkAndGrant } from "./achievements";
+import { loadLifeItems } from "./lifeSkillLoader";
 import {
   lifeSkillCategory,
   lifeSkillExpGain,
@@ -248,6 +249,7 @@ export async function runActionCommand(
       const regionBase = locationPool.weights
         ? locationPool.weights.map((weight, rank) => (levelBase[rank] > 0 ? weight : 0))
         : levelBase;
+      await loadLifeItems();
       let caught;
       try {
         caught = pickLifeSkillCatch(lifeSkillKind, {

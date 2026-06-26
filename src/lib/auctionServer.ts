@@ -16,6 +16,7 @@ import {
 } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { isSkillBookItem } from "@/lib/skillbook";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
   gradeInfo,
   listingExpiry,
@@ -175,6 +176,7 @@ async function incrementDbInventory(userId: string, itemName: string, qty: numbe
 
 // ── 하한가·카테고리 판정 ──
 export async function resolveFloor(name: string, source: AuctionSource): Promise<number> {
+  await loadLifeItems();
   // 어획물/약초는 raw 이름으로 먼저 판정 (예: "바다의 전령"이 장인작 파싱과 충돌하지 않도록).
   const raw = name.trim();
   if (source === "낚시" || source === "채집") return lifeSkillSellPrice(source, raw);
@@ -200,6 +202,7 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
 }
 
 export async function resolveCategory(name: string, source: AuctionSource): Promise<AuctionCategory> {
+  await loadLifeItems();
   const raw = name.trim();
   if (source === "낚시") return "어획물";
   if (source === "채집") return "채집품";
