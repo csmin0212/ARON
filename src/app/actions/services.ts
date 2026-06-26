@@ -23,6 +23,7 @@ import {
 import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
+import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -1706,4 +1707,45 @@ export async function enchantWeapon(
   }
   revalidatePath("/world");
   return { ok: `${nextName} 제련 완료.` };
+}
+
+// 수식어 리롤 — 강철 파편 1개로 무기/방어구 앞에 랜덤 수식어를 부여(기존 수식어 교체).
+export async function reforgeItem(_prev: ServiceState, formData: FormData): Promise<ServiceState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 쓰기 설정을 먼저 확인해주세요." };
+
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  const item = findInvItem(ctx.inv, itemName);
+  if (!item || item.qty <= 0) return { error: "수식어를 부여할 장비를 찾지 못했습니다." };
+
+  const slot = detectForgeSlot(`${item.name} ${item.effect ?? ""}`);
+  if (!slot) return { error: "무기·방어구만 수식어 리롤이 가능해요." };
+  if (itemQty(ctx.inv, STEEL_FRAGMENT) < 1) {
+    return { error: `${STEEL_FRAGMENT}이 부족합니다. (${itemQty(ctx.inv, STEEL_FRAGMENT)}/1)` };
+  }
+
+  const prefix = rollPrefix(slot);
+  const base = stripPrefix(item.name); // 기존 수식어 제거 후 기본 이름
+  const nextName = `${prefix.name} ${base}`;
+  const baseEffect = stripPrefixEffect(item.effect) || (await lookupItemDesc(base)) || "";
+  const nextEffect = appendEffect(baseEffect, `수식어(${prefix.name}): ${prefix.effect}`);
+
+  let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 1);
+  inv = transformOneInvItem(inv, item.name, { name: nextName, effect: nextEffect, weight: item.weight });
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: { invJson: JSON.stringify(inv) },
+    }),
+    decrementDbInventory(ctx.userId, STEEL_FRAGMENT, 1),
+  ]);
+
+  if (ctx.locationId) {
+    await postSystem(ctx.locationId, `🔨 ${ctx.nickname}님이 ${base}에 '${prefix.name}' 수식어를 새겼다.`);
+  }
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `[${TIER_LABEL[prefix.tier]}] ${nextName} — ${prefix.effect}` };
 }

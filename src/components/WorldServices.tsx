@@ -16,6 +16,7 @@ import {
   sellFood,
   sellLifeCatch,
   sellMaterial,
+  reforgeItem,
   upgradeWeapon,
   withdrawFromStorage,
   type CookingState,
@@ -28,6 +29,7 @@ import {
 } from "@/app/actions/services";
 import { enterHome } from "@/app/actions/world";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
+import { detectForgeSlot } from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -1562,7 +1564,7 @@ export default function WorldServices({
   const [cookingOpen, setCookingOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
-  const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | null>(null);
+  const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | "reforge" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
     undefined,
@@ -1571,11 +1573,22 @@ export default function WorldServices({
     enchantWeapon,
     undefined,
   );
+  const [reforgeState, reforgeAction, reforgePending] = useActionState<ServiceState, FormData>(
+    reforgeItem,
+    undefined,
+  );
 
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const weapons = items.filter(isWeapon);
   // 인첸트 대상: 강화(+N)·인첸트가 안 된 깨끗한 무기만
   const enchantableWeapons = weapons.filter((w) => !isEnchanted(w) && !isEnhanced(w));
+  // 수식어 리롤 대상: 무기 또는 방어구 (강철 파편·보석 제외)
+  const forgeables = items.filter(
+    (it) =>
+      !isGem(it) &&
+      !it.name.includes("파편") &&
+      detectForgeSlot(`${it.name} ${it.effect ?? ""}`) !== null,
+  );
   const gems = items.filter(isGem);
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
@@ -1601,7 +1614,7 @@ export default function WorldServices({
               <span className="text-xl">⚒️</span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">대장간</span>
-                <span className="text-[11px] text-faint">무기 강화 · 마법 제련</span>
+                <span className="text-[11px] text-faint">무기 강화 · 마법 제련 · 수식어</span>
               </span>
             </button>
           )}
@@ -1816,6 +1829,13 @@ export default function WorldServices({
                     subtitle="보석과 강철 파편으로 무기에 인첸트를 부여합니다"
                     onClick={() => setForgeMode("magic")}
                   />
+                  <ForgeChoice
+                    tone="fire"
+                    icon="🔨"
+                    title="수식어 부여"
+                    subtitle="강철 파편 1개로 무기·방어구에 랜덤 수식어를 새깁니다"
+                    onClick={() => setForgeMode("reforge")}
+                  />
                 </div>
               ) : (
                 <div className="mx-auto max-w-xl space-y-4 rounded-[1.5rem] border border-amber-900/60 bg-stone-950/72 p-4 shadow-[inset_0_0_30px_rgba(0,0,0,0.75)] sm:p-5">
@@ -1889,7 +1909,7 @@ export default function WorldServices({
                         {upgradePending ? "강화 중..." : "강화 적용"}
                       </button>
                     </form>
-                  ) : (
+                  ) : forgeMode === "magic" ? (
                     <form action={enchantAction} className="space-y-3">
                       <h4 className="text-lg font-black text-violet-100">마법 제련</h4>
                       <StateLine state={enchantState} />
@@ -1933,6 +1953,40 @@ export default function WorldServices({
                         className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-violet-500 disabled:opacity-50"
                       >
                         {enchantPending ? "제련 중..." : "제련 적용"}
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={reforgeAction} className="space-y-3">
+                      <h4 className="text-lg font-black text-amber-100">수식어 부여</h4>
+                      <StateLine state={reforgeState} />
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-bold text-stone-400">무기 · 방어구</span>
+                        <select
+                          name="itemName"
+                          className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2.5 text-sm font-semibold text-stone-100 outline-none focus:border-amber-400"
+                        >
+                          {forgeables.map((item) => (
+                            <option key={item.name} value={item.name}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="rounded-xl border border-amber-900/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
+                        강철 파편 1개 소모 · 무기/방어구 자동 판별 후 랜덤 수식어 부여(기존 수식어 교체).
+                        <br />추첨 비율 — 좋음 30% / 보통 30% / 나쁨 40%
+                      </p>
+                      {forgeables.length === 0 && (
+                        <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-3 text-sm text-stone-400">
+                          인벤토리에서 무기·방어구를 찾지 못했어요. 시트 휴대품에 넣고 동기화해주세요.
+                        </p>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={reforgePending || forgeables.length === 0 || steelCount < 1}
+                        className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-amber-500 disabled:opacity-50"
+                      >
+                        {reforgePending ? "제작 중..." : "수식어 리롤 (강철 파편 1)"}
                       </button>
                     </form>
                   )}
