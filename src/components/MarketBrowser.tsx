@@ -272,7 +272,10 @@ export default function MarketBrowser({
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-faint">MARKET</p>
           <h1 className="mt-1 text-2xl font-black text-content">🏪 경매장</h1>
-          <p className="mt-1 text-sm text-faint">위탁 등록 → 다른 모험가가 즉시구매. 수수료 2%(등록)·5%(판매).</p>
+          <p className="mt-1 text-sm text-faint">
+            위탁 등록 → 다른 모험가가 즉시구매. 수수료 2%(등록)·5%(판매) · 3일 뒤 미판매분 반송 ·
+            동시 등록 5칸(A랭크+ 10칸, S랭크 등록 수수료 면제)
+          </p>
         </div>
         <div className="rounded-2xl bg-amber-500/10 px-4 py-2 text-right">
           <p className="text-[10px] font-bold text-amber-600">보유 골드</p>

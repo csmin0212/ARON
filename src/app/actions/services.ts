@@ -28,7 +28,12 @@ import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect
 import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
-import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
+import {
+  adventurerRankGoal,
+  nextAdventurerRank,
+  normalizeAdventurerRank,
+  storageWeightBonus,
+} from "@/lib/adventurerRank";
 import {
   homeTierFromLocationId,
   houseOption,
@@ -295,6 +300,7 @@ async function currentSheet(): Promise<{
   apResetAt: Date | null;
   curGold: number | null;
   achStatsJson: string | null;
+  adventurerRank: string | null;
   inv: SheetInventory;
   invFromSheet: boolean;
 } | null> {
@@ -314,10 +320,12 @@ async function currentSheet(): Promise<{
     apResetAt: sheet.apResetAt,
     curGold: sheet.curGold,
     achStatsJson: sheet.achStatsJson,
+    adventurerRank: sheet.adventurerRank,
     inv: parseInv(sheet.invJson),
     invFromSheet: !!sheet.invJson,
   };
 }
+
 
 function lifeShopProduct(productId: string): LifeShopProduct | null {
   return LIFE_SHOP_ITEMS.find((item) => item.id === productId) ?? null;
@@ -415,7 +423,7 @@ async function canUsePublicKitchen(locationId: string | null): Promise<boolean> 
 
 function lifeItemQty(life: ReturnType<typeof parseLifeState>, name: string): number {
   const target = name.trim();
-  return (["낚시", "채집"] as const).reduce(
+  return (["낚시", "채집", "채광"] as const).reduce(
     (sum, kind) =>
       sum +
       life.bags[kind].items
@@ -428,7 +436,7 @@ function lifeItemQty(life: ReturnType<typeof parseLifeState>, name: string): num
 function consumeLifeItem(life: ReturnType<typeof parseLifeState>, name: string, qty: number): number {
   const target = name.trim();
   let remaining = qty;
-  for (const kind of ["낚시", "채집"] as const) {
+  for (const kind of ["낚시", "채집", "채광"] as const) {
     for (const item of life.bags[kind].items) {
       if (item.name.trim() !== target || remaining <= 0) continue;
       const used = Math.min(item.qty, remaining);
@@ -551,7 +559,9 @@ export async function depositToStorage(
   const itemName = String(formData.get("itemName") ?? "").trim();
   const sourceKindRaw = String(formData.get("sourceKind") ?? "basic");
   const sourceKind =
-    sourceKindRaw === "낚시" || sourceKindRaw === "채집" ? sourceKindRaw : null;
+    sourceKindRaw === "낚시" || sourceKindRaw === "채집" || sourceKindRaw === "채광"
+      ? sourceKindRaw
+      : null;
   const qty = formQty(formData);
 
   let item:
@@ -585,8 +595,9 @@ export async function depositToStorage(
   const box = await storageBox(ctx.userId);
   const usedWeight = await storageWeight(box.id);
   const movingWeight = (item.weight ?? 0) * qty;
-  if (usedWeight + movingWeight > box.maxWeight) {
-    return { error: `창고 중량이 부족합니다. (${usedWeight + movingWeight}/${box.maxWeight})` };
+  const boxLimit = box.maxWeight + storageWeightBonus(ctx.adventurerRank); // C랭크+ +10
+  if (usedWeight + movingWeight > boxLimit) {
+    return { error: `창고 중량이 부족합니다. (${usedWeight + movingWeight}/${boxLimit})` };
   }
 
   if (!sourceKind) {
@@ -656,7 +667,9 @@ export async function withdrawFromStorage(
   if (!entry || entry.qty < qty) return { error: "꺼낼 아이템 수량이 부족합니다." };
 
   const sourceKind =
-    entry.sourceKind === "낚시" || entry.sourceKind === "채집" ? entry.sourceKind : null;
+    entry.sourceKind === "낚시" || entry.sourceKind === "채집" || entry.sourceKind === "채광"
+      ? entry.sourceKind
+      : null;
   if (sourceKind) {
     const sheet = await prisma.characterSheet.findUnique({
       where: { userId: ctx.userId },
@@ -1232,7 +1245,7 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
 
   const kindRaw = String(formData.get("kind") ?? "");
   const kind: LifeSkillKind | null =
-    kindRaw === "낚시" || kindRaw === "채집" ? kindRaw : null;
+    kindRaw === "낚시" || kindRaw === "채집" || kindRaw === "채광" ? kindRaw : null;
   if (!kind) return { error: "판매할 부산물 종류가 올바르지 않습니다." };
   await loadLifeItems();
   const itemName = String(formData.get("itemName") ?? "").trim();

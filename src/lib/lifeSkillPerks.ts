@@ -32,11 +32,12 @@ export type SkillProgress = { exp: number; level: number };
 export type LifeState = {
   fishing: SkillProgress;
   plant: SkillProgress;
+  mining: SkillProgress;
   cooking: SkillProgress;
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
-  collection: { 채집: string[]; 낚시: string[] };
+  collection: { 채집: string[]; 낚시: string[]; 채광: string[] };
   // 생활 전용 임시 가방 — 일반 시트 소지품과 별도로 중량 제한을 둔다.
   bags: Record<LifeSkillKind, LifeBag>;
   tools: Record<LifeSkillKind, string>;
@@ -83,8 +84,10 @@ export const RARITY_COLORS: Record<PerkRarity, string> = {
 };
 
 // ── 특성 테이블 (수치는 희귀도별 차등) ──
-const toolName = (kind: LifeSkillKind) => (kind === "낚시" ? "낚싯대 숙련" : "채집 숙련");
-const toolWord = (kind: LifeSkillKind) => (kind === "낚시" ? "낚싯대" : "채집 도구");
+const toolName = (kind: LifeSkillKind) =>
+  kind === "낚시" ? "낚싯대 숙련" : kind === "채광" ? "곡괭이 숙련" : "채집 숙련";
+const toolWord = (kind: LifeSkillKind) =>
+  kind === "낚시" ? "낚싯대" : kind === "채광" ? "곡괭이" : "채집 도구";
 
 function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
   const k = kind;
@@ -134,7 +137,11 @@ function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
     case "신화":
       return [
         { name: "행운의 부적", rarity, text: "0성이 영구적으로 등장하지 않게 된다." },
-        { name: kind === "낚시" ? "신의 어부" : "신의 채집가", rarity, text: "5성 등장 확률이 0.3% 증가한다. (중복 x)" },
+        {
+          name: kind === "낚시" ? "신의 어부" : kind === "채광" ? "신의 광부" : "신의 채집가",
+          rarity,
+          text: "5성 등장 확률이 0.3% 증가한다. (중복 x)",
+        },
         {
           name: "천상의 축복",
           rarity,
@@ -191,19 +198,22 @@ export function baseWeightsFor(level: number): number[] {
 const EMPTY: LifeState = {
   fishing: { exp: 0, level: 1 },
   plant: { exp: 0, level: 1 },
+  mining: { exp: 0, level: 1 },
   cooking: { exp: 0, level: 1 },
   perks: [],
   pending: [],
-  collection: { 채집: [], 낚시: [] },
+  collection: { 채집: [], 낚시: [], 채광: [] },
   bags: {
     채집: { name: "약초꾼 가방", maxWeight: 10, items: [] },
     낚시: { name: "낚시꾼 가방", maxWeight: 10, items: [] },
+    채광: { name: "광부 가방", maxWeight: 10, items: [] },
   },
   tools: {
     채집: "기본 채집도구",
     낚시: "기본 낚싯대",
+    채광: "기본 곡괭이",
   },
-  catchCounts: { 채집: {}, 낚시: {} },
+  catchCounts: { 채집: {}, 낚시: {}, 채광: {} },
   cookingBuffs: { lifeLuck: [], session: [] },
 };
 
@@ -237,24 +247,29 @@ export function parseLifeState(json: string | null | undefined): LifeState {
     return {
       fishing: v.fishing ?? { exp: 0, level: 1 },
       plant: v.plant ?? { exp: 0, level: 1 },
+      mining: v.mining ?? { exp: 0, level: 1 },
       cooking: v.cooking ?? { exp: 0, level: 1 },
       perks: v.perks ?? [],
       pending: v.pending ?? [],
       collection: {
         채집: v.collection?.채집 ?? [],
         낚시: v.collection?.낚시 ?? [],
+        채광: v.collection?.채광 ?? [],
       },
       bags: {
         채집: normalizeBag("채집", v.bags?.채집),
         낚시: normalizeBag("낚시", v.bags?.낚시),
+        채광: normalizeBag("채광", v.bags?.채광),
       },
       tools: {
         채집: v.tools?.채집 || EMPTY.tools.채집,
         낚시: v.tools?.낚시 || EMPTY.tools.낚시,
+        채광: v.tools?.채광 || EMPTY.tools.채광,
       },
       catchCounts: {
         채집: v.catchCounts?.채집 ?? {},
         낚시: v.catchCounts?.낚시 ?? {},
+        채광: v.catchCounts?.채광 ?? {},
       },
       cookingBuffs: {
         lifeLuck: Array.isArray(v.cookingBuffs?.lifeLuck)
@@ -320,7 +335,7 @@ export function addLifeBagItem(
 }
 
 export function progressOf(state: LifeState, kind: LifeSkillKind): SkillProgress {
-  return kind === "낚시" ? state.fishing : state.plant;
+  return kind === "낚시" ? state.fishing : kind === "채광" ? state.mining : state.plant;
 }
 
 // 신화 특성은 중복 취득 불가
@@ -502,6 +517,7 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
         break;
       case "신의 어부":
       case "신의 채집가":
+      case "신의 광부":
         mods.rank5Up += 0.3;
         break;
       case "천상의 축복":

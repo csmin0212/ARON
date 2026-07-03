@@ -18,6 +18,7 @@ export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
 export const FISH_TAB = process.env.FISH_TAB_NAME || "물고기";
 export const GATHER_TAB = process.env.GATHER_TAB_NAME || "채집";
+export const MINERAL_TAB = process.env.MINERAL_TAB_NAME || "광물";
 export const SKILLS_TAB = process.env.SKILLS_TAB_NAME || "스킬";
 export const COMBAT_SKILLS_TAB = process.env.COMBAT_SKILLS_TAB_NAME || "전투스킬";
 
@@ -774,9 +775,9 @@ export async function fetchRecipesRows(): Promise<RecipeRow[] | null> {
   return parseRecipesGrid(g);
 }
 
-// ── 물고기/채집 탭 → 생활 아이템 ──
+// ── 물고기/채집/광물 탭 → 생활 아이템 ──
 export type LifeItemRow = {
-  kind: "낚시" | "채집";
+  kind: "낚시" | "채집" | "채광";
   name: string;
   rank: number;
   rarity: string | null;
@@ -787,6 +788,8 @@ export type LifeItemRow = {
   sizeVar: number;
   habitat: string | null;
   text: string | null;
+  craftRole: string | null; // 광물 전용 — 메이저/마이너/잡석
+  craftEffect: string | null; // 광물 전용 — 제작효과
 };
 
 function rankToNum(s: string): number {
@@ -794,7 +797,7 @@ function rankToNum(s: string): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
-export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집"): LifeItemRow[] {
+export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집" | "채광"): LifeItemRow[] {
   const h = findHeader(g, ["이름", "등급"], {
     이름: "name",
     등급: "rank",
@@ -805,6 +808,9 @@ export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집"): Li
     크기기본: "sizeBase",
     크기편차: "sizeVar",
     서식지: "habitat",
+    분류: "craftRole",
+    제작효과: "craftEffect",
+    "제작 효과": "craftEffect",
     설명: "text",
   });
   if (!h) throw new Error(`${kind} 탭 헤더(이름/등급)를 찾지 못했어요.`);
@@ -827,6 +833,8 @@ export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집"): Li
       sizeBase: num(at(g, r, h.col.sizeBase)) ?? 1,
       sizeVar: num(at(g, r, h.col.sizeVar)) ?? 1,
       habitat: at(g, r, h.col.habitat) || null,
+      craftRole: at(g, r, h.col.craftRole) || null,
+      craftEffect: at(g, r, h.col.craftEffect) || null,
       text: at(g, r, h.col.text) || null,
     });
   }
@@ -834,13 +842,24 @@ export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집"): Li
   return rows;
 }
 
+// 탭이 없으면 gviz가 다른 탭(맵 등)을 대신 반환하므로, 생활아이템 헤더(이름/등급)가
+// 실제로 있는 그리드만 채택한다. 없으면 '탭 없음'으로 보고 조용히 건너뛴다.
+function isLifeItemGrid(g: string[][] | null): g is string[][] {
+  return !!g && findHeader(g, ["이름", "등급"], { 이름: "name", 등급: "rank" }) != null;
+}
+
 export async function fetchLifeItemsRows(): Promise<LifeItemRow[] | null> {
-  const fishG = (await fetchTab(WORLD_SHEET_ID, FISH_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, FISH_TAB));
-  const gathG = (await fetchTab(WORLD_SHEET_ID, GATHER_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, GATHER_TAB));
-  if (!fishG && !gathG) return null;
+  const fishRaw = (await fetchTab(WORLD_SHEET_ID, FISH_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, FISH_TAB));
+  const gathRaw = (await fetchTab(WORLD_SHEET_ID, GATHER_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, GATHER_TAB));
+  const mineRaw = (await fetchTab(WORLD_SHEET_ID, MINERAL_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, MINERAL_TAB));
+  const fishG = isLifeItemGrid(fishRaw) ? fishRaw : null;
+  const gathG = isLifeItemGrid(gathRaw) ? gathRaw : null;
+  const mineG = isLifeItemGrid(mineRaw) ? mineRaw : null;
+  if (!fishG && !gathG && !mineG) return null;
   const out: LifeItemRow[] = [];
   if (fishG) out.push(...parseLifeItemsGrid(fishG, "낚시"));
   if (gathG) out.push(...parseLifeItemsGrid(gathG, "채집"));
+  if (mineG) out.push(...parseLifeItemsGrid(mineG, "채광"));
   return out;
 }
 

@@ -53,9 +53,9 @@ function offerableItems(
   }
   out.push(...[...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "ko")));
 
-  // 생활 가방 (낚시 · 채집)
+  // 생활 가방 (낚시 · 채집 · 채광)
   const life = parseLifeState(lifeJson);
-  for (const kind of ["낚시", "채집"] as const) {
+  for (const kind of ["낚시", "채집", "채광"] as const) {
     const items = life.bags[kind].items
       .filter((it) => it.qty > 0)
       .map((it) => ({

@@ -14,7 +14,7 @@ import {
 
 // trade.ts 의 TRADE_SOURCE_SEP 과 동일해야 함 ("use server" 파일의 값은 클라에서 못 가져옴)
 const SOURCE_SEP = "~@~";
-const SOURCE_EMOJI: Record<TradeSource, string> = { basic: "🎒", 낚시: "🎣", 채집: "🌿" };
+const SOURCE_EMOJI: Record<TradeSource, string> = { basic: "🎒", 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
 const offerRef = (source: TradeSource | undefined, name: string) =>
   `${source ?? "basic"}${SOURCE_SEP}${name}`;
 

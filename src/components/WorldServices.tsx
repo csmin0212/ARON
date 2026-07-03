@@ -29,6 +29,8 @@ import {
 } from "@/app/actions/services";
 import { enterHome } from "@/app/actions/world";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
+import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
+import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
 import { detectForgeSlot } from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
@@ -49,6 +51,8 @@ type Props = {
   housing: HousingView;
   storage: StorageView;
   guild: GuildView;
+  craftMinerals: CraftMineralView[];
+  isBlacksmith: boolean;
 };
 
 export type InnView = {
@@ -111,7 +115,7 @@ export type CookingView = {
 };
 
 export type ByproductView = {
-  kind: "낚시" | "채집";
+  kind: "낚시" | "채집" | "채광";
   name: string;
   rank: number;
   unitPrice: number;
@@ -133,15 +137,16 @@ export type StorageView = {
 export type GuildView = {
   rank: string;
   fame: number;
+  quests: GuildQuestBoardView;
 };
 
 export type StorageItemView = SheetInventoryItem & {
   id: string;
-  sourceKind: "basic" | "낚시" | "채집";
+  sourceKind: "basic" | "낚시" | "채집" | "채광";
 };
 
 export type LifeStorageItemView = SheetInventoryItem & {
-  sourceKind: "낚시" | "채집";
+  sourceKind: "낚시" | "채집" | "채광";
 };
 
 export type LifeShopView = {
@@ -149,10 +154,12 @@ export type LifeShopView = {
   bags: {
     낚시: { name: string; maxWeight: number };
     채집: { name: string; maxWeight: number };
+    채광: { name: string; maxWeight: number };
   };
   tools: {
     낚시: string;
     채집: string;
+    채광: string;
   };
 };
 
@@ -699,7 +706,7 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
         role="dialog"
         aria-modal="true"
         aria-label="의뢰 게시판"
-        className="w-full max-w-lg overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-line bg-subtle px-5 py-4">
@@ -708,7 +715,7 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
           </p>
           <h3 className="mt-1 text-2xl font-extrabold text-content">📜 의뢰 게시판</h3>
         </div>
-        <div className="space-y-3 px-5 py-4">
+        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <section className="rounded-2xl border border-line bg-subtle p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -751,38 +758,7 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
               <GuildStateLine state={rankState} />
             </form>
           </section>
-          <article className="rounded-2xl border border-line bg-subtle p-4">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-lg font-extrabold text-content">고블린 부락 토벌</p>
-                <p className="mt-1 text-sm text-muted">고블린 부락을 토벌해라.</p>
-              </div>
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
-                토벌
-              </span>
-            </div>
-            <dl className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-xl bg-surface px-2 py-2">
-                <dt className="font-bold text-faint">권장 레벨</dt>
-                <dd className="mt-0.5 font-extrabold text-content">Lv.3</dd>
-              </div>
-              <div className="rounded-xl bg-surface px-2 py-2">
-                <dt className="font-bold text-faint">요구 인원</dt>
-                <dd className="mt-0.5 font-extrabold text-content">4인</dd>
-              </div>
-              <div className="rounded-xl bg-surface px-2 py-2">
-                <dt className="font-bold text-faint">보상</dt>
-                <dd className="mt-0.5 font-extrabold text-emerald-500">1000G</dd>
-              </div>
-            </dl>
-            <button
-              type="button"
-              disabled
-              className="mt-3 w-full rounded-xl bg-subtle-hover px-4 py-2.5 text-sm font-bold text-faint"
-            >
-              수락 기능 준비 중
-            </button>
-          </article>
+          <GuildQuestBoard view={guild.quests} />
         </div>
         <div className="border-t border-line px-5 py-3">
           <button
@@ -1373,7 +1349,7 @@ function ByproductMarket({
                   >
                     <div className="mb-2 min-w-0">
                       <p className="truncate text-sm font-extrabold text-content">
-                        {item.kind === "낚시" ? "🎣" : "🌿"} {item.name}
+                        {item.kind === "낚시" ? "🎣" : item.kind === "채광" ? "⛏️" : "🌿"} {item.name}
                       </p>
                       <p className="text-[11px] text-faint">
                         R{item.rank} · 개당 {item.unitPrice.toLocaleString()}G · {item.qty}개 보유
@@ -1554,8 +1530,11 @@ export default function WorldServices({
   housing,
   storage,
   guild,
+  craftMinerals,
+  isBlacksmith,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [craftOpen, setCraftOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
   const [questOpen, setQuestOpen] = useState(false);
@@ -1615,6 +1594,19 @@ export default function WorldServices({
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">대장간</span>
                 <span className="text-[11px] text-faint">무기 강화 · 마법 제련 · 수식어</span>
+              </span>
+            </button>
+          )}
+          {canForge && (
+            <button
+              type="button"
+              onClick={() => setCraftOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-amber-400 hover:bg-amber-50"
+            >
+              <span className="text-xl">🔨</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">장비 제작</span>
+                <span className="text-[11px] text-faint">광물로 무기·방어구 제작 (메이저 개수 = 레벨)</span>
               </span>
             </button>
           )}
@@ -1749,6 +1741,15 @@ export default function WorldServices({
       )}
 
       {questOpen && <QuestBoard guild={guild} onClose={() => setQuestOpen(false)} />}
+
+      {craftOpen && (
+        <CraftingForge
+          minerals={craftMinerals}
+          gold={lifeShop.gold}
+          isBlacksmith={isBlacksmith}
+          onClose={() => setCraftOpen(false)}
+        />
+      )}
 
       {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
 

@@ -30,11 +30,14 @@ export async function loadLifeItems(force = false): Promise<void> {
     sizeBase: r.sizeBase,
     sizeVariance: r.sizeVar,
     text: r.text ?? "",
+    craftRole: r.craftRole,
+    craftEffect: r.craftEffect,
   });
   const fish = rows.filter((r) => r.kind === "낚시").map(toItem);
   const plant = rows.filter((r) => r.kind === "채집").map(toItem);
+  const mineral = rows.filter((r) => r.kind === "채광").map(toItem);
   const sea = rows
     .filter((r) => r.kind === "낚시" && (r.habitat ?? "").includes("바다"))
     .map((r) => r.name);
-  setLifeItems(fish, plant, sea);
+  setLifeItems(fish, plant, mineral, sea);
 }

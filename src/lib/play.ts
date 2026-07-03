@@ -23,6 +23,7 @@ import {
   pickLifeSkillCatch,
   type LifeSkillCatch,
   type LifeSkillItem,
+  type LifeSkillKind,
   type LifeSkillPoolConfig,
   type LocationLifeConfig,
 } from "./lifeSkillData";
@@ -129,13 +130,15 @@ function parseLocationLifeConfig(value: string | null): LocationLifeConfig | nul
 
 function locationPoolConfig(
   life: LocationLifeConfig | null,
-  kind: "채집" | "낚시",
+  kind: LifeSkillKind,
 ): LifeSkillPoolConfig | null {
   if (!life) return { enabled: true };
-  return kind === "채집" ? life.gather ?? null : life.fish ?? null;
+  if (kind === "채집") return life.gather ?? null;
+  if (kind === "채광") return life.mine ?? null;
+  return life.fish ?? null;
 }
 
-async function ensureLifeSkillItem(item: LifeSkillItem, kind: "채집" | "낚시"): Promise<void> {
+async function ensureLifeSkillItem(item: LifeSkillItem, kind: LifeSkillKind): Promise<void> {
   const sellPrice = lifeSkillMarketPrice(kind, item);
   await prisma.item.upsert({
     where: { id: item.name },

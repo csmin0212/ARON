@@ -7,6 +7,7 @@ import { freshAp, postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { rollDice } from "@/lib/dice";
 import { dungeonWeekKey } from "@/lib/world";
+import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 import {
@@ -120,11 +121,13 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   if (!dungeon) return { error: "던전을 찾지 못했어요." };
   if (sheet.locationId !== dungeon.locationId) return { error: "이 던전을 도전할 수 있는 장소가 아니에요." };
 
-  // 주간 캡
+  // 주간 캡 — B랭크+ 길드 특혜로 +1
   const week = dungeonWeekKey();
   const runs = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
-  if (runs >= WEEKLY_LIMIT) {
-    return { error: `이번 주 던전 도전을 모두 사용했어요. (${WEEKLY_LIMIT}/${WEEKLY_LIMIT}) 월요일 0시(일요일 자정)에 초기화돼요.` };
+  const weeklyLimit =
+    WEEKLY_LIMIT + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "B") ? 1 : 0);
+  if (runs >= weeklyLimit) {
+    return { error: `이번 주 던전 도전을 모두 사용했어요. (${weeklyLimit}/${weeklyLimit}) 월요일 0시(일요일 자정)에 초기화돼요.` };
   }
 
   // AP

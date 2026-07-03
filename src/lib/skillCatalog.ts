@@ -4,7 +4,7 @@ import { prisma } from "./prisma";
 import type { LifeSkillKind } from "./lifeSkillData";
 import type { LifeSkillCatalogEntry, PerkRarity } from "./lifeSkillPerks";
 
-const LIFE_KINDS = new Set<LifeSkillKind>(["낚시", "채집"]);
+const LIFE_KINDS = new Set<LifeSkillKind>(["낚시", "채집", "채광"]);
 const RARITIES = new Set<PerkRarity>(["일반", "레어", "유니크", "전설", "신화"]);
 
 export async function fetchLifeSkillCatalog(): Promise<LifeSkillCatalogEntry[] | undefined> {
@@ -13,7 +13,7 @@ export async function fetchLifeSkillCatalog(): Promise<LifeSkillCatalogEntry[] |
       where: {
         category: "생활",
         enabled: true,
-        kind: { in: ["낚시", "채집"] },
+        kind: { in: ["낚시", "채집", "채광"] },
         OR: [{ type: "특성" }, { type: null }],
       },
       select: {

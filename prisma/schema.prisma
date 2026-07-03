@@ -277,6 +277,8 @@ model CharacterSheet {
   housingJson    String? // 하우징 상태 JSON — 가구/효과 확장용
   pendingCatchJson String? // 낚시 미니게임 진행 중 걸린 어종(서버 추첨 결과) — 성공 시 지급
   pendingGatherJson String? // 채집 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
+  pendingMineJson String? // 채광 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
+  guildQuestJson String? // 길드 일일 의뢰 상태 JSON { day, offers[], acceptedId, 리롤권, 주간, 파편 } — lib/guildQuests.ts
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
   dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON
@@ -353,7 +355,7 @@ model RiftMember {
 // 생활스킬 채집물/어획물 (GM 시트 '물고기'·'채집' 탭에서 동기화). 낚시/채집 풀의 단일 진실원.
 model LifeSkillItem {
   id        String   @id @default(cuid())
-  kind      String // 낚시 | 채집
+  kind      String // 낚시 | 채집 | 채광
   name      String
   rank      Int      @default(0)
   rarity    String? // 별등급 ★ 표기
@@ -364,6 +366,8 @@ model LifeSkillItem {
   sizeVar   Int      @default(1)
   habitat   String? // 강/민물 | 바다 (낚시 전용)
   text      String?
+  craftRole   String? // 채광 전용 — 메이저 | 마이너 | 잡석 (무기 제작 분류)
+  craftEffect String? // 채광 전용 — 제작효과 "공격력+2, 물방+1, [화염속성]"
   order     Int      @default(0)
   updatedAt DateTime @updatedAt
 

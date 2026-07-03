@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
 import FishingGame from "./FishingGame";
 import GatheringGame from "./GatheringGame";
+import MiningGame from "./MiningGame";
 import { startFishing } from "@/app/actions/fishing";
 import { startGathering } from "@/app/actions/gathering";
+import { startMining } from "@/app/actions/mining";
 import { discoverByKeyword } from "@/app/actions/world";
 import { getPreset, isImageUrl } from "@/lib/avatars";
 
@@ -26,6 +28,7 @@ const POLL_MS = 4000;
 const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
   낚시: "🎣",
+  채광: "⛏️",
   채굴: "⛏️",
   벌목: "🪓",
   사냥: "🏹",
@@ -82,6 +85,7 @@ export default function WorldChat({
     barBonus: number;
   } | null>(null);
   const [gathering, setGathering] = useState<{ rarity: string; difficulty: number } | null>(null);
+  const [mining, setMining] = useState<{ rarity: string; difficulty: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState("");
   const [probing, setProbing] = useState(false);
@@ -156,6 +160,22 @@ export default function WorldChat({
     }
   }
 
+  async function beginMining() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await startMining();
+      if ("error" in res) setError(res.error);
+      else setMining({ rarity: res.rarity, difficulty: res.difficulty });
+    } catch {
+      setError("채광을 시작하지 못했어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function matchLifeCmd(kind: string, content: string): boolean {
     return actions.some(
       (a) =>
@@ -177,6 +197,11 @@ export default function WorldChat({
     if (matchLifeCmd("채집", content)) {
       setInput("");
       void beginGathering();
+      return;
+    }
+    if (matchLifeCmd("채광", content)) {
+      setInput("");
+      void beginMining();
       return;
     }
     setSending(true);
@@ -354,7 +379,7 @@ ${body}
                 <button
                   key={i}
                   type="button"
-                  disabled={busy && (a.kind === "낚시" || a.kind === "채집")}
+                  disabled={busy && (a.kind === "낚시" || a.kind === "채집" || a.kind === "채광")}
                   onClick={() => {
                     if (a.kind === "낚시") {
                       void beginFishing();
@@ -362,6 +387,10 @@ ${body}
                     }
                     if (a.kind === "채집") {
                       void beginGathering();
+                      return;
+                    }
+                    if (a.kind === "채광") {
+                      void beginMining();
                       return;
                     }
                     setInput(cmd);
@@ -442,6 +471,18 @@ ${body}
           difficulty={gathering.difficulty}
           onDone={() => {
             setGathering(null);
+            void poll();
+            router.refresh();
+          }}
+        />
+      )}
+
+      {mining && (
+        <MiningGame
+          rarity={mining.rarity}
+          difficulty={mining.difficulty}
+          onDone={() => {
+            setMining(null);
             void poll();
             router.refresh();
           }}

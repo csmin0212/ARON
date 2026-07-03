@@ -43,7 +43,8 @@ export function parseAuctionMeta(json: string | null | undefined): AuctionItemMe
         weight: typeof v.weight === "number" ? v.weight : null,
         rank: typeof v.rank === "number" ? v.rank : null,
         text: v.text ?? null,
-        source: v.source === "낚시" || v.source === "채집" ? v.source : "basic",
+        source:
+          v.source === "낚시" || v.source === "채집" || v.source === "채광" ? v.source : "basic",
       };
     }
   } catch {
@@ -53,13 +54,17 @@ export function parseAuctionMeta(json: string | null | undefined): AuctionItemMe
 }
 
 export function isAuctionSource(value: string): value is AuctionSource {
-  return value === "basic" || value === "낚시" || value === "채집";
+  return value === "basic" || value === "낚시" || value === "채집" || value === "채광";
 }
 
 // 등록 수수료(총 호가 기준). 최소 1골드.
 export function listingFee(unitPrice: number, quantity: number): number {
   return Math.max(1, Math.floor(unitPrice * quantity * LISTING_FEE_RATE));
 }
+
+// ── 동시 등록 슬롯 (창고 대용 악용 방지) — 기본 5, A랭크+ +5 ──
+export const AUCTION_BASE_SLOTS = 5;
+export const AUCTION_RANK_BONUS_SLOTS = 5;
 
 // 판매 성사 시 판매자 실수령액 (수수료 차감).
 export function netProceeds(unitPrice: number, quantity: number): number {

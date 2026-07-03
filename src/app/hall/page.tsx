@@ -68,7 +68,7 @@ export default async function HallPage() {
       cookingExp: life.cooking.exp,
       fame: s.fame,
       rank: s.adventurerRank,
-      collection: life.collection.낚시.length + life.collection.채집.length,
+      collection: life.collection.낚시.length + life.collection.채집.length + life.collection.채광.length,
       gold: s.curGold ?? 0,
     };
   });

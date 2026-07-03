@@ -124,6 +124,19 @@ const HEADER_KEYS: Record<string, string> = {
   낚시확률: "fishWeights",
   "낚시 확률": "fishWeights",
   수역: "fishWater",
+  채광: "mine",
+  "채광 가능": "mine",
+  채광가능: "mine",
+  채광목록: "mineItems",
+  "채광 목록": "mineItems",
+  "채광 가능 목록": "mineItems",
+  광물: "mineItems",
+  채광제외: "mineExclude",
+  "채광 제외": "mineExclude",
+  채광랭크: "mineRanks",
+  "채광 랭크": "mineRanks",
+  채광확률: "mineWeights",
+  "채광 확률": "mineWeights",
   전투: "combat",
   "전투 가능": "combat",
   전투가능: "combat",
@@ -254,12 +267,20 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
       weights: parseWeights(cell(colMap.fishWeights)),
       water: parseWater(cell(colMap.fishWater)),
     });
+    const mine = compactPool({
+      enabled: yes(cell(colMap.mine)),
+      items: splitList(cell(colMap.mineItems)),
+      exclude: splitList(cell(colMap.mineExclude)),
+      ranks: parseRanks(cell(colMap.mineRanks)),
+      weights: parseWeights(cell(colMap.mineWeights)),
+    });
     const combat = yes(cell(colMap.combat)) ? { enabled: true } : undefined;
     const life =
-      gather || fish || combat
+      gather || fish || mine || combat
         ? {
             ...(gather ? { gather } : {}),
             ...(fish ? { fish } : {}),
+            ...(mine ? { mine } : {}),
             ...(combat ? { combat } : {}),
           }
         : null;

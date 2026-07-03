@@ -14,11 +14,13 @@ import { enterHome, enterWorld, leaveHome, moveTo } from "@/app/actions/world";
 import DungeonPanel, { type DungeonAbility, type DungeonView } from "@/components/DungeonPanel";
 import BagInventory from "@/components/BagInventory";
 import GatheringStatus from "@/components/GatheringStatus";
+import MiningStatus from "@/components/MiningStatus";
 import LocationPresence from "@/components/LocationPresence";
 import RiftView from "@/components/RiftView";
 import SheetSync from "@/components/SheetSync";
 import { type AdminRift } from "@/components/WorldAdmin";
 import type { PendingGatherView } from "@/app/actions/gathering";
+import type { PendingMineView } from "@/app/actions/mining";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import WorldServices, {
@@ -34,10 +36,27 @@ import WorldServices, {
 } from "@/components/WorldServices";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
-import { lifeSkillItemKind, lifeSkillSellPrice, type LocationLifeConfig } from "@/lib/lifeSkillData";
+import {
+  getActiveItems,
+  lifeSkillItemKind,
+  lifeSkillSellPrice,
+  type LocationLifeConfig,
+} from "@/lib/lifeSkillData";
+import { isBlacksmithClass } from "@/lib/weaponCraft";
+import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { isNonSellable } from "@/lib/shop";
 import { SKILLBOOK_META } from "@/lib/skillbook";
+import { normalizeAdventurerRank, storageWeightBonus } from "@/lib/adventurerRank";
+import { loadGuildQuestState } from "@/lib/guildQuestsServer";
+import {
+  isUniqueSkillbook,
+  rerollCap,
+  skillbookNumber,
+  FRAG_COST,
+  WEEK_GOAL,
+} from "@/lib/guildQuests";
+import type { QuestOfferView } from "@/components/GuildQuestBoard";
 import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { parseGoldToInt } from "@/lib/dice";
 import {
@@ -123,6 +142,7 @@ function activityBadges(life: LocationLifeConfig | null): { label: string; tone:
   return [
     life.gather?.enabled ? { label: "🌿 채집 가능", tone: "bg-emerald-50 text-emerald-700" } : null,
     life.fish?.enabled ? { label: "🎣 낚시 가능", tone: "bg-sky-50 text-sky-700" } : null,
+    life.mine?.enabled ? { label: "⛏️ 채광 가능", tone: "bg-stone-100 text-stone-700" } : null,
     life.combat?.enabled ? { label: "⚔️ 전투 가능", tone: "bg-rose-50 text-rose-700" } : null,
   ].filter((badge): badge is { label: string; tone: string } => !!badge);
 }
@@ -342,7 +362,7 @@ export default async function WorldPage() {
       ? `${computedBagWeight ?? sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
   const storage: StorageView = {
-    maxWeight: storageBox?.maxWeight ?? 30,
+    maxWeight: (storageBox?.maxWeight ?? 30) + storageWeightBonus(sheet.adventurerRank), // C랭크+ +10
     usedWeight:
       storageBox?.entries.reduce(
         (sum, item) => sum + (item.weight ?? 0) * Math.max(0, item.qty),
@@ -352,7 +372,9 @@ export default async function WorldPage() {
       storageBox?.entries.map((item) => ({
         id: item.id,
         sourceKind:
-          item.sourceKind === "낚시" || item.sourceKind === "채집" ? item.sourceKind : "basic",
+          item.sourceKind === "낚시" || item.sourceKind === "채집" || item.sourceKind === "채광"
+            ? item.sourceKind
+            : "basic",
         name: item.name,
         effect: item.effect,
         weight: item.weight,
@@ -365,10 +387,11 @@ export default async function WorldPage() {
     bags: {
       낚시: { name: life.bags.낚시.name, maxWeight: life.bags.낚시.maxWeight },
       채집: { name: life.bags.채집.name, maxWeight: life.bags.채집.maxWeight },
+      채광: { name: life.bags.채광.name, maxWeight: life.bags.채광.maxWeight },
     },
     tools: life.tools,
   };
-  const lifeStorageItems: LifeStorageItemView[] = (["낚시", "채집"] as const).flatMap((kind) =>
+  const lifeStorageItems: LifeStorageItemView[] = (["낚시", "채집", "채광"] as const).flatMap((kind) =>
     life.bags[kind].items.map((item) => ({
       sourceKind: kind,
       name: item.name,
@@ -377,7 +400,7 @@ export default async function WorldPage() {
       qty: item.qty,
     })),
   );
-  const byproducts: ByproductView[] = (["낚시", "채집"] as const).flatMap((kind) =>
+  const byproducts: ByproductView[] = (["낚시", "채집", "채광"] as const).flatMap((kind) =>
     life.bags[kind].items
       .filter((item) => item.qty > 0)
       .map((item) => ({
@@ -408,6 +431,7 @@ export default async function WorldPage() {
   const lifeBags = ([
     { kind: "낚시" as const, emoji: "🎣" },
     { kind: "채집" as const, emoji: "🌿" },
+    { kind: "채광" as const, emoji: "⛏️" },
   ]).map(({ kind, emoji }) => {
     const bag = life.bags[kind];
     const max = lifeBagLimit(life, kind, computeMods(life, kind).weightBonus);
@@ -424,10 +448,77 @@ export default async function WorldPage() {
     };
   });
   const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
+  // 길드 일일 의뢰 — lazy 리셋(자정/주간) + 보유 수량·스킬북 교환 목록 조립
+  const { state: gq } = await loadGuildQuestState(user.id, sheet);
+  const questOffers: QuestOfferView[] = gq.offers.map((offer) => ({
+    ...offer,
+    have:
+      offer.kind === "요리"
+        ? rawBagItems
+            .filter((item) => {
+              const n = item.name.trim();
+              const t = offer.itemName.trim();
+              return n === t || n.endsWith(` ${t}`);
+            })
+            .reduce((sum, item) => sum + Math.max(0, item.qty), 0)
+        : life.bags[offer.kind].items
+            .filter((item) => item.name.trim() === offer.itemName.trim())
+            .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+  }));
+  const bookTokens = await prisma.inventoryEntry.findMany({
+    where: { userId: user.id, meta: SKILLBOOK_META, qty: { gt: 0 } },
+    select: { itemId: true, qty: true },
+  });
+  const bookSkills = bookTokens.length
+    ? await prisma.combatSkill.findMany({
+        where: { sourceItem: { in: bookTokens.map((token) => token.itemId) } },
+        select: { sourceItem: true, name: true, job: true },
+      })
+    : [];
+  const questBooks = bookTokens
+    .map((token) => {
+      const num = skillbookNumber(token.itemId);
+      if (num == null) return null;
+      const skill = bookSkills.find((entry) => entry.sourceItem === token.itemId);
+      return {
+        name: token.itemId,
+        qty: token.qty,
+        skillName: skill?.name ?? token.itemId,
+        job: skill?.job ?? null,
+        unique: isUniqueSkillbook(num),
+      };
+    })
+    .filter((book): book is NonNullable<typeof book> => book != null);
   const guild: GuildView = {
     rank: sheet.adventurerRank,
     fame: sheet.fame ?? 0,
+    quests: {
+      offers: questOffers,
+      acceptedId: gq.acceptedId,
+      delivered: !!gq.deliveredAt,
+      rerolls: gq.rerolls,
+      rerollMax: rerollCap(normalizeAdventurerRank(sheet.adventurerRank)),
+      weekCount: gq.weekCount,
+      weekGoal: WEEK_GOAL,
+      frags: gq.frags,
+      fragCost: FRAG_COST,
+      books: questBooks,
+    },
   };
+  // 대장간 장비 제작 — 보유 광물(채광 가방 + 기본 인벤) × 활성 광물 풀(분류/제작효과)
+  const craftMinerals: CraftMineralView[] = getActiveItems("채광")
+    .filter((def) => def.craftRole === "메이저" || def.craftRole === "마이너")
+    .map((def) => ({
+      def,
+      have:
+        life.bags.채광.items
+          .filter((item) => item.name.trim() === def.name)
+          .reduce((sum, item) => sum + Math.max(0, item.qty), 0) +
+        rawBagItems
+          .filter((item) => item.name.trim() === def.name)
+          .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+    }))
+    .filter((entry) => entry.have > 0);
   const canMarket = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
@@ -536,6 +627,21 @@ export default async function WorldPage() {
       }
     } catch {
       gatherPending = null;
+    }
+  }
+  let minePending: PendingMineView | null = null;
+  if (sheet.pendingMineJson) {
+    try {
+      const p = JSON.parse(sheet.pendingMineJson) as {
+        status?: string;
+        rarity?: string;
+        readyAt?: number;
+      };
+      if (p.status === "searching" && typeof p.readyAt === "number") {
+        minePending = { status: "searching", rarity: p.rarity ?? "", readyAt: p.readyAt };
+      }
+    } catch {
+      minePending = null;
     }
   }
 
@@ -776,6 +882,8 @@ export default async function WorldPage() {
 
           <GatheringStatus pending={gatherPending} />
 
+          <MiningStatus pending={minePending} />
+
           <WorldServices
             canForge={canForge}
             canGuild={canGuild}
@@ -793,6 +901,8 @@ export default async function WorldPage() {
             housing={housing}
             storage={storage}
             guild={guild}
+            craftMinerals={craftMinerals}
+            isBlacksmith={isBlacksmithClass(sheet.charClass)}
           />
 
           <BagInventory

@@ -13,7 +13,10 @@ import {
   type LifeBag,
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
+import type { LifeSkillKind } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
+
+const KIND_EMOJI: Record<LifeSkillKind, string> = { 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
 
 function CollectionBook({
   lifeEntries,
@@ -34,15 +37,17 @@ function CollectionBook({
   );
 }
 
-const KIND_META: { kind: "낚시" | "채집"; emoji: string; key: "fishing" | "plant" }[] = [
+const KIND_META: { kind: LifeSkillKind; emoji: string; key: "fishing" | "plant" | "mining" }[] = [
   { kind: "낚시", emoji: "🎣", key: "fishing" },
   { kind: "채집", emoji: "🌿", key: "plant" },
+  { kind: "채광", emoji: "⛏️", key: "mining" },
 ];
 
-const SKILL_META: { kind: "낚시" | "채집" | "요리"; emoji: string; key: "fishing" | "plant" | "cooking" }[] = [
-  ...KIND_META,
-  { kind: "요리", emoji: "🍳", key: "cooking" },
-];
+const SKILL_META: {
+  kind: LifeSkillKind | "요리";
+  emoji: string;
+  key: "fishing" | "plant" | "mining" | "cooking";
+}[] = [...KIND_META, { kind: "요리", emoji: "🍳", key: "cooking" }];
 
 function RarityBadge({ rarity }: { rarity: PerkRarity }) {
   return (
@@ -126,7 +131,7 @@ function LifeBagModal({
 }
 
 function LifeGearPanel({ life }: { life: LifeState }) {
-  const [openedKind, setOpenedKind] = useState<"낚시" | "채집" | null>(null);
+  const [openedKind, setOpenedKind] = useState<LifeSkillKind | null>(null);
   const bagWeights = useMemo(
     () =>
       Object.fromEntries(
@@ -136,14 +141,14 @@ function LifeGearPanel({ life }: { life: LifeState }) {
           const max = lifeBagLimit(life, kind, mods.weightBonus);
           return [kind, { weight: lifeBagWeight(bag), max, mods }];
         }),
-      ) as Record<"낚시" | "채집", { weight: number; max: number; mods: ReturnType<typeof computeMods> }>,
+      ) as Record<LifeSkillKind, { weight: number; max: number; mods: ReturnType<typeof computeMods> }>,
     [life],
   );
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <h2 className="mb-4 text-lg font-extrabold text-content">생활 프로필</h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {KIND_META.map(({ kind, emoji }) => {
           const bag = life.bags[kind];
           const { weight, max, mods } = bagWeights[kind];
@@ -193,7 +198,7 @@ function LifeGearPanel({ life }: { life: LifeState }) {
       {openedKind && (
         <LifeBagModal
           bag={life.bags[openedKind]}
-          emoji={openedKind === "낚시" ? "🎣" : "🌿"}
+          emoji={KIND_EMOJI[openedKind]}
           weight={`${bagWeights[openedKind].weight} / ${bagWeights[openedKind].max}`}
           onClose={() => setOpenedKind(null)}
         />
@@ -254,14 +259,14 @@ export default function LifeSkillPanel({
 
   const choice = life.pending[0];
   const [view, setView] = useState<"profile" | "book" | "skill">("profile");
-  const [perkKind, setPerkKind] = useState<"낚시" | "채집">("낚시");
+  const [perkKind, setPerkKind] = useState<LifeSkillKind>("낚시");
   const kindPerks = life.perks.filter((p) => p.kind === perkKind);
 
   // 레벨/숙련도 카드
   const levelCard = (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <h2 className="mb-4 text-lg font-extrabold text-content">생활 스킬</h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {SKILL_META.map(({ kind, emoji, key }) => {
           const prog = life[key];
           const need = expForNext(prog.level);
@@ -367,7 +372,7 @@ export default function LifeSkillPanel({
           <ul className="space-y-2">
             {kindPerks.map((p, i) => (
               <li key={i} className="flex items-start gap-2.5 rounded-xl bg-subtle/60 px-3.5 py-2.5">
-                <span className="mt-0.5 shrink-0 text-sm">{p.kind === "낚시" ? "🎣" : "🌿"}</span>
+                <span className="mt-0.5 shrink-0 text-sm">{KIND_EMOJI[p.kind] ?? "✨"}</span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold text-content">{p.name}</span>

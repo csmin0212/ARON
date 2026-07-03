@@ -1,4 +1,4 @@
-export type LifeSkillKind = "채집" | "낚시";
+export type LifeSkillKind = "채집" | "낚시" | "채광";
 export type FishWater = "민물" | "바다" | "전체";
 
 export type LifeSkillPoolConfig = {
@@ -13,6 +13,7 @@ export type LifeSkillPoolConfig = {
 export type LocationLifeConfig = {
   gather?: LifeSkillPoolConfig;
   fish?: LifeSkillPoolConfig;
+  mine?: LifeSkillPoolConfig;
   combat?: { enabled: boolean };
 };
 
@@ -27,6 +28,9 @@ export type LifeSkillItem = {
   sizeBase: number;
   sizeVariance: number;
   text: string;
+  // 채광(광물) 전용 — 무기 제작 재료 분류/효과
+  craftRole?: string | null; // 메이저 | 마이너 | 잡석
+  craftEffect?: string | null; // "공격력+2, 물방+1, [화염속성]"
 };
 
 export type LifeSkillCatch = {
@@ -173,20 +177,47 @@ export const FISH_ITEMS: LifeSkillItem[] = [
   { no: 60, name: "크라켄", rank: 5, weight: 6, price: 15, exp: 15, sizeBase: 600, sizeVariance: 10, rarity: "★★★★★", text: "얘는 전투해야 잡을 수 있게 설계할거에요 - 뭇별" },
 ];
 
+// 광물 seed — sizeBase/Variance 는 채굴한 원석 덩이 크기(g). 실제 데이터는 '광물' 탭에서 채운다.
+// craftRole/craftEffect: 무기 제작 재료 분류 — 메이저(개수=장비 레벨)/마이너(부가효과)/잡석(제작 불가)
+export const MINERAL_ITEMS: LifeSkillItem[] = [
+  { no: 1, name: "잡석", rank: 0, weight: 2, price: 0, exp: 1, sizeBase: 30, sizeVariance: 20, rarity: "☆☆☆☆☆", text: "그냥 평범한 돌. 곡괭이질이 헛돌았다.", craftRole: "잡석", craftEffect: null },
+  { no: 2, name: "돌멩이", rank: 0, weight: 2, price: 0, exp: 1, sizeBase: 20, sizeVariance: 10, rarity: "☆☆☆☆☆", text: "어디에나 굴러다니는 돌멩이. 딱히 쓸모는 없다.", craftRole: "잡석", craftEffect: null },
+  { no: 3, name: "석탄", rank: 1, weight: 2, price: 4, exp: 3, sizeBase: 40, sizeVariance: 20, rarity: "★☆☆☆☆", text: "검게 빛나는 가연성 광물. 담금질 보조재로 값싸게 한 끗을 보탠다.", craftRole: "마이너", craftEffect: "공격력+1" },
+  { no: 4, name: "구리 광석", rank: 1, weight: 2, price: 6, exp: 4, sizeBase: 50, sizeVariance: 25, rarity: "★☆☆☆☆", text: "붉은빛이 도는 흔한 금속 광석. 초보 대장장이의 단골 재료.", craftRole: "메이저", craftEffect: "공격력+1, 물방+1" },
+  { no: 5, name: "주석 광석", rank: 1, weight: 2, price: 7, exp: 4, sizeBase: 50, sizeVariance: 25, rarity: "★☆☆☆☆", text: "구리와 섞으면 청동이 된다. 그 자체로는 무르다.", craftRole: "마이너", craftEffect: "물방+1" },
+  { no: 6, name: "철 광석", rank: 2, weight: 3, price: 14, exp: 9, sizeBase: 60, sizeVariance: 30, rarity: "★★☆☆☆", text: "무기와 갑옷의 근간이 되는 광석. 모든 제작의 '기준'이 되는 금속.", craftRole: "메이저", craftEffect: "공격력+2, 물방+2" },
+  { no: 7, name: "은 광석", rank: 2, weight: 3, price: 18, exp: 10, sizeBase: 55, sizeVariance: 25, rarity: "★★☆☆☆", text: "마력 친화성이 높은 백색 금속. 언데드에게 특히 잘 든다.", craftRole: "메이저", craftEffect: "명중+1, 마방+1, [대언데드]" },
+  { no: 8, name: "금 광석", rank: 3, weight: 3, price: 30, exp: 60, sizeBase: 55, sizeVariance: 25, rarity: "★★★☆☆", text: "묵직한 황금빛 광석. 마력을 잘 담아 의식용 장비에 쓰인다.", craftRole: "메이저", craftEffect: "명중+1, 마방+2" },
+  { no: 9, name: "수정 원석", rank: 3, weight: 3, price: 28, exp: 55, sizeBase: 70, sizeVariance: 30, rarity: "★★★☆☆", text: "투명하게 빛나는 결정. 마력을 멀리까지 실어 보낸다.", craftRole: "마이너", craftEffect: "마방+1, [마력전도]" },
+  { no: 10, name: "미스릴 원석", rank: 4, weight: 2, price: 500, exp: 1000, sizeBase: 50, sizeVariance: 20, rarity: "★★★★☆", text: "가볍고도 강인한 전설의 금속. 다루는 이의 몸을 가볍게 한다.", craftRole: "메이저", craftEffect: "명중+2, 공격력+3, 회피+1" },
+  { no: 11, name: "오리하르콘 조각", rank: 4, weight: 2, price: 550, exp: 1100, sizeBase: 45, sizeVariance: 20, rarity: "★★★★☆", text: "마력을 머금어 푸르게 맥동하는 금속. 명검의 심장이 된다.", craftRole: "메이저", craftEffect: "공격력+2, 마방+2, [마력전도]" },
+  { no: 12, name: "다이아몬드 원석", rank: 5, weight: 2, price: 3000, exp: 5000, sizeBase: 30, sizeVariance: 10, rarity: "★★★★★", text: "세상에서 가장 단단한 보석의 원석. 깎이지 않은 채로도 눈부시다.", craftRole: "마이너", craftEffect: "명중+1, 공격력+1, 물방+1, 마방+1" },
+  { no: 13, name: "아다만타이트", rank: 5, weight: 4, price: 3500, exp: 6000, sizeBase: 80, sizeVariance: 30, rarity: "★★★★★", text: "신들의 무기를 벼렸다는 불괴의 금속. 그 존재 자체가 전설이다.", craftRole: "메이저", craftEffect: "공격력+4, 물방+4, [파괴불가]" },
+];
+
 // ── 활성 풀 (DB 동기화본으로 교체 가능, 기본은 위 하드코딩 seed) ──
 // 시트→DB 동기화가 있으면 setLifeItems로 덮어쓰고, 없으면 seed로 동작(폴백).
 let activePlant: LifeSkillItem[] = PLANT_ITEMS;
 let activeFish: LifeSkillItem[] = FISH_ITEMS;
+let activeMineral: LifeSkillItem[] = MINERAL_ITEMS;
 let activeSea: Set<string> = SEA_FISH;
 
-export function setLifeItems(fish: LifeSkillItem[], plant: LifeSkillItem[], seaNames: string[]): void {
-  activeFish = fish;
-  activePlant = plant;
-  activeSea = new Set(seaNames);
+// 빈 배열은 '미동기화'로 보고 해당 종류의 seed 폴백을 유지한다.
+// (예: 물고기·채집 탭만 채우고 광물 탭은 비워둔 경우 → 광물은 seed로 동작)
+export function setLifeItems(
+  fish: LifeSkillItem[],
+  plant: LifeSkillItem[],
+  mineral: LifeSkillItem[],
+  seaNames: string[],
+): void {
+  if (fish.length > 0) activeFish = fish;
+  if (plant.length > 0) activePlant = plant;
+  if (mineral.length > 0) activeMineral = mineral;
+  if (fish.length > 0) activeSea = new Set(seaNames);
 }
 
 export function getActiveItems(kind: LifeSkillKind): LifeSkillItem[] {
-  return kind === "채집" ? activePlant : activeFish;
+  return kind === "채집" ? activePlant : kind === "채광" ? activeMineral : activeFish;
 }
 
 function rollInt(maxInclusive: number): number {
@@ -209,7 +240,7 @@ function pickRank(weights?: number[]): number {
 }
 
 function poolFor(kind: LifeSkillKind): LifeSkillItem[] {
-  return kind === "채집" ? activePlant : activeFish;
+  return kind === "채집" ? activePlant : kind === "채광" ? activeMineral : activeFish;
 }
 
 function waterAllowed(item: LifeSkillItem, water: FishWater): boolean {
@@ -229,6 +260,7 @@ export function collectionItems(includeSea = false): { kind: LifeSkillKind; item
       kind: "낚시" as const,
       item,
     })),
+    ...activeMineral.map((item) => ({ kind: "채광" as const, item })),
   ];
 }
 
@@ -237,6 +269,7 @@ export function lifeSkillItemKind(name: string): LifeSkillKind | null {
   if (!target) return null;
   if (activePlant.some((item) => item.name === target)) return "채집";
   if (activeFish.some((item) => item.name === target)) return "낚시";
+  if (activeMineral.some((item) => item.name === target)) return "채광";
   return null;
 }
 
@@ -259,9 +292,11 @@ function clampPrice(value: number, min: number, max: number): number {
 // 종류별 판매가 배율 — 채집을 살짝 낮추고 낚시를 올려 수급량을 맞춘다.
 const PLANT_SELL_MULT = 0.85;
 const FISH_SELL_MULT = 1.24;
+const MINERAL_SELL_MULT = 1.0; // 광물은 시트 판매가를 그대로 (제련 전 원석가)
 
 export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): number {
   if (kind === "낚시") return Math.round(item.price * FISH_SELL_MULT);
+  if (kind === "채광") return Math.round(item.price * MINERAL_SELL_MULT);
   let banded: number;
   switch (item.rank) {
     case 0:
@@ -290,14 +325,18 @@ export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): 
 
 // 낚시 exp 배율 — 낚시 어종 exp가 채집보다 낮아, 레벨링 속도를 맞추기 위해 보정.
 const FISH_EXP_MULT = 1.33;
+const MINERAL_EXP_MULT = 1.0;
 export function lifeSkillExpGain(kind: LifeSkillKind, baseExp: number): number {
-  return kind === "낚시" ? Math.round(baseExp * FISH_EXP_MULT) : baseExp;
+  if (kind === "낚시") return Math.round(baseExp * FISH_EXP_MULT);
+  if (kind === "채광") return Math.round(baseExp * MINERAL_EXP_MULT);
+  return baseExp;
 }
 
 export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillKind | null {
   const source = `${kind} ${label ?? ""}`.replace(/\s+/g, "");
   if (source.includes("채집") || source.includes("약초")) return "채집";
   if (source.includes("낚시") || source.includes("어업")) return "낚시";
+  if (source.includes("채광") || source.includes("광물") || source.includes("채굴")) return "채광";
   return null;
 }
 
@@ -354,5 +393,5 @@ export function lifeSkillItemEffect(item: LifeSkillItem, kind: LifeSkillKind): s
 }
 
 export function lifeSkillCategory(kind: LifeSkillKind): string {
-  return kind === "채집" ? "채집품" : "어획물";
+  return kind === "채집" ? "채집품" : kind === "채광" ? "광석" : "어획물";
 }

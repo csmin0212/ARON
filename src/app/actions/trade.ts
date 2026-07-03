@@ -35,7 +35,7 @@ export type TradeSideItem = {
 type Pool = { inv: SheetInventory; life: LifeState };
 
 function isLifeKind(v: string): v is LifeSkillKind {
-  return v === "낚시" || v === "채집";
+  return v === "낚시" || v === "채집" || v === "채광";
 }
 
 function lifeBagQty(life: LifeState, kind: LifeSkillKind, name: string): number {

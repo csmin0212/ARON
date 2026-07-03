@@ -62,6 +62,7 @@ export default async function CollectionPage() {
     ...entries.map((entry) => entry.itemId),
     ...life.collection.채집,
     ...life.collection.낚시,
+    ...life.collection.채광,
   ]);
   const lifeEntries: CollectionBookEntry[] = items.map(({ kind, item }) => ({
       kind,

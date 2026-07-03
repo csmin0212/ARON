@@ -23,3 +23,14 @@ export function nextAdventurerRank(rank: string | null | undefined): string | nu
 export function adventurerRankGoal(rank: string | null | undefined): number {
   return ADVENTURER_RANK_GOALS[normalizeAdventurerRank(rank)] ?? 0;
 }
+
+// 랭크 특혜 게이트 — rank 가 min 이상인지 (D < C < B < A < S)
+export function rankAtLeast(rank: string | null | undefined, min: string): boolean {
+  const order = ADVENTURER_RANKS as readonly string[];
+  return order.indexOf(normalizeAdventurerRank(rank)) >= order.indexOf(min);
+}
+
+// C랭크+ 길드 특혜 — 창고 최대 중량 +10
+export function storageWeightBonus(rank: string | null | undefined): number {
+  return rankAtLeast(rank, "C") ? 10 : 0;
+}

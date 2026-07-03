@@ -293,6 +293,18 @@ function autoLifeActions(
         failText: null,
       });
     }
+    if (row.life?.mine?.enabled && !hasLifeAction(existing, row.id, "채광")) {
+      candidates.push({
+        locationId: row.id,
+        kind: "채광",
+        label: "채광",
+        apCost: 1,
+        statLabel: null,
+        dc: null,
+        drops: [{ item: "꽝", qty: 1, gold: 0, weight: 1 }],
+        failText: null,
+      });
+    }
     for (const action of candidates) {
       const key = actionKey(action);
       if (seen.has(key)) continue;
@@ -692,6 +704,8 @@ export async function syncWorldMap(
             sizeVar: it.sizeVar,
             habitat: it.habitat,
             text: it.text,
+            craftRole: it.craftRole,
+            craftEffect: it.craftEffect,
             order: i,
           })),
         }),

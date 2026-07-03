@@ -21,11 +21,12 @@ export type CollectionBookEntry = {
   ingredients?: string;
 };
 
-const KIND_ORDER: CollectionKind[] = ["낚시", "채집", "요리"];
+const KIND_ORDER: CollectionKind[] = ["낚시", "채집", "채광", "요리"];
 
 const KIND_META: Record<CollectionKind, { title: string; emoji: string }> = {
   낚시: { title: "낚시 도감", emoji: "🎣" },
   채집: { title: "채집 도감", emoji: "🌿" },
+  채광: { title: "채광 도감", emoji: "⛏️" },
   요리: { title: "요리 도감", emoji: "🍳" },
 };
 
@@ -47,6 +48,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
   const [activeRanks, setActiveRanks] = useState<Record<CollectionKind, number>>({
     낚시: 1,
     채집: 1,
+    채광: 1,
     요리: 1,
   });
 
@@ -60,8 +62,8 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
 
   return (
     <div className="space-y-4">
-      {/* 낚시 / 채집 / 요리 토글 */}
-      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-subtle p-1.5">
+      {/* 낚시 / 채집 / 채광 / 요리 토글 */}
+      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-subtle p-1.5 sm:grid-cols-4">
         {KIND_ORDER.map((kind) => {
           const group = byKind[kind];
           const found = group.filter((e) => e.discovered).length;
@@ -95,7 +97,14 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
         const rankItems = group.filter((entry) => entry.rank === activeRank);
         const rankFound = rankItems.filter((entry) => entry.discovered).length;
         const meta = KIND_META[kind];
-        const countLabel = kind === "낚시" ? "낚은 횟수" : kind === "채집" ? "채집 횟수" : "레시피";
+        const countLabel =
+          kind === "낚시"
+            ? "낚은 횟수"
+            : kind === "채집"
+              ? "채집 횟수"
+              : kind === "채광"
+                ? "채광 횟수"
+                : "레시피";
 
         return (
           <section key={kind} className="rounded-3xl border border-line bg-surface p-5 shadow-sm">

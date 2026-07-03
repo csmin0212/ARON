@@ -20,13 +20,17 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
   gradeInfo,
   listingExpiry,
+  listingFee,
   netProceeds,
   parseAuctionMeta,
   parseCookedName,
+  AUCTION_BASE_SLOTS,
+  AUCTION_RANK_BONUS_SLOTS,
   type AuctionCategory,
   type AuctionItemMeta,
   type AuctionSource,
 } from "@/lib/auction";
+import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 
 export type AuctionResult = { ok?: string; error?: string };
 
@@ -179,7 +183,7 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
   await loadLifeItems();
   // 어획물/약초는 raw 이름으로 먼저 판정 (예: "바다의 전령"이 장인작 파싱과 충돌하지 않도록).
   const raw = name.trim();
-  if (source === "낚시" || source === "채집") return lifeSkillSellPrice(source, raw);
+  if (source === "낚시" || source === "채집" || source === "채광") return lifeSkillSellPrice(source, raw);
 
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind) return lifeSkillSellPrice(lifeKind, raw);
@@ -238,6 +242,7 @@ export type ActorSheet = {
   inv: SheetInventory;
   life: LifeState;
   achStatsJson: string | null;
+  rank: string; // 모험가 랭크 — 경매 슬롯·수수료 특혜
 };
 
 export async function loadActorSheet(userId: string): Promise<ActorSheet | null> {
@@ -252,6 +257,7 @@ export async function loadActorSheet(userId: string): Promise<ActorSheet | null>
     inv: parseInv(sheet.invJson),
     life: parseLifeState(sheet.lifeJson),
     achStatsJson: sheet.achStatsJson,
+    rank: normalizeAdventurerRank(sheet.adventurerRank),
   };
 }
 
@@ -330,7 +336,7 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
     if (i.qty <= 0) continue;
     raw.push({ source: "basic", name: i.name.trim(), qty: i.qty, effect: i.effect, weight: i.weight, rank: null, text: null });
   }
-  for (const kind of ["낚시", "채집"] as const) {
+  for (const kind of ["낚시", "채집", "채광"] as const) {
     for (const i of life.bags[kind].items) {
       if (i.qty <= 0) continue;
       raw.push({ source: kind, name: i.name.trim(), qty: i.qty, effect: `R${i.rank} · ${i.text}`, weight: i.weight, rank: i.rank, text: i.text });
@@ -408,6 +414,15 @@ export async function createListingCore(
   const actor = await loadActorSheet(userId);
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
 
+  // 동시 등록 슬롯 — 창고 대용 악용 방지. A랭크+ 슬롯 보너스.
+  const slots = AUCTION_BASE_SLOTS + (rankAtLeast(actor.rank, "A") ? AUCTION_RANK_BONUS_SLOTS : 0);
+  const activeCount = await prisma.auctionListing.count({
+    where: { sellerId: userId, status: "active" },
+  });
+  if (activeCount >= slots) {
+    return { error: `동시 등록은 ${slots}개까지예요. (현재 ${activeCount}개) 기존 등록을 팔거나 회수한 뒤 올려주세요.` };
+  }
+
   const floor = await resolveFloor(name, source);
   if (unitPrice < floor) {
     return { error: `즉시매각 하한(${floor.toLocaleString()}G)보다 낮게는 올릴 수 없어요.` };
@@ -428,7 +443,8 @@ export async function createListingCore(
     meta = { effect: removed.effect, weight: removed.weight, rank: removed.rank, text: removed.text, source };
   }
 
-  const fee = Math.max(1, Math.floor(unitPrice * qty * 0.02));
+  // S랭크 특혜 — 등록 수수료 면제
+  const fee = rankAtLeast(actor.rank, "S") ? 0 : listingFee(unitPrice, qty);
   if (actor.curGold < fee) return { error: `등록 수수료가 부족합니다. (${fee.toLocaleString()}G 필요)` };
   const nextGold = actor.curGold - fee;
   const category = await resolveCategory(name, source);
@@ -458,7 +474,11 @@ export async function createListingCore(
   void appendSheetGold(actor.tab, -fee);
   void pushInventoryToSheet(actor.tab, actor.inv);
 
-  return { ok: `${name} x${qty}을(를) 개당 ${unitPrice.toLocaleString()}G에 등록했어요. (수수료 -${fee.toLocaleString()}G)` };
+  return {
+    ok: `${name} x${qty}을(를) 개당 ${unitPrice.toLocaleString()}G에 등록했어요. ${
+      fee > 0 ? `(수수료 -${fee.toLocaleString()}G)` : "(S랭크 — 수수료 면제)"
+    }`,
+  };
 }
 
 export async function buyListingCore(
