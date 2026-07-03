@@ -240,6 +240,7 @@ export type CraftPreview = {
   extras: string[];
   basePrice: number; // 기준가 — 수수료·판매가 산정
   fee: number; // 제작 수수료 (블랙스미스 할인 전)
+  weight: number; // 장비 중량 — 투입 광물 총중량의 1/3 (제련 손실), 최소 1
   effectText: string; // 결과 아이템 효과 설명
 };
 
@@ -326,6 +327,12 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   const basePrice = Math.round(base.price * (1 + Math.max(0, avgRank - 2) * 0.25));
   const fee = Math.max(20, Math.round(basePrice * 0.15));
 
+  // 중량 — 넣은 광물 총중량의 1/3 (미스릴제는 가볍고, 아다만타이트제는 무겁다)
+  const oreWeight =
+    majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) +
+    input.minors.reduce((s, m) => s + (m.weight || 1), 0);
+  const weight = Math.max(1, Math.round(oreWeight / 3));
+
   const tagList = [...tags];
   const effectText = [
     statLine(stats, category.group),
@@ -346,6 +353,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     extras,
     basePrice,
     fee,
+    weight,
     effectText,
   };
 }

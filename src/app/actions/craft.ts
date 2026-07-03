@@ -222,7 +222,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     (entry) => entry.name.trim() === name && (entry.effect ?? null) === effectText,
   );
   if (existing) existing.qty += 1;
-  else inv.items.push({ name, qty: 1, effect: effectText, weight: 1 });
+  else inv.items.push({ name, qty: 1, effect: effectText, weight: preview.weight });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
 
   await prisma.item.upsert({
@@ -260,7 +260,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     },
   });
   void appendSheetGold(sheet.sheetTab, -fee);
-  void appendSheetItem(sheet.sheetTab, name, 1, { effect: effectText, weight: 1 });
+  void appendSheetItem(sheet.sheetTab, name, 1, { effect: effectText, weight: preview.weight });
   if (invTouched) {
     // 인벤에서 광물을 소모했으면 시트 전체 동기화는 다음 pushInventoryToSheet 경로에 맡기고,
     // 여기서는 스냅샷(invJson)이 진실원이므로 추가 작업 없음 (시트 수동 정리 가능)

@@ -336,7 +336,9 @@ export default function CraftingForge({
                       />
                       <span className="shrink-0 text-[11px] font-bold text-faint">✏️ 이름 짓기</span>
                     </div>
-                    <p className="mt-2 text-[11px] font-bold text-faint">수수료 {fee.toLocaleString()}G</p>
+                    <p className="mt-2 text-[11px] font-bold text-faint">
+                      수수료 {fee.toLocaleString()}G · 중량 {preview.weight}
+                    </p>
                   </div>
                 );
               })()

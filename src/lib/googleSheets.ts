@@ -313,7 +313,7 @@ export async function appendSheetItem(
   const blocks = [
     {
       col: "Z",
-      effectCol: "AA",
+      effectCol: "AB", // 효과 병합 셀(AB:AC)의 앵커 — AA는 이름 병합에 먹혀 화면에 안 보인다
       weightCol: "AD",
       qtyCol: "AE",
       start: 33,
@@ -322,7 +322,7 @@ export async function appendSheetItem(
     },
     {
       col: "AF",
-      effectCol: "AG",
+      effectCol: "AH", // 효과 병합 셀(AH:AI)의 앵커
       weightCol: "AJ",
       qtyCol: "AK",
       start: 32,
@@ -552,8 +552,9 @@ export async function updateSheetItemDetails(
   if (!tab) return { ok: false, error: "시트가 연동되지 않았습니다." };
 
   const blocks = [
-    { nameCol: "Z", effectCol: "AA", weightCol: "AD", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
-    { nameCol: "AF", effectCol: "AG", weightCol: "AJ", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
+    // 효과는 병합 셀 앵커(AB·AH)에 써야 화면에 보인다 (AA·AG는 이름 병합 영역)
+    { nameCol: "Z", effectCol: "AB", weightCol: "AD", start: 33, range: `${quoteSheet(tab)}!Z33:AE58` },
+    { nameCol: "AF", effectCol: "AH", weightCol: "AJ", start: 32, range: `${quoteSheet(tab)}!AF32:AK58` },
   ];
 
   try {
@@ -601,10 +602,11 @@ const PUSH_BLOCK2_ROWS = 27; // AF32:AK58
 
 function inventoryRow(item?: SheetInventoryItem): string[] {
   if (!item || item.qty <= 0) return ["", "", "", "", "", ""];
+  // [이름(Z/AF), (이름 병합), 효과(AB/AH 앵커), (효과 병합), 중량, 수량]
   return [
     item.name,
-    item.effect ?? "",
     "",
+    item.effect ?? "",
     "",
     item.weight != null ? String(item.weight) : "",
     String(item.qty),

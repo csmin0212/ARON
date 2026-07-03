@@ -14,7 +14,7 @@ import {
   lifeSkillSellPrice,
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
-import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
+import { isNonSellable } from "@/lib/shop";
 import { isSkillBookItem } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
@@ -195,12 +195,15 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
   });
   if (recipe?.sellPrice) return Math.round(recipe.sellPrice * (gradeInfo(grade)?.priceMult ?? 1));
 
+  // 아이템 도감의 모든 분류(포션·무기·방어구·스킬북 …)를 매입 대상으로 인정.
+  // 판매가가 비어 있으면 구매가의 40%로 폴백 — 시트에 구매가만 적어도 팔 수 있다.
   if (!isNonSellable(raw)) {
-    const material = await prisma.item.findFirst({
-      where: { name: raw, sellPrice: { gt: 0 }, category: { in: SELLABLE_MATERIAL_CATEGORIES } },
-      select: { sellPrice: true },
+    const item = await prisma.item.findFirst({
+      where: { OR: [{ id: raw }, { name: raw }] },
+      select: { sellPrice: true, buyPrice: true },
     });
-    if (material?.sellPrice) return material.sellPrice;
+    if (item?.sellPrice && item.sellPrice > 0) return item.sellPrice;
+    if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.round(item.buyPrice * 0.4));
   }
   return 0;
 }
