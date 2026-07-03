@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { postSystem } from "@/lib/play";
-import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { getActiveItems, type LifeSkillItem } from "@/lib/lifeSkillData";
 import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
@@ -105,7 +105,27 @@ async function atForgeLocation(locationId: string | null): Promise<boolean> {
   return ["대장간", "강화", "제련", "forge", "smith"].some((k) => source.includes(k.toLowerCase()));
 }
 
+// 커스텀 이름 검증 — 등급 사칭(명품/장인 등) 방지, 2~20자
+function sanitizeCustomName(raw: string): string | { error: string } {
+  const name = raw.replace(/\s+/g, " ").trim();
+  if (!name) return "";
+  if (name.length < 2 || name.length > 20) return { error: "장비 이름은 2~20자로 지어주세요." };
+  if (/고품질|명품|장인/.test(name)) return { error: "등급 표기(고품질/명품/장인)는 이름에 쓸 수 없어요." };
+  if (/[\n\r,，"<>]/.test(name)) return { error: "이름에 쓸 수 없는 문자가 있어요." };
+  return name;
+}
+
 export async function craftEquipment(formData: FormData): Promise<CraftResult> {
+  try {
+    return await craftEquipmentInner(formData);
+  } catch (e) {
+    console.error("[craft] 제작 실패:", e);
+    const message = e instanceof Error ? e.message : String(e);
+    return { error: `제작 처리 중 문제가 생겼어요: ${message}` };
+  }
+}
+
+async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   const user = await getCurrentUser();
   if (!user) return { error: "로그인이 필요합니다." };
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
@@ -113,6 +133,9 @@ export async function craftEquipment(formData: FormData): Promise<CraftResult> {
   if (!(await atForgeLocation(sheet.locationId))) return { error: "대장간에서만 제작할 수 있어요." };
 
   const category = String(formData.get("category") ?? "").trim();
+  const customNameResult = sanitizeCustomName(String(formData.get("customName") ?? ""));
+  if (typeof customNameResult !== "string") return customNameResult;
+  const customName = customNameResult;
   let majorsRaw: Record<string, number>;
   let minorsRaw: string[];
   try {
@@ -167,14 +190,15 @@ export async function craftEquipment(formData: FormData): Promise<CraftResult> {
   for (const [name, qty] of needs) {
     if (consumeMineral(life, inv, name, qty)) {
       invTouched = true;
-      void decrementDbInventoryByName(user.id, name, qty);
+      // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다 (스냅샷 invJson이 진실원)
+      void decrementDbInventoryByName(user.id, name, qty).catch(() => {});
     }
   }
 
   // 등급 롤 — 블랙스미스는 확률 보정(상한 동일)
   const grade = rollCraftGrade(blacksmith);
   const stats = applyGradeBonus(preview.stats, preview.group, grade);
-  const name = craftResultName(preview, grade, user.nickname);
+  const name = craftResultName(preview, grade, user.nickname, customName);
   const gradeInfoMult = grade === "장인" ? 2.6 : grade === "명품" ? 2.0 : grade === "고품질" ? 1.4 : 1;
   const sellPrice = Math.max(1, Math.round(preview.basePrice * 0.4 * gradeInfoMult));
 
@@ -221,6 +245,10 @@ export async function craftEquipment(formData: FormData): Promise<CraftResult> {
     else await prisma.inventoryEntry.create({ data: { userId: user.id, itemId: dbItem.id, qty: 1 } });
   }
 
+  // 사용한 광물 기록 — 제작 UI에서 효과가 공개되는 '발견' 트리거
+  let achStats = bumpStat(sheet.achStatsJson, "제작횟수");
+  for (const mineralName of needs.keys()) achStats = markStat(achStats, `제작광물:${mineralName}`);
+
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: {
@@ -228,7 +256,7 @@ export async function craftEquipment(formData: FormData): Promise<CraftResult> {
       invJson: JSON.stringify(inv),
       curGold: nextGold,
       gold: `${nextGold}G`,
-      achStatsJson: bumpStat(sheet.achStatsJson, "제작횟수"),
+      achStatsJson: achStats,
     },
   });
   void appendSheetGold(sheet.sheetTab, -fee);

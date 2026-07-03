@@ -62,9 +62,8 @@ function CookingStateLine({ state }: { state: CookingState }) {
 }
 
 export default function BagInventory({ gold, weight, items, lifeBags = [], skillBooks = [] }: Props) {
-  const mergedItems = useMemo(() => mergeItems(items), [items]);
   const [selected, setSelected] = useState<SheetInventoryItem | null>(null);
-  const [openedBag, setOpenedBag] = useState<LifeBagPocket | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("기본");
   const [useStateResult, useAction, usePending] = useActionState<CookingState, FormData>(
     useCookingItem,
     undefined,
@@ -75,40 +74,54 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
   );
   const skillBookSet = useMemo(() => new Set(skillBooks), [skillBooks]);
   const isSkillBook = (item: SheetInventoryItem) => skillBookSet.has(item.name.trim());
-  const openedItems = useMemo(() => mergeItems(openedBag?.items ?? []), [openedBag]);
+
+  // 가방 하나에 탭으로 통합 — 기본 + 생활 가방(낚시/채집/채광)
+  const tabs = useMemo(
+    () => [
+      { key: "기본", emoji: "🎒", weight: weight ?? "-", items },
+      ...lifeBags.map((bag) => ({ key: bag.name, emoji: bag.emoji, weight: bag.weight, items: bag.items })),
+    ],
+    [weight, items, lifeBags],
+  );
+  const active = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
+  const mergedItems = useMemo(() => mergeItems(active.items), [active]);
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
       <h2 className="mb-3 flex items-center justify-between px-1 text-sm font-extrabold text-content">
-        <span>🎒 기본 가방</span>
+        <span>🎒 가방</span>
         <span className="text-xs font-bold text-emerald-500">{gold}</span>
       </h2>
-      {lifeBags.length > 0 && (
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          {lifeBags.map((bag) => (
-            <button
-              key={bag.name}
-              type="button"
-              onClick={() => setOpenedBag(bag)}
-              className="rounded-2xl border border-line bg-subtle px-3 py-2 text-left transition hover:border-brand-300 hover:bg-brand-50"
-            >
-              <p className="truncate text-xs font-extrabold text-content">
-                {bag.emoji} {bag.name}
-              </p>
-              <p className="mt-0.5 text-[11px] font-bold text-faint">{bag.weight}</p>
-            </button>
-          ))}
+      {tabs.length > 1 && (
+        <div className="mb-3 grid grid-cols-4 gap-1 rounded-2xl bg-subtle p-1">
+          {tabs.map((tab) => {
+            const isActive = active.key === tab.key;
+            const label = tab.key === "기본" ? "기본" : tab.key.replace(/꾼? ?가방$/, "");
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`rounded-xl px-1 py-1.5 text-center text-[11px] font-extrabold transition ${
+                  isActive ? "bg-surface text-brand-600 shadow-sm" : "text-muted hover:text-content"
+                }`}
+              >
+                {tab.emoji} {label}
+              </button>
+            );
+          })}
         </div>
       )}
       <div className="mb-3 flex items-center justify-between rounded-2xl bg-subtle px-3 py-2 text-xs">
         <span className="font-semibold text-muted">중량</span>
-        <span className="font-extrabold text-content">{weight ?? "-"}</span>
+        <span className="font-extrabold text-content">{active.weight}</span>
       </div>
 
       {mergedItems.length === 0 ? (
         <p className="px-1 text-xs text-faint">
-          아직 비어 있어요. 시트에서 소지품을 추가한 뒤 프로필에서 가방만 다시
-          동기화해보세요.
+          {active.key === "기본"
+            ? "아직 비어 있어요. 시트에서 소지품을 추가한 뒤 프로필에서 가방만 다시 동기화해보세요."
+            : "아직 비어 있어요."}
         </p>
       ) : (
         <ul className="space-y-2">
@@ -137,77 +150,6 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
             </li>
           ))}
         </ul>
-      )}
-
-      {openedBag && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
-          role="presentation"
-          onClick={() => setOpenedBag(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${openedBag.name} 내용물`}
-            className="flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="border-b border-line bg-subtle px-5 py-4">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-faint">
-                Life Bag
-              </p>
-              <h3 className="mt-1 flex items-center justify-between gap-3 text-xl font-extrabold text-content">
-                <span>
-                  {openedBag.emoji} {openedBag.name}
-                </span>
-                <span className="text-sm font-bold text-muted">{openedBag.weight}</span>
-              </h3>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {openedItems.length === 0 ? (
-                <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
-                  아직 비어 있어요.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {openedItems.map((item, i) => (
-                    <li key={`${item.name}-${i}`}>
-                      <button
-                        type="button"
-                        onClick={() => setSelected(item)}
-                        className="w-full rounded-2xl bg-subtle px-3 py-2 text-left transition hover:bg-subtle-hover"
-                      >
-                        <div className="flex items-start gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-extrabold text-content">{item.name}</p>
-                            {item.effect && (
-                              <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-faint">
-                                {item.effect}
-                              </p>
-                            )}
-                          </div>
-                          <div className="shrink-0 text-right text-[11px] font-bold text-muted">
-                            <p>중량 {item.weight ?? "-"}</p>
-                            <p className="text-brand-600">x{item.qty}</p>
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="border-t border-line px-5 py-3">
-              <button
-                type="button"
-                onClick={() => setOpenedBag(null)}
-                className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {selected && (

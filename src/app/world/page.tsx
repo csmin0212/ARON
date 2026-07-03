@@ -506,6 +506,18 @@ export default async function WorldPage() {
     },
   };
   // 대장간 장비 제작 — 보유 광물(채광 가방 + 기본 인벤) × 활성 광물 풀(분류/제작효과)
+  // 효과는 한 번이라도 제작에 써본 광물만 공개(achStats '제작광물:이름' 마크)
+  let usedCraftMinerals = new Set<string>();
+  try {
+    const achStats = JSON.parse(sheet.achStatsJson ?? "{}") as Record<string, number>;
+    usedCraftMinerals = new Set(
+      Object.keys(achStats)
+        .filter((key) => key.startsWith("제작광물:"))
+        .map((key) => key.slice("제작광물:".length)),
+    );
+  } catch {
+    usedCraftMinerals = new Set();
+  }
   const craftMinerals: CraftMineralView[] = getActiveItems("채광")
     .filter((def) => def.craftRole === "메이저" || def.craftRole === "마이너")
     .map((def) => ({
@@ -517,6 +529,7 @@ export default async function WorldPage() {
         rawBagItems
           .filter((item) => item.name.trim() === def.name)
           .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+      used: usedCraftMinerals.has(def.name),
     }))
     .filter((entry) => entry.have > 0);
   const canMarket = hasServiceKeyword(here, locActions, [

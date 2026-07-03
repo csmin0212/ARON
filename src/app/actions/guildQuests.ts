@@ -183,7 +183,8 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
       return { error: `${offer.itemName}이(가) 부족해요. (보유 ${have} / 필요 ${offer.qty})` };
     }
     const used = consumeFood(inv, offer.itemName, offer.qty);
-    for (const [name, qty] of used) void decrementDbInventoryByName(user.id, name, qty);
+    // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다
+    for (const [name, qty] of used) void decrementDbInventoryByName(user.id, name, qty).catch(() => {});
     sheetPushNeeded = true;
   }
 
@@ -235,6 +236,16 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
 
 // ── 스킬북 뽑기 (파편 10개) ──
 export async function drawSkillbook(fragKindRaw: string): Promise<DrawResult> {
+  try {
+    return await drawSkillbookInner(fragKindRaw);
+  } catch (e) {
+    console.error("[guildQuests] 뽑기 실패:", e);
+    const message = e instanceof Error ? e.message : String(e);
+    return { error: `뽑기 처리 중 문제가 생겼어요: ${message}` };
+  }
+}
+
+async function drawSkillbookInner(fragKindRaw: string): Promise<DrawResult> {
   const user = await getCurrentUser();
   if (!user) return { error: "로그인이 필요합니다." };
   const fragKind: FragKind | null =

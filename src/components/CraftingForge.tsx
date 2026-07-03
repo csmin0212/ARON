@@ -15,6 +15,7 @@ import type { LifeSkillItem } from "@/lib/lifeSkillData";
 export type CraftMineralView = {
   def: LifeSkillItem;
   have: number;
+  used: boolean; // 제작에 써본 적 있는 광물만 효과 공개 — 발견의 재미
 };
 
 const RANK_TONE = [
@@ -96,6 +97,7 @@ export default function CraftingForge({
   const [category, setCategory] = useState<string>("장검");
   const [majorQty, setMajorQty] = useState<Record<string, number>>({});
   const [minorSel, setMinorSel] = useState<string[]>([]);
+  const [customName, setCustomName] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CraftResult | null>(null);
 
@@ -106,10 +108,11 @@ export default function CraftingForge({
   const totalMajors = Object.values(majorQty).reduce((s, n) => s + n, 0);
 
   const preview = useMemo(() => {
+    // 새로고침으로 광물 목록이 바뀌었을 수 있으니 목록에 없는 선택은 무시
     const majors = Object.entries(majorQty)
-      .filter(([, qty]) => qty > 0)
+      .filter(([name, qty]) => qty > 0 && defs.has(name))
       .map(([name, qty]) => ({ item: defs.get(name)!.def, qty }));
-    const minors = minorSel.map((name) => defs.get(name)!.def);
+    const minors = minorSel.filter((name) => defs.has(name)).map((name) => defs.get(name)!.def);
     if (majors.length === 0) return null;
     return computeCraft({ category, majors, minors });
   }, [category, majorQty, minorSel, defs]);
@@ -142,8 +145,14 @@ export default function CraftingForge({
     setBusy(true);
     const form = new FormData();
     form.set("category", category);
-    form.set("majors", JSON.stringify(Object.fromEntries(Object.entries(majorQty).filter(([, q]) => q > 0))));
-    form.set("minors", JSON.stringify(minorSel));
+    form.set("customName", customName);
+    form.set(
+      "majors",
+      JSON.stringify(
+        Object.fromEntries(Object.entries(majorQty).filter(([name, q]) => q > 0 && defs.has(name))),
+      ),
+    );
+    form.set("minors", JSON.stringify(minorSel.filter((name) => defs.has(name))));
     // 담금질 연출 — 잠깐 뜸을 들인 뒤 결과 공개
     const [res] = await Promise.all([
       craftEquipment(form),
@@ -154,6 +163,7 @@ export default function CraftingForge({
     if (!("error" in res)) {
       setMajorQty({});
       setMinorSel([]);
+      setCustomName("");
     }
     router.refresh();
   }
@@ -174,8 +184,8 @@ export default function CraftingForge({
             <span className="text-sm font-bold text-amber-600">{gold.toLocaleString()}G</span>
           </h3>
           <p className="mt-1 text-xs text-faint">
-            메이저 광물 개수 = 장비 레벨(최대 {MAX_MAJORS}) · 마이너 광물 = 부가효과(최대 {MAX_MINORS}종)
-            {isBlacksmith && <span className="ml-1 font-bold text-emerald-600">· 블랙스미스: 수수료 절반, 상위 등급 확률↑</span>}
+            광석을 녹여 장비를 벼린다.
+            {isBlacksmith && <span className="ml-1 font-bold text-emerald-600">🔥 블랙스미스의 화로</span>}
           </p>
         </div>
 
@@ -228,11 +238,11 @@ export default function CraftingForge({
             </div>
             {majorsOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">
-                메이저 광물이 없어요. 채광으로 철·구리 광석을 캐보세요.
+                가진 메이저 광물이 없다. 광맥부터 찾아보자.
               </p>
             ) : (
               <div className="space-y-1.5">
-                {majorsOwned.map(({ def, have }) => {
+                {majorsOwned.map(({ def, have, used }) => {
                   const qty = majorQty[def.name] ?? 0;
                   return (
                     <div key={def.name} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
@@ -241,7 +251,9 @@ export default function CraftingForge({
                           {def.name}{" "}
                           <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>{def.rarity}</span>
                         </p>
-                        <p className="text-[10px] text-faint">보유 {have} · {def.craftEffect ?? "-"}</p>
+                        <p className="text-[10px] text-faint">
+                          보유 {have} · {used ? (def.craftEffect ?? "-") : "???"}
+                        </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         <button type="button" onClick={() => bumpMajor(def.name, -1)} disabled={qty <= 0}
@@ -265,10 +277,10 @@ export default function CraftingForge({
               <span className="text-xs font-black text-violet-600">{minorSel.length}/{MAX_MINORS}</span>
             </div>
             {minorsOwned.length === 0 ? (
-              <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">마이너 광물이 없어요.</p>
+              <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">가진 마이너 광물이 없다.</p>
             ) : (
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {minorsOwned.map(({ def, have }) => {
+                {minorsOwned.map(({ def, have, used }) => {
                   const active = minorSel.includes(def.name);
                   return (
                     <button
@@ -283,7 +295,9 @@ export default function CraftingForge({
                         {def.name}{" "}
                         <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>{def.rarity}</span>
                       </p>
-                      <p className="text-[10px] text-faint">보유 {have} · {def.craftEffect ?? "-"}</p>
+                      <p className="text-[10px] text-faint">
+                        보유 {have} · {used ? (def.craftEffect ?? "-") : "???"}
+                      </p>
                     </button>
                   );
                 })}
@@ -295,20 +309,37 @@ export default function CraftingForge({
           <section className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-4">
             <h4 className="mb-2 text-sm font-extrabold text-content">🔍 미리보기</h4>
             {!preview ? (
-              <p className="text-xs text-faint">메이저 광물을 넣으면 결과가 표시돼요.</p>
+              <p className="text-xs text-faint">메이저 광물을 올려보자.</p>
             ) : "error" in preview ? (
               <p className="text-xs font-bold text-rose-500">{preview.error}</p>
             ) : (
-              <div>
-                <p className="text-sm font-black text-content">
-                  {preview.majorRep}제 {preview.repName}
-                  <span className="ml-1.5 text-[11px] font-bold text-faint">Lv{preview.level} {preview.category} · {preview.part}</span>
-                </p>
-                <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">{preview.effectText}</p>
-                <p className="mt-2 text-[11px] font-bold text-faint">
-                  수수료 {fee.toLocaleString()}G · 등급(고품질/명품/장인작)은 담금질 순간에 결정돼요
-                </p>
-              </div>
+              (() => {
+                const autoName = preview.repName.includes(preview.majorRep)
+                  ? preview.repName
+                  : `${preview.majorRep} ${preview.repName}`;
+                return (
+                  <div>
+                    <p className="text-sm font-black text-content">
+                      {customName.trim() || autoName}
+                      <span className="ml-1.5 text-[11px] font-bold text-faint">
+                        Lv{preview.level} {preview.category} · {preview.part}
+                      </span>
+                    </p>
+                    <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">{preview.effectText}</p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <input
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        maxLength={20}
+                        placeholder={autoName}
+                        className="min-w-0 flex-1 rounded-xl border border-amber-200 bg-surface px-3 py-2 text-xs font-bold outline-none transition placeholder:font-normal placeholder:text-faint focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                      <span className="shrink-0 text-[11px] font-bold text-faint">✏️ 이름 짓기</span>
+                    </div>
+                    <p className="mt-2 text-[11px] font-bold text-faint">수수료 {fee.toLocaleString()}G</p>
+                  </div>
+                );
+              })()
             )}
           </section>
         </div>

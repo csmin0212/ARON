@@ -53,10 +53,10 @@ type BaselineRow = CraftStats & { price: number; rep: string; part: string };
 export const BASELINE: Record<string, BaselineRow[]> = {
   격투: [
     { hit: 0, atk: 3, dodge: 0, pdef: 0, mdef: 0, price: 30, rep: "바그 나우", part: "두손" },
-    { hit: 0, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 85, rep: "아이언 클로", part: "두손" },
+    { hit: 0, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 85, rep: "클로", part: "두손" },
     { hit: 1, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 200, rep: "훅", part: "두손" },
-    { hit: 0, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 400, rep: "미스릴 바드 나우", part: "두손" },
-    { hit: 1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 500, rep: "미스릴 너클", part: "두손" },
+    { hit: 0, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 400, rep: "바드 나우", part: "두손" },
+    { hit: 1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 500, rep: "너클", part: "두손" },
   ],
   단검: [
     { hit: 0, atk: 4, dodge: 0, pdef: 0, mdef: 0, price: 30, rep: "대거", part: "한손" },
@@ -140,21 +140,21 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 0, dodge: 0, pdef: 2, mdef: 0, price: 100, rep: "메이지 햇", part: "머리" },
     { hit: 0, atk: 0, dodge: 0, pdef: 3, mdef: 0, price: 200, rep: "클로스 헬름", part: "머리" },
     { hit: 0, atk: 0, dodge: 0, pdef: 4, mdef: 0, price: 400, rep: "그레이트 헬름", part: "머리" },
-    { hit: 0, atk: 0, dodge: 0, pdef: 5, mdef: 0, price: 700, rep: "골드 헬름", part: "머리" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 5, mdef: 0, price: 700, rep: "그랜드 헬름", part: "머리" },
   ],
   전신: [
     { hit: 0, atk: 0, dodge: -2, pdef: 9, mdef: 0, price: 400, rep: "슈트 아머", part: "전신" },
     { hit: 0, atk: 0, dodge: -2, pdef: 11, mdef: 0, price: 700, rep: "슈트 아머", part: "전신" },
     { hit: 0, atk: 0, dodge: -2, pdef: 13, mdef: 0, price: 1000, rep: "슈트 아머", part: "전신" },
-    { hit: 0, atk: 0, dodge: -3, pdef: 15, mdef: 1, price: 1500, rep: "미스릴 슈트", part: "전신" },
-    { hit: 0, atk: 0, dodge: -3, pdef: 16, mdef: 1, price: 2000, rep: "미스릴 슈트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 15, mdef: 1, price: 1500, rep: "풀 플레이트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 16, mdef: 1, price: 2000, rep: "풀 플레이트", part: "전신" },
   ],
   보조: [
     { hit: 0, atk: 0, dodge: 0, pdef: 1, mdef: 0, price: 100, rep: "포인트 아머", part: "보조" },
     { hit: 0, atk: 0, dodge: 0, pdef: 2, mdef: 0, price: 200, rep: "트래블러즈 망토", part: "보조" },
     { hit: 0, atk: 0, dodge: 0, pdef: 4, mdef: 0, price: 400, rep: "파인 포인트 아머", part: "보조" },
     { hit: 0, atk: 0, dodge: 0, pdef: 4, mdef: 0, price: 600, rep: "파인 포인트 아머", part: "보조" },
-    { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 0, price: 900, rep: "미스릴 포인트 아머", part: "보조" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 0, price: 900, rep: "가드 아머", part: "보조" },
   ],
 };
 
@@ -357,10 +357,13 @@ export function craftResultName(
   preview: Pick<CraftPreview, "majorRep" | "repName">,
   grade: CraftGradeKey | null,
   crafterName: string,
+  customBase?: string,
 ): string {
-  const base = preview.repName.includes(preview.majorRep)
-    ? preview.repName
-    : `${preview.majorRep} ${preview.repName}`;
+  const base =
+    customBase?.trim() ||
+    (preview.repName.includes(preview.majorRep)
+      ? preview.repName
+      : `${preview.majorRep} ${preview.repName}`);
   if (grade === "장인") return `${crafterName}의 ${base}`;
   if (grade) return `${grade} ${base}`;
   return base;

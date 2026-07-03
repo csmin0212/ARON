@@ -1606,7 +1606,7 @@ export default function WorldServices({
               <span className="text-xl">🔨</span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">장비 제작</span>
-                <span className="text-[11px] text-faint">광물로 무기·방어구 제작 (메이저 개수 = 레벨)</span>
+                <span className="text-[11px] text-faint">광석을 녹여 장비를 벼린다</span>
               </span>
             </button>
           )}
