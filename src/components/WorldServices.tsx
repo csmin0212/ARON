@@ -1593,20 +1593,7 @@ export default function WorldServices({
               <span className="text-xl">⚒️</span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">대장간</span>
-                <span className="text-[11px] text-faint">무기 강화 · 마법 제련 · 수식어</span>
-              </span>
-            </button>
-          )}
-          {canForge && (
-            <button
-              type="button"
-              onClick={() => setCraftOpen(true)}
-              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-amber-400 hover:bg-amber-50"
-            >
-              <span className="text-xl">🔨</span>
-              <span className="min-w-0">
-                <span className="block text-sm font-extrabold text-content">장비 제작</span>
-                <span className="text-[11px] text-faint">광석을 녹여 장비를 벼린다</span>
+                <span className="text-[11px] text-faint">장비 제작 · 무기 강화 · 마법 제련 · 수식어</span>
               </span>
             </button>
           )}
@@ -1836,6 +1823,13 @@ export default function WorldServices({
                     title="수식어 부여"
                     subtitle="강철 파편 1개로 무기·방어구에 랜덤 수식어를 새깁니다"
                     onClick={() => setForgeMode("reforge")}
+                  />
+                  <ForgeChoice
+                    tone="arcane"
+                    icon="⚒️"
+                    title="장비 제작"
+                    subtitle="광석을 녹여 무기·방어구를 벼립니다"
+                    onClick={() => setCraftOpen(true)}
                   />
                 </div>
               ) : (

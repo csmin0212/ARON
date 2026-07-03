@@ -60,22 +60,27 @@ export default function ProfileForm({
 
   return (
     <form action={formAction} className="space-y-6">
-      {/* 미리보기 (커버·색 반영) */}
+      {/* 미리보기 — 실제 프로필 배너(ProfileHero)와 같은 비율의 미니 버전 */}
       <div
-        className="overflow-hidden rounded-2xl border border-line bg-surface"
+        className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm"
         style={accentStyle}
       >
         <div
-          className="h-16 bg-gradient-to-r from-brand-400 via-brand-500 to-brand-700"
+          className="relative h-24 bg-gradient-to-r from-brand-400 via-brand-500 to-brand-700"
           style={coverStyle}
-        />
-        <div className="-mt-6 flex items-center gap-3 px-4 pb-3">
-          <span className="inline-flex rounded-full ring-4 ring-surface">
-            <Avatar name={nickname || "?"} avatar={avatar || null} size={52} />
+        >
+          <span className="absolute right-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
+            미리보기
           </span>
-          <div className="min-w-0 pt-5">
-            <p className="truncate text-sm font-bold text-content">{nickname || "닉네임"}</p>
-            <p className="text-[11px] text-faint">미리보기</p>
+        </div>
+        <div className="px-5 pb-4">
+          <div className="-mt-9 flex items-end gap-3">
+            <span className="inline-flex shrink-0 rounded-full ring-4 ring-surface">
+              <Avatar name={nickname || "?"} avatar={avatar || null} size={72} />
+            </span>
+            <p className="mb-1 min-w-0 truncate text-lg font-extrabold text-content">
+              {nickname || "닉네임"}
+            </p>
           </div>
         </div>
       </div>
