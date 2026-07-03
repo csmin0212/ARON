@@ -90,13 +90,18 @@ function DrawResultModal({ result, onClose }: { result: DrawResult; onClose: () 
   );
 }
 
-export default function GuildQuestBoard({ view }: { view: GuildQuestBoardView }) {
+export default function GuildQuestBoard({
+  view,
+  section = "quests",
+}: {
+  view: GuildQuestBoardView;
+  section?: "quests" | "shards";
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok?: string; error?: string } | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawResult, setDrawResult] = useState<DrawResult | null>(null);
-  const [exchangeOpen, setExchangeOpen] = useState(false);
 
   function run(action: () => Promise<{ ok?: string; error?: string } | undefined>) {
     if (pending) return;
@@ -126,6 +131,8 @@ export default function GuildQuestBoard({ view }: { view: GuildQuestBoardView })
 
   return (
     <div className="space-y-3">
+      {section === "quests" && (
+        <>
       {/* 주간 트래커 */}
       <section className="rounded-2xl border border-line bg-subtle p-4">
         <div className="flex items-center justify-between gap-3">
@@ -238,8 +245,10 @@ export default function GuildQuestBoard({ view }: { view: GuildQuestBoardView })
           </button>
         </div>
       </section>
+        </>
+      )}
 
-      {/* 스킬 파편 & 뽑기 */}
+      {section === "shards" && (
       <section className="rounded-2xl border border-line bg-subtle p-4">
         <h4 className="mb-3 text-sm font-extrabold text-content">🧩 스킬 파편</h4>
         <div className="grid grid-cols-2 gap-2">
@@ -272,16 +281,15 @@ export default function GuildQuestBoard({ view }: { view: GuildQuestBoardView })
           })}
         </div>
 
-        {/* 교환소 */}
-        <button
-          type="button"
-          onClick={() => setExchangeOpen((v) => !v)}
-          className="mt-3 w-full rounded-xl border border-dashed border-line bg-surface py-2 text-xs font-bold text-muted transition hover:text-content"
-        >
-          ♻️ 스킬북 교환소 {exchangeOpen ? "닫기" : `열기 (보유 ${view.books.reduce((s, b) => s + b.qty, 0)}권)`}
-        </button>
-        {exchangeOpen && (
-          <div className="mt-2 space-y-1.5">
+        {/* 교환소 — 안 쓰는 스킬북을 파편으로 */}
+        <div className="mt-4 border-t border-line pt-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-sm font-extrabold text-content">♻️ 스킬북 갈기</h4>
+            <span className="text-[11px] font-bold text-faint">
+              보유 {view.books.reduce((s, b) => s + b.qty, 0)}권 · 1권 → 파편 3개
+            </span>
+          </div>
+          <div className="space-y-1.5">
             {view.books.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">
                 갈아둘 스킬북이 없어요.
@@ -312,8 +320,9 @@ export default function GuildQuestBoard({ view }: { view: GuildQuestBoardView })
               ))
             )}
           </div>
-        )}
+        </div>
       </section>
+      )}
 
       {message && (
         <p

@@ -409,6 +409,7 @@ function StorageManager({
     withdrawFromStorage,
     undefined,
   );
+  const [view, setView] = useState<"deposit" | "storage">("deposit");
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const lifeItems = useMemo(
     () => lifeStorageItems.filter((item) => item.qty > 0),
@@ -416,6 +417,13 @@ function StorageManager({
   );
   const storageItems = storage.items.filter((item) => item.qty > 0);
   const fill = Math.min(100, Math.round((storage.usedWeight / storage.maxWeight) * 100));
+
+  const SOURCE_BADGE: Record<string, string> = { basic: "🎒", 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
+  // 기본 + 생활 가방을 한 리스트로 — 행마다 바로 보관
+  const depositRows = [
+    ...items.map((item) => ({ ...item, sourceKind: "basic" as const })),
+    ...lifeItems,
+  ];
 
   return (
     <div
@@ -427,7 +435,7 @@ function StorageManager({
         role="dialog"
         aria-modal="true"
         aria-label="창고 관리인"
-        className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-line bg-subtle px-5 py-4">
@@ -448,126 +456,132 @@ function StorageManager({
           </div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <section className="rounded-2xl border border-line p-3">
-            <h4 className="mb-2 text-sm font-extrabold text-content">가방에서 보관</h4>
-            <StorageStateLine state={depositState} />
-            <form action={depositAction} className="mt-2 grid grid-cols-[1fr_4.5rem] gap-2">
-              <input type="hidden" name="sourceKind" value="basic" />
-              <select
-                name="itemName"
-                className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
-              >
-                {items.map((item) => (
-                  <option key={item.name} value={item.name}>
-                    {item.name} x{item.qty}
-                  </option>
-                ))}
-              </select>
-              <input
-                name="qty"
-                type="number"
-                min="1"
-                defaultValue="1"
-                className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
-              />
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* 맡기기 / 창고 탭 */}
+          <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-subtle p-1">
+            {(
+              [
+                { key: "deposit" as const, label: `🎒 맡기기 (${depositRows.length})` },
+                { key: "storage" as const, label: `📦 창고 (${storageItems.length})` },
+              ]
+            ).map((tab) => (
               <button
-                type="submit"
-                disabled={depositPending || items.length === 0}
-                className="col-span-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                key={tab.key}
+                type="button"
+                onClick={() => setView(tab.key)}
+                className={`rounded-xl py-2 text-sm font-extrabold transition ${
+                  view === tab.key ? "bg-surface text-brand-600 shadow-sm" : "text-muted hover:text-content"
+                }`}
               >
-                {depositPending ? "보관 중..." : "보관하기"}
+                {tab.label}
               </button>
-            </form>
-            {lifeItems.length > 0 && (
-              <form action={depositAction} className="mt-2 grid grid-cols-[1fr_4.5rem] gap-2">
-                <select
-                  name="itemName"
-                  className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
-                >
-                  {lifeItems.map((item) => (
-                    <option key={`${item.sourceKind}-${item.name}`} value={item.name}>
-                      {item.sourceKind} · {item.name} x{item.qty}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  name="qty"
-                  type="number"
-                  min="1"
-                  defaultValue="1"
-                  className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
-                />
-                <select
-                  name="sourceKind"
-                  className="col-span-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
-                >
-                  <option value="낚시">낚시 가방에서 보관</option>
-                  <option value="채집">채집 가방에서 보관</option>
-                </select>
-                <button
-                  type="submit"
-                  disabled={depositPending}
-                  className="col-span-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
-                >
-                  {depositPending ? "보관 중..." : "생활 가방 물건 보관"}
-                </button>
-              </form>
-            )}
-          </section>
+            ))}
+          </div>
 
-          <section>
-            <h4 className="mb-2 text-sm font-extrabold text-content">창고 내용물</h4>
-            <StorageStateLine state={withdrawState} />
-            {storageItems.length === 0 ? (
-              <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
-                아직 맡긴 물건이 없어요.
-              </p>
-            ) : (
-              <ul className="mt-2 space-y-2">
-                {storageItems.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-2xl bg-subtle px-3 py-3"
-                  >
-                    <div className="mb-2 flex items-start gap-2">
+          {view === "deposit" ? (
+            <>
+              <StorageStateLine state={depositState} />
+              {depositRows.length === 0 ? (
+                <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
+                  맡길 물건이 없어요.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {depositRows.map((item) => (
+                    <li
+                      key={`${item.sourceKind}-${item.name}`}
+                      className="flex items-center gap-2.5 rounded-2xl bg-subtle px-3 py-2.5"
+                    >
+                      <span className="shrink-0 text-lg" title={item.sourceKind === "basic" ? "기본 가방" : `${item.sourceKind} 가방`}>
+                        {SOURCE_BADGE[item.sourceKind] ?? "🎒"}
+                      </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-extrabold text-content">{item.name}</p>
-                        <p className="mt-0.5 text-[11px] font-bold text-brand-600">
-                          {item.sourceKind === "basic" ? "기본 가방" : `${item.sourceKind} 가방`}
+                        <p className="truncate text-xs font-extrabold text-content">
+                          {item.name} <span className="text-brand-600">x{item.qty}</span>
+                          {item.weight != null && (
+                            <span className="ml-1 text-[10px] font-bold text-faint">중량 {item.weight}</span>
+                          )}
                         </p>
                         {item.effect && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-faint">{item.effect}</p>
+                          <p className="truncate text-[10px] text-faint">{item.effect}</p>
                         )}
                       </div>
-                      <div className="text-right text-xs font-bold text-muted">
-                        <p>중량 {item.weight ?? "-"}</p>
-                        <p className="text-brand-600">x{item.qty}</p>
+                      <form action={depositAction} className="flex shrink-0 items-center gap-1.5">
+                        <input type="hidden" name="itemName" value={item.name} />
+                        <input type="hidden" name="sourceKind" value={item.sourceKind} />
+                        <input
+                          name="qty"
+                          type="number"
+                          min="1"
+                          max={item.qty}
+                          defaultValue="1"
+                          className="w-14 rounded-lg border border-line bg-surface px-2 py-1.5 text-center text-xs font-bold text-content outline-none focus:border-brand-300"
+                        />
+                        <button
+                          type="submit"
+                          disabled={depositPending}
+                          className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-extrabold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                        >
+                          보관
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <>
+              <StorageStateLine state={withdrawState} />
+              {storageItems.length === 0 ? (
+                <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
+                  아직 맡긴 물건이 없어요.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {storageItems.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-2.5 rounded-2xl bg-subtle px-3 py-2.5"
+                    >
+                      <span className="shrink-0 text-lg" title={item.sourceKind === "basic" ? "기본 가방" : `${item.sourceKind} 가방`}>
+                        {SOURCE_BADGE[item.sourceKind] ?? "🎒"}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-extrabold text-content">
+                          {item.name} <span className="text-brand-600">x{item.qty}</span>
+                          {item.weight != null && (
+                            <span className="ml-1 text-[10px] font-bold text-faint">중량 {item.weight}</span>
+                          )}
+                        </p>
+                        {item.effect && (
+                          <p className="truncate text-[10px] text-faint">{item.effect}</p>
+                        )}
                       </div>
-                    </div>
-                    <form action={withdrawAction} className="grid grid-cols-[1fr_5rem] gap-2">
-                      <input type="hidden" name="entryId" value={item.id} />
-                      <input
-                        name="qty"
-                        type="number"
-                        min="1"
-                        max={item.qty}
-                        defaultValue="1"
-                        className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content outline-none focus:border-brand-300"
-                      />
-                      <button
-                        type="submit"
-                        disabled={withdrawPending}
-                        className="rounded-xl bg-surface px-3 py-2 text-sm font-extrabold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
-                      >
-                        꺼내기
-                      </button>
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                      <form action={withdrawAction} className="flex shrink-0 items-center gap-1.5">
+                        <input type="hidden" name="entryId" value={item.id} />
+                        <input
+                          name="qty"
+                          type="number"
+                          min="1"
+                          max={item.qty}
+                          defaultValue="1"
+                          className="w-14 rounded-lg border border-line bg-surface px-2 py-1.5 text-center text-xs font-bold text-content outline-none focus:border-brand-300"
+                        />
+                        <button
+                          type="submit"
+                          disabled={withdrawPending}
+                          className="rounded-lg border border-brand-200 bg-surface px-3 py-1.5 text-xs font-extrabold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
+                        >
+                          꺼내기
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
         </div>
 
         <div className="border-t border-line px-5 py-3">
@@ -686,6 +700,7 @@ function GuildStateLine({ state }: { state?: { ok?: string; error?: string } }) 
 }
 
 function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void }) {
+  const [tab, setTab] = useState<"quests" | "shards">("quests");
   const [rankState, rankAction, rankPending] = useActionState<GuildState, FormData>(
     promoteAdventurerRank,
     undefined,
@@ -695,6 +710,7 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
   const nextRank = nextAdventurerRank(rank);
   const ready = !!nextRank && guild.fame >= goal;
   const pct = goal > 0 ? Math.min(100, Math.round((guild.fame / goal) * 100)) : 100;
+  const fragTotal = guild.quests.frags.일반 + guild.quests.frags.고급;
 
   return (
     <div
@@ -709,13 +725,38 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
         className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-line bg-subtle px-5 py-4">
+        <div className="border-b border-line bg-subtle px-5 pt-4">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
-            Guild Requests
+            Adventurer Guild
           </p>
-          <h3 className="mt-1 text-2xl font-extrabold text-content">📜 의뢰 게시판</h3>
+          <h3 className="mt-1 text-2xl font-extrabold text-content">🏛️ 모험가 길드</h3>
+          <div className="mt-3 flex gap-1">
+            {(
+              [
+                { key: "quests" as const, label: "📜 의뢰 게시판" },
+                { key: "shards" as const, label: `🧩 파편 교환소${fragTotal > 0 ? ` (${fragTotal})` : ""}` },
+              ]
+            ).map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                onClick={() => setTab(entry.key)}
+                className={`rounded-t-xl px-4 py-2 text-sm font-extrabold transition ${
+                  tab === entry.key
+                    ? "bg-surface text-brand-600 shadow-sm"
+                    : "text-muted hover:text-content"
+                }`}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {tab === "shards" ? (
+            <GuildQuestBoard view={guild.quests} section="shards" />
+          ) : (
+            <>
           <section className="rounded-2xl border border-line bg-subtle p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -758,7 +799,9 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
               <GuildStateLine state={rankState} />
             </form>
           </section>
-          <GuildQuestBoard view={guild.quests} />
+          <GuildQuestBoard view={guild.quests} section="quests" />
+            </>
+          )}
         </div>
         <div className="border-t border-line px-5 py-3">
           <button
