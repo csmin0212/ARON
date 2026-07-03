@@ -81,16 +81,24 @@ const ALL_PREFIX_NAMES = new Set([...WEAPON_PREFIXES, ...ARMOR_PREFIXES].map((p)
 export const WEAPON_HINTS = [
   "검", "도", "창", "활", "단검", "도끼", "메이스", "해머", "완드",
   "스태프", "지팡이", "소드", "블레이드", "보우", "랜스", "액스",
+  "너클", "클로", "대거", "카타르", "슈리켄", "윕", "채찍", "스피어",
+  "파이크", "핼버드", "카타나", "플레일", "픽", "훅",
 ];
 export const ARMOR_HINTS = [
   "갑옷", "방패", "투구", "사슬", "로브", "망토", "장갑", "부츠", "신발",
   "흉갑", "판금", "가죽", "메일", "실드", "견갑", "각반", "방어구", "갑주",
+  "아머", "헬름", "플레이트", "재킷", "슈트", "모자", "햇", "버클러", "서클릿",
 ];
 
 // 이름+효과로 무기/방어구 판별. 방어구를 먼저 검사(겹침 방지).
+// 힌트에 없는 이름이라도 제작 장비("Lv3 장검 · 한손" 효과문)는 스탯으로 판별한다.
 export function detectForgeSlot(nameAndEffect: string): ForgeSlot | null {
   if (ARMOR_HINTS.some((h) => nameAndEffect.includes(h))) return "armor";
   if (WEAPON_HINTS.some((h) => nameAndEffect.includes(h))) return "weapon";
+  if (/Lv\d+/.test(nameAndEffect)) {
+    if (nameAndEffect.includes("물리 방어력") || nameAndEffect.includes("마법 방어력")) return "armor";
+    if (nameAndEffect.includes("공격력")) return "weapon";
+  }
   return null;
 }
 

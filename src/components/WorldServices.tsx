@@ -2010,10 +2010,6 @@ export default function WorldServices({
                           ))}
                         </select>
                       </label>
-                      <p className="rounded-xl border border-amber-900/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
-                        강철 파편 1개 소모 · 무기/방어구 자동 판별 후 랜덤 수식어 부여(기존 수식어 교체).
-                        <br />추첨 비율 — 좋음 30% / 보통 30% / 나쁨 40%
-                      </p>
                       {forgeables.length === 0 && (
                         <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-3 text-sm text-stone-400">
                           인벤토리에서 무기·방어구를 찾지 못했어요. 시트 휴대품에 넣고 동기화해주세요.

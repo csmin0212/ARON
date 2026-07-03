@@ -32,7 +32,7 @@ function ResultModal({ result, onClose }: { result: CraftResult; onClose: () => 
   const grade = ok ? result.grade : null;
   const golden = grade === "장인" || grade === "명품";
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/70 px-4" role="presentation" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 px-4" role="presentation" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -169,7 +169,7 @@ export default function CraftingForge({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6" role="presentation" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/45 px-4 py-6" role="presentation" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
