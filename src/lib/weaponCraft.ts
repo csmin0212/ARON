@@ -221,6 +221,30 @@ export function isBlacksmithClass(charClass: string | null | undefined): boolean
   return (charClass ?? "").replace(/\s+/g, "").includes("블랙스미스");
 }
 
+// 아이템 탭 드롭품(제작효과 채워진 것) → 마이너 재료 어댑터.
+// 광물이 아니므로 메이저 불가, 중량 기여 1(깃털·비늘 등 가벼운 마감재).
+export function itemAsCraftMinor(item: {
+  name: string;
+  craftEffect: string | null;
+  sellPrice?: number | null;
+  desc?: string | null;
+}): LifeSkillItem {
+  return {
+    no: 0,
+    name: item.name,
+    rank: 0,
+    rarity: "재료",
+    weight: 1,
+    price: item.sellPrice ?? 0,
+    exp: 0,
+    sizeBase: 0,
+    sizeVariance: 0,
+    text: item.desc ?? "",
+    craftRole: "마이너",
+    craftEffect: item.craftEffect,
+  };
+}
+
 // ── 제작 계산 ──
 export type CraftInput = {
   category: string;

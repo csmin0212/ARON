@@ -42,7 +42,7 @@ import {
   lifeSkillSellPrice,
   type LocationLifeConfig,
 } from "@/lib/lifeSkillData";
-import { isBlacksmithClass } from "@/lib/weaponCraft";
+import { isBlacksmithClass, itemAsCraftMinor } from "@/lib/weaponCraft";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { isNonSellable } from "@/lib/shop";
@@ -518,7 +518,7 @@ export default async function WorldPage() {
   } catch {
     usedCraftMinerals = new Set();
   }
-  const craftMinerals: CraftMineralView[] = getActiveItems("채광")
+  const mineralCraftViews: CraftMineralView[] = getActiveItems("채광")
     .filter((def) => def.craftRole === "메이저" || def.craftRole === "마이너")
     .map((def) => ({
       def,
@@ -532,6 +532,23 @@ export default async function WorldPage() {
       used: usedCraftMinerals.has(def.name),
     }))
     .filter((entry) => entry.have > 0);
+  // 아이템 탭 드롭품(제작효과 有) — 마이너 재료로 합류 (그리폰 깃털 등)
+  const dropMinorDefs = await prisma.item.findMany({
+    where: { craftEffect: { not: null } },
+    select: { name: true, craftEffect: true, sellPrice: true, desc: true },
+  });
+  const mineralNames = new Set(mineralCraftViews.map((entry) => entry.def.name));
+  const dropMinorViews: CraftMineralView[] = dropMinorDefs
+    .filter((it) => !mineralNames.has(it.name.trim()))
+    .map((it) => ({
+      def: itemAsCraftMinor(it),
+      have: rawBagItems
+        .filter((item) => item.name.trim() === it.name.trim())
+        .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+      used: usedCraftMinerals.has(it.name.trim()),
+    }))
+    .filter((entry) => entry.have > 0);
+  const craftMinerals = [...mineralCraftViews, ...dropMinorViews];
   const canMarket = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",

@@ -19,6 +19,7 @@ import {
   computeCraft,
   craftResultName,
   isBlacksmithClass,
+  itemAsCraftMinor,
   rollCraftGrade,
   type CraftGradeKey,
 } from "@/lib/weaponCraft";
@@ -148,6 +149,15 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   // 활성 광물 풀에서 재료 정의 조회 (클라이언트 입력 불신 — 서버가 다시 계산)
   await loadLifeItems();
   const pool = new Map(getActiveItems("채광").map((item) => [item.name, item]));
+  // 아이템 탭 드롭품(제작효과 有) — 마이너 재료로 합류
+  const dropMinors = await prisma.item.findMany({
+    where: { craftEffect: { not: null } },
+    select: { name: true, craftEffect: true, sellPrice: true, desc: true },
+  });
+  for (const it of dropMinors) {
+    const key = it.name.trim();
+    if (!pool.has(key)) pool.set(key, itemAsCraftMinor(it));
+  }
   const majors: { item: LifeSkillItem; qty: number }[] = [];
   for (const [name, qty] of Object.entries(majorsRaw)) {
     if (!Number.isInteger(qty) || qty <= 0) continue;

@@ -29,6 +29,7 @@ export type ItemRow = {
   buyPrice: number | null;
   sellPrice: number | null;
   desc: string | null;
+  craftEffect: string | null; // 장비 제작 마이너 재료 효과 (드롭품 등)
 };
 
 export type DropEntry = { item: string; qty: number; gold: number; weight: number };
@@ -210,6 +211,8 @@ export function parseItemsGrid(g: string[][]): ItemRow[] {
     분류: "category",
     구매가: "buyPrice",
     판매가: "sellPrice",
+    제작효과: "craftEffect",
+    "제작 효과": "craftEffect",
     설명: "desc",
   });
   if (!h) throw new Error("아이템 탭이 없거나 헤더(이름/분류)가 없어요.");
@@ -229,6 +232,7 @@ export function parseItemsGrid(g: string[][]): ItemRow[] {
       category: at(g, r, h.col.category) || null,
       buyPrice: num(at(g, r, h.col.buyPrice)),
       sellPrice: num(at(g, r, h.col.sellPrice)),
+      craftEffect: at(g, r, h.col.craftEffect) || null,
       desc: at(g, r, h.col.desc) || null,
     });
   }

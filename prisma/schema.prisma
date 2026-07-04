@@ -382,6 +382,7 @@ model Item {
   buyPrice  Int? // 상점 구매가 (C2)
   sellPrice Int? // 상점 판매가
   desc      String?
+  craftEffect String? // 채워지면 장비 제작 마이너 재료로 인정 — "회피+1, [신속]" (에너미 드롭품 등)
   order     Int      @default(0)
   updatedAt DateTime @updatedAt
 }
