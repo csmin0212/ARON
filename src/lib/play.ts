@@ -329,8 +329,11 @@ export async function runActionCommand(
       } else if (drop.item === "꽝") {
         resultLine = " 꽝... 아무 일도 일어나지 않았다.";
       } else {
-        await addItem(userId, drop.item, drop.qty);
-        const item = await prisma.item.findUnique({ where: { id: drop.item } });
+        // 드랍 표기는 ID든 이름이든 허용 — 동기화 검증과 동일 기준 (이름만 적어도 효과·해설이 붙는다)
+        const item = await prisma.item.findFirst({
+          where: { OR: [{ id: drop.item }, { name: drop.item }] },
+        });
+        await addItem(userId, item?.id ?? drop.item, drop.qty);
         const itemName = item?.name ?? drop.item;
         const effect = item?.desc ?? null;
         await prisma.characterSheet.update({
