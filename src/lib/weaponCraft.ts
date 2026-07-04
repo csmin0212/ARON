@@ -309,6 +309,15 @@ function maskForGroup(stats: Partial<CraftStats>, group: CraftGroup): Partial<Cr
   return { dodge: stats.dodge, pdef: stats.pdef, mdef: stats.mdef };
 }
 
+// 속성 태그 슬롯 분기 — 시트엔 [화속성] 하나만 적으면
+// 무기 제작 시 '화속성 특화'(<화> 마법 피해 +2), 방어구 제작 시 '화속성 내성'(<화> 피해 경감 2)이 된다.
+const ATTRIBUTE_TAG = /^(화|수|지|풍|광|암)\s*속성$/;
+export function resolveSlotTag(tag: string, group: CraftGroup): string {
+  const m = tag.trim().match(ATTRIBUTE_TAG);
+  if (m) return group === "무기" ? `${m[1]}속성 특화` : `${m[1]}속성 내성`;
+  return tag.trim();
+}
+
 export function computeCraft(input: CraftInput): CraftPreview | { error: string } {
   const category = CRAFT_CATEGORIES.find((c) => c.key === input.category);
   if (!category) return { error: "만들 장비 종류를 선택해주세요." };
@@ -339,7 +348,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     for (const [k, v] of Object.entries(masked)) {
       if (v) acc[k as keyof CraftStats] += v * m.qty;
     }
-    for (const t of eff.tags) tags.add(t);
+    for (const t of eff.tags) tags.add(resolveSlotTag(t, category.group));
     extras.push(...eff.extras);
   }
   const stats: CraftStats = {
@@ -357,7 +366,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     for (const [k, v] of Object.entries(masked)) {
       if (v) stats[k as keyof CraftStats] += v;
     }
-    for (const t of eff.tags) tags.add(t);
+    for (const t of eff.tags) tags.add(resolveSlotTag(t, category.group));
     extras.push(...eff.extras);
   }
 
