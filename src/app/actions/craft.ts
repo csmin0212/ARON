@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { postSystem } from "@/lib/play";
+import { freshAp, postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { getActiveItems, type LifeSkillItem } from "@/lib/lifeSkillData";
-import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
+import { applySmithingExp, parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
 import {
   appendSheetGold,
   appendSheetItem,
@@ -17,9 +17,12 @@ import {
 import {
   applyGradeBonus,
   computeCraft,
+  craftApCost,
   craftResultName,
+  craftSmithExp,
   isBlacksmithClass,
   itemAsCraftMinor,
+  minorSlotsFor,
   rollCraftGrade,
   type CraftGradeKey,
 } from "@/lib/weaponCraft";
@@ -32,6 +35,9 @@ export type CraftResult =
       effectText: string;
       fee: number;
       level: number;
+      apCost: number;
+      smithExp: number;
+      smithLevelUps: number[];
     }
   | { error: string };
 
@@ -176,11 +182,16 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     minors.push(item);
   }
 
-  const preview = computeCraft({ category, majors, minors });
+  // 대장 레벨 → 마이너 슬롯 확장, 제작 피로도 검사
+  const life = parseLifeState(sheet.lifeJson);
+  const preview = computeCraft({ category, majors, minors, maxMinors: minorSlotsFor(life.smithing.level) });
   if ("error" in preview) return { error: preview.error };
 
+  const apCost = craftApCost(preview.level);
+  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
+  if (ap < apCost) return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
+
   // 보유량 검증 + 소모
-  const life = parseLifeState(sheet.lifeJson);
   const inv = parseInv(sheet.invJson);
   const needs = new Map<string, number>();
   for (const m of majors) needs.set(m.item.name, (needs.get(m.item.name) ?? 0) + m.qty);
@@ -259,6 +270,10 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   let achStats = bumpStat(sheet.achStatsJson, "제작횟수");
   for (const mineralName of needs.keys()) achStats = markStat(achStats, `제작광물:${mineralName}`);
 
+  // 대장 숙련 — 기준가 비례, 레벨업 시 마이너 슬롯 확장
+  const smithExp = craftSmithExp(preview.basePrice);
+  const smithLevelUps = applySmithingExp(life, smithExp);
+
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: {
@@ -266,6 +281,8 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
       invJson: JSON.stringify(inv),
       curGold: nextGold,
       gold: `${nextGold}G`,
+      ap: ap - apCost,
+      apResetAt,
       achStatsJson: achStats,
     },
   });
@@ -283,8 +300,14 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
       sheet.locationId,
       `⚒️ ${user.nickname}님이 [${name}]을(를) 제작했습니다!${gradeNote}`,
     );
+    for (const lv of smithLevelUps) {
+      await postSystem(
+        sheet.locationId,
+        `🆙 ${user.nickname}님의 대장 레벨이 ${lv}이 되었다!${lv === 10 || lv === 25 ? " 마이너 슬롯이 늘어났다! 🔥" : ""}`,
+      );
+    }
   }
 
   revalidatePath("/world");
-  return { ok: true, name, grade, effectText, fee, level: preview.level };
+  return { ok: true, name, grade, effectText, fee, level: preview.level, apCost, smithExp, smithLevelUps };
 }

@@ -549,6 +549,9 @@ export default async function WorldPage() {
     }))
     .filter((entry) => entry.have > 0);
   const craftMinerals = [...mineralCraftViews, ...dropMinorViews];
+  // [태그] 룰 사전 — 제작특성 탭 동기화본
+  const craftTagRows = await prisma.craftTag.findMany({ orderBy: { order: "asc" } });
+  const craftTags = Object.fromEntries(craftTagRows.map((tag) => [tag.name, tag.desc]));
   const canMarket = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
@@ -933,6 +936,9 @@ export default async function WorldPage() {
             guild={guild}
             craftMinerals={craftMinerals}
             isBlacksmith={isBlacksmithClass(sheet.charClass)}
+            craftSmithLevel={life.smithing.level}
+            craftAp={ap}
+            craftTags={craftTags}
           />
 
           <BagInventory
@@ -941,6 +947,7 @@ export default async function WorldPage() {
             items={bagItems}
             lifeBags={lifeBags}
             skillBooks={skillBookNames}
+            tagDict={craftTags}
           />
 
           <SheetSync />

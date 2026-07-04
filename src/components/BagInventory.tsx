@@ -18,6 +18,7 @@ type Props = {
   items: SheetInventoryItem[];
   lifeBags?: LifeBagPocket[];
   skillBooks?: string[]; // 스킬북 아이템 이름 목록 (사용 시 전투스킬 습득)
+  tagDict?: Record<string, string>; // 장비 [태그] 룰 사전 — 상세에서 설명 표시
 };
 
 function mergeItems(items: SheetInventoryItem[]): SheetInventoryItem[] {
@@ -61,7 +62,7 @@ function CookingStateLine({ state }: { state: CookingState }) {
   );
 }
 
-export default function BagInventory({ gold, weight, items, lifeBags = [], skillBooks = [] }: Props) {
+export default function BagInventory({ gold, weight, items, lifeBags = [], skillBooks = [], tagDict = {} }: Props) {
   const [selected, setSelected] = useState<SheetInventoryItem | null>(null);
   const [activeTab, setActiveTab] = useState<string>("기본");
   const [useStateResult, useAction, usePending] = useActionState<CookingState, FormData>(
@@ -189,6 +190,21 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-content">
                   {selected.effect || "아직 등록된 효과가 없어요."}
                 </p>
+                {(() => {
+                  // 효과문 속 [태그] → 룰 사전 설명
+                  const tags = [...new Set([...(selected.effect ?? "").matchAll(/\[([^\]\n]+)\]/g)].map((m) => m[1]))]
+                    .filter((tag) => tagDict[tag]);
+                  if (tags.length === 0) return null;
+                  return (
+                    <div className="mt-2 space-y-1 border-t border-line pt-2">
+                      {tags.map((tag) => (
+                        <p key={tag} className="text-xs leading-relaxed text-violet-700">
+                          <b>[{tag}]</b> {tagDict[tag]}
+                        </p>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               {canUseItem(selected) && (
                 <form action={useAction}>

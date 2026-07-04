@@ -374,6 +374,14 @@ model LifeSkillItem {
   @@index([kind, rank])
 }
 
+// 제작 특성([태그]) 사전 — GM 시트 '제작특성' 탭에서 동기화. UI에서 클릭 시 룰 설명 표시.
+model CraftTag {
+  name      String   @id // 태그명 (대괄호 없이) 예: 화속성
+  desc      String // 룰 설명
+  order     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 // 아이템 도감 (GM 시트 '아이템' 탭에서 동기화)
 model Item {
   id        String   @id

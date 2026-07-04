@@ -13,6 +13,7 @@ import {
   fetchAchievementsRows,
   fetchRecipesRows,
   fetchLifeItemsRows,
+  fetchCraftTagsRows,
   fetchSkillsRows,
   fetchCombatSkillsRows,
 } from "@/lib/gamedata";
@@ -714,6 +715,22 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "물고기/채집 탭 오류");
+  }
+
+  // 7-3) 제작특성 (선택) — 장비 [태그] 룰 사전.
+  try {
+    const craftTags = await fetchCraftTagsRows();
+    if (craftTags) {
+      await prisma.$transaction([
+        prisma.craftTag.deleteMany(),
+        prisma.craftTag.createMany({
+          data: craftTags.map((tag, i) => ({ name: tag.name, desc: tag.desc, order: i })),
+        }),
+      ]);
+      parts.push(`제작특성 ${craftTags.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "제작특성 탭 오류");
   }
 
   // 8) 스킬 (선택) — 유저가 이미 획득한 특성 기록은 보존하고 정의만 교체.

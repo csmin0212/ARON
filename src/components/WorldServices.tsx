@@ -53,6 +53,9 @@ type Props = {
   guild: GuildView;
   craftMinerals: CraftMineralView[];
   isBlacksmith: boolean;
+  craftSmithLevel: number;
+  craftAp: number;
+  craftTags: Record<string, string>;
 };
 
 export type InnView = {
@@ -1575,6 +1578,9 @@ export default function WorldServices({
   guild,
   craftMinerals,
   isBlacksmith,
+  craftSmithLevel,
+  craftAp,
+  craftTags,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
@@ -1777,6 +1783,9 @@ export default function WorldServices({
           minerals={craftMinerals}
           gold={lifeShop.gold}
           isBlacksmith={isBlacksmith}
+          smithLevel={craftSmithLevel}
+          ap={craftAp}
+          tags={craftTags}
           onClose={() => setCraftOpen(false)}
         />
       )}

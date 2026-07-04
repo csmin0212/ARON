@@ -36,7 +36,24 @@ export const CRAFT_CATEGORIES: CraftCategory[] = [
 ];
 
 export const MAX_MAJORS = 5; // 메이저 투입 상한 = 최대 레벨
-export const MAX_MINORS = 2;
+export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
+
+// 대장 숙련 레벨 → 마이너 슬롯 수 (Lv10에 3칸, Lv25에 4칸)
+export function minorSlotsFor(smithLevel: number): number {
+  if (smithLevel >= 25) return 4;
+  if (smithLevel >= 10) return 3;
+  return MAX_MINORS;
+}
+
+// 제작 피로도 — 장비 레벨(메이저 개수)당 점진 증가
+export function craftApCost(level: number): number {
+  return 5 * Math.max(1, level);
+}
+
+// 제작 숙련도 — 기준가 비례 (좋은 광물·높은 레벨일수록 많이)
+export function craftSmithExp(basePrice: number): number {
+  return Math.max(5, Math.round(basePrice * 0.1));
+}
 
 // 제작 스탯 — 무기: hit/atk, 방어구: dodge/pdef/mdef. price는 기준가(수수료·판매가 산정용).
 export type CraftStats = {
@@ -250,6 +267,7 @@ export type CraftInput = {
   category: string;
   majors: { item: LifeSkillItem; qty: number }[];
   minors: LifeSkillItem[];
+  maxMinors?: number; // 대장 레벨에 따른 마이너 슬롯 (기본 MAX_MINORS)
 };
 
 export type CraftPreview = {
@@ -297,9 +315,10 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
 
   const majors = input.majors.filter((m) => m.qty > 0);
   const level = majors.reduce((sum, m) => sum + m.qty, 0);
+  const maxMinors = input.maxMinors ?? MAX_MINORS;
   if (level < 1) return { error: "메이저 광물을 1개 이상 넣어주세요." };
   if (level > MAX_MAJORS) return { error: `메이저 광물은 최대 ${MAX_MAJORS}개까지예요. (개수 = 장비 레벨)` };
-  if (input.minors.length > MAX_MINORS) return { error: `마이너 광물은 최대 ${MAX_MINORS}종이에요.` };
+  if (input.minors.length > maxMinors) return { error: `마이너 재료는 최대 ${maxMinors}종이에요. (대장 레벨로 확장)` };
   for (const m of majors) {
     if ((m.item.craftRole ?? "") !== "메이저") return { error: `${m.item.name}은(는) 메이저 광물이 아니에요.` };
   }

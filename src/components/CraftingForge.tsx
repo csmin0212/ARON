@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { craftEquipment, type CraftResult } from "@/app/actions/craft";
 import {
   computeCraft,
+  craftApCost,
   CRAFT_CATEGORIES,
   MAX_MAJORS,
-  MAX_MINORS,
+  minorSlotsFor,
   type CraftGroup,
 } from "@/lib/weaponCraft";
 import type { LifeSkillItem } from "@/lib/lifeSkillData";
@@ -62,7 +63,8 @@ function ResultModal({ result, onClose }: { result: CraftResult; onClose: () => 
                 {result.effectText}
               </p>
               <p className={`mt-2 text-[11px] ${golden ? "text-amber-300/70" : "text-faint"}`}>
-                수수료 -{result.fee.toLocaleString()}G · 가방에 담겼어요
+                수수료 -{result.fee.toLocaleString()}G · 피로도 -{result.apCost} · 대장 숙련 +{result.smithExp}
+                {result.smithLevelUps.length > 0 && ` · 🆙 Lv.${result.smithLevelUps[result.smithLevelUps.length - 1]}!`}
               </p>
             </>
           )}
@@ -85,11 +87,17 @@ export default function CraftingForge({
   minerals,
   gold,
   isBlacksmith,
+  smithLevel,
+  ap,
+  tags = {},
   onClose,
 }: {
   minerals: CraftMineralView[];
   gold: number;
   isBlacksmith: boolean;
+  smithLevel: number;
+  ap: number;
+  tags?: Record<string, string>; // [태그] 룰 사전 — 클릭 시 설명
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -100,6 +108,8 @@ export default function CraftingForge({
   const [customName, setCustomName] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CraftResult | null>(null);
+  const [openTag, setOpenTag] = useState<string | null>(null);
+  const maxMinors = minorSlotsFor(smithLevel);
 
   const majorsOwned = minerals.filter((m) => m.def.craftRole === "메이저" && m.have > 0);
   const minorsOwned = minerals.filter((m) => m.def.craftRole === "마이너" && m.have > 0);
@@ -114,8 +124,8 @@ export default function CraftingForge({
       .map(([name, qty]) => ({ item: defs.get(name)!.def, qty }));
     const minors = minorSel.filter((name) => defs.has(name)).map((name) => defs.get(name)!.def);
     if (majors.length === 0) return null;
-    return computeCraft({ category, majors, minors });
-  }, [category, majorQty, minorSel, defs]);
+    return computeCraft({ category, majors, minors, maxMinors });
+  }, [category, majorQty, minorSel, defs, maxMinors]);
 
   const fee =
     preview && !("error" in preview)
@@ -136,7 +146,7 @@ export default function CraftingForge({
 
   function toggleMinor(name: string) {
     setMinorSel((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : prev.length < MAX_MINORS ? [...prev, name] : prev,
+      prev.includes(name) ? prev.filter((n) => n !== name) : prev.length < maxMinors ? [...prev, name] : prev,
     );
   }
 
@@ -184,8 +194,9 @@ export default function CraftingForge({
             <span className="text-sm font-bold text-amber-600">{gold.toLocaleString()}G</span>
           </h3>
           <p className="mt-1 text-xs text-faint">
-            광석을 녹여 장비를 벼린다.
-            {isBlacksmith && <span className="ml-1 font-bold text-emerald-600">🔥 블랙스미스의 화로</span>}
+            광석을 녹여 장비를 벼린다. <span className="font-bold text-content">⚒️ 대장 Lv.{smithLevel}</span>
+            <span className="ml-1">· 피로도 {ap}</span>
+            {isBlacksmith && <span className="ml-1 font-bold text-emerald-600">· 🔥 블랙스미스의 화로</span>}
           </p>
         </div>
 
@@ -273,8 +284,8 @@ export default function CraftingForge({
           {/* 마이너 광물 */}
           <section className="rounded-2xl border border-line bg-subtle p-4">
             <div className="mb-2 flex items-center justify-between">
-              <h4 className="text-sm font-extrabold text-content">💎 마이너 광물</h4>
-              <span className="text-xs font-black text-violet-600">{minorSel.length}/{MAX_MINORS}</span>
+              <h4 className="text-sm font-extrabold text-content">💎 마이너 재료</h4>
+              <span className="text-xs font-black text-violet-600">{minorSel.length}/{maxMinors}</span>
             </div>
             {minorsOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">가진 마이너 광물이 없다.</p>
@@ -326,6 +337,31 @@ export default function CraftingForge({
                       </span>
                     </p>
                     <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">{preview.effectText}</p>
+                    {preview.tags.length > 0 && (
+                      <div className="mt-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {preview.tags.map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setOpenTag(openTag === tag ? null : tag)}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+                                openTag === tag
+                                  ? "bg-violet-500 text-white"
+                                  : "bg-violet-100 text-violet-700 hover:bg-violet-200"
+                              }`}
+                            >
+                              [{tag}]
+                            </button>
+                          ))}
+                        </div>
+                        {openTag && (
+                          <p className="mt-1.5 rounded-xl bg-violet-50 px-3 py-2 text-[11px] leading-relaxed text-violet-800">
+                            <b>[{openTag}]</b> {tags[openTag] ?? "아직 기록되지 않은 특성이다. (제작특성 탭에 룰을 적어두면 여기 표시돼요)"}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-3 flex items-center gap-2">
                       <input
                         value={customName}
@@ -337,7 +373,7 @@ export default function CraftingForge({
                       <span className="shrink-0 text-[11px] font-bold text-faint">✏️ 이름 짓기</span>
                     </div>
                     <p className="mt-2 text-[11px] font-bold text-faint">
-                      수수료 {fee.toLocaleString()}G · 중량 {preview.weight}
+                      수수료 {fee.toLocaleString()}G · 피로도 {craftApCost(preview.level)} · 중량 {preview.weight}
                     </p>
                   </div>
                 );
@@ -357,11 +393,23 @@ export default function CraftingForge({
             </button>
             <button
               type="button"
-              disabled={busy || !preview || "error" in preview || fee > gold}
+              disabled={
+                busy ||
+                !preview ||
+                "error" in preview ||
+                fee > gold ||
+                (!!preview && !("error" in preview) && craftApCost(preview.level) > ap)
+              }
               onClick={() => void craft()}
               className="flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-2.5 text-sm font-black text-white transition hover:from-amber-600 hover:to-orange-600 disabled:from-subtle-hover disabled:to-subtle-hover disabled:text-faint"
             >
-              {busy ? "🔥 담금질 중…" : fee > gold ? "골드 부족" : "⚒️ 제작하기"}
+              {busy
+                ? "🔥 담금질 중…"
+                : fee > gold
+                  ? "골드 부족"
+                  : preview && !("error" in preview) && craftApCost(preview.level) > ap
+                    ? "피로도 부족"
+                    : "⚒️ 제작하기"}
             </button>
           </div>
         </div>

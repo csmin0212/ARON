@@ -34,6 +34,7 @@ export type LifeState = {
   plant: SkillProgress;
   mining: SkillProgress;
   cooking: SkillProgress;
+  smithing: SkillProgress; // 대장(장비 제작) — 레벨업 시 마이너 슬롯 확장
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
@@ -200,6 +201,7 @@ const EMPTY: LifeState = {
   plant: { exp: 0, level: 1 },
   mining: { exp: 0, level: 1 },
   cooking: { exp: 0, level: 1 },
+  smithing: { exp: 0, level: 1 },
   perks: [],
   pending: [],
   collection: { 채집: [], 낚시: [], 채광: [] },
@@ -249,6 +251,7 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       plant: v.plant ?? { exp: 0, level: 1 },
       mining: v.mining ?? { exp: 0, level: 1 },
       cooking: v.cooking ?? { exp: 0, level: 1 },
+      smithing: v.smithing ?? { exp: 0, level: 1 },
       perks: v.perks ?? [],
       pending: v.pending ?? [],
       collection: {
@@ -398,6 +401,19 @@ export function applyExp(
 
 export function applyCookingExp(state: LifeState, gained: number): number[] {
   const prog = state.cooking;
+  prog.exp += gained;
+  const leveled: number[] = [];
+  while (prog.exp >= expForNext(prog.level)) {
+    prog.exp -= expForNext(prog.level);
+    prog.level += 1;
+    leveled.push(prog.level);
+  }
+  return leveled;
+}
+
+// 대장(장비 제작) 숙련 — 요리와 동일 곡선, 특성 없이 레벨만 (레벨업 = 마이너 슬롯 확장)
+export function applySmithingExp(state: LifeState, gained: number): number[] {
+  const prog = state.smithing;
   prog.exp += gained;
   const leveled: number[] = [];
   while (prog.exp >= expForNext(prog.level)) {

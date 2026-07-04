@@ -19,6 +19,7 @@ export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
 export const FISH_TAB = process.env.FISH_TAB_NAME || "물고기";
 export const GATHER_TAB = process.env.GATHER_TAB_NAME || "채집";
 export const MINERAL_TAB = process.env.MINERAL_TAB_NAME || "광물";
+export const CRAFT_TAGS_TAB = process.env.CRAFT_TAGS_TAB_NAME || "제작특성";
 export const SKILLS_TAB = process.env.SKILLS_TAB_NAME || "스킬";
 export const COMBAT_SKILLS_TAB = process.env.COMBAT_SKILLS_TAB_NAME || "전투스킬";
 
@@ -865,6 +866,45 @@ export async function fetchLifeItemsRows(): Promise<LifeItemRow[] | null> {
   if (gathG) out.push(...parseLifeItemsGrid(gathG, "채집"));
   if (mineG) out.push(...parseLifeItemsGrid(mineG, "채광"));
   return out;
+}
+
+// ── 제작특성 탭 ──  태그 | 설명  — 장비 [태그]의 룰 사전 (UI 클릭 조회용)
+export type CraftTagRow = { name: string; desc: string };
+
+export function parseCraftTagsGrid(g: string[][]): CraftTagRow[] {
+  const h = findHeader(g, ["태그", "설명"], {
+    태그: "name",
+    특성: "name",
+    이름: "name",
+    설명: "desc",
+    룰: "desc",
+    효과: "desc",
+  });
+  if (!h) throw new Error("제작특성 탭 헤더(태그/설명)를 찾지 못했어요.");
+  const rows: CraftTagRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name).replace(/^\[|\]$/g, "").trim();
+    const desc = at(g, r, h.col.desc);
+    if (!name || !desc || seen.has(name)) continue;
+    seen.add(name);
+    rows.push({ name, desc });
+  }
+  return rows;
+}
+
+export async function fetchCraftTagsRows(): Promise<CraftTagRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, CRAFT_TAGS_TAB)) ??
+    (await fetchTab(MASTER_SHEET_ID, CRAFT_TAGS_TAB));
+  if (!g) return null;
+  // 탭 부재 시 gviz가 맵을 대신 반환할 수 있음 — 헤더 없으면 조용히 건너뜀
+  try {
+    const rows = parseCraftTagsGrid(g);
+    return rows.length > 0 ? rows : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchSkillsRows(): Promise<SkillRow[] | null> {
