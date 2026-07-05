@@ -14,8 +14,6 @@ import {
   sellCookedFood,
   sellHouse,
   sellFood,
-  sellLifeCatch,
-  sellMaterial,
   reforgeItem,
   upgradeWeapon,
   withdrawFromStorage,
@@ -45,8 +43,6 @@ type Props = {
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
-  byproducts: ByproductView[];
-  materials: MaterialView[];
   inn: InnView;
   housing: HousingView;
   storage: StorageView;
@@ -115,20 +111,6 @@ export type CookingView = {
   ap: number;
   knownRecipes: KnownRecipeView[];
   cookedFoods: CookedFoodView[];
-};
-
-export type ByproductView = {
-  kind: "낚시" | "채집" | "채광";
-  name: string;
-  rank: number;
-  unitPrice: number;
-  qty: number;
-};
-
-export type MaterialView = {
-  name: string;
-  unitPrice: number;
-  qty: number;
 };
 
 export type StorageView = {
@@ -602,14 +584,21 @@ function StorageManager({
 }
 
 const LIFE_SHOP_PRODUCTS = [
-  { id: "fish_bag_20", kind: "낚시", group: "가방", name: "낚시꾼 가방 20칸", price: 2000, note: "낚시 가방 최대 중량 20" },
+  { id: "fish_bag_10", kind: "낚시", group: "가방", name: "낚시꾼 가방 10칸", price: 1000, note: "낚시 가방 최대 중량 10" },
+  { id: "fish_bag_20", kind: "낚시", group: "가방", name: "낚시꾼 가방 20칸", price: 2500, note: "낚시 가방 최대 중량 20" },
   { id: "fish_bag_30", kind: "낚시", group: "가방", name: "낚시꾼 가방 30칸", price: 5000, note: "낚시 가방 최대 중량 30" },
-  { id: "plant_bag_20", kind: "채집", group: "가방", name: "약초꾼 가방 20칸", price: 2000, note: "채집 가방 최대 중량 20" },
+  { id: "plant_bag_10", kind: "채집", group: "가방", name: "약초꾼 가방 10칸", price: 1000, note: "채집 가방 최대 중량 10" },
+  { id: "plant_bag_20", kind: "채집", group: "가방", name: "약초꾼 가방 20칸", price: 2500, note: "채집 가방 최대 중량 20" },
   { id: "plant_bag_30", kind: "채집", group: "가방", name: "약초꾼 가방 30칸", price: 5000, note: "채집 가방 최대 중량 30" },
+  { id: "mine_bag_10", kind: "채광", group: "가방", name: "광부 가방 10칸", price: 1000, note: "채광 가방 최대 중량 10" },
+  { id: "mine_bag_20", kind: "채광", group: "가방", name: "광부 가방 20칸", price: 2500, note: "채광 가방 최대 중량 20" },
+  { id: "mine_bag_30", kind: "채광", group: "가방", name: "광부 가방 30칸", price: 5000, note: "채광 가방 최대 중량 30" },
   { id: "good_rod", kind: "낚시", group: "도구", name: "좋은 낚싯대", price: 2500, note: "낚시 장비 1단계" },
   { id: "master_rod", kind: "낚시", group: "도구", name: "고급 낚싯대", price: 7000, note: "낚시 장비 2단계" },
   { id: "good_sickle", kind: "채집", group: "도구", name: "숙련 채집 도구", price: 2500, note: "채집 장비 1단계" },
   { id: "master_sickle", kind: "채집", group: "도구", name: "장인의 채집 도구", price: 7000, note: "채집 장비 2단계" },
+  { id: "iron_pick", kind: "채광", group: "도구", name: "철 곡괭이", price: 2500, note: "채광 장비 1단계" },
+  { id: "mithril_pick", kind: "채광", group: "도구", name: "미스릴 곡괭이", price: 7000, note: "채광 장비 2단계" },
 ] as const;
 
 function LifeGearShop({
@@ -621,6 +610,9 @@ function LifeGearShop({
 }) {
   const [state, action, pending] = useActionState<LifeShopState, FormData>(buyLifeGear, undefined);
   const groups = ["가방", "도구"] as const;
+  const kindTabs = ["낚시", "채집", "채광"] as const;
+  const kindEmoji: Record<string, string> = { 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
+  const [kindTab, setKindTab] = useState<(typeof kindTabs)[number]>("낚시");
 
   return (
     <div
@@ -647,34 +639,55 @@ function LifeGearShop({
           </h3>
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <div className="grid gap-2 rounded-2xl bg-subtle p-3 text-xs font-bold text-muted sm:grid-cols-2">
-            <p>🎣 {lifeShop.bags.낚시.name} · {lifeShop.bags.낚시.maxWeight}칸 · {lifeShop.tools.낚시}</p>
-            <p>🌿 {lifeShop.bags.채집.name} · {lifeShop.bags.채집.maxWeight}칸 · {lifeShop.tools.채집}</p>
+          {/* 낚시 / 채집 / 채광 탭 */}
+          <div className="grid grid-cols-3 gap-2 rounded-2xl bg-subtle p-1.5">
+            {kindTabs.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setKindTab(kind)}
+                className={`rounded-xl px-3 py-2 text-sm font-extrabold transition ${
+                  kindTab === kind
+                    ? "bg-surface text-brand-600 shadow-sm"
+                    : "text-muted hover:bg-surface/70 hover:text-content"
+                }`}
+              >
+                {kindEmoji[kind]} {kind}
+              </button>
+            ))}
+          </div>
+          <div className="rounded-2xl bg-subtle p-3 text-xs font-bold text-muted">
+            <p>
+              {kindEmoji[kindTab]} {lifeShop.bags[kindTab].name} · {lifeShop.bags[kindTab].maxWeight}칸 ·{" "}
+              {lifeShop.tools[kindTab]}
+            </p>
           </div>
           <LifeShopStateLine state={state} />
           {groups.map((group) => (
             <section key={group}>
               <h4 className="mb-2 text-sm font-extrabold text-content">{group}</h4>
               <div className="grid gap-2 sm:grid-cols-2">
-                {LIFE_SHOP_PRODUCTS.filter((item) => item.group === group).map((item) => (
-                  <form key={item.id} action={action}>
-                    <input type="hidden" name="productId" value={item.id} />
-                    <button
-                      type="submit"
-                      disabled={pending}
-                      className="flex h-full w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
-                    >
-                      <span className="text-xl">{item.kind === "낚시" ? "🎣" : "🌿"}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-extrabold text-content">{item.name}</span>
-                        <span className="mt-0.5 block text-[11px] text-faint">{item.note}</span>
-                      </span>
-                      <span className="shrink-0 text-xs font-black text-emerald-500">
-                        {item.price.toLocaleString()}G
-                      </span>
-                    </button>
-                  </form>
-                ))}
+                {LIFE_SHOP_PRODUCTS.filter((item) => item.group === group && item.kind === kindTab).map(
+                  (item) => (
+                    <form key={item.id} action={action}>
+                      <input type="hidden" name="productId" value={item.id} />
+                      <button
+                        type="submit"
+                        disabled={pending}
+                        className="flex h-full w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
+                      >
+                        <span className="text-xl">{kindEmoji[item.kind]}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-extrabold text-content">{item.name}</span>
+                          <span className="mt-0.5 block text-[11px] text-faint">{item.note}</span>
+                        </span>
+                        <span className="shrink-0 text-xs font-black text-emerald-500">
+                          {item.price.toLocaleString()}G
+                        </span>
+                      </button>
+                    </form>
+                  ),
+                )}
               </div>
             </section>
           ))}
@@ -1334,148 +1347,6 @@ function CookingKitchen({
   );
 }
 
-function ByproductMarket({
-  byproducts,
-  materials,
-  onClose,
-}: {
-  byproducts: ByproductView[];
-  materials: MaterialView[];
-  onClose: () => void;
-}) {
-  const [lifeState, lifeAction, lifePending] = useActionState<MarketState, FormData>(
-    sellLifeCatch,
-    undefined,
-  );
-  const [matState, matAction, matPending] = useActionState<MarketState, FormData>(
-    sellMaterial,
-    undefined,
-  );
-  const sellable = byproducts.filter((item) => item.qty > 0);
-  const sellableMaterials = materials.filter((item) => item.qty > 0);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="부산물 매입"
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-line bg-subtle px-5 py-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
-            Byproduct Trader
-          </p>
-          <h3 className="mt-1 text-2xl font-extrabold text-content">🐟 부산물 매입</h3>
-          <p className="mt-1 text-[11px] text-faint">
-            잡은 물고기·약초와 채집한 재료를 골드로 바꿔요.
-          </p>
-        </div>
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
-          {sellable.length === 0 && sellableMaterials.length === 0 && (
-            <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
-              팔 수 있는 물건이 없어요.
-            </p>
-          )}
-
-          {sellable.length > 0 && (
-            <section className="space-y-2">
-              <h4 className="text-sm font-extrabold text-content">어획물 · 채집품</h4>
-              <MarketStateLine state={lifeState} />
-              <div className="grid gap-2 sm:grid-cols-2">
-                {sellable.map((item) => (
-                  <div
-                    key={`${item.kind}-${item.name}`}
-                    className="rounded-2xl border border-line bg-subtle p-3"
-                  >
-                    <div className="mb-2 min-w-0">
-                      <p className="truncate text-sm font-extrabold text-content">
-                        {item.kind === "낚시" ? "🎣" : item.kind === "채광" ? "⛏️" : "🌿"} {item.name}
-                      </p>
-                      <p className="text-[11px] text-faint">
-                        R{item.rank} · 개당 {item.unitPrice.toLocaleString()}G · {item.qty}개 보유
-                      </p>
-                    </div>
-                    <form action={lifeAction} className="grid grid-cols-[1fr_3.5rem] gap-1.5">
-                      <input type="hidden" name="kind" value={item.kind} />
-                      <input type="hidden" name="itemName" value={item.name} />
-                      <button
-                        type="submit"
-                        disabled={lifePending}
-                        className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
-                      >
-                        {item.unitPrice > 0 ? "판매" : "버리기"}
-                      </button>
-                      <input
-                        name="qty"
-                        type="number"
-                        min="1"
-                        max={item.qty}
-                        defaultValue="1"
-                        className="rounded-xl border border-line bg-surface px-2 py-2 text-xs font-bold text-content outline-none focus:border-brand-300"
-                      />
-                    </form>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {sellableMaterials.length > 0 && (
-            <section className="space-y-2">
-              <h4 className="text-sm font-extrabold text-content">재료 · 보석</h4>
-              <MarketStateLine state={matState} />
-              <div className="grid gap-2 sm:grid-cols-2">
-                {sellableMaterials.map((item) => (
-                  <div key={item.name} className="rounded-2xl border border-line bg-subtle p-3">
-                    <div className="mb-2 min-w-0">
-                      <p className="truncate text-sm font-extrabold text-content">⛏️ {item.name}</p>
-                      <p className="text-[11px] text-faint">
-                        개당 {item.unitPrice.toLocaleString()}G · {item.qty}개 보유
-                      </p>
-                    </div>
-                    <form action={matAction} className="grid grid-cols-[1fr_3.5rem] gap-1.5">
-                      <input type="hidden" name="itemName" value={item.name} />
-                      <button
-                        type="submit"
-                        disabled={matPending || item.unitPrice <= 0}
-                        className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
-                      >
-                        판매
-                      </button>
-                      <input
-                        name="qty"
-                        type="number"
-                        min="1"
-                        max={item.qty}
-                        defaultValue="1"
-                        className="rounded-xl border border-line bg-surface px-2 py-2 text-xs font-bold text-content outline-none focus:border-brand-300"
-                      />
-                    </form>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-        <div className="border-t border-line px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
-          >
-            닫기
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function InnRest({ inn, onClose }: { inn: InnView; onClose: () => void }) {
   const [state, action, pending] = useActionState<MarketState, FormData>(restAtInn, undefined);
@@ -1570,8 +1441,6 @@ export default function WorldServices({
   inventoryItems,
   lifeStorageItems,
   lifeShop,
-  byproducts,
-  materials,
   inn,
   housing,
   storage,
@@ -1588,7 +1457,6 @@ export default function WorldServices({
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
-  const [byproductOpen, setByproductOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
@@ -1661,24 +1529,13 @@ export default function WorldServices({
               </button>
               <button
                 type="button"
-                onClick={() => setByproductOpen(true)}
-                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
-              >
-                <span className="text-xl">🐟</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-extrabold text-content">부산물 매입</span>
-                  <span className="text-[11px] text-faint">어획물 · 채집품 · 재료 판매</span>
-                </span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setLifeShopOpen(true)}
                 className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
               >
                 <span className="text-xl">🎒</span>
                 <span className="min-w-0">
                   <span className="block text-sm font-extrabold text-content">생활 장비 구매</span>
-                  <span className="text-[11px] text-faint">가방 확장 · 낚싯대 · 채집 도구</span>
+                  <span className="text-[11px] text-faint">가방 확장 · 낚싯대 · 채집 도구 · 곡괭이</span>
                 </span>
               </button>
             </>
@@ -1798,14 +1655,6 @@ export default function WorldServices({
           inventoryItems={inventoryItems}
           lifeStorageItems={lifeStorageItems}
           onClose={() => setCookingOpen(false)}
-        />
-      )}
-
-      {byproductOpen && (
-        <ByproductMarket
-          byproducts={byproducts}
-          materials={materials}
-          onClose={() => setByproductOpen(false)}
         />
       )}
 

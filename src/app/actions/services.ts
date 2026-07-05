@@ -63,14 +63,23 @@ const FAILED_DISH = {
 };
 
 const LIFE_SHOP_ITEMS = [
-  { id: "fish_bag_20", kind: "낚시", type: "bag", name: "낚시꾼 가방 20칸", price: 2000, maxWeight: 20 },
+  // 가방 — 낚시·채집·채광 공통 (기본 5칸 → 10/20/30칸 확장, 1000/2500/5000G)
+  { id: "fish_bag_10", kind: "낚시", type: "bag", name: "낚시꾼 가방 10칸", price: 1000, maxWeight: 10 },
+  { id: "fish_bag_20", kind: "낚시", type: "bag", name: "낚시꾼 가방 20칸", price: 2500, maxWeight: 20 },
   { id: "fish_bag_30", kind: "낚시", type: "bag", name: "낚시꾼 가방 30칸", price: 5000, maxWeight: 30 },
-  { id: "plant_bag_20", kind: "채집", type: "bag", name: "약초꾼 가방 20칸", price: 2000, maxWeight: 20 },
+  { id: "plant_bag_10", kind: "채집", type: "bag", name: "약초꾼 가방 10칸", price: 1000, maxWeight: 10 },
+  { id: "plant_bag_20", kind: "채집", type: "bag", name: "약초꾼 가방 20칸", price: 2500, maxWeight: 20 },
   { id: "plant_bag_30", kind: "채집", type: "bag", name: "약초꾼 가방 30칸", price: 5000, maxWeight: 30 },
+  { id: "mine_bag_10", kind: "채광", type: "bag", name: "광부 가방 10칸", price: 1000, maxWeight: 10 },
+  { id: "mine_bag_20", kind: "채광", type: "bag", name: "광부 가방 20칸", price: 2500, maxWeight: 20 },
+  { id: "mine_bag_30", kind: "채광", type: "bag", name: "광부 가방 30칸", price: 5000, maxWeight: 30 },
+  // 도구 — 종류별 1·2단계 (가격 동일)
   { id: "good_rod", kind: "낚시", type: "tool", name: "좋은 낚싯대", price: 2500, tier: 1 },
   { id: "master_rod", kind: "낚시", type: "tool", name: "고급 낚싯대", price: 7000, tier: 2 },
   { id: "good_sickle", kind: "채집", type: "tool", name: "숙련 채집 도구", price: 2500, tier: 1 },
   { id: "master_sickle", kind: "채집", type: "tool", name: "장인의 채집 도구", price: 7000, tier: 2 },
+  { id: "iron_pick", kind: "채광", type: "tool", name: "철 곡괭이", price: 2500, tier: 1 },
+  { id: "mithril_pick", kind: "채광", type: "tool", name: "미스릴 곡괭이", price: 7000, tier: 2 },
 ] as const satisfies readonly LifeShopProduct[];
 
 const FOOD_ITEMS = [
@@ -469,8 +478,8 @@ async function consumeIngredient(
 }
 
 function toolTier(toolName: string): number {
-  if (toolName === "고급 낚싯대" || toolName === "장인의 채집 도구") return 2;
-  if (toolName === "좋은 낚싯대" || toolName === "숙련 채집 도구") return 1;
+  if (toolName === "고급 낚싯대" || toolName === "장인의 채집 도구" || toolName === "미스릴 곡괭이") return 2;
+  if (toolName === "좋은 낚싯대" || toolName === "숙련 채집 도구" || toolName === "철 곡괭이") return 1;
   return 0;
 }
 

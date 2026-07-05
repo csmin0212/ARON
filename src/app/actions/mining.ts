@@ -38,8 +38,8 @@ const MISS_WAIT_MS = 5 * 60_000; // 빗나감 → 5분
 const RANK_DIFFICULTY = [10, 30, 45, 60, 100, 120];
 const DIFFICULTY_FLOOR = 10;
 function toolTier(name: string): number {
-  if (name === "장인의 곡괭이") return 2;
-  if (name === "숙련 곡괭이") return 1;
+  if (name === "미스릴 곡괭이") return 2;
+  if (name === "철 곡괭이") return 1;
   return 0;
 }
 
@@ -114,6 +114,13 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const first = recordCollection(life, MINE, p.name);
   const count = recordLifeCatch(life, MINE, p.name);
   addLifeBagItem(life, MINE, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
+  // 일석이조 — doubleDrop% 확률로 광물 1개 추가 (가방에 여유가 있을 때만)
+  const doubled =
+    mods.doubleDrop > 0 &&
+    Math.random() * 100 < mods.doubleDrop &&
+    lifeBagWeight(bag) + p.weight <= lifeBagLimit(life, MINE);
+  if (doubled) addLifeBagItem(life, MINE, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
+  const gotQty = doubled ? 2 : 1;
   await ensureItem(p);
   let achStats = bumpStat(sheet?.achStatsJson, "채광성공횟수");
   if (locationId) achStats = markStat(achStats, `채광지역:${locationId}`);
@@ -131,7 +138,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
   if (locationId) {
     await postSystem(
       locationId,
-      `⛏️ ${nickname}님 ${how} — [${p.rarity}] ${p.name} x1 (판매가 ${sell}G) +숙련도 ${expGained}${
+      `⛏️ ${nickname}님 ${how} — [${p.rarity}] ${p.name} x${gotQty}${gotQty > 1 ? " ✨일석이조!" : ""} (판매가 ${sell}G) +숙련도 ${expGained}${
         first ? " 📖 도감 신규!" : ` 누적 ${count}회`
       }`,
     );

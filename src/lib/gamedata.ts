@@ -838,6 +838,18 @@ export function parseLifeItemsGrid(g: string[][], kind: "낚시" | "채집" | "�
   });
   if (!h) throw new Error(`${kind} 탭 헤더(이름/등급)를 찾지 못했어요.`);
 
+  // 헤더 칸이 비어 있어도 문서화된 컬럼 순서로 복원 —
+  // 중량·판매가·숙련도·크기기본·크기편차는 항상 '별등급' 오른쪽에 이 순서로 붙는다.
+  // (헤더 텍스트가 지워지면 판매가·숙련도가 전부 0으로 동기화되는 사고 방지)
+  if (h.col.rarity != null) {
+    const base = h.col.rarity;
+    if (h.col.weight == null) h.col.weight = base + 1;
+    if (h.col.price == null) h.col.price = base + 2;
+    if (h.col.exp == null) h.col.exp = base + 3;
+    if (h.col.sizeBase == null) h.col.sizeBase = base + 4;
+    if (h.col.sizeVar == null) h.col.sizeVar = base + 5;
+  }
+
   const rows: LifeItemRow[] = [];
   const seen = new Set<string>();
   for (let r = h.row + 1; r < g.length; r++) {

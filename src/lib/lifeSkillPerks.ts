@@ -206,9 +206,9 @@ const EMPTY: LifeState = {
   pending: [],
   collection: { 채집: [], 낚시: [], 채광: [] },
   bags: {
-    채집: { name: "약초꾼 가방", maxWeight: 10, items: [] },
-    낚시: { name: "낚시꾼 가방", maxWeight: 10, items: [] },
-    채광: { name: "광부 가방", maxWeight: 10, items: [] },
+    채집: { name: "약초꾼 가방", maxWeight: 5, items: [] },
+    낚시: { name: "낚시꾼 가방", maxWeight: 5, items: [] },
+    채광: { name: "광부 가방", maxWeight: 5, items: [] },
   },
   tools: {
     채집: "기본 채집도구",
@@ -458,6 +458,7 @@ export type LifeMods = {
   toolEff: number; // 도구 숙련 — 도구 보정 공식 개선 % (기본 도구는 보정 0이라 효과 없음)
   gaugeSlow: number; // 솜씨 발휘 — 미니게임 게이지/마커 감속 % (cap 50)
   apCostDown: number; // 효율적인 정리 — 생활 행동 피로도 소모 감소 (최소 1은 소모)
+  doubleDrop: number; // 일석이조(채광) — 획득 시 N% 확률로 결과물 1개 추가 (cap 100)
 };
 
 // 효과키가 없는 옛 특성(스냅샷)용 폴백 — 이름·희귀도 → 수치. 시트 '스킬' 탭과 동일하게 유지.
@@ -516,6 +517,9 @@ function applyEffectKey(mods: LifeMods, key: string | null | undefined, value: s
     case "ap_cost_down":
       mods.apCostDown += numValue(value);
       return true;
+    case "double_drop_pct":
+      mods.doubleDrop += numValue(value);
+      return true;
     case "no_trash":
       mods.noTrash = true;
       return true;
@@ -543,6 +547,7 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
     toolEff: 0,
     gaugeSlow: 0,
     apCostDown: 0,
+    doubleDrop: 0,
   };
   for (const p of state.perks) {
     if (p.kind !== kind) continue;
@@ -601,6 +606,7 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
   mods.rank1Down = Math.min(mods.rank1Down, 20);
   mods.rank2Down = Math.min(mods.rank2Down, 20);
   mods.gaugeSlow = Math.min(mods.gaugeSlow, 50);
+  mods.doubleDrop = Math.min(mods.doubleDrop, 100);
   return mods;
 }
 

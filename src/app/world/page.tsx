@@ -25,13 +25,11 @@ import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
 import WorldServices, {
-  type ByproductView,
   type CookingView,
   type HousingView,
   type InnView,
   type LifeShopView,
   type LifeStorageItemView,
-  type MaterialView,
   type GuildView,
   type StorageView,
 } from "@/components/WorldServices";
@@ -40,13 +38,11 @@ import { dedupeLifeActions } from "@/lib/locationActions";
 import {
   getActiveItems,
   lifeSkillItemKind,
-  lifeSkillSellPrice,
   type LocationLifeConfig,
 } from "@/lib/lifeSkillData";
 import { isBlacksmithClass, itemAsCraftMinor } from "@/lib/weaponCraft";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
-import { isNonSellable } from "@/lib/shop";
 import { SKILLBOOK_META } from "@/lib/skillbook";
 import { normalizeAdventurerRank, storageWeightBonus } from "@/lib/adventurerRank";
 import { loadGuildQuestState } from "@/lib/guildQuestsServer";
@@ -401,34 +397,6 @@ export default async function WorldPage() {
       qty: item.qty,
     })),
   );
-  const byproducts: ByproductView[] = (["낚시", "채집", "채광"] as const).flatMap((kind) =>
-    life.bags[kind].items
-      .filter((item) => item.qty > 0)
-      .map((item) => ({
-        kind,
-        name: item.name,
-        rank: item.rank,
-        unitPrice: lifeSkillSellPrice(kind, item.name),
-        qty: item.qty,
-      })),
-  );
-  // 기본 가방의 재료·보석 — 아이템 탭에서 동기화된 DB 판매가로 매입.
-  const materialPriceRows = await prisma.item.findMany({
-    where: { sellPrice: { gt: 0 }, category: { in: ["재료", "보석"] } },
-    select: { name: true, sellPrice: true },
-  });
-  const materialPrice = new Map(
-    materialPriceRows.map((row) => [row.name.trim(), row.sellPrice ?? 0]),
-  );
-  const materialQty = new Map<string, number>();
-  for (const item of bagItems) {
-    const key = item.name.trim();
-    if (!materialPrice.has(key) || isNonSellable(key)) continue;
-    materialQty.set(key, (materialQty.get(key) ?? 0) + item.qty);
-  }
-  const materials: MaterialView[] = [...materialQty.entries()]
-    .filter(([, qty]) => qty > 0)
-    .map(([name, qty]) => ({ name, unitPrice: materialPrice.get(name) ?? 0, qty }));
   const lifeBags = ([
     { kind: "낚시" as const, emoji: "🎣" },
     { kind: "채집" as const, emoji: "🌿" },
@@ -954,8 +922,6 @@ export default async function WorldPage() {
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}
-            byproducts={byproducts}
-            materials={materials}
             inn={inn}
             housing={housing}
             storage={storage}
