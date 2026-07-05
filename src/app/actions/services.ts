@@ -823,11 +823,6 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
   return { ok: `${product.name} x${qty} 판매 완료. +${(product.sellPrice * qty).toLocaleString()}G` };
 }
 
-// 요리 등급별 요구 요리레벨 (해금 게이트) — R0..R5
-const COOK_LEVEL_GATE = [1, 1, 5, 15, 35, 55];
-function requiredCookLevel(rank: string | null | undefined): number {
-  return COOK_LEVEL_GATE[recipeRankNumber(rank)] ?? 1;
-}
 // 요리 등급 추첨 — 레벨이 높을수록 좋은 등급 확률↑.
 // 장인작(요리사 이름 새김): 고렙에서만 희귀 / 명품: Lv15+ / 고품질: 흔함.
 function rollCookGrade(level: number): string | null {
@@ -882,16 +877,7 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   const recipe =
     recipes.find((item) => ingredientKey(parseRecipeIngredients(item.ingredientsJson)) === key) ?? null;
 
-  // 해금 게이트 — 요리레벨이 등급 요구치 미만이면 재료 소모 전에 막는다.
-  if (recipe) {
-    const reqLv = requiredCookLevel(recipe.rank);
-    if (life.cooking.level < reqLv) {
-      return {
-        error: `${recipe.name}은(는) 요리 레벨 ${reqLv}부터 만들 수 있어요. (현재 Lv.${life.cooking.level})`,
-      };
-    }
-  }
-
+  // 등급 해금 게이트 없음 — 재료 수급이 실질 제한이라 요리 레벨 조건은 두지 않는다.
   let inv = ctx.inv;
   for (const ingredient of ingredients) {
     inv = await consumeIngredient(ctx.userId, inv, life, ingredient.name, ingredient.qty);
