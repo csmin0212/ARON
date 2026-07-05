@@ -57,7 +57,7 @@ import {
   WEEK_GOAL,
 } from "@/lib/guildQuests";
 import type { QuestOfferView } from "@/components/GuildQuestBoard";
-import { computeMods, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
+import { lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   HOUSE_OPTIONS,
@@ -434,7 +434,7 @@ export default async function WorldPage() {
     { kind: "채광" as const, emoji: "⛏️" },
   ]).map(({ kind, emoji }) => {
     const bag = life.bags[kind];
-    const max = lifeBagLimit(life, kind, computeMods(life, kind).weightBonus);
+    const max = lifeBagLimit(life, kind);
     return {
       name: bag.name,
       emoji,

@@ -44,7 +44,7 @@ function toolTier(name: string): number {
 }
 
 export type MineStart =
-  | { ok: true; rarity: string; rank: number; difficulty: number }
+  | { ok: true; rarity: string; rank: number; difficulty: number; drainSlow: number }
   | { error: string };
 export type MineResolve =
   | { ok: true; mode: "instant"; name: string; rarity: string; sell: number; exp: number }
@@ -106,7 +106,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const life = parseLifeState(sheet?.lifeJson);
   const mods = computeMods(life, MINE);
   const bag = life.bags[MINE];
-  if (lifeBagWeight(bag) + p.weight > lifeBagLimit(life, MINE, mods.weightBonus)) {
+  if (lifeBagWeight(bag) + p.weight > lifeBagLimit(life, MINE)) {
     return { full: true as const };
   }
   const expGained = Math.max(1, Math.round(lifeSkillExpGain(MINE, p.exp) * mods.expMult));
@@ -163,11 +163,14 @@ export async function startMining(): Promise<MineStart> {
   const pool = locationLife ? locationLife.mine ?? null : { enabled: true };
   if (!pool?.enabled) return { error: "여기서는 채광을 할 수 없어요." };
 
-  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
-  if (ap < action.apCost) return { error: `피로도가 부족해요. (필요 ${action.apCost}, 보유 ${ap})` };
-
   const life = parseLifeState(sheet.lifeJson);
   const mods = computeMods(life, MINE);
+
+  // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
+  const apCost = Math.max(1, action.apCost - mods.apCostDown);
+  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
+  if (ap < apCost) return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
+
   const level = progressOf(life, MINE).level;
   const levelBase = baseWeightsFor(level);
   const regionBase = pool.weights
@@ -183,12 +186,13 @@ export async function startMining(): Promise<MineStart> {
   const item = caught.item;
 
   const bag = life.bags[MINE];
-  if (lifeBagWeight(bag) + item.weight > lifeBagLimit(life, MINE, mods.weightBonus)) {
+  if (lifeBagWeight(bag) + item.weight > lifeBagLimit(life, MINE)) {
     return { error: `${bag.name}이 가득 찼어요.` };
   }
 
+  // '곡괭이 숙련' 특성 — 도구 보정 공식을 N% 개선 (기본 도구는 보정 0이라 효과 없음)
   const rankDiff = RANK_DIFFICULTY[item.rank] ?? 60;
-  const rodRelief = toolTier(life.tools.채광) * 10;
+  const rodRelief = toolTier(life.tools.채광) * 10 * (1 + mods.toolEff / 100);
   const difficulty = Math.max(DIFFICULTY_FLOOR, Math.min(100, rankDiff - level - rodRelief)) / 100;
 
   const pending: Pending = {
@@ -197,9 +201,9 @@ export async function startMining(): Promise<MineStart> {
   };
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { ap: ap - action.apCost, apResetAt, pendingMineJson: JSON.stringify(pending) },
+    data: { ap: ap - apCost, apResetAt, pendingMineJson: JSON.stringify(pending) },
   });
-  return { ok: true, rarity: item.rarity, rank: item.rank, difficulty };
+  return { ok: true, rarity: item.rarity, rank: item.rank, difficulty, drainSlow: mods.gaugeSlow };
 }
 
 // 2단계: 타격 결과 — 균열 완성(즉시) / 부분(2분) / 빗나감(5분)

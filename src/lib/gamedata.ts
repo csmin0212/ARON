@@ -450,6 +450,13 @@ export function parseAchievementsGrid(g: string[][]): AchievementRow[] {
   });
   if (!h) throw new Error("업적 탭이 없거나 헤더(이름/조건타입)가 없어요.");
 
+  // 헤더 칸이 비어 있어도 문서화된 컬럼 순서로 복원 —
+  // 조건값은 조건타입 오른쪽, 보상명성은 보상칭호 오른쪽, 공개는 배지 오른쪽.
+  // (헤더 텍스트가 지워지면 업적이 전부 비공개·조건값 없음으로 동기화되는 사고 방지)
+  if (h.col.condValue == null && h.col.condType != null) h.col.condValue = h.col.condType + 1;
+  if (h.col.rewardFame == null && h.col.rewardTitle != null) h.col.rewardFame = h.col.rewardTitle + 1;
+  if (h.col.isPublic == null && h.col.badge != null) h.col.isPublic = h.col.badge + 1;
+
   const rows: AchievementRow[] = [];
   const seen = new Set<string>();
   for (let r = h.row + 1; r < g.length; r++) {
@@ -565,6 +572,13 @@ export function parseRecipesGrid(g: string[][]): RecipeRow[] {
   });
   if (!h) throw new Error("레시피 탭이 없거나 헤더(이름/재료/결과)가 없어요.");
 
+  // 헤더 칸이 비어 있어도 현재 시트 배치 기준으로 복원 —
+  // 숙련도는 지속 오른쪽, 공개는 태그 오른쪽, 판매가는 그 다음 열.
+  // (헤더 텍스트가 지워지면 숙련 0·비공개·판매가 1G 로 동기화되는 사고 방지)
+  if (h.col.skillExp == null && h.col.duration != null) h.col.skillExp = h.col.duration + 1;
+  if (h.col.isPublic == null && h.col.tags != null) h.col.isPublic = h.col.tags + 1;
+  if (h.col.sellPrice == null && h.col.tags != null) h.col.sellPrice = h.col.tags + 2;
+
   const rows: RecipeRow[] = [];
   const seen = new Set<string>();
   for (let r = h.row + 1; r < g.length; r++) {
@@ -638,6 +652,10 @@ export function parseSkillsGrid(g: string[][]): SkillRow[] {
     사용: "enabled",
   });
   if (!h) throw new Error("스킬 탭이 없거나 헤더(이름/계열)가 없어요.");
+
+  // 헤더 칸이 비어 있어도 문서화된 컬럼 순서로 복원 — '효과값'은 '효과키' 바로 오른쪽 열.
+  // (헤더 텍스트가 지워지면 효과값이 전부 null 로 동기화되는 사고 방지)
+  if (h.col.effectValue == null && h.col.effectKey != null) h.col.effectValue = h.col.effectKey + 1;
 
   const rows: SkillRow[] = [];
   const seen = new Set<string>();

@@ -15,7 +15,6 @@ import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
   applyCookingExp,
-  computeMods,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
@@ -677,10 +676,9 @@ export async function withdrawFromStorage(
     });
     const life = parseLifeState(sheet?.lifeJson);
     const bag = life.bags[sourceKind];
-    const mods = computeMods(life, sourceKind);
     const currentWeight = lifeBagWeight(bag);
     const movingWeight = (entry.weight ?? 0) * qty;
-    const maxWeight = lifeBagLimit(life, sourceKind, mods.weightBonus);
+    const maxWeight = lifeBagLimit(life, sourceKind);
     if (currentWeight + movingWeight > maxWeight) {
       return { error: `${bag.name} 중량이 부족합니다. (${currentWeight + movingWeight}/${maxWeight})` };
     }
@@ -1142,22 +1140,46 @@ export async function useCookingItem(
 
   if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
-    // 중첩 금지 — 새 버프가 영향 주는 종류(낚시/채집)의 기존 버프는 제거하고 최신 1개만 유지.
+    // 같은 종류(낚시/채집)엔 행운 버프 1개만 — 가장 높은 수치가 남는다.
     // 낚시·채집은 슬롯이 따로라, 낚시 버프는 채집 버프를 건드리지 않는다. (채광 등 확장 시 동일 규칙 적용)
-    const kindsOf = (k: typeof lifeLuck.kind) => (k === "both" ? ["낚시", "채집"] : [k]);
-    const newKinds = kindsOf(lifeLuck.kind);
-    life.cookingBuffs.lifeLuck = life.cookingBuffs.lifeLuck.filter(
-      (b) => !kindsOf(b.kind).some((k) => newKinds.includes(k)),
-    );
-    life.cookingBuffs.lifeLuck.push({
-      kind: lifeLuck.kind,
-      amount: lifeLuck.amount,
-      until: until.toISOString(),
-      source: itemName,
-    });
-    ok = `${itemName}을 사용했습니다. 30분 동안 ${
-      lifeLuck.kind === "both" ? "낚시·채집" : lifeLuck.kind
-    } 행운 +${lifeLuck.amount}`;
+    // 더 약한(미만) 요리는 소모하지 않고 거부. 같은 수치는 시간 갱신용으로 허용.
+    const kindsOf = (k: LifeSkillKind | "both"): LifeSkillKind[] =>
+      k === "both" ? ["낚시", "채집"] : [k];
+    const bestFor = (k: LifeSkillKind) =>
+      Math.max(
+        0,
+        ...life.cookingBuffs.lifeLuck
+          .filter((b) => kindsOf(b.kind).includes(k))
+          .map((b) => b.amount),
+      );
+    const applicable = kindsOf(lifeLuck.kind).filter((k) => lifeLuck.amount >= bestFor(k));
+    if (applicable.length === 0) {
+      const blocking = kindsOf(lifeLuck.kind)
+        .map((k) => {
+          const b = life.cookingBuffs.lifeLuck.find(
+            (x) => kindsOf(x.kind).includes(k) && x.amount > lifeLuck.amount,
+          );
+          return b ? `${k} +${b.amount}(${b.source})` : null;
+        })
+        .filter(Boolean)
+        .join(" · ");
+      return { error: `이미 더 강한 행운 버프가 적용 중이라 사용하지 않았습니다. (${blocking})` };
+    }
+    // 대체되는 종류만 기존 버프에서 걷어낸다 — 낚시·채집 버프의 한쪽만 밀리면 남는 쪽으로 축소.
+    const rest: typeof life.cookingBuffs.lifeLuck = [];
+    for (const b of life.cookingBuffs.lifeLuck) {
+      const remain = kindsOf(b.kind).filter((k) => !applicable.includes(k));
+      if (remain.length === kindsOf(b.kind).length) rest.push(b);
+      else if (remain.length === 1) rest.push({ ...b, kind: remain[0] });
+    }
+    for (const k of applicable) {
+      rest.push({ kind: k, amount: lifeLuck.amount, until: until.toISOString(), source: itemName });
+    }
+    life.cookingBuffs.lifeLuck = rest;
+    const skipped = kindsOf(lifeLuck.kind).filter((k) => !applicable.includes(k));
+    ok = `${itemName}을 사용했습니다. 30분 동안 ${applicable.join("·")} 행운 +${lifeLuck.amount}${
+      skipped.length > 0 ? ` (${skipped.join("·")}은 더 강한 버프 유지)` : ""
+    }`;
 
     const inv = consumeInvItem(ctx.inv, itemName, 1);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;

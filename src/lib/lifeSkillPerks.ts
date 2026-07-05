@@ -85,77 +85,68 @@ export const RARITY_COLORS: Record<PerkRarity, string> = {
 };
 
 // ── 특성 테이블 (수치는 희귀도별 차등) ──
+// 시트 '스킬' 탭이 정본. 여기는 탭에 해당 종류(예: 채광)가 없을 때의 폴백 —
+// 수치·문구를 시트와 같게 유지한다.
 const toolName = (kind: LifeSkillKind) =>
   kind === "낚시" ? "낚싯대 숙련" : kind === "채광" ? "곡괭이 숙련" : "채집 숙련";
 const toolWord = (kind: LifeSkillKind) =>
   kind === "낚시" ? "낚싯대" : kind === "채광" ? "곡괭이" : "채집 도구";
+const kindWithRo = (kind: LifeSkillKind) => (kind === "낚시" ? "낚시로" : `${kind}으로`);
+
+// 희귀도 인덱스: 일반 0 · 레어 1 · 유니크 2 · 전설 3
+const TIER_NUM = {
+  exp: [5, 10, 15, 20],
+  rank0: [1, 2, 3, 4],
+  rank1: [2, 3, 4, 5],
+  rank2: [2, 3, 4, 5],
+  tool: [20, 40, 60, 80],
+  gauge: [5, 10, 15, 20],
+  ap: [0, 1, 2, 3],
+  luck: [0, 1, 2, 3],
+};
 
 function tierPerks(kind: LifeSkillKind, rarity: PerkRarity): LifePerk[] {
   const k = kind;
-  switch (rarity) {
-    case "일반":
-      return [
-        { name: "숙련도 배율 증가", rarity, text: `${k} 숙련도 배율이 5% 증가한다.` },
-        { name: "운의 축적 1", rarity, text: "0성 등장 확률이 0.5% 감소한다. (최대 5%)" },
-        { name: "운의 축적 2", rarity, text: "1성 등장 확률이 1% 감소한다. (최대 20%)" },
-        { name: "운의 축적 3", rarity, text: "2성 등장 확률이 1% 감소한다. (최대 20%)" },
-        { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 20% 개선된다.` },
-        { name: "솜씨 발휘", rarity, text: `${k} 시간 -1초` },
-      ];
-    case "레어":
-      return [
-        { name: "숙련도 배율 증가", rarity, text: `${k} 숙련도 배율이 10% 증가한다.` },
-        { name: "운의 축적 1", rarity, text: "0성 등장 확률이 1% 감소한다. (최대 5%)" },
-        { name: "운의 축적 2", rarity, text: "1성 등장 확률이 2% 감소한다. (최대 20%)" },
-        { name: "운의 축적 3", rarity, text: "2성 등장 확률이 2% 감소한다. (최대 20%)" },
-        { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 40% 개선된다.` },
-        { name: "솜씨 발휘", rarity, text: `${k} 시간 -2초` },
-        { name: "효율적인 정리", rarity, text: "최대 중량 +1" },
-        { name: "행운아", rarity, text: `${k} 행운 공식이 1% 개선된다.` },
-      ];
-    case "유니크":
-      return [
-        { name: "숙련도 배율 증가", rarity, text: `${k} 숙련도 배율이 15% 증가한다.` },
-        { name: "운의 축적 1", rarity, text: "0성 등장 확률이 1.5% 감소한다. (최대 5%)" },
-        { name: "운의 축적 2", rarity, text: "1성 등장 확률이 3% 감소한다. (최대 20%)" },
-        { name: "운의 축적 3", rarity, text: "2성 등장 확률이 3% 감소한다. (최대 20%)" },
-        { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 60% 개선된다.` },
-        { name: "솜씨 발휘", rarity, text: `${k} 시간 -3초` },
-        { name: "효율적인 정리", rarity, text: "최대 중량 +2" },
-        { name: "행운아", rarity, text: `${k} 행운 공식이 2% 개선된다.` },
-      ];
-    case "전설":
-      return [
-        { name: "숙련도 배율 증가", rarity, text: `${k} 숙련도 배율이 20% 증가한다.` },
-        { name: "운의 축적 1", rarity, text: "0성 등장 확률이 2% 감소한다. (최대 5%)" },
-        { name: "운의 축적 2", rarity, text: "1성 등장 확률이 4% 감소한다. (최대 20%)" },
-        { name: "운의 축적 3", rarity, text: "2성 등장 확률이 4% 감소한다. (최대 20%)" },
-        { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 80% 개선된다.` },
-        { name: "솜씨 발휘", rarity, text: `${k} 시간 -4초` },
-        { name: "효율적인 정리", rarity, text: "최대 중량 +3" },
-        { name: "행운아", rarity, text: `${k} 행운 공식이 3% 개선된다.` },
-      ];
-    case "신화":
-      return [
-        { name: "행운의 부적", rarity, text: "0성이 영구적으로 등장하지 않게 된다." },
-        {
-          name: kind === "낚시" ? "신의 어부" : kind === "채광" ? "신의 광부" : "신의 채집가",
-          rarity,
-          text: "5성 등장 확률이 0.3% 증가한다. (중복 x)",
-        },
-        {
-          name: "천상의 축복",
-          rarity,
-          text: `숙련도 배율이 30%, ${toolWord(k)} 효율 공식이 100%, 환전 골드가 5% 증가한다. (중복 x)`,
-        },
-        { name: "리알의 가호", rarity, text: "비밀스러운 바다의 힘을 목도하라." },
-        { name: "명예 VIP 훈장", rarity, text: "항구에 가지 않아도 판매를 할 수 있게 된다." },
-        { name: "운명", rarity, text: "운명의 낚싯대를 취득한다." },
-        { name: "이계", rarity, text: "이계의 낚시 가방을 취득한다." },
-      ];
+  if (rarity === "신화") {
+    return [
+      { name: "행운의 부적", rarity, text: "0성이 영구적으로 등장하지 않게 된다.", effectKey: "no_trash", effectValue: null },
+      {
+        name: kind === "낚시" ? "신의 어부" : kind === "채광" ? "신의 광부" : "신의 채집가",
+        rarity,
+        text: "5성 등장 확률이 0.3% 증가한다. (중복 x)",
+        effectKey: "rank5_up_pct",
+        effectValue: "0.3",
+      },
+      {
+        name: "천상의 축복",
+        rarity,
+        text: `숙련도 배율이 30%, ${toolWord(k)} 효율 공식이 100%, 환전 골드가 5% 증가한다. (중복 x)`,
+        effectKey: "blessing",
+        effectValue: "exp_mult_pct:30, tool_efficiency_pct:100, gold_mult_pct:5",
+      },
+      { name: "리알의 가호", rarity, text: "비밀스러운 바다의 힘을 목도하라." },
+      { name: "명예 VIP 훈장", rarity, text: "항구에 가지 않아도 판매를 할 수 있게 된다." },
+      { name: "운명", rarity, text: "운명의 낚싯대를 취득한다." },
+      { name: "이계", rarity, text: "이계의 낚시 가방을 취득한다." },
+    ];
   }
+  const t = rarity === "일반" ? 0 : rarity === "레어" ? 1 : rarity === "유니크" ? 2 : 3;
+  const perks: LifePerk[] = [
+    { name: "숙련도 배율 증가", rarity, text: `${k} 숙련도 배율이 ${TIER_NUM.exp[t]}% 증가한다.`, effectKey: "exp_mult_pct", effectValue: String(TIER_NUM.exp[t]) },
+    { name: "운의 축적 1", rarity, text: `0성 등장 확률이 ${TIER_NUM.rank0[t]}% 감소한다. (최대 10%)`, effectKey: "rank0_down_pct", effectValue: String(TIER_NUM.rank0[t]) },
+    { name: "운의 축적 2", rarity, text: `1성 등장 확률이 ${TIER_NUM.rank1[t]}% 감소한다. (최대 20%)`, effectKey: "rank1_down_pct", effectValue: String(TIER_NUM.rank1[t]) },
+    { name: "운의 축적 3", rarity, text: `2성 등장 확률이 ${TIER_NUM.rank2[t]}% 감소한다. (최대 20%)`, effectKey: "rank2_down_pct", effectValue: String(TIER_NUM.rank2[t]) },
+    { name: toolName(k), rarity, text: `${toolWord(k)} 효율 공식이 ${TIER_NUM.tool[t]}% 개선된다.`, effectKey: "tool_efficiency_pct", effectValue: String(TIER_NUM.tool[t]) },
+    { name: "솜씨 발휘", rarity, text: `${k} 게이지가 ${TIER_NUM.gauge[t]}% 천천히 감소한다.`, effectKey: "time_reduce_sec", effectValue: String(TIER_NUM.gauge[t]) },
+  ];
+  if (t >= 1) {
+    perks.push(
+      { name: "효율적인 정리", rarity, text: `${kindWithRo(k)} 인한 피로도 감소량에 -${TIER_NUM.ap[t]}한다.`, effectKey: "bag_weight_bonus", effectValue: String(TIER_NUM.ap[t]) },
+      { name: "행운아", rarity, text: `${k} 행운 공식이 ${TIER_NUM.luck[t]}% 개선된다.`, effectKey: "luck_formula_pct", effectValue: String(TIER_NUM.luck[t]) },
+    );
+  }
+  return perks;
 }
-
 // 신화는 일단 제외 (추첨에서 등장하지 않음)
 const RARITY_ROLL: { rarity: PerkRarity; weight: number }[] = [
   { rarity: "일반", weight: 50 },
@@ -275,8 +266,11 @@ export function parseLifeState(json: string | null | undefined): LifeState {
         채광: v.catchCounts?.채광 ?? {},
       },
       cookingBuffs: {
+        // 만료된 버프는 읽는 시점에 걸러낸다 — 다음 저장 때 상태에서도 사라짐.
         lifeLuck: Array.isArray(v.cookingBuffs?.lifeLuck)
-          ? v.cookingBuffs.lifeLuck.filter((buff) => buff && buff.amount > 0 && buff.until)
+          ? v.cookingBuffs.lifeLuck.filter(
+              (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
+            )
           : [],
         session: Array.isArray(v.cookingBuffs?.session)
           ? v.cookingBuffs.session.filter((buff) => buff && buff.source && buff.effect)
@@ -428,22 +422,29 @@ export function applySmithingExp(state: LifeState, gained: number): number[] {
 export type LifeMods = {
   expMult: number; // 숙련도 배율 (1.0 기준)
   goldMult: number; // 환전 골드 배율
-  rank0Down: number; // %p 감소 (cap 5)
+  rank0Down: number; // %p 감소 (cap 10)
   rank1Down: number; // (cap 20)
   rank2Down: number; // (cap 20)
   luck: number; // 행운아 — 고랭크 가중치 가산
   rank5Up: number; // 신의 어부
   noTrash: boolean; // 행운의 부적
-  weightBonus: number; // 효율적인 정리
+  toolEff: number; // 도구 숙련 — 도구 보정 공식 개선 % (기본 도구는 보정 0이라 효과 없음)
+  gaugeSlow: number; // 솜씨 발휘 — 미니게임 게이지/마커 감속 % (cap 50)
+  apCostDown: number; // 효율적인 정리 — 생활 행동 피로도 소모 감소 (최소 1은 소모)
 };
 
+// 효과키가 없는 옛 특성(스냅샷)용 폴백 — 이름·희귀도 → 수치. 시트 '스킬' 탭과 동일하게 유지.
 const VAL: Record<string, Record<string, number>> = {
   "숙련도 배율 증가": { 일반: 5, 레어: 10, 유니크: 15, 전설: 20 },
-  "운의 축적 1": { 일반: 0.5, 레어: 1, 유니크: 1.5, 전설: 2 },
-  "운의 축적 2": { 일반: 1, 레어: 2, 유니크: 3, 전설: 4 },
-  "운의 축적 3": { 일반: 1, 레어: 2, 유니크: 3, 전설: 4 },
+  "운의 축적 1": { 일반: 1, 레어: 2, 유니크: 3, 전설: 4 },
+  "운의 축적 2": { 일반: 2, 레어: 3, 유니크: 4, 전설: 5 },
+  "운의 축적 3": { 일반: 2, 레어: 3, 유니크: 4, 전설: 5 },
   "효율적인 정리": { 레어: 1, 유니크: 2, 전설: 3 },
   행운아: { 레어: 1, 유니크: 2, 전설: 3 },
+  "낚싯대 숙련": { 일반: 20, 레어: 40, 유니크: 60, 전설: 80 },
+  "채집 숙련": { 일반: 20, 레어: 40, 유니크: 60, 전설: 80 },
+  "곡괭이 숙련": { 일반: 20, 레어: 40, 유니크: 60, 전설: 80 },
+  "솜씨 발휘": { 일반: 5, 레어: 10, 유니크: 15, 전설: 20 },
 };
 
 function numValue(value: string | null | undefined): number {
@@ -476,8 +477,17 @@ function applyEffectKey(mods: LifeMods, key: string | null | undefined, value: s
     case "rank5_up_pct":
       mods.rank5Up += numValue(value);
       return true;
-    case "bag_weight_bonus":
-      mods.weightBonus += numValue(value);
+    case "tool_efficiency_pct":
+      mods.toolEff += numValue(value);
+      return true;
+    case "time_reduce_sec": // 옛 이름 (하위호환) — 값은 초가 아니라 %
+    case "gauge_slow_pct":
+      // 미니게임 게이지/마커 감속 %
+      mods.gaugeSlow += numValue(value);
+      return true;
+    case "bag_weight_bonus": // 옛 이름 (하위호환) — 가방 중량이 아니라 피로도 감소
+    case "ap_cost_down":
+      mods.apCostDown += numValue(value);
       return true;
     case "no_trash":
       mods.noTrash = true;
@@ -503,7 +513,9 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
     luck: 0,
     rank5Up: 0,
     noTrash: false,
-    weightBonus: 0,
+    toolEff: 0,
+    gaugeSlow: 0,
+    apCostDown: 0,
   };
   for (const p of state.perks) {
     if (p.kind !== kind) continue;
@@ -523,10 +535,18 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
         mods.rank2Down += v;
         break;
       case "효율적인 정리":
-        mods.weightBonus += v;
+        mods.apCostDown += v;
         break;
       case "행운아":
         mods.luck += v;
+        break;
+      case "낚싯대 숙련":
+      case "채집 숙련":
+      case "곡괭이 숙련":
+        mods.toolEff += v;
+        break;
+      case "솜씨 발휘":
+        mods.gaugeSlow += v;
         break;
       case "행운의 부적":
         mods.noTrash = true;
@@ -539,9 +559,10 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
       case "천상의 축복":
         mods.expMult += 0.3;
         mods.goldMult += 0.05;
+        mods.toolEff += 100;
         break;
       default:
-        break; // 도구 숙련·솜씨 발휘·기타 신화는 보유 기록 (후속 시스템에서 사용)
+        break; // 기타 신화(리알의 가호 등)는 보유 기록 (후속 시스템에서 사용)
     }
   }
   const now = Date.now();
@@ -549,9 +570,10 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
     if (Date.parse(buff.until) <= now) continue;
     if (buff.kind === "both" || buff.kind === kind) mods.luck += buff.amount;
   }
-  mods.rank0Down = Math.min(mods.rank0Down, 5);
+  mods.rank0Down = Math.min(mods.rank0Down, 10);
   mods.rank1Down = Math.min(mods.rank1Down, 20);
   mods.rank2Down = Math.min(mods.rank2Down, 20);
+  mods.gaugeSlow = Math.min(mods.gaugeSlow, 50);
   return mods;
 }
 

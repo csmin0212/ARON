@@ -266,7 +266,7 @@ export async function runActionCommand(
 
       const bag = life.bags[lifeSkillKind];
       const bagWeight = lifeBagWeight(bag);
-      const bagMax = lifeBagLimit(life, lifeSkillKind, mods.weightBonus);
+      const bagMax = lifeBagLimit(life, lifeSkillKind);
       if (bagWeight + item.weight > bagMax) {
         return {
           error: `${bag.name}이 가득 찼어요. (${bagWeight} + ${item.weight} / ${bagMax})`,

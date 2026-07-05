@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { chooseLifePerk, type LifeActionState } from "@/app/actions/life";
 import {
   computeMods,
@@ -142,7 +142,7 @@ function LifeGearPanel({ life }: { life: LifeState }) {
         KIND_META.map(({ kind }) => {
           const bag = life.bags[kind];
           const mods = computeMods(life, kind);
-          const max = lifeBagLimit(life, kind, mods.weightBonus);
+          const max = lifeBagLimit(life, kind);
           return [kind, { weight: lifeBagWeight(bag), max, mods }];
         }),
       ) as Record<LifeSkillKind, { weight: number; max: number; mods: ReturnType<typeof computeMods> }>,
@@ -192,7 +192,7 @@ function LifeGearPanel({ life }: { life: LifeState }) {
                 </div>
                 <p className="mt-2 text-[11px] text-faint">
                   보관 중 {bag.items.reduce((sum, item) => sum + item.qty, 0)}개
-                  {mods.weightBonus > 0 && ` · 특성 보너스 +${mods.weightBonus}`}
+                  {mods.apCostDown > 0 && ` · 피로도 절약 -${mods.apCostDown}`}
                 </p>
               </div>
             </button>
@@ -212,32 +212,52 @@ function LifeGearPanel({ life }: { life: LifeState }) {
 }
 
 function CookingBuffPanel({ life }: { life: LifeState }) {
-  const activeLuck = life.cookingBuffs.lifeLuck;
+  // 만료된 행운 버프는 표시하지 않는다 — 열어둔 화면에서도 30초마다 갱신해 지운다.
+  // (상태 정리는 다음 저장 때 parseLifeState가 처리)
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const activeLuck =
+    now == null
+      ? life.cookingBuffs.lifeLuck
+      : life.cookingBuffs.lifeLuck.filter((buff) => Date.parse(buff.until) > now);
+  // 같은 요리에서 나온 낚시·채집 버프(출처·수치·만료 동일)는 한 줄로 합쳐 보여준다.
+  const luckRows: { source: string; amount: number; until: string; kinds: string[] }[] = [];
+  for (const buff of activeLuck) {
+    const kinds = buff.kind === "both" ? ["낚시", "채집"] : [buff.kind];
+    const found = luckRows.find(
+      (row) => row.source === buff.source && row.amount === buff.amount && row.until === buff.until,
+    );
+    if (found) found.kinds.push(...kinds.filter((k) => !found.kinds.includes(k)));
+    else luckRows.push({ source: buff.source, amount: buff.amount, until: buff.until, kinds });
+  }
   const sessions = life.cookingBuffs.session;
-  if (activeLuck.length === 0 && sessions.length === 0) return null;
+  if (luckRows.length === 0 && sessions.length === 0) return null;
+
+  const timeOf = (iso: string) =>
+    new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <h2 className="mb-3 text-lg font-extrabold text-content">🍲 요리 효과</h2>
       <div className="space-y-2">
-        {activeLuck.map((buff, i) => {
-          const until = new Date(buff.until).toLocaleTimeString("ko-KR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          return (
-            <div key={`${buff.source}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
-              <p className="text-sm font-extrabold text-content">{buff.source}</p>
-              <p className="mt-0.5 text-xs font-bold text-emerald-600">
-                {buff.kind === "both" ? "낚시·채집" : buff.kind} 행운 +{buff.amount} · {until}까지
-              </p>
-            </div>
-          );
-        })}
+        {luckRows.map((row, i) => (
+          <div key={`${row.source}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
+            <p className="text-sm font-extrabold text-content">{row.source}</p>
+            <p className="mt-0.5 text-xs font-bold text-emerald-600">
+              {row.kinds.join("·")} 행운 +{row.amount} · {timeOf(row.until)}까지
+            </p>
+          </div>
+        ))}
         {sessions.map((buff, i) => (
           <div key={`${buff.source}-${buff.usedAt}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
             <p className="text-sm font-extrabold text-content">{buff.source}</p>
-            <p className="mt-0.5 text-xs font-bold text-brand-600">세션 버프: {buff.effect}</p>
+            <p className="mt-0.5 text-xs font-bold text-brand-600">
+              세션 버프: {buff.effect}
+              <span className="ml-1 font-semibold text-faint">— {timeOf(buff.usedAt)} 사용</span>
+            </p>
           </div>
         ))}
       </div>

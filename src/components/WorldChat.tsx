@@ -83,9 +83,10 @@ export default function WorldChat({
     rarity: string;
     difficulty: number;
     barBonus: number;
+    drainSlow: number;
   } | null>(null);
-  const [gathering, setGathering] = useState<{ rarity: string; difficulty: number } | null>(null);
-  const [mining, setMining] = useState<{ rarity: string; difficulty: number } | null>(null);
+  const [gathering, setGathering] = useState<{ rarity: string; difficulty: number; drainSlow: number } | null>(null);
+  const [mining, setMining] = useState<{ rarity: string; difficulty: number; drainSlow: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState("");
   const [probing, setProbing] = useState(false);
@@ -136,7 +137,7 @@ export default function WorldChat({
     try {
       const res = await startFishing();
       if ("error" in res) setError(res.error);
-      else setFishing({ rarity: res.rarity, difficulty: res.difficulty, barBonus: res.barBonus });
+      else setFishing({ rarity: res.rarity, difficulty: res.difficulty, barBonus: res.barBonus, drainSlow: res.drainSlow });
     } catch {
       setError("낚시를 시작하지 못했어요.");
     } finally {
@@ -152,7 +153,7 @@ export default function WorldChat({
     try {
       const res = await startGathering();
       if ("error" in res) setError(res.error);
-      else setGathering({ rarity: res.rarity, difficulty: res.difficulty });
+      else setGathering({ rarity: res.rarity, difficulty: res.difficulty, drainSlow: res.drainSlow });
     } catch {
       setError("채집을 시작하지 못했어요.");
     } finally {
@@ -168,7 +169,7 @@ export default function WorldChat({
     try {
       const res = await startMining();
       if ("error" in res) setError(res.error);
-      else setMining({ rarity: res.rarity, difficulty: res.difficulty });
+      else setMining({ rarity: res.rarity, difficulty: res.difficulty, drainSlow: res.drainSlow });
     } catch {
       setError("채광을 시작하지 못했어요.");
     } finally {
@@ -457,6 +458,7 @@ ${body}
           rarity={fishing.rarity}
           difficulty={fishing.difficulty}
           barBonus={fishing.barBonus}
+          drainSlow={fishing.drainSlow}
           onDone={() => {
             setFishing(null);
             void poll();
@@ -469,6 +471,7 @@ ${body}
         <GatheringGame
           rarity={gathering.rarity}
           difficulty={gathering.difficulty}
+          drainSlow={gathering.drainSlow}
           onDone={() => {
             setGathering(null);
             void poll();
@@ -481,6 +484,7 @@ ${body}
         <MiningGame
           rarity={mining.rarity}
           difficulty={mining.difficulty}
+          drainSlow={mining.drainSlow}
           onDone={() => {
             setMining(null);
             void poll();

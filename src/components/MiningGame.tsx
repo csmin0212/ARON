@@ -16,10 +16,12 @@ type Hit = "정타" | "약타" | "빗나감";
 export default function MiningGame({
   rarity,
   difficulty,
+  drainSlow = 0,
   onDone,
 }: {
   rarity: string;
   difficulty: number;
+  drainSlow?: number; // '솜씨 발휘' — 마커 이동 속도를 N% 늦춤 (0~50)
   onDone: () => void;
 }) {
   const [phase, setPhase] = useState<"playing" | "resolving" | "result">("playing");
@@ -37,7 +39,8 @@ export default function MiningGame({
   const sideHalf = lerp(0.26, 0.11, d);
 
   useEffect(() => {
-    const speed = lerp(0.6, 1.9, d); // 초당 왕복 비율
+    const slow = Math.max(0, Math.min(50, drainSlow));
+    const speed = lerp(0.6, 1.9, d) * (1 - slow / 100); // 초당 왕복 비율
     let pos = 0;
     let dir = 1;
     let last = performance.now();
@@ -54,7 +57,7 @@ export default function MiningGame({
     };
     rafRef.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [d]);
+  }, [d, drainSlow]);
 
   async function finish(total: number) {
     busyRef.current = true;

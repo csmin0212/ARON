@@ -14,11 +14,13 @@ export default function FishingGame({
   rarity,
   difficulty,
   barBonus = 0,
+  drainSlow = 0,
   onDone,
 }: {
   rarity: string;
   difficulty: number;
   barBonus?: number;
+  drainSlow?: number; // '솜씨 발휘' — 게이지 감소 속도를 N% 늦춤 (0~50)
   onDone: () => void;
 }) {
   // ready: 시작 대기(일시정지) · playing: 진행 · resolving/result: 결과
@@ -67,7 +69,8 @@ export default function FishingGame({
     const fishSpeed = lerp(0.5, 1.7, d);
     const retarget = lerp(1.5, 0.5, d);
     const rate = lerp(0.55, 0.3, d);
-    const drain = lerp(0.22, 0.42, d);
+    const slow = Math.max(0, Math.min(50, drainSlow));
+    const drain = lerp(0.22, 0.42, d) * (1 - slow / 100);
     const gravity = 2.6;
     const accel = 3.2;
     const drag = 4.5; // 초당 선형 감쇠 (프레임레이트 무관)
@@ -130,7 +133,7 @@ export default function FishingGame({
     };
     rafRef.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [phase, difficulty, barBonus, barH]);
+  }, [phase, difficulty, barBonus, drainSlow, barH]);
 
   const landed = result && "landed" in result && result.landed;
   const ready = phase === "ready";

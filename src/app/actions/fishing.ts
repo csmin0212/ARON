@@ -34,7 +34,7 @@ import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 const FISH = "낚시" as const;
 
 export type FishingStart =
-  | { ok: true; rarity: string; rank: number; difficulty: number; barBonus: number }
+  | { ok: true; rarity: string; rank: number; difficulty: number; barBonus: number; drainSlow: number }
   | { error: string };
 
 export type FishingResolve =
@@ -103,13 +103,15 @@ export async function startFishing(): Promise<FishingStart> {
   const pool = locationLife ? locationLife.fish ?? null : { enabled: true };
   if (!pool?.enabled) return { error: "여기서는 낚시를 할 수 없어요." };
 
-  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
-  if (ap < action.apCost) {
-    return { error: `피로도가 부족해요. (필요 ${action.apCost}, 보유 ${ap})` };
-  }
-
   const life = parseLifeState(sheet.lifeJson);
   const mods = computeMods(life, FISH);
+
+  // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
+  const apCost = Math.max(1, action.apCost - mods.apCostDown);
+  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
+  if (ap < apCost) {
+    return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
+  }
   const level = progressOf(life, FISH).level;
   const levelBase = baseWeightsFor(level);
   const regionBase = pool.weights
@@ -125,14 +127,15 @@ export async function startFishing(): Promise<FishingStart> {
   const item = caught.item;
 
   const bag = life.bags[FISH];
-  const bagMax = lifeBagLimit(life, FISH, mods.weightBonus);
+  const bagMax = lifeBagLimit(life, FISH);
   if (lifeBagWeight(bag) + item.weight > bagMax) {
     return { error: `${bag.name}이 가득 찼어요. (${lifeBagWeight(bag)} + ${item.weight} / ${bagMax})` };
   }
 
   // 효과 난이도 = max(10, 등급기본 − 레벨 − 낚싯대보정), 상한 100 → 0~1로 변환
+  // '낚싯대 숙련' 특성 — 낚싯대 보정 공식을 N% 개선 (기본 낚싯대는 보정 0이라 효과 없음)
   const rankDiff = RANK_DIFFICULTY[item.rank] ?? 60;
-  const rodRelief = rodTier(life.tools.낚시) * 10; // 좋은 -10 / 고급 -20
+  const rodRelief = rodTier(life.tools.낚시) * 10 * (1 + mods.toolEff / 100); // 좋은 -10 / 고급 -20
   const eff = Math.max(DIFFICULTY_FLOOR, Math.min(100, rankDiff - level - rodRelief));
   const difficulty = eff / 100;
   const barBonus = 0; // 낚싯대 효과는 난이도 하락으로 통합
@@ -147,15 +150,15 @@ export async function startFishing(): Promise<FishingStart> {
     exp: item.exp,
     size: caught.size,
     difficulty,
-    apCost: action.apCost,
+    apCost,
   };
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { ap: ap - action.apCost, apResetAt, pendingCatchJson: JSON.stringify(pending) },
+    data: { ap: ap - apCost, apResetAt, pendingCatchJson: JSON.stringify(pending) },
   });
 
-  return { ok: true, rarity: item.rarity, rank: item.rank, difficulty, barBonus };
+  return { ok: true, rarity: item.rarity, rank: item.rank, difficulty, barBonus, drainSlow: mods.gaugeSlow };
 }
 
 // 2단계: 결과 — 성공 시 지급, 실패 시 빈손. 어느 쪽이든 진행 상태 정리.
@@ -203,7 +206,7 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   const life = parseLifeState(sheet.lifeJson);
   const mods = computeMods(life, FISH);
   const bag = life.bags[FISH];
-  const bagMax = lifeBagLimit(life, FISH, mods.weightBonus);
+  const bagMax = lifeBagLimit(life, FISH);
   if (lifeBagWeight(bag) + pending.weight > bagMax) {
     await prisma.characterSheet.update({ where: { userId: user.id }, data: { pendingCatchJson: null } });
     return { error: `${bag.name}이 가득 차서 놓쳐버렸어요.` };
