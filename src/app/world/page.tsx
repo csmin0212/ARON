@@ -23,6 +23,7 @@ import type { PendingGatherView } from "@/app/actions/gathering";
 import type { PendingMineView } from "@/app/actions/mining";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
+import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
 import WorldServices, {
   type ByproductView,
   type CookingView,
@@ -758,9 +759,34 @@ export default async function WorldPage() {
     );
   }
 
+  // 적용 중인 요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 낚시·채집 행운은 한 칩으로 합침)
+  const buffRows: WorldBuff[] = [];
+  for (const buff of life.cookingBuffs.lifeLuck) {
+    const kinds = buff.kind === "both" ? ["낚시", "채집"] : [buff.kind];
+    const found = buffRows.find(
+      (row) => row.until === buff.until && row.label.endsWith(`행운 +${buff.amount}`) && row.icon === "🍀",
+    );
+    if (found) {
+      const [head] = found.label.split(" 행운 ");
+      const merged = [...new Set([...head.split("·"), ...kinds])];
+      found.label = `${merged.join("·")} 행운 +${buff.amount}`;
+    } else {
+      buffRows.push({ icon: "🍀", label: `${kinds.join("·")} 행운 +${buff.amount}`, until: buff.until });
+    }
+  }
+  for (const buff of life.cookingBuffs.stat) {
+    buffRows.push({
+      icon: "🎲",
+      label: `${buff.label === "모든" ? "모든 능력" : buff.label} 판정 +${buff.amount}`,
+      until: buff.until,
+    });
+  }
+
   return (
     <div className="animate-fadeup space-y-4 py-1">
       <ApBar ap={ap} nextRegenMin={nextRegenMin} />
+
+      <ActiveBuffsBar buffs={buffRows} />
 
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
         <div className="relative">

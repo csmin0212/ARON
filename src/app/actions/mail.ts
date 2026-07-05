@@ -106,17 +106,26 @@ export async function claimMail(formData: FormData): Promise<void> {
           where: { OR: [{ id: mail.itemName }, { name: mail.itemName }] },
           select: { id: true, name: true, desc: true },
         });
-        const itemName = catalog?.name ?? mail.itemName;
+        // 스냅샷 메타(경매 반송 등) — 강화 장비의 효과·중량은 카탈로그가 아니라 스냅샷이 정본
+        let meta: { effect?: string | null; weight?: number | null } = {};
+        try {
+          if (mail.itemMetaJson) meta = JSON.parse(mail.itemMetaJson) as typeof meta;
+        } catch {
+          meta = {};
+        }
+        const itemName = mail.itemMetaJson ? mail.itemName : (catalog?.name ?? mail.itemName);
+        const effect = meta.effect ?? catalog?.desc ?? null;
+        const weight = meta.weight ?? 1;
         const found = inv.items.find((i) => i.name.trim() === itemName.trim());
         if (found) {
           found.qty += mail.itemQty;
-          if (!found.effect && catalog?.desc) found.effect = catalog.desc;
+          if (!found.effect && effect) found.effect = effect;
         } else {
-          inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty: mail.itemQty });
+          inv.items.push({ name: itemName, effect, weight, qty: mail.itemQty });
         }
         void appendSheetItem(sheet.sheetTab, itemName, mail.itemQty, {
-          effect: catalog?.desc ?? null,
-          weight: 1,
+          effect,
+          weight,
         });
         await incDbItem(user.id, catalog?.id ?? mail.itemName, mail.itemQty);
         const bookId = catalog?.id ?? mail.itemName;

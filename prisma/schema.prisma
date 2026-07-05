@@ -216,6 +216,7 @@ model Mail {
   gold        Int       @default(0) // 첨부 골드
   itemName    String? // 첨부 아이템 (Item.id 또는 이름)
   itemQty     Int       @default(0)
+  itemMetaJson String? // 첨부 아이템 스냅샷 (효과·중량 — 경매 반송 등 카탈로그에 없는 강화품 보존)
   claimedAt   DateTime? // 첨부 수령 시각 (null = 미수령)
   readAt      DateTime?
   createdAt   DateTime  @default(now())

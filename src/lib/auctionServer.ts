@@ -357,7 +357,9 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
   return out.sort((a, b) => a.category.localeCompare(b.category, "ko") || a.name.localeCompare(b.name, "ko"));
 }
 
-// ── 만료 정리 (조회 시 lazy 실행) — 판매자에게 직접 반송 ──
+// ── 만료 정리 (조회 시 lazy 실행) — 우편함으로 반송 ──
+// 만료품은 인벤 직행이 아니라 우편 첨부로 보낸다(스냅샷 보존).
+// 미수령 반송 우편이 있으면 경매장 이용(등록·구매·즉시매각)이 막힌다 → 수령을 강제.
 export async function cleanupExpiredListings(): Promise<void> {
   const expired = await prisma.auctionListing.findMany({
     where: { status: "active", expiresAt: { lt: new Date() } },
@@ -369,17 +371,38 @@ export async function cleanupExpiredListings(): Promise<void> {
       data: { status: "expired", endedAt: new Date() },
     });
     if (claimed.count !== 1) continue;
-    await returnItemToSeller(listing.sellerId, listing.itemName, listing.quantity, parseAuctionMeta(listing.itemMeta));
+    await prisma.mail.create({
+      data: {
+        recipientId: listing.sellerId,
+        senderName: "경매장",
+        subject: "경매 만료 반송",
+        body: `${listing.itemName} x${listing.quantity}이(가) 기한 내 팔리지 않아 반송되었습니다. 첨부를 수령해주세요. 수령 전까지는 경매장을 이용할 수 없어요.`,
+        itemName: listing.itemName,
+        itemQty: listing.quantity,
+        itemMetaJson: listing.itemMeta,
+      },
+    });
     await prisma.notification.create({
       data: {
         userId: listing.sellerId,
         kind: "auction",
         title: "경매 만료",
-        body: `${listing.itemName} x${listing.quantity}이(가) 팔리지 않아 반송되었습니다.`,
-        href: "/market",
+        body: `${listing.itemName} x${listing.quantity}이(가) 팔리지 않아 우편함으로 반송되었습니다.`,
+        href: "/mail",
       },
     });
   }
+}
+
+// 미수령 경매 반송 우편 — 있으면 경매장 이용 불가 (수령 강제)
+async function unclaimedAuctionMailError(userId: string): Promise<string | null> {
+  const pending = await prisma.mail.findFirst({
+    where: { recipientId: userId, senderName: "경매장", claimedAt: null, itemQty: { gt: 0 } },
+    select: { id: true },
+  });
+  return pending
+    ? "우편함에 수령하지 않은 경매 반송품이 있어요. 📬 우편함에서 수령한 뒤 이용할 수 있어요."
+    : null;
 }
 
 // 판매자(오프라인 가능)에게 아이템을 휴대품으로 직접 반송. 스냅샷 보존.
@@ -413,6 +436,9 @@ export async function createListingCore(
   if (!name) return { error: "등록할 아이템이 올바르지 않습니다." };
   if (qty <= 0) return { error: "수량이 올바르지 않습니다." };
   if (unitPrice <= 0) return { error: "가격을 입력해주세요." };
+
+  const mailBlock = await unclaimedAuctionMailError(userId);
+  if (mailBlock) return { error: mailBlock };
 
   const actor = await loadActorSheet(userId);
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
@@ -490,6 +516,9 @@ export async function buyListingCore(
 ): Promise<AuctionResult> {
   const { listingId, qty } = params;
   if (qty <= 0) return { error: "구매 수량이 올바르지 않습니다." };
+
+  const mailBlock = await unclaimedAuctionMailError(buyerId);
+  if (mailBlock) return { error: mailBlock };
 
   const listing = await prisma.auctionListing.findUnique({ where: { id: listingId } });
   if (!listing || listing.status !== "active") return { error: "이미 종료된 등록입니다." };
@@ -573,6 +602,9 @@ export async function instantSellCore(
   const { source, name, qty } = params;
   if (!name) return { error: "판매할 아이템이 올바르지 않습니다." };
   if (qty <= 0) return { error: "수량이 올바르지 않습니다." };
+
+  const mailBlock = await unclaimedAuctionMailError(userId);
+  if (mailBlock) return { error: mailBlock };
 
   const actor = await loadActorSheet(userId);
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
