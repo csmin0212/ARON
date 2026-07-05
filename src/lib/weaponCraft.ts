@@ -386,11 +386,12 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   const weight = Math.max(1, Math.round(oreWeight / 3));
 
   const tagList = [...tags];
+  // 부재료 효과(태그·부가효과)를 스탯 바로 다음 줄에 — 목록 미리보기(2줄)에서도 보이게.
   const effectText = [
     statLine(stats, category.group),
-    `Lv${level} ${category.key} · ${base.part}`,
     ...(tagList.length > 0 ? [tagList.map((t) => `[${t}]`).join(" ")] : []),
     ...(extras.length > 0 ? [extras.join(" · ")] : []),
+    `Lv${level} ${category.key} · ${base.part}`,
   ].join("\n");
 
   return {

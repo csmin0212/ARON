@@ -228,11 +228,13 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     preview.group === "무기"
       ? `명중 ${fmt(stats.hit)} · 공격력 ${fmt(stats.atk)}${stats.dodge ? ` · 회피 ${fmt(stats.dodge)}` : ""}${stats.pdef ? ` · 물방 ${fmt(stats.pdef)}` : ""}${stats.mdef ? ` · 마방 ${fmt(stats.mdef)}` : ""}`
       : `${stats.dodge ? `회피 ${fmt(stats.dodge)} · ` : ""}물리 방어력 ${fmt(stats.pdef)} · 마법 방어력 ${fmt(stats.mdef)}`;
+  // 부재료 효과(태그·부가효과)는 스탯 바로 다음 줄에 둔다 —
+  // 가방 목록은 효과를 2줄만 미리보여서, 뒤로 밀면 마이너 효과가 안 보인다.
   const effectText = [
     statText,
-    `Lv${preview.level} ${preview.category} · ${preview.part}${grade ? ` · ${grade === "장인" ? "장인작" : grade}` : ""}`,
     ...(preview.tags.length > 0 ? [preview.tags.map((t) => `[${t}]`).join(" ")] : []),
     ...(preview.extras.length > 0 ? [preview.extras.join(" · ")] : []),
+    `Lv${preview.level} ${preview.category} · ${preview.part}${grade ? ` · ${grade === "장인" ? "장인작" : grade}` : ""}`,
     `제작: ${user.nickname}`,
   ].join("\n");
 
