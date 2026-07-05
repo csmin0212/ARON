@@ -233,8 +233,12 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
     if (found) found.kinds.push(...kinds.filter((k) => !found.kinds.includes(k)));
     else luckRows.push({ source: buff.source, amount: buff.amount, until: buff.until, kinds });
   }
+  const statBuffs =
+    now == null
+      ? life.cookingBuffs.stat
+      : life.cookingBuffs.stat.filter((buff) => Date.parse(buff.until) > now);
   const sessions = life.cookingBuffs.session;
-  if (luckRows.length === 0 && sessions.length === 0) return null;
+  if (luckRows.length === 0 && statBuffs.length === 0 && sessions.length === 0) return null;
 
   const timeOf = (iso: string) =>
     new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
@@ -248,6 +252,15 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
             <p className="text-sm font-extrabold text-content">{row.source}</p>
             <p className="mt-0.5 text-xs font-bold text-emerald-600">
               {row.kinds.join("·")} 행운 +{row.amount} · {timeOf(row.until)}까지
+            </p>
+          </div>
+        ))}
+        {statBuffs.map((buff, i) => (
+          <div key={`${buff.source}-stat-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
+            <p className="text-sm font-extrabold text-content">{buff.source}</p>
+            <p className="mt-0.5 text-xs font-bold text-sky-600">
+              {buff.label === "모든" ? "모든 능력" : buff.label} 판정 +{buff.amount} ·{" "}
+              {timeOf(buff.until)}까지
             </p>
           </div>
         ))}

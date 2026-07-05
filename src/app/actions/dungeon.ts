@@ -10,6 +10,7 @@ import { dungeonWeekKey } from "@/lib/world";
 import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
+import { parseLifeState, statBuffBonus } from "@/lib/lifeSkillPerks";
 import {
   appendSheetFormula,
   appendSheetGold,
@@ -134,9 +135,10 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   if (ap < DUNGEON_AP) return { error: `피로도가 부족해요. (필요 ${DUNGEON_AP}, 보유 ${ap})` };
 
-  // 능력치 판정
-  const mod = statMod(sheet.statsJson, ability);
-  if (mod == null) return { error: `시트에서 ${ability} 능력치를 찾지 못했어요. 프로필에서 동기화해주세요.` };
+  // 능력치 판정 — 요리 판정 버프(30분 지속) 합산
+  const baseMod = statMod(sheet.statsJson, ability);
+  if (baseMod == null) return { error: `시트에서 ${ability} 능력치를 찾지 못했어요. 프로필에서 동기화해주세요.` };
+  const mod = baseMod + statBuffBonus(parseLifeState(sheet.lifeJson), ability);
   const dice = rollDice(2);
   const total = dice[0] + dice[1] + mod;
   const success = total >= dungeon.dc;

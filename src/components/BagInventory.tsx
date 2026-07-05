@@ -46,7 +46,8 @@ function weightText(item: SheetInventoryItem): string {
 
 function canUseItem(item: SheetInventoryItem): boolean {
   const effect = item.effect ?? "";
-  return /행운\s*\+\d+|세션\s*버프/.test(effect);
+  // 행운·판정(월드 30분 버프)·세션 버프·HP/MP 회복 — useCookingItem이 처리하는 효과들
+  return /행운\s*\+\d+|판정\s*\+\d+|세션\s*버프|(HP|MP)[^가-힣]*회복/.test(effect);
 }
 
 function CookingStateLine({ state }: { state: CookingState }) {

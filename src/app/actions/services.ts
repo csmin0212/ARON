@@ -1047,6 +1047,20 @@ function parseSessionBuff(effect: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
+// "30분 동안 감지 판정 +1" — 월드 판정 버프 (행동·탐색·던전 판정에 적용).
+// '원하는 능력/모든 능력'은 '모든'으로 저장. "세션 버프: ..." 형식은 세션 쪽에서 처리.
+function parseStatBuff(effect: string): { label: string; amount: number } | null {
+  if (/세션\s*버프/.test(effect)) return null;
+  const match = effect.match(
+    /(근력|재주|민첩|지력|감지|정신|행운|원하는\s*능력|모든\s*능력)\s*판정\s*\+(\d+)/,
+  );
+  if (!match) return null;
+  const amount = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const label = /능력/.test(match[1]) ? "모든" : match[1];
+  return { label, amount };
+}
+
 function rollD6(n: number): number {
   let sum = 0;
   for (let i = 0; i < n; i++) sum += 1 + Math.floor(Math.random() * 6);
@@ -1136,6 +1150,7 @@ export async function useCookingItem(
   // AP 회복은 자연회복·여관·집 휴식으로만. (행운·세션 버프·HP/MP 회복은 유지)
   const lifeLuck = parseLifeLuck(rawEffect);
   const sessionBuff = parseSessionBuff(rawEffect);
+  const statBuff = parseStatBuff(rawEffect);
   const recovery = parseRecovery(rawEffect);
 
   if (lifeLuck) {
@@ -1203,6 +1218,42 @@ export async function useCookingItem(
     });
     life.cookingBuffs.session = life.cookingBuffs.session.slice(0, 12);
     ok = `${itemName}을 사용했습니다. 세션 버프: ${sessionBuff}`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "요리버프사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else if (statBuff) {
+    // 월드 판정 버프 — 같은 라벨엔 최고 수치 1개만. 약한 요리는 소모 없이 거부, 같은 수치는 시간 갱신.
+    const until = new Date(now.getTime() + 30 * 60 * 1000);
+    const existing = life.cookingBuffs.stat.find((b) => b.label === statBuff.label);
+    if (existing && existing.amount > statBuff.amount) {
+      return {
+        error: `이미 더 강한 판정 버프가 적용 중이라 사용하지 않았습니다. (${
+          existing.label === "모든" ? "모든 능력" : existing.label
+        } 판정 +${existing.amount} · ${existing.source})`,
+      };
+    }
+    life.cookingBuffs.stat = life.cookingBuffs.stat.filter((b) => b.label !== statBuff.label);
+    life.cookingBuffs.stat.push({
+      label: statBuff.label,
+      amount: statBuff.amount,
+      until: until.toISOString(),
+      source: itemName,
+    });
+    ok = `${itemName}을 사용했습니다. 30분 동안 ${
+      statBuff.label === "모든" ? "모든 능력" : statBuff.label
+    } 판정 +${statBuff.amount}`;
 
     const inv = consumeInvItem(ctx.inv, itemName, 1);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;

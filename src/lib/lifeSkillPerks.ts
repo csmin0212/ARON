@@ -46,6 +46,7 @@ export type LifeState = {
   cookingBuffs: {
     lifeLuck: CookingLifeLuckBuff[];
     session: CookingSessionBuff[];
+    stat: CookingStatBuff[];
   };
 };
 
@@ -60,6 +61,14 @@ export type CookingSessionBuff = {
   source: string;
   effect: string;
   usedAt: string;
+};
+
+// 월드 판정 버프 — "30분 동안 감지 판정 +1" 요리. label '모든'은 전 능력치에 적용.
+export type CookingStatBuff = {
+  label: string;
+  amount: number;
+  until: string;
+  source: string;
 };
 
 export type LifeBagItem = {
@@ -207,7 +216,7 @@ const EMPTY: LifeState = {
     채광: "기본 곡괭이",
   },
   catchCounts: { 채집: {}, 낚시: {}, 채광: {} },
-  cookingBuffs: { lifeLuck: [], session: [] },
+  cookingBuffs: { lifeLuck: [], session: [], stat: [] },
 };
 
 function defaultBag(kind: LifeSkillKind): LifeBag {
@@ -275,11 +284,29 @@ export function parseLifeState(json: string | null | undefined): LifeState {
         session: Array.isArray(v.cookingBuffs?.session)
           ? v.cookingBuffs.session.filter((buff) => buff && buff.source && buff.effect)
           : [],
+        stat: Array.isArray(v.cookingBuffs?.stat)
+          ? v.cookingBuffs.stat.filter(
+              (buff) =>
+                buff && buff.label && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
+            )
+          : [],
       },
     };
   } catch {
     return structuredClone(EMPTY);
   }
+}
+
+// 요리 판정 버프 — 해당 능력치 판정에 더할 보정.
+// '모든' 라벨은 전 능력치에 적용되며, 겹치면 최대값 하나만 적용(중첩 없음).
+export function statBuffBonus(state: LifeState, label: string): number {
+  const now = Date.now();
+  let best = 0;
+  for (const buff of state.cookingBuffs.stat) {
+    if (Date.parse(buff.until) <= now) continue;
+    if (buff.label === label || buff.label === "모든") best = Math.max(best, buff.amount);
+  }
+  return best;
 }
 
 // 도감 기록 — 처음 잡은 아이템이면 true 반환

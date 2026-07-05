@@ -39,6 +39,7 @@ import {
   progressOf,
   recordLifeCatch,
   recordCollection,
+  statBuffBonus,
 } from "./lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "./skillCatalog";
 
@@ -209,16 +210,19 @@ export async function runActionCommand(
   let success = true;
   let rollLine = "";
   if (target.statLabel && target.dc != null) {
-    const mod = statModOf(sheet.statsJson, target.statLabel);
-    if (mod == null)
+    const baseMod = statModOf(sheet.statsJson, target.statLabel);
+    if (baseMod == null)
       return {
         error: `시트에서 ${target.statLabel} 능력치를 찾지 못했어요. 프로필에서 다시 동기화해주세요.`,
       };
+    // 요리 판정 버프 (30분 지속) — 보정에 합산
+    const buff = statBuffBonus(parseLifeState(sheet.lifeJson), target.statLabel);
+    const mod = baseMod + buff;
 
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
     success = total >= target.dc;
-    rollLine = ` — ${diceText(dice, mod, total, target.dc)}`;
+    rollLine = ` — ${diceText(dice, mod, total, target.dc)}${buff > 0 ? ` 🍲버프 +${buff}` : ""}`;
     await prisma.roll.create({
       data: {
         userId,
@@ -431,8 +435,10 @@ export async function tryKeywordSpeech(
 
     const statLabel = cm[1].trim();
     const dc = parseInt(cm[2], 10);
-    const mod = statModOf(sheet.statsJson, statLabel);
-    if (mod == null) return { notice: `시트에서 ${statLabel} 능력치를 찾지 못했어요.` };
+    const baseMod = statModOf(sheet.statsJson, statLabel);
+    if (baseMod == null) return { notice: `시트에서 ${statLabel} 능력치를 찾지 못했어요.` };
+    // 요리 판정 버프 (30분 지속) — 보정에 합산
+    const mod = baseMod + statBuffBonus(parseLifeState(sheet.lifeJson), statLabel);
 
     const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
     if (ap < KEYWORD_SEARCH_COST)
