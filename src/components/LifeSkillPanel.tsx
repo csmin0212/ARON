@@ -44,13 +44,13 @@ const KIND_META: { kind: LifeSkillKind; emoji: string; key: "fishing" | "plant" 
 ];
 
 const SKILL_META: {
-  kind: LifeSkillKind | "요리" | "대장";
+  kind: LifeSkillKind | "요리" | "제작";
   emoji: string;
   key: "fishing" | "plant" | "mining" | "cooking" | "smithing";
 }[] = [
   ...KIND_META,
   { kind: "요리", emoji: "🍳", key: "cooking" },
-  { kind: "대장", emoji: "⚒️", key: "smithing" },
+  { kind: "제작", emoji: "⚒️", key: "smithing" },
 ];
 
 function RarityBadge({ rarity }: { rarity: PerkRarity }) {
@@ -330,6 +330,17 @@ export default function LifeSkillPanel({
             </div>
           );
         })}
+        {/* 연금술 — 업데이트 예정 자리 (3×2 그리드 채움) */}
+        <div className="rounded-2xl border border-dashed border-line bg-subtle/30 p-4 opacity-70">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-extrabold text-faint">⚗️ 연금술</span>
+            <span className="rounded-full bg-subtle px-2.5 py-0.5 text-[11px] font-extrabold text-faint">
+              준비 중
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-subtle-hover" />
+          <p className="mt-1.5 text-right text-[11px] font-semibold text-faint2">업데이트 예정</p>
+        </div>
       </div>
     </div>
   );
