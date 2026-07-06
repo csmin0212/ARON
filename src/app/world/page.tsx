@@ -918,6 +918,7 @@ export default async function WorldPage() {
             canStorage={canStorage}
             canInn={canInn}
             canHousing={canHousing}
+            canGacha={here.id === "대상야영지"}
             cooking={cooking}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}

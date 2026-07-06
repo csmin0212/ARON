@@ -671,15 +671,20 @@ export function parseSkillsGrid(g: string[][]): SkillRow[] {
 
     const publicRaw = at(g, r, h.col.isPublic);
     const enabledRaw = at(g, r, h.col.enabled);
+    const kind = at(g, r, h.col.kind) || "공용";
+    let effectKey = at(g, r, h.col.effectKey) || null;
+    // 채광엔 피로도 감소(ap_cost_down) 특성이 없다 — 채광의 ap_cost_down 은 항상 '일석이조'.
+    // 시트에 ap_cost_down 으로 적어도 동기화 시 광물 2개 드랍(double_drop_pct)으로 자동 교정.
+    if (kind === "채광" && effectKey === "ap_cost_down") effectKey = "double_drop_pct";
     rows.push({
       id,
       name,
       category,
-      kind: at(g, r, h.col.kind) || "공용",
+      kind,
       type: at(g, r, h.col.type) || null,
       rarity: at(g, r, h.col.rarity) || null,
       desc: at(g, r, h.col.desc) || null,
-      effectKey: at(g, r, h.col.effectKey) || null,
+      effectKey,
       effectValue: at(g, r, h.col.effectValue) || null,
       sourceItem: at(g, r, h.col.sourceItem) || null,
       isPublic: publicRaw ? yes(publicRaw) : true,

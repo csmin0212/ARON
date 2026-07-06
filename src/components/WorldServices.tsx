@@ -40,6 +40,7 @@ type Props = {
   canStorage: boolean;
   canInn: boolean;
   canHousing: boolean;
+  canGacha: boolean;
   cooking: CookingView;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
@@ -1438,6 +1439,7 @@ export default function WorldServices({
   canStorage,
   canInn,
   canHousing,
+  canGacha,
   cooking,
   inventoryItems,
   lifeStorageItems,
@@ -1491,7 +1493,7 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !canGacha) return null;
 
   function closeForge() {
     setOpen(false);
@@ -1557,7 +1559,7 @@ export default function WorldServices({
               </span>
             </button>
           )}
-          {cooking.enabled && (
+          {canGacha && (
             <button
               type="button"
               onClick={() => setGachaOpen(true)}
@@ -1566,7 +1568,7 @@ export default function WorldServices({
               <span className="text-xl">🎁</span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">레시피 가챠</span>
-                <span className="text-[11px] text-faint">랜덤 레시피 획득 · 1회 50골드</span>
+                <span className="text-[11px] text-faint">대상 야영지 전용 · 랜덤 레시피 · 1회 50골드</span>
               </span>
             </button>
           )}
