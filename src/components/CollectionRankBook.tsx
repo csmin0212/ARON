@@ -188,9 +188,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                     </div>
                     <p className="mt-2 line-clamp-3 min-h-[3.75rem] whitespace-pre-line text-xs leading-relaxed text-muted">
                       {entry.discovered
-                        ? kind === "요리" && entry.ingredients
-                          ? `재료: ${entry.ingredients}\n${entry.text}`
-                          : entry.text
+                        ? entry.text
                         : kind === "요리"
                           ? "아직 발견하지 못한 레시피입니다."
                           : "아직 발견하지 못한 항목입니다."}
