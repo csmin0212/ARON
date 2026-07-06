@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveMining, type MineResolve } from "@/app/actions/mining";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-// 연타(곡괭이질) — 제한 시간 안에 빠르게 두드려 균열 게이지를 채운다.
+// 연타(곡괭이질) — 시작을 누르면 제한 시간이 흐르고, 빠르게 두드려 균열 게이지를 채운다.
 // 100% 도달 → 즉시 파괴(center). 시간 종료 시 50%+ → 부분(side), 미만 → 실패(miss).
 const TIME_LIMIT = 4.5; // 초
-const TAP_GAIN = 7; // 1타당 균열 +7%
+const TAP_GAIN = 6; // 1타당 균열 +6%
 const PARTIAL_PCT = 50; // 이 이상이면 부분 성공
 
 export default function MiningGame({
@@ -21,7 +21,7 @@ export default function MiningGame({
   drainSlow?: number; // (채광은 감속 특성 없음 — 호환용, 미사용)
   onDone: () => void;
 }) {
-  const [phase, setPhase] = useState<"playing" | "resolving" | "result">("playing");
+  const [phase, setPhase] = useState<"ready" | "playing" | "resolving" | "result">("ready");
   const [result, setResult] = useState<MineResolve | null>(null);
   const [taps, setTaps] = useState(0);
 
@@ -33,17 +33,28 @@ export default function MiningGame({
   const rafRef = useRef(0);
 
   const d = Math.max(0, Math.min(1, difficulty));
-  // 난이도 ↑ → 균열이 더 빨리 식는다(초당 감소율). 저난이도는 여유, 고난이도는 손이 빨라야.
-  const decay = lerp(6, 24, d);
+  // 난이도 ↑ → 균열이 훨씬 빨리 식는다(초당 감소율). 비선형(d^1.5)이라 저성은 여유·고성은 손이 아주 빨라야.
+  const decay = lerp(6, 46, Math.pow(d, 1.5));
 
+  const finish = useCallback(async (zone: "center" | "side" | "miss") => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    cancelAnimationFrame(rafRef.current);
+    setPhase("resolving");
+    const res = await resolveMining(zone);
+    setResult(res);
+    setPhase("result");
+  }, []);
+
+  // 게임 루프 — 시작(playing)했을 때만 돈다.
   useEffect(() => {
+    if (phase !== "playing") return;
     let last = performance.now();
     const frame = (now: number) => {
       let dt = (now - last) / 1000;
       last = now;
       if (dt > 0.05) dt = 0.05;
 
-      // 균열 자연 감소 + 시간 경과
       gaugeRef.current = Math.max(0, gaugeRef.current - decay * dt);
       remainRef.current = Math.max(0, remainRef.current - dt);
 
@@ -56,38 +67,39 @@ export default function MiningGame({
     };
     rafRef.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [decay]);
+  }, [phase, decay, finish]);
 
-  async function finish(zone: "center" | "side" | "miss") {
+  const startGame = useCallback(() => {
+    setPhase((p) => {
+      if (p !== "ready") return p;
+      gaugeRef.current = 0;
+      remainRef.current = TIME_LIMIT;
+      return "playing";
+    });
+  }, []);
+
+  const strikeNow = useCallback(() => {
     if (busyRef.current) return;
-    busyRef.current = true;
-    cancelAnimationFrame(rafRef.current);
-    setPhase("resolving");
-    const res = await resolveMining(zone);
-    setResult(res);
-    setPhase("result");
-  }
-
-  function strikeNow() {
-    if (busyRef.current || phase !== "playing") return;
     gaugeRef.current = Math.min(100, gaugeRef.current + TAP_GAIN);
     setTaps((n) => n + 1);
     if (crackRef.current) crackRef.current.style.width = `${gaugeRef.current}%`;
     if (gaugeRef.current >= 100) void finish("center");
-  }
+  }, [finish]);
 
-  // 스페이스바로도 연타
+  // 스페이스바 — ready에서 누르면 시작, playing에서 누르면 연타.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        e.preventDefault();
-        strikeNow();
-      }
+      if (e.code !== "Space") return;
+      e.preventDefault();
+      if (phase === "ready") startGame();
+      else if (phase === "playing") strikeNow();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [phase, startGame, strikeNow]);
+
+  const ready = phase === "ready";
+  const playing = phase === "playing";
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6" role="presentation">
@@ -106,7 +118,11 @@ export default function MiningGame({
         {phase !== "result" ? (
           <div className="px-5 py-6">
             <p className="mb-3 text-center text-xs text-amber-200/80">
-              시간이 끝나기 전에 <b className="text-amber-300">빠르게 연타</b>해 균열을 채워라! · 곡괭이질 {taps}회
+              {ready ? (
+                <>준비됐으면 <b className="text-emerald-300">시작</b>을 눌러요. 누를 때까진 멈춰 있어요!</>
+              ) : (
+                <>시간이 끝나기 전에 <b className="text-amber-300">빠르게 연타</b>해 균열을 채워라! · 곡괭이질 {taps}회</>
+              )}
             </p>
 
             {/* 남은 시간 */}
@@ -130,7 +146,6 @@ export default function MiningGame({
                 <span className="text-amber-300/60">50%↑ 부분 · 100% 파괴</span>
               </div>
               <div className="relative h-4 overflow-hidden rounded-full bg-stone-800">
-                {/* 부분 성공선(50%) */}
                 <div className="absolute inset-y-0 left-1/2 w-px bg-amber-200/50" />
                 <div
                   ref={crackRef}
@@ -142,15 +157,24 @@ export default function MiningGame({
 
             <button
               type="button"
-              onClick={strikeNow}
+              onClick={ready ? startGame : strikeNow}
               onPointerDown={(e) => {
                 e.preventDefault();
-                strikeNow();
+                if (ready) startGame();
+                else if (playing) strikeNow();
               }}
               disabled={phase === "resolving"}
-              className="w-full touch-none select-none rounded-2xl border border-stone-600 bg-stone-700 py-6 text-lg font-black text-white transition active:scale-[0.98] active:bg-amber-600 disabled:opacity-50"
+              className={`w-full touch-none select-none rounded-2xl border py-6 text-lg font-black text-white transition active:scale-[0.98] disabled:opacity-50 ${
+                ready
+                  ? "border-emerald-500 bg-emerald-600/80 active:bg-emerald-500"
+                  : "border-stone-600 bg-stone-700 active:bg-amber-600"
+              }`}
             >
-              {phase === "resolving" ? "처리 중…" : "⛏️ 곡괭이질! (연타 / 스페이스)"}
+              {phase === "resolving"
+                ? "처리 중…"
+                : ready
+                  ? "▶ 시작! (또는 스페이스)"
+                  : "⛏️ 곡괭이질! (연타 / 스페이스)"}
             </button>
           </div>
         ) : (
