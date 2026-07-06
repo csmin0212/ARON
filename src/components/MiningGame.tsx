@@ -5,64 +5,63 @@ import { resolveMining, type MineResolve } from "@/app/actions/mining";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-const STRIKES = 3; // 광맥을 깨뜨리는 데 필요한 곡괭이질 횟수
-// 타격 1회당 점수: 정타 2 · 약타 1 · 빗나감 0 (최대 6)
-// 합산 점수 → 즉시(center) / 2분(side) / 5분(miss)
-const INSTANT_SCORE = 5; // 정타 2 + 정타 2 + 약타 1 이상
-const PARTIAL_SCORE = 2;
-
-type Hit = "정타" | "약타" | "빗나감";
+// 연타(곡괭이질) — 제한 시간 안에 빠르게 두드려 균열 게이지를 채운다.
+// 100% 도달 → 즉시 파괴(center). 시간 종료 시 50%+ → 부분(side), 미만 → 실패(miss).
+const TIME_LIMIT = 4.5; // 초
+const TAP_GAIN = 7; // 1타당 균열 +7%
+const PARTIAL_PCT = 50; // 이 이상이면 부분 성공
 
 export default function MiningGame({
   rarity,
   difficulty,
-  drainSlow = 0,
   onDone,
 }: {
   rarity: string;
   difficulty: number;
-  drainSlow?: number; // '솜씨 발휘' — 마커 이동 속도를 N% 늦춤 (0~50)
+  drainSlow?: number; // (채광은 감속 특성 없음 — 호환용, 미사용)
   onDone: () => void;
 }) {
   const [phase, setPhase] = useState<"playing" | "resolving" | "result">("playing");
   const [result, setResult] = useState<MineResolve | null>(null);
-  const [strike, setStrike] = useState(0);
-  const [score, setScore] = useState(0);
-  const [hits, setHits] = useState<Hit[]>([]);
-  const markerRef = useRef<HTMLDivElement>(null);
-  const posRef = useRef(0);
+  const [taps, setTaps] = useState(0);
+
+  const crackRef = useRef<HTMLDivElement>(null);
+  const timeRef = useRef<HTMLDivElement>(null);
+  const gaugeRef = useRef(0);
+  const remainRef = useRef(TIME_LIMIT);
   const busyRef = useRef(false);
   const rafRef = useRef(0);
 
   const d = Math.max(0, Math.min(1, difficulty));
-  const centerHalf = lerp(0.08, 0.025, d);
-  const sideHalf = lerp(0.26, 0.11, d);
+  // 난이도 ↑ → 균열이 더 빨리 식는다(초당 감소율). 저난이도는 여유, 고난이도는 손이 빨라야.
+  const decay = lerp(6, 24, d);
 
   useEffect(() => {
-    const slow = Math.max(0, Math.min(50, drainSlow));
-    const speed = lerp(0.6, 1.9, d) * (1 - slow / 100); // 초당 왕복 비율
-    let pos = 0;
-    let dir = 1;
     let last = performance.now();
     const frame = (now: number) => {
       let dt = (now - last) / 1000;
       last = now;
       if (dt > 0.05) dt = 0.05;
-      pos += dir * speed * dt;
-      if (pos >= 1) { pos = 1; dir = -1; }
-      if (pos <= 0) { pos = 0; dir = 1; }
-      posRef.current = pos;
-      if (markerRef.current) markerRef.current.style.left = `${pos * 100}%`;
+
+      // 균열 자연 감소 + 시간 경과
+      gaugeRef.current = Math.max(0, gaugeRef.current - decay * dt);
+      remainRef.current = Math.max(0, remainRef.current - dt);
+
+      if (crackRef.current) crackRef.current.style.width = `${Math.min(100, gaugeRef.current)}%`;
+      if (timeRef.current) timeRef.current.style.width = `${(remainRef.current / TIME_LIMIT) * 100}%`;
+
+      if (gaugeRef.current >= 100) return void finish("center");
+      if (remainRef.current <= 0) return void finish(gaugeRef.current >= PARTIAL_PCT ? "side" : "miss");
       rafRef.current = requestAnimationFrame(frame);
     };
     rafRef.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [d, drainSlow]);
+  }, [decay]);
 
-  async function finish(total: number) {
+  async function finish(zone: "center" | "side" | "miss") {
+    if (busyRef.current) return;
     busyRef.current = true;
     cancelAnimationFrame(rafRef.current);
-    const zone = total >= INSTANT_SCORE ? "center" : total >= PARTIAL_SCORE ? "side" : "miss";
     setPhase("resolving");
     const res = await resolveMining(zone);
     setResult(res);
@@ -71,20 +70,24 @@ export default function MiningGame({
 
   function strikeNow() {
     if (busyRef.current || phase !== "playing") return;
-    const dist = Math.abs(posRef.current - 0.5);
-    const hit: Hit = dist <= centerHalf ? "정타" : dist <= sideHalf ? "약타" : "빗나감";
-    const gain = hit === "정타" ? 2 : hit === "약타" ? 1 : 0;
-    const nextScore = score + gain;
-    const nextStrike = strike + 1;
-    setScore(nextScore);
-    setStrike(nextStrike);
-    setHits((prev) => [...prev, hit]);
-    if (nextStrike >= STRIKES) void finish(nextScore);
+    gaugeRef.current = Math.min(100, gaugeRef.current + TAP_GAIN);
+    setTaps((n) => n + 1);
+    if (crackRef.current) crackRef.current.style.width = `${gaugeRef.current}%`;
+    if (gaugeRef.current >= 100) void finish("center");
   }
 
-  const centerW = centerHalf * 2 * 100;
-  const sideW = sideHalf * 2 * 100;
-  const crackPct = Math.min(100, Math.round((score / (STRIKES * 2)) * 100));
+  // 스페이스바로도 연타
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        strikeNow();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6" role="presentation">
@@ -103,70 +106,51 @@ export default function MiningGame({
         {phase !== "result" ? (
           <div className="px-5 py-6">
             <p className="mb-3 text-center text-xs text-amber-200/80">
-              곡괭이질 <b className="text-amber-300">{Math.min(strike + 1, STRIKES)}/{STRIKES}</b> ·{" "}
-              <b className="text-rose-300">정중앙</b>=정타 · <b className="text-amber-300">주황</b>=약타
+              시간이 끝나기 전에 <b className="text-amber-300">빠르게 연타</b>해 균열을 채워라! · 곡괭이질 {taps}회
             </p>
 
-            {/* 균열 게이지 */}
-            <div className="mb-3">
+            {/* 남은 시간 */}
+            <div className="mb-2">
               <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-amber-200/70">
-                <span>균열</span>
-                <span>{crackPct}%</span>
+                <span>남은 시간</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-stone-800">
+              <div className="h-1.5 overflow-hidden rounded-full bg-stone-800">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all"
-                  style={{ width: `${crackPct}%` }}
+                  ref={timeRef}
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-500"
+                  style={{ width: "100%" }}
                 />
               </div>
             </div>
 
-            <div className="relative mx-auto h-12 w-full overflow-hidden rounded-2xl border border-stone-700 bg-stone-900">
-              {/* 약타(주황) 존 */}
-              <div
-                className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-amber-500/25"
-                style={{ width: `${sideW}%` }}
-              />
-              {/* 정타(빨강) 존 */}
-              <div
-                className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-rose-500/45"
-                style={{ width: `${centerW}%` }}
-              />
-              {/* 마커 */}
-              <div
-                ref={markerRef}
-                className="absolute inset-y-0 w-1 -translate-x-1/2 bg-amber-200 shadow-[0_0_8px_rgba(253,230,138,0.9)]"
-                style={{ left: "0%" }}
-              />
-            </div>
-
-            {/* 타격 기록 */}
-            <div className="mt-3 flex justify-center gap-1.5">
-              {Array.from({ length: STRIKES }).map((_, i) => {
-                const h = hits[i];
-                const tone =
-                  h === "정타"
-                    ? "bg-rose-500/80 text-white"
-                    : h === "약타"
-                      ? "bg-amber-500/80 text-stone-900"
-                      : h === "빗나감"
-                        ? "bg-stone-700 text-stone-400"
-                        : "bg-stone-800 text-stone-600";
-                return (
-                  <span key={i} className={`rounded-md px-2 py-0.5 text-[11px] font-black ${tone}`}>
-                    {h ?? "·"}
-                  </span>
-                );
-              })}
+            {/* 균열 게이지 */}
+            <div className="mb-4">
+              <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-amber-200/70">
+                <span>균열</span>
+                <span className="text-amber-300/60">50%↑ 부분 · 100% 파괴</span>
+              </div>
+              <div className="relative h-4 overflow-hidden rounded-full bg-stone-800">
+                {/* 부분 성공선(50%) */}
+                <div className="absolute inset-y-0 left-1/2 w-px bg-amber-200/50" />
+                <div
+                  ref={crackRef}
+                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-rose-500"
+                  style={{ width: "0%" }}
+                />
+              </div>
             </div>
 
             <button
               type="button"
               onClick={strikeNow}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                strikeNow();
+              }}
               disabled={phase === "resolving"}
-              className="mt-5 w-full rounded-2xl border border-stone-600 bg-stone-700 py-4 text-base font-black text-white transition active:bg-stone-600 disabled:opacity-50"
+              className="w-full touch-none select-none rounded-2xl border border-stone-600 bg-stone-700 py-6 text-lg font-black text-white transition active:scale-[0.98] active:bg-amber-600 disabled:opacity-50"
             >
-              {phase === "resolving" ? "처리 중…" : "⛏️ 곡괭이질!"}
+              {phase === "resolving" ? "처리 중…" : "⛏️ 곡괭이질! (연타 / 스페이스)"}
             </button>
           </div>
         ) : (
