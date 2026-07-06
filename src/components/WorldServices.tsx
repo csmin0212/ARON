@@ -29,6 +29,7 @@ import { enterHome } from "@/app/actions/world";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
+import RecipeGacha from "@/components/RecipeGacha";
 import { detectForgeSlot } from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
@@ -1458,6 +1459,7 @@ export default function WorldServices({
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
+  const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | "reforge" | null>(null);
@@ -1552,6 +1554,19 @@ export default function WorldServices({
                 <span className="text-[11px] text-faint">
                   {cooking.facilityName} · 재료 최대 {cooking.maxIngredients}개 · 피로도 10
                 </span>
+              </span>
+            </button>
+          )}
+          {cooking.enabled && (
+            <button
+              type="button"
+              onClick={() => setGachaOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🎁</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold text-content">레시피 가챠</span>
+                <span className="text-[11px] text-faint">랜덤 레시피 획득 · 1회 50골드</span>
               </span>
             </button>
           )}
@@ -1657,6 +1672,8 @@ export default function WorldServices({
           onClose={() => setCookingOpen(false)}
         />
       )}
+
+      {gachaOpen && <RecipeGacha gold={lifeShop.gold} onClose={() => setGachaOpen(false)} />}
 
       {innOpen && <InnRest inn={inn} onClose={() => setInnOpen(false)} />}
 
