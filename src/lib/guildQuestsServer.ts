@@ -63,3 +63,15 @@ export async function fetchSkillbookPool(): Promise<
   }
   return out;
 }
+
+// 스킬북 패밀리 랜덤 추첨 — familyKey(1~4)의 N%4 패밀리에서 실제(전투스킬 연결) 스킬북 하나.
+// 스킬북1→N%4==1(1,5,9,13…), 2→2, 3→3, 4→0(유니크: 4,8,12,16…). 풀이 비면 null.
+export async function pickSkillbookInFamily(
+  familyKey: number,
+): Promise<{ itemId: string; skillName: string; num: number } | null> {
+  const mod = ((familyKey % 4) + 4) % 4; // 스킬북4 → 0
+  const pool = (await fetchSkillbookPool()).filter((b) => b.num % 4 === mod);
+  if (pool.length === 0) return null;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  return { itemId: pick.itemId, skillName: pick.skillName, num: pick.num };
+}

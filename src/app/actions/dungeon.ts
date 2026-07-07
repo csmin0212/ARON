@@ -10,6 +10,7 @@ import { dungeonWeekKey } from "@/lib/world";
 import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
+import { pickSkillbookInFamily } from "@/lib/guildQuestsServer";
 import { parseLifeState, statBuffBonus } from "@/lib/lifeSkillPerks";
 import {
   appendSheetFormula,
@@ -78,6 +79,34 @@ function parseDropList(json: string | null): DropEntry[] {
   }
 }
 
+// 아이템 하나(수량 qty)를 인벤/도감에 반영 + 스킬북이면 서버 토큰 지급 + 보상 문구 추가.
+async function giveItemById(
+  userId: string,
+  inv: SheetInventory,
+  itemId: string,
+  qty: number,
+  rewards: string[],
+  note?: string,
+): Promise<void> {
+  const catalog = await prisma.item.findFirst({
+    where: { OR: [{ id: itemId }, { name: itemId }] },
+    select: { id: true, name: true, desc: true },
+  });
+  const itemName = catalog?.name ?? itemId;
+  const found = inv.items.find((i) => i.name.trim() === itemName.trim());
+  if (found) {
+    found.qty += qty;
+    if (!found.effect && catalog?.desc) found.effect = catalog.desc;
+  } else {
+    inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty });
+  }
+  await incDbItem(userId, itemId, qty);
+  // 스킬북이면 서버 전용 토큰도 지급 — 시트 위조로는 못 얻게 (악용 방지)
+  const bookItemId = catalog?.id ?? itemId;
+  if (await isSkillBookItem(bookItemId)) await grantSkillBookToken(userId, bookItemId, qty);
+  rewards.push(`${itemName}${note ? ` ${note}` : ""} x${qty}`);
+}
+
 // 드랍 한 건을 인벤토리/도감에 반영하고, 골드 드랍이면 그 양을 반환(나중에 합산 지급).
 async function giveDrop(
   userId: string,
@@ -90,23 +119,21 @@ async function giveDrop(
     if (d.gold > 0) rewards.push(`${d.gold}G`);
     return d.gold;
   }
-  const catalog = await prisma.item.findFirst({
-    where: { OR: [{ id: d.item }, { name: d.item }] },
-    select: { id: true, name: true, desc: true },
-  });
-  const itemName = catalog?.name ?? d.item;
-  const found = inv.items.find((i) => i.name.trim() === itemName.trim());
-  if (found) {
-    found.qty += d.qty;
-    if (!found.effect && catalog?.desc) found.effect = catalog.desc;
-  } else {
-    inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty: d.qty });
+  // 스킬북 패밀리 토큰(스킬북1~4) → 같은 N%4 패밀리에서 랜덤 실제 스킬북으로 개별 추첨.
+  // 1→1·5·9·13… / 2→2·6·10… / 3→3·7·11… / 4→유니크(4·8·12…)
+  const fam = d.item.match(/^스킬북([1-4])$/);
+  if (fam) {
+    for (let i = 0; i < d.qty; i++) {
+      const picked = await pickSkillbookInFamily(Number(fam[1]));
+      if (!picked) {
+        rewards.push(`${d.item}(추첨 실패 — 해당 계열 스킬북 없음)`);
+        continue;
+      }
+      await giveItemById(userId, inv, picked.itemId, 1, rewards, `《${picked.skillName}》`);
+    }
+    return 0;
   }
-  await incDbItem(userId, d.item, d.qty);
-  // 스킬북이면 서버 전용 토큰도 지급 — 시트 위조로는 못 얻게 (악용 방지)
-  const bookItemId = catalog?.id ?? d.item;
-  if (await isSkillBookItem(bookItemId)) await grantSkillBookToken(userId, bookItemId, d.qty);
-  rewards.push(`${itemName} x${d.qty}`);
+  await giveItemById(userId, inv, d.item, d.qty, rewards);
   return 0;
 }
 
