@@ -182,7 +182,17 @@ export async function syncSheetInventory(): Promise<void> {
 export async function unlinkSheet(): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
-  await prisma.characterSheet.deleteMany({ where: { userId: user.id } });
+  await prisma.$transaction([
+    prisma.characterSheet.deleteMany({ where: { userId: user.id } }),
+    // 시트 미러 인벤(meta=null)·경매 등록·미수령 경매 반송 우편을 함께 정리 —
+    // 연동 해제 후 유령 아이템/더미데이터로 남아 경매장이 막히던 문제 방지.
+    // (스킬북 토큰 meta='skillbook'은 보존, 재연동 시 인벤은 시트에서 다시 채워짐)
+    prisma.inventoryEntry.deleteMany({ where: { userId: user.id, meta: null } }),
+    prisma.auctionListing.deleteMany({ where: { sellerId: user.id, status: "active" } }),
+    prisma.mail.deleteMany({
+      where: { recipientId: user.id, senderName: "경매장", claimedAt: null },
+    }),
+  ]);
   revalidatePath("/profile");
   revalidatePath("/world");
 }

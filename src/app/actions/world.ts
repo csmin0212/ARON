@@ -507,8 +507,11 @@ export async function syncWorldMap(
   try {
     const items = await fetchItemsRows();
     if (items) {
+      // 시트에 정의된 아이템 id만 교체 — 제작 장비·요리·어획물 등 런타임 생성 아이템은 보존.
+      // (전체 deleteMany 하면 제작품이 동기화 때마다 지워져 판매가 조회가 0이 되어 안 팔림)
+      const sheetIds = items.map((it) => it.id);
       await prisma.$transaction([
-        prisma.item.deleteMany(),
+        prisma.item.deleteMany({ where: { id: { in: sheetIds } } }),
         prisma.item.createMany({
           data: items.map((it, i) => ({ ...it, order: i })),
         }),

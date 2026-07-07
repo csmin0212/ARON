@@ -179,7 +179,7 @@ export function expForNext(level: number): number {
   return Math.round(20 * Math.pow(level, 1.6));
 }
 
-// 특성은 3레벨마다 선택
+// 특성은 Lv4부터 3레벨마다 선택 (4·7·10·13…)
 export const PERK_EVERY = 3;
 
 // ── 등급 등장 구간표 (레벨 구간별 기본 가중치 [0성..5성]) ──
@@ -413,7 +413,8 @@ export function applyExp(
     prog.exp -= expForNext(prog.level);
     prog.level += 1;
     leveled.push(prog.level);
-    if (prog.level % PERK_EVERY === 0) {
+    // 특성은 Lv4부터 3레벨마다(4·7·10·13·16·19…). (레벨-1)%3==0, 시작 레벨1은 제외.
+    if ((prog.level - 1) % PERK_EVERY === 0) {
       state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind, catalog) });
     }
   }

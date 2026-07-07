@@ -414,7 +414,7 @@ export default function LifeSkillPanel({
         </div>
         {kindPerks.length === 0 ? (
           <p className="py-4 text-center text-sm text-faint">
-            {perkKind} 특성이 아직 없어요. 특성은 {PERK_EVERY}레벨마다 선택할 수 있어요!
+            {perkKind} 특성이 아직 없어요. 특성은 Lv4부터 {PERK_EVERY}레벨마다 선택할 수 있어요!
           </p>
         ) : (
           <ul className="space-y-2">

@@ -98,7 +98,11 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
         <div className="mb-3 grid grid-cols-4 gap-1 rounded-2xl bg-subtle p-1">
           {tabs.map((tab) => {
             const isActive = active.key === tab.key;
-            const label = tab.key === "기본" ? "기본" : tab.key.replace(/꾼? ?가방$/, "");
+            // 구매 가방의 "N칸" 접미사와 "꾼 가방"을 떼어 짧게 (낚시꾼 가방 20칸 → 낚시, 광부 가방 30칸 → 광부)
+            const label =
+              tab.key === "기본"
+                ? "기본"
+                : tab.key.replace(/\s*\d+\s*칸$/, "").replace(/꾼?\s*가방$/, "").trim() || "가방";
             return (
               <button
                 key={tab.key}
