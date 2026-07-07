@@ -15,11 +15,13 @@ import DungeonPanel, { type DungeonAbility, type DungeonView } from "@/component
 import BagInventory from "@/components/BagInventory";
 import GatheringStatus from "@/components/GatheringStatus";
 import MiningStatus from "@/components/MiningStatus";
+import FishingStatus from "@/components/FishingStatus";
 import LocationPresence from "@/components/LocationPresence";
 import RiftView from "@/components/RiftView";
 import SheetSync from "@/components/SheetSync";
 import { type AdminRift } from "@/components/WorldAdmin";
 import type { PendingGatherView } from "@/app/actions/gathering";
+import type { PendingFishView } from "@/app/actions/fishing";
 import type { PendingMineView } from "@/app/actions/mining";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
@@ -631,6 +633,21 @@ export default async function WorldPage() {
       gatherPending = null;
     }
   }
+  let fishPending: PendingFishView | null = null;
+  if (sheet.pendingCatchJson) {
+    try {
+      const p = JSON.parse(sheet.pendingCatchJson) as {
+        status?: string;
+        rarity?: string;
+        readyAt?: number;
+      };
+      if (p.status === "searching" && typeof p.readyAt === "number") {
+        fishPending = { status: "searching", rarity: p.rarity ?? "", readyAt: p.readyAt };
+      }
+    } catch {
+      fishPending = null;
+    }
+  }
   let minePending: PendingMineView | null = null;
   if (sheet.pendingMineJson) {
     try {
@@ -906,6 +923,8 @@ export default async function WorldPage() {
           <RiftView />
 
           <DungeonPanel dungeons={dungeonView} runsLeft={dungeonRunsLeft} abilities={dungeonAbilities} />
+
+          <FishingStatus pending={fishPending} />
 
           <GatheringStatus pending={gatherPending} />
 

@@ -235,7 +235,9 @@ export default function FishingGame({
               <>
                 <div className="mb-2 text-5xl">💨</div>
                 <p className="text-lg font-black text-sky-200">놓쳤다…</p>
-                <p className="mt-1 text-xs text-sky-200/70">미끼만 물고 달아났다. (피로도 절반은 돌려받았어요)</p>
+                <p className="mt-1 text-xs text-sky-200/70">
+                  하지만 2분 뒤 다시 물어요! 창을 닫고 <b className="text-sky-100">낚아올리기</b>를 기다리세요.
+                </p>
               </>
             )}
             <button

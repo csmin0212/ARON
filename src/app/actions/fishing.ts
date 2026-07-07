@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
-import { FATIGUE_MAX } from "@/lib/world";
 import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
@@ -39,8 +38,14 @@ export type FishingStart =
 
 export type FishingResolve =
   | { ok: true; landed: true; name: string; rarity: string; sell: number; size: number; exp: number }
-  | { ok: true; landed: false }
+  | { ok: true; landed: false; readyAt: number } // 놓쳤지만 2분 뒤 수확 가능
   | { error: string };
+export type FishingCollect =
+  | { ok: true; name: string; rarity: string; sell: number; size: number; exp: number }
+  | { error: string };
+
+// 놓친 물고기를 다시 낚을 수 있게 되기까지 대기 (채집·채광 사이드존과 동일)
+const MISS_WAIT_MS = 2 * 60_000;
 
 type PendingCatch = {
   no: number;
@@ -53,8 +58,13 @@ type PendingCatch = {
   exp: number;
   size: number;
   difficulty: number;
-  apCost: number; // 시작 시 소모한 피로도 (실패 시 절반 환급용)
+  apCost: number;
+  status?: "searching"; // 놓쳐서 재낚시 대기 중
+  readyAt?: number; // 대기 완료 시각
 };
+
+// 월드 페이지 표시용 — 놓쳐서 다시 물 때까지 대기 중인 상태
+export type PendingFishView = { status: "searching"; rarity: string; readyAt: number };
 
 // 등급별 기본 난이도(0~100). 4·5성은 흉악 — 고레벨이라야 잡을 만해진다.
 const RANK_DIFFICULTY = [10, 30, 45, 60, 100, 120];
@@ -85,12 +95,85 @@ async function ensureItem(p: PendingCatch): Promise<void> {
   });
 }
 
+function parsePendingCatch(value: string | null): PendingCatch | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as PendingCatch;
+  } catch {
+    return null;
+  }
+}
+
+// 물고기 실지급 — 가방/숙련도/도감 반영 + 시스템 메시지. 즉시 성공·2분 뒤 수확 공용.
+type FishSheet = { userId: string; lifeJson: string | null; achStatsJson: string | null; locationId: string | null };
+type FishGrantResult =
+  | { ok: true; landed: true; name: string; rarity: string; sell: number; size: number; exp: number }
+  | { error: string };
+async function grantFish(
+  nickname: string,
+  sheet: FishSheet,
+  pending: PendingCatch,
+  verb: string,
+): Promise<FishGrantResult> {
+  const life = parseLifeState(sheet.lifeJson);
+  const mods = computeMods(life, FISH);
+  const bag = life.bags[FISH];
+  const bagMax = lifeBagLimit(life, FISH);
+  if (lifeBagWeight(bag) + pending.weight > bagMax) {
+    await prisma.characterSheet.update({ where: { userId: sheet.userId }, data: { pendingCatchJson: null } });
+    return { error: `${bag.name}이 가득 차서 놓쳐버렸어요.` };
+  }
+
+  const expGained = Math.max(1, Math.round(lifeSkillExpGain(FISH, pending.exp) * mods.expMult));
+  const leveled = applyExp(life, FISH, expGained, await fetchLifeSkillCatalog());
+  const firstCatch = recordCollection(life, FISH, pending.name);
+  const caughtCount = recordLifeCatch(life, FISH, pending.name);
+  addLifeBagItem(life, FISH, { name: pending.name, weight: pending.weight, rank: pending.rank, text: pending.text });
+
+  await ensureItem(pending);
+  const locationId = sheet.locationId;
+  let achStats = bumpStat(sheet.achStatsJson, "낚시성공횟수");
+  if (locationId) achStats = markStat(achStats, `낚시지역:${locationId}`);
+
+  await prisma.characterSheet.update({
+    where: { userId: sheet.userId },
+    data: { lifeJson: JSON.stringify(life), pendingCatchJson: null, achStatsJson: achStats },
+  });
+  void checkAndGrant(sheet.userId);
+
+  const sell = lifeSkillMarketPrice(FISH, { rank: pending.rank, price: pending.price } as never);
+  if (locationId) {
+    await postSystem(
+      locationId,
+      `🎣 ${nickname}님 — ${verb} ✨ [${pending.rarity}] ${pending.name} x1 (크기 ${pending.size}, 판매가 ${sell}G) +숙련도 ${expGained}${
+        firstCatch ? " 📖 도감 신규 등록!" : ` 누적 ${caughtCount}회`
+      }`,
+    );
+    for (const lv of leveled) {
+      await postSystem(
+        locationId,
+        `🆙 ${nickname}님의 낚시 레벨이 ${lv}이 되었다! 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요.`,
+      );
+    }
+  }
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: true, landed: true, name: pending.name, rarity: pending.rarity, sell, size: pending.size, exp: expGained };
+}
+
 // 1단계: 낚기 시작 — AP 차감 + 어종 추첨(서버 보관). 무엇을 걸었는지는 숨김(희귀도만 노출).
 export async function startFishing(): Promise<FishingStart> {
   const user = await getCurrentUser();
   if (!user) return { error: "로그인이 필요해요." };
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.locationId) return { error: "월드에 입장한 상태여야 해요." };
+
+  // 놓쳐서 재낚시 대기 중이면 먼저 수확해야 함
+  const prev = parsePendingCatch(sheet.pendingCatchJson);
+  if (prev?.status === "searching") {
+    return { error: "놓친 물고기가 다시 물기를 기다리는 중이에요. 먼저 수확해주세요." };
+  }
 
   const [rawActions, here] = await Promise.all([
     prisma.locationAction.findMany({ where: { locationId: sheet.locationId }, orderBy: { order: "asc" } }),
@@ -161,33 +244,27 @@ export async function startFishing(): Promise<FishingStart> {
   return { ok: true, rarity: item.rarity, rank: item.rank, difficulty, barBonus, drainSlow: mods.gaugeSlow };
 }
 
-// 2단계: 결과 — 성공 시 지급, 실패 시 빈손. 어느 쪽이든 진행 상태 정리.
+// 2단계: 결과 — 성공 시 즉시 지급, 실패 시 놓친 물고기가 2분 뒤 다시 물게 대기 상태로.
 export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   const user = await getCurrentUser();
   if (!user) return { error: "로그인이 필요해요." };
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.pendingCatchJson) return { error: "진행 중인 낚시가 없어요." };
 
-  let pending: PendingCatch;
-  try {
-    pending = JSON.parse(sheet.pendingCatchJson) as PendingCatch;
-  } catch {
-    await prisma.characterSheet.update({ where: { userId: user.id }, data: { pendingCatchJson: null } });
-    return { error: "낚시 정보를 읽지 못했어요." };
+  const pending = parsePendingCatch(sheet.pendingCatchJson);
+  if (!pending || pending.status === "searching") {
+    return { error: "진행 중인 낚시가 없어요." };
   }
   const locationId = sheet.locationId;
 
   if (!landed) {
-    // 실패 — 소모했던 피로도의 절반을 돌려준다.
-    const refund = Math.floor((pending.apCost ?? 0) / 2);
-    const fresh = freshAp(sheet.ap, sheet.apResetAt);
-    const newAp = Math.min(FATIGUE_MAX, fresh.ap + refund);
+    // 놓침 — 채집·채광처럼 2분 뒤 다시 물어서 낚을 수 있게 대기 상태로 둔다. (피로도는 이미 소모)
+    const readyAt = Date.now() + MISS_WAIT_MS;
+    const next: PendingCatch = { ...pending, status: "searching", readyAt };
     await prisma.characterSheet.update({
       where: { userId: user.id },
       data: {
-        pendingCatchJson: null,
-        ap: newAp,
-        apResetAt: fresh.apResetAt,
+        pendingCatchJson: JSON.stringify(next),
         achStatsJson: bumpStat(sheet.achStatsJson, "낚시실패횟수"),
       },
     });
@@ -195,68 +272,29 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
     if (locationId) {
       await postSystem(
         locationId,
-        `🎣 ${user.nickname}님 — 놓쳤다! 미끼만 물고 달아났다…${refund > 0 ? ` (피로도 ${refund} 환급)` : ""}`,
+        `🎣 ${user.nickname}님 — 놓쳤다! 하지만 2분 뒤 다시 물면 낚을 수 있어요.`,
       );
     }
     revalidatePath("/world");
     revalidatePath("/profile");
-    return { ok: true, landed: false };
+    return { ok: true, landed: false, readyAt };
   }
 
-  const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, FISH);
-  const bag = life.bags[FISH];
-  const bagMax = lifeBagLimit(life, FISH);
-  if (lifeBagWeight(bag) + pending.weight > bagMax) {
-    await prisma.characterSheet.update({ where: { userId: user.id }, data: { pendingCatchJson: null } });
-    return { error: `${bag.name}이 가득 차서 놓쳐버렸어요.` };
+  return await grantFish(user.nickname, sheet, pending, "잡았다!");
+}
+
+// 3단계: 놓친 물고기 재낚시 — 2분 지나면 수확
+export async function collectFishing(): Promise<FishingCollect> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요해요." };
+  const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
+  const pending = parsePendingCatch(sheet?.pendingCatchJson ?? null);
+  if (!sheet || !pending || pending.status !== "searching" || pending.readyAt == null) {
+    return { error: "다시 낚을 물고기가 없어요." };
   }
+  if (Date.now() < pending.readyAt) return { error: "아직 물지 않았어요." };
 
-  const expGained = Math.max(1, Math.round(lifeSkillExpGain(FISH, pending.exp) * mods.expMult));
-  const leveled = applyExp(life, FISH, expGained, await fetchLifeSkillCatalog());
-  const firstCatch = recordCollection(life, FISH, pending.name);
-  const caughtCount = recordLifeCatch(life, FISH, pending.name);
-  addLifeBagItem(life, FISH, { name: pending.name, weight: pending.weight, rank: pending.rank, text: pending.text });
-
-  await ensureItem(pending);
-  let achStats = bumpStat(sheet.achStatsJson, "낚시성공횟수");
-  if (locationId) achStats = markStat(achStats, `낚시지역:${locationId}`);
-
-  await prisma.characterSheet.update({
-    where: { userId: user.id },
-    data: {
-      lifeJson: JSON.stringify(life),
-      pendingCatchJson: null,
-      achStatsJson: achStats,
-    },
-  });
-  void checkAndGrant(user.id);
-
-  const sell = lifeSkillMarketPrice(FISH, { rank: pending.rank, price: pending.price } as never);
-  if (locationId) {
-    await postSystem(
-      locationId,
-      `🎣 ${user.nickname}님 — 잡았다! ✨ [${pending.rarity}] ${pending.name} x1 (크기 ${pending.size}, 판매가 ${sell}G) +숙련도 ${expGained}${
-        firstCatch ? " 📖 도감 신규 등록!" : ` 누적 ${caughtCount}회`
-      }`,
-    );
-    for (const lv of leveled) {
-      await postSystem(
-        locationId,
-        `🆙 ${user.nickname}님의 낚시 레벨이 ${lv}이 되었다! 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요.`,
-      );
-    }
-  }
-
-  revalidatePath("/world");
-  revalidatePath("/profile");
-  return {
-    ok: true,
-    landed: true,
-    name: pending.name,
-    rarity: pending.rarity,
-    sell,
-    size: pending.size,
-    exp: expGained,
-  };
+  const res = await grantFish(user.nickname, sheet, pending, "다시 낚았다!");
+  if ("error" in res) return { error: res.error };
+  return { ok: true, name: res.name, rarity: res.rarity, sell: res.sell, size: res.size, exp: res.exp };
 }
