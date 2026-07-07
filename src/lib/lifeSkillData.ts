@@ -289,10 +289,11 @@ function clampPrice(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-// 종류별 판매가 배율 — 채집을 살짝 낮추고 낚시를 올려 수급량을 맞춘다.
-const PLANT_SELL_MULT = 0.85;
-const FISH_SELL_MULT = 1.24;
-const MINERAL_SELL_MULT = 1.0; // 광물은 시트 판매가를 그대로 (제련 전 원석가)
+// 종류별 판매가 배율 — 초반(Lv1~30) 세 채널을 피로도 300당 ~200골드로 맞춘 값.
+// 낚시·채집은 AP10(30회), 채광은 AP15(20회)라 채광 배율을 높여 AP 핸디캡을 상쇄한다.
+const PLANT_SELL_MULT = 0.85; // 채집 ~218
+const FISH_SELL_MULT = 0.9; // 낚시 ~202 (기존 1.24에서 하향)
+const MINERAL_SELL_MULT = 1.25; // 채광 ~205 (AP15 보정 위해 1.0에서 상향)
 
 export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): number {
   if (kind === "낚시") return Math.round(item.price * FISH_SELL_MULT);
