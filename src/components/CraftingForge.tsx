@@ -90,6 +90,7 @@ export default function CraftingForge({
   smithLevel,
   ap,
   tags = {},
+  tagSlots = {},
   onClose,
 }: {
   minerals: CraftMineralView[];
@@ -98,6 +99,7 @@ export default function CraftingForge({
   smithLevel: number;
   ap: number;
   tags?: Record<string, string>; // [태그] 룰 사전 — 클릭 시 설명
+  tagSlots?: Record<string, string>; // 태그명 → 무기/방어구/공용 슬롯
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -124,8 +126,14 @@ export default function CraftingForge({
       .map(([name, qty]) => ({ item: defs.get(name)!.def, qty }));
     const minors = minorSel.filter((name) => defs.has(name)).map((name) => defs.get(name)!.def);
     if (majors.length === 0) return null;
-    return computeCraft({ category, majors, minors, maxMinors });
-  }, [category, majorQty, minorSel, defs, maxMinors]);
+    return computeCraft({
+      category,
+      majors,
+      minors,
+      maxMinors,
+      tagSlotOf: (t) => tagSlots[t] ?? "공용",
+    });
+  }, [category, majorQty, minorSel, defs, maxMinors, tagSlots]);
 
   const fee =
     preview && !("error" in preview)

@@ -904,7 +904,15 @@ export async function fetchLifeItemsRows(): Promise<LifeItemRow[] | null> {
 }
 
 // ── 제작특성 탭 ──  태그 | 설명  — 장비 [태그]의 룰 사전 (UI 클릭 조회용)
-export type CraftTagRow = { name: string; desc: string };
+export type CraftTagRow = { name: string; desc: string; slot: string; stackable: boolean };
+
+// 슬롯 정규화 — 무기/방어구 아니면 공용
+function normSlot(v: string): string {
+  const s = v.replace(/\s+/g, "");
+  if (/^(무기|weapon|w)$/i.test(s)) return "무기";
+  if (/^(방어구|방어|armor|a)$/i.test(s)) return "방어구";
+  return "공용";
+}
 
 export function parseCraftTagsGrid(g: string[][]): CraftTagRow[] {
   const h = findHeader(g, ["태그", "설명"], {
@@ -914,6 +922,13 @@ export function parseCraftTagsGrid(g: string[][]): CraftTagRow[] {
     설명: "desc",
     룰: "desc",
     효과: "desc",
+    슬롯: "slot",
+    분류: "slot",
+    장비: "slot",
+    "무기/방어구": "slot",
+    중복: "stackable",
+    중복가능: "stackable",
+    "중복 가능": "stackable",
   });
   if (!h) throw new Error("제작특성 탭 헤더(태그/설명)를 찾지 못했어요.");
   const rows: CraftTagRow[] = [];
@@ -923,7 +938,13 @@ export function parseCraftTagsGrid(g: string[][]): CraftTagRow[] {
     const desc = at(g, r, h.col.desc);
     if (!name || !desc || seen.has(name)) continue;
     seen.add(name);
-    rows.push({ name, desc });
+    const stackRaw = at(g, r, h.col.stackable);
+    rows.push({
+      name,
+      desc,
+      slot: normSlot(at(g, r, h.col.slot)),
+      stackable: /^(y|yes|true|1|가능|중복|o)$/i.test(stackRaw.replace(/\s+/g, "")),
+    });
   }
   return rows;
 }

@@ -379,6 +379,8 @@ model LifeSkillItem {
 model CraftTag {
   name      String   @id // 태그명 (대괄호 없이) 예: 화속성
   desc      String // 룰 설명
+  slot      String   @default("공용") // 무기 | 방어구 | 공용 — 이 슬롯에 넣어야 태그가 붙음
+  stackable Boolean  @default(false) // 같은 태그 중복 허용 여부 (false = 하나만)
   order     Int      @default(0)
   updatedAt DateTime @updatedAt
 }

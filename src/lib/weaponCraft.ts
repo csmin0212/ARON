@@ -268,6 +268,8 @@ export type CraftInput = {
   majors: { item: LifeSkillItem; qty: number }[];
   minors: LifeSkillItem[];
   maxMinors?: number; // 대장 레벨에 따른 마이너 슬롯 (기본 MAX_MINORS)
+  // 태그 슬롯 규칙 — 태그명 → "무기"|"방어구"|"공용". 슬롯이 안 맞으면 그 태그는 안 붙는다.
+  tagSlotOf?: (tag: string) => string;
 };
 
 export type CraftPreview = {
@@ -385,7 +387,13 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     input.minors.reduce((s, m) => s + (m.weight || 1), 0);
   const weight = Math.max(1, Math.round(oreWeight / 3));
 
-  const tagList = [...tags];
+  // 슬롯 게이팅 — 이 장비 종류(무기/방어구)에 안 맞는 태그는 제거.
+  // (예: 화속성 내성=방어구 전용이라 무기엔 안 붙음, 맹독=무기 전용이라 방어구엔 안 붙음)
+  const tagSlotOf = input.tagSlotOf;
+  const tagList = [...tags].filter((t) => {
+    const slot = tagSlotOf?.(t) ?? "공용";
+    return slot === "공용" || slot === category.group;
+  });
   // 부재료 효과(태그·부가효과)를 스탯 바로 다음 줄에 — 목록 미리보기(2줄)에서도 보이게.
   const effectText = [
     statLine(stats, category.group),

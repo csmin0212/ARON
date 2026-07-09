@@ -523,6 +523,7 @@ export default async function WorldPage() {
   // [태그] 룰 사전 — 제작특성 탭 동기화본
   const craftTagRows = await prisma.craftTag.findMany({ orderBy: { order: "asc" } });
   const craftTags = Object.fromEntries(craftTagRows.map((tag) => [tag.name, tag.desc]));
+  const craftTagSlots = Object.fromEntries(craftTagRows.map((tag) => [tag.name, tag.slot]));
   const canMarket = hasServiceKeyword(here, locActions, [
     "상점",
     "시장",
@@ -951,6 +952,7 @@ export default async function WorldPage() {
             craftSmithLevel={life.smithing.level}
             craftAp={ap}
             craftTags={craftTags}
+            craftTagSlots={craftTagSlots}
           />
 
           <BagInventory

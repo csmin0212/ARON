@@ -184,7 +184,16 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
 
   // 대장 레벨 → 마이너 슬롯 확장, 제작 피로도 검사
   const life = parseLifeState(sheet.lifeJson);
-  const preview = computeCraft({ category, majors, minors, maxMinors: minorSlotsFor(life.smithing.level) });
+  // 태그 슬롯 규칙 — 무기/방어구 슬롯에 안 맞는 태그는 안 붙게 (제작특성 탭)
+  const tagRows = await prisma.craftTag.findMany({ select: { name: true, slot: true } });
+  const tagSlot = new Map(tagRows.map((t) => [t.name, t.slot]));
+  const preview = computeCraft({
+    category,
+    majors,
+    minors,
+    maxMinors: minorSlotsFor(life.smithing.level),
+    tagSlotOf: (t) => tagSlot.get(t) ?? "공용",
+  });
   if ("error" in preview) return { error: preview.error };
 
   const apCost = craftApCost(preview.level);

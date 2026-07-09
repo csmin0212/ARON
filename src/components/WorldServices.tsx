@@ -54,6 +54,7 @@ type Props = {
   craftSmithLevel: number;
   craftAp: number;
   craftTags: Record<string, string>;
+  craftTagSlots: Record<string, string>;
 };
 
 export type InnView = {
@@ -1453,6 +1454,7 @@ export default function WorldServices({
   craftSmithLevel,
   craftAp,
   craftTags,
+  craftTagSlots,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
@@ -1660,6 +1662,7 @@ export default function WorldServices({
           smithLevel={craftSmithLevel}
           ap={craftAp}
           tags={craftTags}
+          tagSlots={craftTagSlots}
           onClose={() => setCraftOpen(false)}
         />
       )}

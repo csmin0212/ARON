@@ -727,7 +727,13 @@ export async function syncWorldMap(
       await prisma.$transaction([
         prisma.craftTag.deleteMany(),
         prisma.craftTag.createMany({
-          data: craftTags.map((tag, i) => ({ name: tag.name, desc: tag.desc, order: i })),
+          data: craftTags.map((tag, i) => ({
+            name: tag.name,
+            desc: tag.desc,
+            slot: tag.slot,
+            stackable: tag.stackable,
+            order: i,
+          })),
         }),
       ]);
       parts.push(`제작특성 ${craftTags.length}개`);
