@@ -1,10 +1,25 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
-import { appendSheetGold, appendSheetItem, type SheetInventory } from "@/lib/googleSheets";
+import {
+  appendSheetGold,
+  appendSheetItem,
+  inventoryWeightTotal,
+  type SheetInventory,
+} from "@/lib/googleSheets";
+import {
+  addLifeBagItem,
+  lifeBagLimit,
+  lifeBagWeight,
+  parseLifeState,
+  type LifeState,
+} from "@/lib/lifeSkillPerks";
+import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 
 export type MailState = { ok?: string; error?: string } | undefined;
@@ -32,6 +47,37 @@ async function incDbItem(userId: string, name: string, qty: number): Promise<voi
   } else {
     await prisma.inventoryEntry.create({ data: { userId, itemId: item.id, qty } });
   }
+}
+
+type MailItemMeta = {
+  effect?: string | null;
+  weight?: number | null;
+  rank?: number | null;
+  text?: string | null;
+  source?: string | null;
+  category?: string | null;
+};
+
+function mailError(message: string): never {
+  redirect(`/mail?error=${encodeURIComponent(message)}`);
+}
+
+function destinationBag(meta: MailItemMeta, itemName: string): LifeSkillKind | null {
+  if (meta.source === "낚시" || meta.source === "채집" || meta.source === "채광") return meta.source;
+  const kindByName = lifeSkillItemKind(itemName);
+  if (kindByName) return kindByName;
+  if (meta.category === "어획물") return "낚시";
+  if (meta.category === "채집품") return "채집";
+  return null;
+}
+
+function addLifeBagItems(
+  life: LifeState,
+  kind: LifeSkillKind,
+  item: { name: string; weight: number; rank: number; text: string },
+  qty: number,
+): void {
+  for (let i = 0; i < qty; i++) addLifeBagItem(life, kind, item);
 }
 
 // GM — 우편 발송. userId 가 있으면 그 캐릭터에게만, 없으면 전체.
@@ -93,12 +139,12 @@ export async function claimMail(formData: FormData): Promise<void> {
     const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
     if (sheet?.sheetTab) {
       const inv = parseInv(sheet.invJson);
+      const life = parseLifeState(sheet.lifeJson);
       let curGold = sheet.curGold ?? 0;
 
       if (mail.gold > 0) {
         curGold += mail.gold;
         inv.gold = `${curGold}G`;
-        void appendSheetGold(sheet.sheetTab, mail.gold);
       }
 
       if (mail.itemName && mail.itemQty > 0) {
@@ -107,7 +153,7 @@ export async function claimMail(formData: FormData): Promise<void> {
           select: { id: true, name: true, desc: true },
         });
         // 스냅샷 메타(경매 반송 등) — 강화 장비의 효과·중량은 카탈로그가 아니라 스냅샷이 정본
-        let meta: { effect?: string | null; weight?: number | null } = {};
+        let meta: MailItemMeta = {};
         try {
           if (mail.itemMetaJson) meta = JSON.parse(mail.itemMetaJson) as typeof meta;
         } catch {
@@ -115,27 +161,70 @@ export async function claimMail(formData: FormData): Promise<void> {
         }
         const itemName = mail.itemMetaJson ? mail.itemName : (catalog?.name ?? mail.itemName);
         const effect = meta.effect ?? catalog?.desc ?? null;
-        const weight = meta.weight ?? 1;
-        const found = inv.items.find((i) => i.name.trim() === itemName.trim());
-        if (found) {
-          found.qty += mail.itemQty;
-          if (!found.effect && effect) found.effect = effect;
-        } else {
-          inv.items.push({ name: itemName, effect, weight, qty: mail.itemQty });
-        }
-        void appendSheetItem(sheet.sheetTab, itemName, mail.itemQty, {
-          effect,
-          weight,
-        });
-        await incDbItem(user.id, catalog?.id ?? mail.itemName, mail.itemQty);
-        const bookId = catalog?.id ?? mail.itemName;
-        if (await isSkillBookItem(bookId)) await grantSkillBookToken(user.id, bookId, mail.itemQty);
-      }
+        await loadLifeItems();
+        const bagKind = destinationBag(meta, itemName);
+        const lifeItem = bagKind ? findLifeSkillItem(bagKind, itemName) : null;
+        const weight = meta.weight ?? lifeItem?.weight ?? 1;
 
-      await prisma.characterSheet.update({
-        where: { userId: user.id },
-        data: { invJson: JSON.stringify(inv), curGold, gold: `${curGold}G` },
-      });
+        if (bagKind) {
+          const bag = life.bags[bagKind];
+          const nextWeight = lifeBagWeight(bag) + weight * mail.itemQty;
+          const maxWeight = lifeBagLimit(life, bagKind);
+          if (nextWeight > maxWeight) {
+            mailError(`${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})`);
+          }
+          addLifeBagItems(
+            life,
+            bagKind,
+            {
+              name: itemName,
+              weight,
+              rank: meta.rank ?? lifeItem?.rank ?? 0,
+              text: meta.text ?? lifeItem?.text ?? effect ?? "",
+            },
+            mail.itemQty,
+          );
+        } else {
+          const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
+          const nextWeight = curWeight + weight * mail.itemQty;
+          if (inv.maxWeight != null && nextWeight > inv.maxWeight) {
+            mailError(`가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})`);
+          }
+          const found = inv.items.find((i) => i.name.trim() === itemName.trim());
+          if (found) {
+            found.qty += mail.itemQty;
+            if (!found.effect && effect) found.effect = effect;
+            found.weight ??= weight;
+          } else {
+            inv.items.push({ name: itemName, effect, weight, qty: mail.itemQty });
+          }
+          inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+          void appendSheetItem(sheet.sheetTab, itemName, mail.itemQty, {
+            effect,
+            weight,
+          });
+          await incDbItem(user.id, catalog?.id ?? mail.itemName, mail.itemQty);
+          const bookId = catalog?.id ?? mail.itemName;
+          if (await isSkillBookItem(bookId)) await grantSkillBookToken(user.id, bookId, mail.itemQty);
+        }
+
+        await prisma.characterSheet.update({
+          where: { userId: user.id },
+          data: {
+            invJson: JSON.stringify(inv),
+            lifeJson: JSON.stringify(life),
+            curGold,
+            gold: `${curGold}G`,
+          },
+        });
+      }
+      if (mail.gold > 0) void appendSheetGold(sheet.sheetTab, mail.gold);
+      if (!mail.itemName || mail.itemQty <= 0) {
+        await prisma.characterSheet.update({
+          where: { userId: user.id },
+          data: { invJson: JSON.stringify(inv), lifeJson: JSON.stringify(life), curGold, gold: `${curGold}G` },
+        });
+      }
     }
   }
 

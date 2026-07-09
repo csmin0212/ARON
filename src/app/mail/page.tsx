@@ -11,9 +11,14 @@ import {
 
 export const metadata = { title: "우편함 · 아리안로드 온라인 갤러리" };
 
-export default async function MailPage() {
+export default async function MailPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const sp = await searchParams;
 
   const mails = await prisma.mail.findMany({
     where: { recipientId: user.id },
@@ -30,7 +35,7 @@ export default async function MailPage() {
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-faint">MAILBOX</p>
             <h1 className="mt-1 text-2xl font-black text-content">📬 우편함</h1>
             <p className="mt-1 text-sm text-faint">
-              GM이 보낸 우편과 첨부된 골드·아이템을 받습니다.
+              GM 우편과 경매장 보관품을 수령합니다.
             </p>
           </div>
           {unread > 0 && (
@@ -42,6 +47,12 @@ export default async function MailPage() {
           )}
         </div>
       </section>
+
+      {sp.error && (
+        <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-600">
+          {sp.error}
+        </p>
+      )}
 
       <section className="space-y-3">
         {mails.length ? (

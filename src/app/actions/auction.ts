@@ -21,6 +21,7 @@ function toInt(value: FormDataEntryValue | null, fallback = 0): number {
 
 function refreshMarket(): void {
   revalidatePath("/market");
+  revalidatePath("/mail");
   revalidatePath("/profile");
   revalidatePath("/", "layout");
 }

@@ -61,6 +61,8 @@ export type SellableItem = {
   category: AuctionCategory;
 };
 
+type AuctionMailMeta = AuctionItemMeta & { category?: string };
+
 // ── 인벤(휴대품) 헬퍼 — services/trade 패턴 ──
 function parseInv(value: string | null): SheetInventory {
   try {
@@ -397,7 +399,13 @@ export async function cleanupExpiredListings(): Promise<void> {
 // 미수령 경매 반송 우편 — 있으면 경매장 이용 불가 (수령 강제)
 async function unclaimedAuctionMailError(userId: string): Promise<string | null> {
   const pending = await prisma.mail.findFirst({
-    where: { recipientId: userId, senderName: "경매장", claimedAt: null, itemQty: { gt: 0 } },
+    where: {
+      recipientId: userId,
+      senderName: "경매장",
+      subject: "경매 만료 반송",
+      claimedAt: null,
+      itemQty: { gt: 0 },
+    },
     select: { id: true },
   });
   return pending
@@ -534,12 +542,6 @@ export async function buyListingCore(
   }
 
   const meta = parseAuctionMeta(listing.itemMeta);
-  // 구매자 가방 중량 확인
-  const curWeight = inventoryWeightTotal(buyer.inv.items) ?? buyer.inv.curWeight ?? 0;
-  const movingWeight = (meta.weight ?? 0) * qty;
-  if (buyer.inv.maxWeight != null && curWeight + movingWeight > buyer.inv.maxWeight) {
-    return { error: `가방 중량이 부족합니다. (${curWeight + movingWeight}/${buyer.inv.maxWeight})` };
-  }
 
   // 원자적 점유 — 남은 수량 차감 (동시 구매 방지)
   const claimed = await prisma.auctionListing.updateMany({
@@ -552,20 +554,28 @@ export async function buyListingCore(
     data: { status: "sold", endedAt: new Date() },
   });
 
-  // 구매자: 골드 차감 + 아이템 수령
+  // 구매자: 골드 차감 + 경매장 보관 우편 생성. 실제 가방 투입은 우편함 수령 시 용량 검사 후 처리한다.
   const nextBuyerGold = buyer.curGold - total;
-  addInvItem(buyer.inv, { name: listing.itemName, effect: meta.effect, weight: meta.weight }, qty);
+  const mailMeta: AuctionMailMeta = { ...meta, category: listing.category };
   await prisma.characterSheet.update({
     where: { userId: buyerId },
     data: {
-      invJson: JSON.stringify(buyer.inv),
       curGold: nextBuyerGold,
       gold: `${nextBuyerGold}G`,
     },
   });
-  await incrementDbInventory(buyerId, listing.itemName, qty);
   void appendSheetGold(buyer.tab, -total);
-  void pushInventoryToSheet(buyer.tab, buyer.inv);
+  await prisma.mail.create({
+    data: {
+      recipientId: buyerId,
+      senderName: "경매장",
+      subject: "경매 구매 보관",
+      body: `${listing.itemName} x${qty} 구매가 완료되었습니다. 우편함에서 수령하면 알맞은 가방으로 이동합니다.`,
+      itemName: listing.itemName,
+      itemQty: qty,
+      itemMetaJson: JSON.stringify(mailMeta),
+    },
+  });
 
   // 판매자(오프라인 가능): 수수료 제외 실수령
   const proceeds = netProceeds(listing.unitPrice, qty);
@@ -591,7 +601,7 @@ export async function buyListingCore(
     },
   });
 
-  return { ok: `${listing.itemName} x${qty} 구매 완료. -${total.toLocaleString()}G` };
+  return { ok: `${listing.itemName} x${qty} 구매 완료. -${total.toLocaleString()}G · 우편함에 보관됐어요.` };
 }
 
 // 즉시매각 — NPC(상점)에 하한가로 바로 판매. 위탁(등록)과 달리 매물로 가지 않고 즉시 골드 입금.
