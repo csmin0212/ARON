@@ -610,7 +610,6 @@ export async function instantSellCore(
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
 
   const floor = await resolveFloor(name, source);
-  if (floor <= 0) return { error: "이 물건은 매입하지 않아요." };
 
   let isBasic = false;
   if (source === "basic") {

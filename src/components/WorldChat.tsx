@@ -12,6 +12,7 @@ import { startGathering } from "@/app/actions/gathering";
 import { startMining } from "@/app/actions/mining";
 import { discoverByKeyword } from "@/app/actions/world";
 import { getPreset, isImageUrl } from "@/lib/avatars";
+import { formatFullDate, formatTime } from "@/lib/format";
 
 type ChatMessage = {
   id: number;
@@ -36,8 +37,7 @@ const KIND_EMOJI: Record<string, string> = {
 };
 
 function timeOf(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  return formatTime(iso);
 }
 
 function escapeHtml(s: string): string {
@@ -269,7 +269,7 @@ export default function WorldChat({
     const esc = escapeHtml;
     const body = messages
       .map((m) => {
-        const time = new Date(m.createdAt).toLocaleString("ko-KR");
+        const time = formatFullDate(m.createdAt);
         if (m.system)
           return `<p class="sys">— ${esc(m.content)} <span class="t">(${time})</span></p>`;
         const who = esc(m.user?.nickname ?? "?");
@@ -294,7 +294,7 @@ export default function WorldChat({
   .t{color:#aaa;font-size:11px;font-weight:normal}
 </style></head><body>
 <h1>📜 ${esc(locationName)} — 기록</h1>
-<div class="meta">아리안로드 온라인 · ${new Date().toLocaleString("ko-KR")} 내보냄 · ${messages.length}개 메시지</div>
+<div class="meta">아리안로드 온라인 · ${formatFullDate(new Date())} 내보냄 · ${messages.length}개 메시지</div>
 ${body}
 </body></html>`);
     w.document.close();

@@ -122,7 +122,7 @@ function SellRow({ item }: { item: SellableItem }) {
   const [price, setPrice] = useState(item.floor || 1);
   const [qty, setQty] = useState(1);
   const below = price < item.floor;
-  const canInstant = item.floor > 0;
+  const canInstant = item.floor >= 0;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">

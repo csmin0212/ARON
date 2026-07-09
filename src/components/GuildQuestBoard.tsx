@@ -273,9 +273,6 @@ export default function GuildQuestBoard({
                 >
                   {drawing ? "개봉 중…" : `📖 스킬북 뽑기 (${view.fragCost}개)`}
                 </button>
-                <p className="mt-1.5 text-[10px] text-faint">
-                  유니크 확률 {kind === "고급" ? "5%" : "1%"}
-                </p>
               </div>
             );
           })}

@@ -330,13 +330,11 @@ function ForgeChoice({
   tone,
   icon,
   title,
-  subtitle,
   onClick,
 }: {
   tone: "fire" | "arcane";
   icon: string;
   title: string;
-  subtitle: string;
   onClick: () => void;
 }) {
   const fire = tone === "fire";
@@ -372,7 +370,6 @@ function ForgeChoice({
         >
           {title}
         </span>
-        <span className="mt-3 text-xs font-bold text-stone-200/75">{subtitle}</span>
       </span>
     </button>
   );
@@ -1730,28 +1727,24 @@ export default function WorldServices({
                     tone="fire"
                     icon="⚔️"
                     title="무기 강화"
-                    subtitle="+1은 강철 파편, +2부터는 달의 파편을 사용합니다"
                     onClick={() => setForgeMode("weapon")}
                   />
                   <ForgeChoice
                     tone="arcane"
                     icon="💎"
                     title="마법 제련"
-                    subtitle="보석과 강철 파편으로 무기에 인첸트를 부여합니다"
                     onClick={() => setForgeMode("magic")}
                   />
                   <ForgeChoice
                     tone="fire"
                     icon="🔨"
                     title="수식어 부여"
-                    subtitle="강철 파편 1개로 무기·방어구에 랜덤 수식어를 새깁니다"
                     onClick={() => setForgeMode("reforge")}
                   />
                   <ForgeChoice
                     tone="arcane"
                     icon="⚒️"
                     title="장비 제작"
-                    subtitle="광석을 녹여 무기·방어구를 벼립니다"
                     onClick={() => setCraftOpen(true)}
                   />
                 </div>

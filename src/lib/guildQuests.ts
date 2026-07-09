@@ -4,7 +4,7 @@
 // - 리롤권: 매일 1개 지급, 최대 3개(C랭크+ 4개). 리롤 시 미수락 상태에서 전체 갱신.
 // - 긴급 의뢰: 확률적으로 1개가 ⚡긴급(보상 2배).
 // - 보상: 골드 + 스킬 파편(일반/고급 — 고급은 A랭크+ 상위 의뢰).
-// - 파편 10개 → 랜덤 스킬북. 스킬북N에서 N%4==0이 유니크(일반 1% / 고급 5%).
+// - 파편 10개 → 스킬북1 계열(N%4==1) 랜덤 스킬북.
 // - 주간: 일퀘 3회 클리어 → 명성 1 + 리롤권 1 (주 1회).
 
 import { kstDayKey, dungeonWeekKey } from "./world";
@@ -47,8 +47,6 @@ export type GuildQuestState = {
 export const FRAG_COST = 10; // 파편 → 스킬북 교환 개수
 export const WEEK_GOAL = 3; // 주간 명성 보상 클리어 횟수
 export const URGENT_CHANCE = 0.15;
-// 유니크 스킬북 당첨률
-export const UNIQUE_RATE: Record<FragKind, number> = { 일반: 0.01, 고급: 0.05 };
 // 교환소 환급 (스킬북 1권 → 파편)
 export const EXCHANGE_REFUND = 3;
 
@@ -230,12 +228,9 @@ export function isUniqueSkillbook(n: number): boolean {
   return n % 4 === 0;
 }
 
-// 뽑기 — 파편 종류에 따라 유니크 확률 차등. 풀이 비면 반대쪽 풀 사용.
-export function drawSkillbookNumber(fragKind: FragKind, numbers: number[]): number | null {
+// 뽑기 — 초반 풀은 스킬북1 계열(1, 5, 9, 13...)만 사용한다.
+export function drawSkillbookNumber(_fragKind: FragKind, numbers: number[]): number | null {
   if (numbers.length === 0) return null;
-  const uniques = numbers.filter(isUniqueSkillbook);
-  const normals = numbers.filter((n) => !isUniqueSkillbook(n));
-  const wantUnique = Math.random() < UNIQUE_RATE[fragKind];
-  const pool = wantUnique ? (uniques.length > 0 ? uniques : normals) : normals.length > 0 ? normals : uniques;
+  const pool = numbers.filter((n) => n % 4 === 1);
   return pool.length > 0 ? pick(pool) : null;
 }

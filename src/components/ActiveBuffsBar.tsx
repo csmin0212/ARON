@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatTime } from "@/lib/format";
 
 export type WorldBuff = {
   icon: string;
@@ -22,8 +23,7 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
   const alive = now == null ? buffs : buffs.filter((b) => Date.parse(b.until) > now);
   if (alive.length === 0) return null;
 
-  const untilText = (iso: string) =>
-    new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const untilText = (iso: string) => formatTime(iso);
   const minutesLeft = (iso: string) =>
     now == null ? null : Math.max(1, Math.ceil((Date.parse(iso) - now) / 60_000));
 

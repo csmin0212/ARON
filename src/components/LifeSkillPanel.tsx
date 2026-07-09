@@ -15,6 +15,7 @@ import {
 } from "@/lib/lifeSkillPerks";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
 import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
+import { formatTime } from "@/lib/format";
 
 const KIND_EMOJI: Record<LifeSkillKind, string> = { 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
 
@@ -240,8 +241,7 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
   const sessions = life.cookingBuffs.session;
   if (luckRows.length === 0 && statBuffs.length === 0 && sessions.length === 0) return null;
 
-  const timeOf = (iso: string) =>
-    new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const timeOf = (iso: string) => formatTime(iso);
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
