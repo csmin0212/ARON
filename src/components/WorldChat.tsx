@@ -21,7 +21,7 @@ type ChatMessage = {
   user: { username: string; nickname: string; avatar: string | null } | null;
 };
 
-export type ChatActionChip = { kind: string; label: string | null; apCost: number };
+export type ChatActionChip = { kind: string; label: string | null; apCost: number; statLabel?: string | null };
 
 const POLL_MS = 4000;
 
@@ -398,9 +398,11 @@ ${body}
                     inputRef.current?.focus();
                   }}
                   className="rounded-full border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:border-amber-400 hover:bg-amber-50 hover:text-content"
-                  title={`피로도 ${a.apCost} 소모`}
+                  title={`피로도 ${a.apCost} 소모${a.statLabel ? ` · ${a.statLabel} 판정` : ""}`}
                 >
-                  {KIND_EMOJI[a.kind] ?? "✨"} {cmd} <span className="text-faint">⚡{a.apCost}</span>
+                  {KIND_EMOJI[a.kind] ?? "✨"} {cmd}
+                  {a.statLabel && <span className="text-amber-600"> 🎲{a.statLabel}</span>}{" "}
+                  <span className="text-faint">⚡{a.apCost}</span>
                 </button>
               );
             })}

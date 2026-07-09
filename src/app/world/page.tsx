@@ -831,6 +831,7 @@ export default async function WorldPage() {
               kind: a.kind,
               label: a.label,
               apCost: a.apCost,
+              statLabel: a.statLabel,
             }))}
           />
         </div>

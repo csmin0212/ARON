@@ -1076,6 +1076,15 @@ function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number 
   return out;
 }
 
+// 피로도(AP) 회복량 — "피로도 [2D] 회복", "피로도 50 회복". 순수 아이템(요리 아님)에서만 적용해
+// 음식으로 AP 상한을 우회하는 밸런스 붕괴를 막는다. GM이 우편/던전으로 배포하는 회복제 전용.
+function parseApRecovery(effect: string): number {
+  const m = effect.match(/(?:피로도|스태미나|AP)\s*(?:\[(\d+)\s*D\](?:\s*\+\s*(\d+))?|(\d+))\s*점?\s*(?:회복|충전)/i);
+  if (!m) return 0;
+  if (m[1]) return rollD6(Number(m[1])) + (m[2] ? Number(m[2]) : 0);
+  return Number(m[3] ?? 0);
+}
+
 function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
   return match ? Number.parseInt(match[1], 10) || 0 : 0;
@@ -1297,8 +1306,29 @@ export async function useCookingItem(
       decrementDbInventory(ctx.userId, itemName, 1),
     ]);
     void pushInventoryToSheet(ctx.tab, inv);
+  } else if (!recipe && parseApRecovery(rawEffect) > 0) {
+    // 피로도 회복제 — 요리가 아닌 순수 아이템(효과 "피로도 N 회복")만. 요리로는 AP 회복 불가.
+    const heal = parseApRecovery(rawEffect);
+    const fresh = regenFatigue(sheet.ap, sheet.apResetAt);
+    const newAp = Math.min(FATIGUE_MAX, fresh.value + heal);
+    ok = `${itemName}을 사용했습니다. 피로도 +${newAp - fresh.value} (${fresh.value} → ${newAp}/${FATIGUE_MAX})`;
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          ap: newAp,
+          apResetAt: fresh.at,
+          achStatsJson: bumpStat(sheet.achStatsJson, "피로도회복제사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
   } else {
-    return { error: "아직 자동 적용할 수 없는 요리 효과입니다." };
+    return { error: "아직 자동 적용할 수 없는 효과입니다." };
   }
 
   await checkAndGrant(ctx.userId);
