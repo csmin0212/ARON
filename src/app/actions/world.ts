@@ -324,10 +324,19 @@ export async function enterWorld(): Promise<void> {
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet) return;
 
+  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
+  if (sheet.locationId) {
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { ap, apResetAt },
+    });
+    revalidatePath("/world");
+    return;
+  }
+
   const start = await prisma.location.findFirst({ where: { isStart: true } });
   if (!start) return;
 
-  const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: {
