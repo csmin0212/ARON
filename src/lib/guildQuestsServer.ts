@@ -47,16 +47,18 @@ export async function loadGuildQuestState(
   return { state, rank };
 }
 
-// 뽑기 풀 — 전투스킬 탭에 정의된 스킬북 번호 + 스킬 이름/직업
+// 뽑기 풀 — 전투스킬 탭에 정의된 스킬북 번호 + 스킬 이름/직업.
+// 아직 설명(효과)이 비어 있는 스킬은 밸런스 설계 전이므로 제외한다.
 export async function fetchSkillbookPool(): Promise<
   { num: number; itemId: string; skillName: string; job: string | null }[]
 > {
   const skills = await prisma.combatSkill.findMany({
     where: { sourceItem: { startsWith: "스킬북" } },
-    select: { sourceItem: true, name: true, job: true },
+    select: { sourceItem: true, name: true, job: true, effect: true },
   });
   const out: { num: number; itemId: string; skillName: string; job: string | null }[] = [];
   for (const skill of skills) {
+    if (!skill.effect?.trim()) continue;
     const num = skillbookNumber(skill.sourceItem);
     if (num == null) continue;
     out.push({ num, itemId: `스킬북${num}`, skillName: skill.name, job: skill.job });
