@@ -58,6 +58,16 @@ type MailItemMeta = {
   category?: string | null;
 };
 
+function parseLifeEffectSnapshot(effect: string | null | undefined): { rank: number | null; text: string | null } {
+  if (!effect) return { rank: null, text: null };
+  const match = effect.match(/^R(\d+)\s*·\s*(.*)$/);
+  if (!match) return { rank: null, text: effect };
+  return {
+    rank: Number(match[1]),
+    text: match[2]?.trim() || null,
+  };
+}
+
 function mailError(message: string): never {
   redirect(`/mail?error=${encodeURIComponent(message)}`);
 }
@@ -164,6 +174,7 @@ export async function claimMail(formData: FormData): Promise<void> {
         await loadLifeItems();
         const bagKind = destinationBag(meta, itemName);
         const lifeItem = bagKind ? findLifeSkillItem(bagKind, itemName) : null;
+        const effectSnapshot = parseLifeEffectSnapshot(effect);
         const weight = meta.weight ?? lifeItem?.weight ?? 1;
 
         if (bagKind) {
@@ -179,8 +190,8 @@ export async function claimMail(formData: FormData): Promise<void> {
             {
               name: itemName,
               weight,
-              rank: meta.rank ?? lifeItem?.rank ?? 0,
-              text: meta.text ?? lifeItem?.text ?? effect ?? "",
+              rank: meta.rank ?? effectSnapshot.rank ?? lifeItem?.rank ?? 0,
+              text: meta.text ?? effectSnapshot.text ?? lifeItem?.text ?? effect ?? "",
             },
             mail.itemQty,
           );

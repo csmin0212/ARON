@@ -249,6 +249,8 @@ export default function MarketBrowser({
   const [tab, setTab] = useState<Tab>("buy");
   const [category, setCategory] = useState<AuctionCategory>("전체");
   const [search, setSearch] = useState("");
+  const [sellCategory, setSellCategory] = useState<AuctionCategory>("전체");
+  const [sellSearch, setSellSearch] = useState("");
 
   const buyList = useMemo(() => {
     const q = search.trim();
@@ -259,6 +261,15 @@ export default function MarketBrowser({
       return true;
     });
   }, [listings, category, search, meId]);
+
+  const sellList = useMemo(() => {
+    const q = sellSearch.trim();
+    return sellable.filter((item) => {
+      if (sellCategory !== "전체" && item.category !== sellCategory) return false;
+      if (q && !item.name.includes(q)) return false;
+      return true;
+    });
+  }, [sellable, sellCategory, sellSearch]);
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "buy", label: "🛒 구매", count: listings.filter((l) => l.sellerId !== meId).length },
@@ -344,18 +355,39 @@ export default function MarketBrowser({
 
       {/* 판매 */}
       {tab === "sell" && (
-        <div className="mt-4">
-          {sellable.length ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {sellable.map((item) => (
-                <SellRow key={`${item.source}:${item.name}`} item={item} />
-              ))}
-            </div>
-          ) : (
-            <p className="rounded-2xl bg-canvas px-4 py-8 text-center text-sm text-faint">
-              등록할 수 있는 아이템이 없어요. (휴대품·낚시/채집 가방)
-            </p>
-          )}
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+          <aside className="flex shrink-0 gap-1.5 overflow-x-auto sm:w-36 sm:flex-col sm:overflow-visible">
+            {AUCTION_CATEGORIES.map((c) => (
+              <button
+                key={c}
+                onClick={() => setSellCategory(c)}
+                className={`whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
+                  sellCategory === c ? "bg-brand-500/15 text-brand-700" : "text-muted hover:bg-subtle"
+                }`}
+              >
+                {CATEGORY_EMOJI[c]} {c}
+              </button>
+            ))}
+          </aside>
+          <div className="min-w-0 flex-1">
+            <input
+              value={sellSearch}
+              onChange={(e) => setSellSearch(e.target.value)}
+              placeholder="아이템 이름 검색..."
+              className="mb-3 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-brand-400"
+            />
+            {sellList.length ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {sellList.map((item) => (
+                  <SellRow key={`${item.source}:${item.name}:${item.rank ?? "none"}`} item={item} />
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-2xl bg-canvas px-4 py-8 text-center text-sm text-faint">
+                등록할 수 있는 아이템이 없어요. (휴대품·낚시/채집/채광 가방)
+              </p>
+            )}
+          </div>
         </div>
       )}
 

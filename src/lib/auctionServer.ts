@@ -8,8 +8,15 @@ import {
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
-import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
 import {
+  addLifeBagItem,
+  lifeBagLimit,
+  lifeBagWeight,
+  parseLifeState,
+  type LifeState,
+} from "@/lib/lifeSkillPerks";
+import {
+  findLifeSkillItem,
   lifeSkillItemKind,
   lifeSkillSellPrice,
   type LifeSkillKind,
@@ -61,7 +68,14 @@ export type SellableItem = {
   category: AuctionCategory;
 };
 
-type AuctionMailMeta = AuctionItemMeta & { category?: string };
+type AuctionMailMeta = AuctionItemMeta & { category?: string | null };
+type ReturnItemPlan = {
+  inv: SheetInventory;
+  life: LifeState;
+  sheetTab: string;
+  syncBasicInventory: boolean;
+  ok: string;
+};
 
 // ── 인벤(휴대품) 헬퍼 — services/trade 패턴 ──
 function parseInv(value: string | null): SheetInventory {
@@ -150,6 +164,34 @@ function removeLifeBagItem(
   return snapshot;
 }
 
+function parseLifeEffectSnapshot(effect: string | null | undefined): { rank: number | null; text: string | null } {
+  if (!effect) return { rank: null, text: null };
+  const match = effect.match(/^R(\d+)\s*·\s*(.*)$/);
+  if (!match) return { rank: null, text: effect };
+  return {
+    rank: Number(match[1]),
+    text: match[2]?.trim() || null,
+  };
+}
+
+function destinationLifeBag(meta: AuctionMailMeta, itemName: string): LifeSkillKind | null {
+  if (meta.source === "낚시" || meta.source === "채집" || meta.source === "채광") return meta.source;
+  const kindByName = lifeSkillItemKind(itemName.trim());
+  if (kindByName) return kindByName;
+  if (meta.category === "어획물") return "낚시";
+  if (meta.category === "채집품") return "채집";
+  return null;
+}
+
+function addLifeBagItems(
+  life: LifeState,
+  kind: LifeSkillKind,
+  item: { name: string; weight: number; rank: number; text: string },
+  qty: number,
+): void {
+  for (let i = 0; i < qty; i++) addLifeBagItem(life, kind, item);
+}
+
 // ── DB 인벤 미러 ──
 async function decrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
   const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
@@ -215,10 +257,12 @@ export async function resolveCategory(name: string, source: AuctionSource): Prom
   const raw = name.trim();
   if (source === "낚시") return "어획물";
   if (source === "채집") return "채집품";
+  if (source === "채광") return "재료";
 
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind === "낚시") return "어획물";
   if (lifeKind === "채집") return "채집품";
+  if (lifeKind === "채광") return "재료";
 
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: parseCookedName(name).base },
@@ -327,14 +371,65 @@ export async function getMyListings(userId: string): Promise<ListingView[]> {
   return rows.map(toListingView);
 }
 
+async function restoreLifeItemsFromBasicInventory(
+  userId: string,
+  sheet: { invJson: string | null; lifeJson: string | null; sheetTab: string },
+): Promise<{ inv: SheetInventory; life: LifeState }> {
+  const inv = parseInv(sheet.invJson);
+  const life = parseLifeState(sheet.lifeJson);
+  await loadLifeItems();
+
+  const moved: { name: string; qty: number }[] = [];
+  for (const invItem of [...inv.items]) {
+    const name = invItem.name.trim();
+    const qty = Math.max(0, invItem.qty);
+    if (!name || qty <= 0) continue;
+
+    const bagKind = lifeSkillItemKind(name);
+    if (!bagKind) continue;
+
+    const lifeItem = findLifeSkillItem(bagKind, name);
+    const effectSnapshot = parseLifeEffectSnapshot(invItem.effect);
+    const weight = invItem.weight ?? lifeItem?.weight ?? 1;
+    const bag = life.bags[bagKind];
+    const nextWeight = lifeBagWeight(bag) + weight * qty;
+    const maxWeight = lifeBagLimit(life, bagKind);
+    if (nextWeight > maxWeight) continue;
+
+    addLifeBagItems(
+      life,
+      bagKind,
+      {
+        name,
+        weight,
+        rank: effectSnapshot.rank ?? lifeItem?.rank ?? 0,
+        text: effectSnapshot.text ?? lifeItem?.text ?? invItem.effect ?? "",
+      },
+      qty,
+    );
+    consumeInvItem(inv, name, qty);
+    moved.push({ name, qty });
+  }
+
+  if (moved.length > 0) {
+    await prisma.characterSheet.update({
+      where: { userId },
+      data: { invJson: JSON.stringify(inv), lifeJson: JSON.stringify(life) },
+    });
+    await Promise.all(moved.map((item) => decrementDbInventory(userId, item.name, item.qty)));
+    void pushInventoryToSheet(sheet.sheetTab, inv);
+  }
+
+  return { inv, life };
+}
+
 export async function getSellableItems(userId: string): Promise<SellableItem[]> {
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId },
-    select: { invJson: true, lifeJson: true },
+    select: { invJson: true, lifeJson: true, sheetTab: true },
   });
   if (!sheet) return [];
-  const inv = parseInv(sheet.invJson);
-  const life = parseLifeState(sheet.lifeJson);
+  const { inv, life } = await restoreLifeItemsFromBasicInventory(userId, sheet);
 
   const raw: { source: AuctionSource; name: string; qty: number; effect: string | null; weight: number | null; rank: number | null; text: string | null }[] = [];
   for (const i of inv.items) {
@@ -413,26 +508,84 @@ async function unclaimedAuctionMailError(userId: string): Promise<string | null>
     : null;
 }
 
-// 판매자(오프라인 가능)에게 아이템을 휴대품으로 직접 반송. 스냅샷 보존.
-async function returnItemToSeller(
+// 판매자(오프라인 가능)에게 아이템을 원래 성격에 맞는 가방으로 반송하기 위한 스냅샷 생성.
+async function planReturnItemToSeller(
   sellerId: string,
   name: string,
   qty: number,
-  meta: AuctionItemMeta,
-): Promise<void> {
+  meta: AuctionMailMeta,
+): Promise<ReturnItemPlan | { error: string }> {
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: sellerId },
-    select: { invJson: true, sheetTab: true },
+    select: { invJson: true, lifeJson: true, sheetTab: true },
   });
-  if (!sheet) return;
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
   const inv = parseInv(sheet.invJson);
-  addInvItem(inv, { name, effect: meta.effect, weight: meta.weight }, qty);
+  const life = parseLifeState(sheet.lifeJson);
+  await loadLifeItems();
+
+  const bagKind = destinationLifeBag(meta, name);
+  if (bagKind) {
+    const lifeItem = findLifeSkillItem(bagKind, name);
+    const effectSnapshot = parseLifeEffectSnapshot(meta.effect);
+    const weight = meta.weight ?? lifeItem?.weight ?? 1;
+    const rank = meta.rank ?? effectSnapshot.rank ?? lifeItem?.rank ?? 0;
+    const text = meta.text ?? effectSnapshot.text ?? lifeItem?.text ?? "";
+    const bag = life.bags[bagKind];
+    const nextWeight = lifeBagWeight(bag) + weight * qty;
+    const maxWeight = lifeBagLimit(life, bagKind);
+    if (nextWeight > maxWeight) {
+      return { error: `${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})` };
+    }
+    addLifeBagItems(
+      life,
+      bagKind,
+      {
+        name,
+        weight,
+        rank,
+        text,
+      },
+      qty,
+    );
+    return {
+      inv,
+      life,
+      sheetTab: sheet.sheetTab,
+      syncBasicInventory: false,
+      ok: `${bag.name}으로 돌려받았어요.`,
+    };
+  }
+
+  const weight = meta.weight ?? 1;
+  const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
+  const nextWeight = curWeight + weight * qty;
+  if (inv.maxWeight != null && nextWeight > inv.maxWeight) {
+    return { error: `가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})` };
+  }
+  addInvItem(inv, { name, effect: meta.effect, weight }, qty);
+  return {
+    inv,
+    life,
+    sheetTab: sheet.sheetTab,
+    syncBasicInventory: true,
+    ok: "휴대품으로 돌려받았어요.",
+  };
+}
+
+async function persistReturnItemToSeller(
+  sellerId: string,
+  name: string,
+  qty: number,
+  plan: ReturnItemPlan,
+): Promise<void> {
   await prisma.characterSheet.update({
     where: { userId: sellerId },
-    data: { invJson: JSON.stringify(inv) },
+    data: { invJson: JSON.stringify(plan.inv), lifeJson: JSON.stringify(plan.life) },
   });
+  if (!plan.syncBasicInventory) return;
   await incrementDbInventory(sellerId, name, qty);
-  void pushInventoryToSheet(sheet.sheetTab, inv);
+  void pushInventoryToSheet(plan.sheetTab, plan.inv);
 }
 
 // ── 코어 뮤테이션 (actions 에서 호출) ──
@@ -655,12 +808,20 @@ export async function cancelListingCore(userId: string, listingId: string): Prom
   if (!listing || listing.sellerId !== userId) return { error: "취소할 수 없는 등록입니다." };
   if (listing.status !== "active") return { error: "이미 종료된 등록입니다." };
 
+  const returnPlan = await planReturnItemToSeller(
+    userId,
+    listing.itemName,
+    listing.quantity,
+    { ...parseAuctionMeta(listing.itemMeta), category: listing.category },
+  );
+  if ("error" in returnPlan) return returnPlan;
+
   const claimed = await prisma.auctionListing.updateMany({
     where: { id: listingId, status: "active" },
     data: { status: "cancelled", endedAt: new Date() },
   });
   if (claimed.count !== 1) return { error: "이미 종료된 등록입니다." };
 
-  await returnItemToSeller(userId, listing.itemName, listing.quantity, parseAuctionMeta(listing.itemMeta));
-  return { ok: `${listing.itemName} x${listing.quantity} 등록을 취소하고 휴대품으로 돌려받았어요.` };
+  await persistReturnItemToSeller(userId, listing.itemName, listing.quantity, returnPlan);
+  return { ok: `${listing.itemName} x${listing.quantity} 등록을 취소하고 ${returnPlan.ok}` };
 }

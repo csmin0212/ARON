@@ -56,6 +56,15 @@ const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 // 활성 풀(시트 동기화본) 기준으로 매번 구성 — 신규 어종/약초가 도감 판정에 반영되게.
 const rankMapOf = (kind: "낚시" | "채집") =>
   new Map(getActiveItems(kind).map((item) => [item.name, item.rank]));
+const rankRequirement = (a: AchRow) => {
+  const explicit = parseInt(String(a.condValue ?? "").replace(/[^\d-]/g, ""), 10);
+  if (!Number.isNaN(explicit)) return explicit;
+  const fromId = a.id.match(/(?:^|_)r(\d+)(?:_|$)/i)?.[1];
+  if (fromId) return Number(fromId);
+  const fromName = a.name.match(/R\s*(\d+)/i)?.[1];
+  return fromName ? Number(fromName) : null;
+};
+const textRequirement = (a: AchRow) => a.condValue?.trim() || a.name.trim();
 
 function countStatPrefix(stats: Record<string, number>, prefix: string): number {
   return Object.entries(stats).filter(([key, value]) => key.startsWith(prefix) && value > 0).length;
@@ -132,15 +141,21 @@ export async function checkAndGrant(
 
   // 방문 토큰 (id + 정규화 이름) — 장소방문/히든장소방문용
   let visitTokens: Set<string> | null = null;
+  let visitedStart = false;
   if (types.has("장소방문") || types.has("히든장소방문")) {
-    const ids = [...parseStrArr(sheet?.visitedJson), ...parseStrArr(sheet?.discoveredJson)];
-    const locs = await prisma.location.findMany({ select: { id: true, name: true } });
-    const nameById = new Map(locs.map((l) => [l.id, l.name]));
+    const ids = [
+      ...parseStrArr(sheet?.visitedJson),
+      ...parseStrArr(sheet?.discoveredJson),
+      sheet?.locationId ?? "",
+    ].filter(Boolean);
+    const locs = await prisma.location.findMany({ select: { id: true, name: true, isStart: true } });
+    const locById = new Map(locs.map((l) => [l.id, l]));
     visitTokens = new Set<string>();
     for (const id of ids) {
       visitTokens.add(norm(id));
-      const nm = nameById.get(id);
-      if (nm) visitTokens.add(norm(nm));
+      const loc = locById.get(id);
+      if (loc?.isStart) visitedStart = true;
+      if (loc?.name) visitTokens.add(norm(loc.name));
     }
   }
 
@@ -170,7 +185,6 @@ export async function checkAndGrant(
     const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10);
     return Number.isNaN(n) ? null : n;
   };
-  const rankNum = (v: string | null) => num(v);
   const percent = (current: number, total: number) => (total <= 0 ? 0 : (current / total) * 100);
 
   function satisfied(a: AchRow): boolean {
@@ -197,9 +211,9 @@ export async function checkAndGrant(
       case "채집도감완성률":
         return n != null && percent(life.collection.채집.length, getActiveItems("채집").length) >= n;
       case "희귀도낚시":
-        return rankNum(v) != null && bestFishingRank >= rankNum(v)!;
+        return rankRequirement(a) != null && bestFishingRank >= rankRequirement(a)!;
       case "희귀도채집":
-        return rankNum(v) != null && bestPlantRank >= rankNum(v)!;
+        return rankRequirement(a) != null && bestPlantRank >= rankRequirement(a)!;
       case "동일낚시획득":
         return n != null && bestSameFishing >= n;
       case "동일채집획득":
@@ -241,10 +255,11 @@ export async function checkAndGrant(
       case "모험가랭크":
         return (RANK_ORDER[rank] ?? 0) >= (RANK_ORDER[String(v).toUpperCase()] ?? 99);
       case "생활장비보유":
+        const toolRequirement = textRequirement(a);
         return (
-          !!v &&
-          (toolNames.includes(v) ||
-            toolNames.some((t) => (TOOL_TIER[t] ?? 0) >= (TOOL_TIER[v] ?? 99)))
+          !!toolRequirement &&
+          (toolNames.includes(toolRequirement) ||
+            toolNames.some((t) => (TOOL_TIER[t] ?? 0) >= (TOOL_TIER[toolRequirement] ?? 99)))
         );
       case "요리등급":
         return n != null && (stats.요리최고등급 ?? 0) >= n;
@@ -255,6 +270,8 @@ export async function checkAndGrant(
       case "대표배지장착":
         return !!userDecor?.equippedBadge;
       case "장소방문":
+        if (!v && a.id === "visit_belltower") return visitedStart;
+        return !!v && !!visitTokens && visitTokens.has(norm(v));
       case "히든장소방문":
         return !!v && !!visitTokens && visitTokens.has(norm(v));
       default:

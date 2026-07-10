@@ -19,7 +19,7 @@ import {
   lifeBagWeight,
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
-import { lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { findLifeSkillItem, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
@@ -553,6 +553,16 @@ function removeLifeBagItem(
   };
 }
 
+function parseLifeEffectSnapshot(effect: string | null | undefined): { rank: number | null; text: string | null } {
+  if (!effect) return { rank: null, text: null };
+  const match = effect.match(/^R(\d+)\s*·\s*(.*)$/);
+  if (!match) return { rank: null, text: effect };
+  return {
+    rank: Number(match[1]),
+    text: match[2]?.trim() || null,
+  };
+}
+
 function formQty(formData: FormData): number {
   return Math.max(1, Math.min(99, Number(formData.get("qty") ?? 1) || 1));
 }
@@ -679,6 +689,9 @@ export async function withdrawFromStorage(
       ? entry.sourceKind
       : null;
   if (sourceKind) {
+    await loadLifeItems();
+    const lifeItem = findLifeSkillItem(sourceKind, entry.name);
+    const effectSnapshot = parseLifeEffectSnapshot(entry.effect);
     const sheet = await prisma.characterSheet.findUnique({
       where: { userId: ctx.userId },
       select: { lifeJson: true },
@@ -694,9 +707,9 @@ export async function withdrawFromStorage(
     for (let i = 0; i < qty; i++) {
       addLifeBagItem(life, sourceKind, {
         name: entry.name,
-        weight: entry.weight ?? 1,
-        rank: entry.rank ?? 0,
-        text: entry.text ?? entry.effect ?? "",
+        weight: entry.weight ?? lifeItem?.weight ?? 1,
+        rank: entry.rank ?? effectSnapshot.rank ?? lifeItem?.rank ?? 0,
+        text: entry.text ?? effectSnapshot.text ?? lifeItem?.text ?? entry.effect ?? "",
       });
     }
     await Promise.all([
