@@ -64,18 +64,41 @@ function RankStars({ rank }: { rank: number | null }) {
 function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
   const [state, action, pending] = useActionState<AuctionState, FormData>(buyAuctionListing, undefined);
   const [qty, setQty] = useState(1);
+  const [detailOpen, setDetailOpen] = useState(false);
   const total = listing.unitPrice * qty;
   const tooPoor = total > myGold;
+  const categoryEmoji = CATEGORY_EMOJI[listing.category] ?? "📦";
+  const qtyInputClass =
+    "w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400";
+  const buyButtonClass =
+    "flex-1 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50";
+
+  function updateQty(value: string) {
+    setQty(Math.max(1, Math.min(listing.quantity, Number(value) || 1)));
+  }
+
+  const buyLabel = pending ? "구매 중..." : tooPoor ? "골드 부족" : `즉시구매 ${gold(total)}G`;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">
-      <div className="flex items-start justify-between gap-3">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setDetailOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setDetailOpen(true);
+          }
+        }}
+        className="flex cursor-pointer items-start justify-between gap-3 rounded-xl transition hover:bg-subtle/50 focus:outline-none focus:ring-2 focus:ring-brand-200"
+      >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-extrabold text-content">{listing.itemName}</span>
             <RankStars rank={listing.rank} />
             <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[10px] font-bold text-faint">
-              {CATEGORY_EMOJI[listing.category] ?? "📦"} {listing.category}
+              {categoryEmoji} {listing.category}
             </span>
           </div>
           {listing.effect && (
@@ -99,18 +122,101 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
           min={1}
           max={listing.quantity}
           value={qty}
-          onChange={(e) => setQty(Math.max(1, Math.min(listing.quantity, Number(e.target.value) || 1)))}
-          className="w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400"
+          onChange={(e) => updateQty(e.target.value)}
+          className={qtyInputClass}
         />
         <button
           type="submit"
           disabled={pending || tooPoor}
-          className="flex-1 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
+          className={buyButtonClass}
         >
-          {pending ? "구매 중..." : tooPoor ? "골드 부족" : `즉시구매 ${gold(total)}G`}
+          {buyLabel}
         </button>
       </form>
       <StateLine state={state} />
+      {detailOpen && (
+        <div
+          className="fixed inset-0 z-[70] grid place-items-center bg-black/60 px-4"
+          role="presentation"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDetailOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${listing.itemName} 상세 정보`}
+            className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-line bg-subtle px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-faint">Auction Item</p>
+                  <h2 className="mt-1 text-xl font-black text-content">{listing.itemName}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <RankStars rank={listing.rank} />
+                    <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-bold text-faint">
+                      {categoryEmoji} {listing.category}
+                    </span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-lg font-black text-amber-600">{gold(listing.unitPrice)}G</p>
+                  <p className="text-[10px] text-faint">개당</p>
+                </div>
+              </div>
+            </div>
+            <div className="max-h-[52vh] overflow-y-auto px-5 py-4">
+              <dl className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-canvas px-3 py-2">
+                  <dt className="font-bold text-faint">판매자</dt>
+                  <dd className="mt-0.5 font-extrabold text-content">{listing.sellerNickname}</dd>
+                </div>
+                <div className="rounded-xl bg-canvas px-3 py-2">
+                  <dt className="font-bold text-faint">남은 수량</dt>
+                  <dd className="mt-0.5 font-extrabold text-content">{listing.quantity}</dd>
+                </div>
+                <div className="col-span-2 rounded-xl bg-canvas px-3 py-2">
+                  <dt className="font-bold text-faint">남은 시간</dt>
+                  <dd className="mt-0.5 font-extrabold text-content">{timeLeft(listing.expiresAt)}</dd>
+                </div>
+              </dl>
+              <div className="mt-3 rounded-xl border border-line bg-canvas px-3 py-3">
+                <p className="text-xs font-extrabold text-faint">상세 효과</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-content">
+                  {listing.effect || "등록된 효과 정보가 없어요."}
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-line px-5 py-4">
+              <form action={action} className="flex items-center gap-2">
+                <input type="hidden" name="listingId" value={listing.id} />
+                <input
+                  type="number"
+                  name="qty"
+                  min={1}
+                  max={listing.quantity}
+                  value={qty}
+                  onChange={(e) => updateQty(e.target.value)}
+                  className={qtyInputClass}
+                />
+                <button type="submit" disabled={pending || tooPoor} className={buyButtonClass}>
+                  {buyLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailOpen(false)}
+                  className="rounded-lg border border-line px-3 py-1.5 text-sm font-extrabold text-muted transition hover:text-content"
+                >
+                  닫기
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
