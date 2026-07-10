@@ -12,7 +12,6 @@ import { rankAtLeast } from "./adventurerRank";
 import {
   getActiveItems,
   isSeaLifeItem,
-  lifeSkillMarketPrice,
   type LifeSkillKind,
 } from "./lifeSkillData";
 
@@ -84,6 +83,14 @@ export function parseGuildQuestState(json: string | null | undefined): GuildQues
   }
 }
 
+function normalizeRerolls(state: GuildQuestState, guildRank: string): boolean {
+  const cap = rerollCap(guildRank);
+  const next = Math.max(0, Math.min(cap, Math.floor(state.rerolls)));
+  if (state.rerolls === next) return false;
+  state.rerolls = next;
+  return true;
+}
+
 // ── 랭크 특혜 ──
 export function questOfferCount(rank: string): number {
   return rankAtLeast(rank, "B") ? 4 : 3; // B랭크+ 4지선다
@@ -128,6 +135,32 @@ function fragReward(itemRank: number, premium: boolean): { kind: FragKind; count
   return { kind: "일반", count: 1 };
 }
 
+export function questGoldReward(unitPrice: number, qty: number, urgent: boolean): number {
+  const base = Math.max(10, Math.round(unitPrice * qty * 1.5));
+  return urgent ? base * 2 : base;
+}
+
+function offerUnitPrice(offer: Pick<QuestOffer, "kind" | "itemName">, recipes: RecipePoolEntry[]): number | null {
+  if (offer.kind === "요리") {
+    return recipes.find((recipe) => recipe.name === offer.itemName)?.sellPrice ?? null;
+  }
+  const item = getActiveItems(offer.kind).find((entry) => entry.name === offer.itemName);
+  return item?.price ?? null;
+}
+
+function repriceOffers(state: GuildQuestState, recipes: RecipePoolEntry[]): boolean {
+  let dirty = false;
+  for (const offer of state.offers) {
+    const unit = offerUnitPrice(offer, recipes);
+    if (unit == null) continue;
+    const nextGold = questGoldReward(unit, offer.qty, offer.urgent);
+    if (offer.gold === nextGold) continue;
+    offer.gold = nextGold;
+    dirty = true;
+  }
+  return dirty;
+}
+
 export function generateOffers(
   guildRank: string,
   day: string,
@@ -143,7 +176,7 @@ export function generateOffers(
     for (const item of getActiveItems(kind)) {
       if (item.rank < 1 || item.rank > maxRank) continue;
       if (kind === "낚시" && isSeaLifeItem(item)) continue; // 바다 어종은 상위 지역 전용
-      pool.push({ kind, name: item.name, rank: item.rank, unit: lifeSkillMarketPrice(kind, item) });
+      pool.push({ kind, name: item.name, rank: item.rank, unit: item.price });
     }
   }
   for (const recipe of recipes) {
@@ -165,14 +198,13 @@ export function generateOffers(
     const qty = cand.kind === "요리" ? Math.max(1, Math.ceil(rollInt(qMin, qMax) / 2)) : rollInt(qMin, qMax);
     const urgent = offers.length === urgentSlot;
     const frag = fragReward(cand.rank, premium);
-    const gold = Math.max(10, Math.round(cand.unit * qty * 0.6));
     offers.push({
       id: `${day}-${offers.length + 1}`,
       kind: cand.kind,
       itemName: cand.name,
       qty,
       rank: cand.rank,
-      gold: urgent ? gold * 2 : gold,
+      gold: questGoldReward(cand.unit, qty, urgent),
       fragKind: frag.kind,
       fragCount: urgent ? frag.count * 2 : frag.count,
       urgent,
@@ -192,6 +224,8 @@ export function refreshGuildQuestState(
   const today = kstDayKey(now);
   const week = dungeonWeekKey(now);
 
+  if (normalizeRerolls(state, guildRank)) dirty = true;
+
   if (state.week !== week) {
     state.week = week;
     state.weekCount = 0;
@@ -210,6 +244,7 @@ export function refreshGuildQuestState(
     state.deliveredAt = null;
     dirty = true;
   }
+  if (repriceOffers(state, recipes)) dirty = true;
   return dirty;
 }
 
