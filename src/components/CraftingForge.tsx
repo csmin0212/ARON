@@ -6,6 +6,7 @@ import { craftEquipment, type CraftResult } from "@/app/actions/craft";
 import {
   computeCraft,
   craftApCost,
+  craftFeeRange,
   CRAFT_CATEGORIES,
   MAX_MAJORS,
   minorSlotsFor,
@@ -135,12 +136,13 @@ export default function CraftingForge({
     });
   }, [category, majorQty, minorSel, defs, maxMinors, tagSlots]);
 
-  const fee =
-    preview && !("error" in preview)
-      ? isBlacksmith
-        ? Math.max(10, Math.round(preview.fee / 2))
-        : preview.fee
-      : 0;
+  const feeRange = preview && !("error" in preview) ? craftFeeRange(preview.fee, preview.basePrice, isBlacksmith) : null;
+  const feeText = feeRange
+    ? feeRange.min === feeRange.max
+      ? feeRange.min.toLocaleString()
+      : `${feeRange.min.toLocaleString()}~${feeRange.max.toLocaleString()}`
+    : "0";
+  const requiredFee = feeRange?.max ?? 0;
 
   function bumpMajor(name: string, delta: number) {
     setMajorQty((prev) => {
@@ -381,7 +383,8 @@ export default function CraftingForge({
                       <span className="shrink-0 text-[11px] font-bold text-faint">✏️ 이름 짓기</span>
                     </div>
                     <p className="mt-2 text-[11px] font-bold text-faint">
-                      수수료 {fee.toLocaleString()}G · 피로도 {craftApCost(preview.level)} · 중량 {preview.weight}
+                      수수료 {feeText}G · 피로도 {craftApCost(preview.level)} · 중량 {preview.weight}
+                      {feeRange && feeRange.min !== feeRange.max && " · 등급에 따라 추가 수수료"}
                     </p>
                   </div>
                 );
@@ -405,7 +408,7 @@ export default function CraftingForge({
                 busy ||
                 !preview ||
                 "error" in preview ||
-                fee > gold ||
+                requiredFee > gold ||
                 (!!preview && !("error" in preview) && craftApCost(preview.level) > ap)
               }
               onClick={() => void craft()}
@@ -413,7 +416,7 @@ export default function CraftingForge({
             >
               {busy
                 ? "🔥 담금질 중…"
-                : fee > gold
+                : requiredFee > gold
                   ? "골드 부족"
                   : preview && !("error" in preview) && craftApCost(preview.level) > ap
                     ? "피로도 부족"

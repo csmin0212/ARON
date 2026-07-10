@@ -18,7 +18,10 @@ import {
   applyGradeBonus,
   computeCraft,
   craftApCost,
+  craftFee,
+  craftFeeRange,
   craftResultName,
+  craftSellPrice,
   craftSmithExp,
   isBlacksmithClass,
   itemAsCraftMinor,
@@ -210,11 +213,17 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     if (have < qty) return { error: `${name}이(가) 부족해요. (보유 ${have} / 필요 ${qty})` };
   }
 
-  // 수수료 — 생산 클래스(블랙스미스)는 절반. "상한은 평등, 기대값은 이점".
+  // 등급 롤 이후 판매가를 기준으로 수수료를 확정한다.
   const blacksmith = isBlacksmithClass(sheet.charClass);
-  const fee = blacksmith ? Math.max(10, Math.round(preview.fee / 2)) : preview.fee;
   const curGold = sheet.curGold ?? 0;
-  if (curGold < fee) return { error: `제작 수수료가 부족해요. (${fee.toLocaleString()}G 필요)` };
+  const feeRange = craftFeeRange(preview.fee, preview.basePrice, blacksmith);
+  if (curGold < feeRange.max) {
+    return { error: `제작 수수료가 부족해요. (최대 ${feeRange.max.toLocaleString()}G 필요)` };
+  }
+
+  const grade = rollCraftGrade(blacksmith);
+  const sellPrice = craftSellPrice(preview.basePrice, grade);
+  const fee = craftFee(preview.fee, sellPrice, blacksmith);
 
   let invTouched = false;
   for (const [name, qty] of needs) {
@@ -225,12 +234,8 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     }
   }
 
-  // 등급 롤 — 블랙스미스는 확률 보정(상한 동일)
-  const grade = rollCraftGrade(blacksmith);
   const stats = applyGradeBonus(preview.stats, preview.group, grade);
   const name = craftResultName(preview, grade, user.nickname, customName);
-  const gradeInfoMult = grade === "장인" ? 2.6 : grade === "명품" ? 2.0 : grade === "고품질" ? 1.4 : 1;
-  const sellPrice = Math.max(1, Math.round(preview.basePrice * 0.4 * gradeInfoMult));
 
   const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
   const statText =

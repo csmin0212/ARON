@@ -5,7 +5,7 @@
 // - 메이저 보정: 투입 광물 제작효과의 개수 가중평균(질 좋은 광물 섞을수록 소폭 상향)
 // - 마이너(최대 2): 제작효과 수치 합산 + [태그] 부여
 // - 등급(고품질/명품/장인작): 확률 롤 — 요리 등급 체계와 동일 문법.
-//   생산 클래스 원칙 "상한은 평등, 기대값은 이점": 블랙스미스는 확률·수수료만 유리, 최대치는 동일.
+//   생산 클래스 원칙 "상한은 평등, 기대값은 이점": 블랙스미스는 확률이 유리, 최대치는 동일.
 
 import type { LifeSkillItem } from "./lifeSkillData";
 
@@ -37,6 +37,11 @@ export const CRAFT_CATEGORIES: CraftCategory[] = [
 
 export const MAX_MAJORS = 5; // 메이저 투입 상한 = 최대 레벨
 export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
+export const CRAFT_AP_COST = 60;
+export const CRAFT_BASE_FEE_RATE = 0.25;
+export const CRAFT_BLACKSMITH_FEE_RATE = 0.8;
+export const CRAFT_SELL_PRICE_RATE = 0.4;
+export const CRAFT_MAX_NET_GOLD_PER_CRAFT = 40;
 
 // 대장 숙련 레벨 → 마이너 슬롯 수 (Lv10에 3칸, Lv25에 4칸)
 export function minorSlotsFor(smithLevel: number): number {
@@ -45,9 +50,10 @@ export function minorSlotsFor(smithLevel: number): number {
   return MAX_MINORS;
 }
 
-// 제작 피로도 — 장비 레벨(메이저 개수)당 점진 증가
+// 제작 피로도 — 하루 300 기준 5회 제작으로 제한
 export function craftApCost(level: number): number {
-  return 5 * Math.max(1, level);
+  void level;
+  return CRAFT_AP_COST;
 }
 
 // 제작 숙련도 — 기준가 비례 (좋은 광물·높은 레벨일수록 많이)
@@ -222,6 +228,30 @@ export const CRAFT_GRADES: Record<CraftGradeKey, { bonus: number; priceMult: num
   장인: { bonus: 3, priceMult: 2.6 },
 };
 
+export function craftSellPrice(basePrice: number, grade: CraftGradeKey | null): number {
+  return Math.max(1, Math.round(basePrice * CRAFT_SELL_PRICE_RATE * (grade ? CRAFT_GRADES[grade].priceMult : 1)));
+}
+
+export function craftBaseFee(basePrice: number): number {
+  return Math.max(20, Math.round(basePrice * CRAFT_BASE_FEE_RATE));
+}
+
+export function craftFee(baseFee: number, sellPrice: number, isBlacksmith: boolean): number {
+  const classFee = isBlacksmith ? Math.round(baseFee * CRAFT_BLACKSMITH_FEE_RATE) : baseFee;
+  const resaleGuardFee = Math.max(0, sellPrice - CRAFT_MAX_NET_GOLD_PER_CRAFT);
+  return Math.max(10, classFee, resaleGuardFee);
+}
+
+export function craftFeeRange(
+  baseFee: number,
+  basePrice: number,
+  isBlacksmith: boolean,
+): { min: number; max: number } {
+  const grades: (CraftGradeKey | null)[] = [null, "고품질", "명품", "장인"];
+  const fees = grades.map((grade) => craftFee(baseFee, craftSellPrice(basePrice, grade), isBlacksmith));
+  return { min: Math.min(...fees), max: Math.max(...fees) };
+}
+
 // "상한은 평등, 기대값은 이점" — 블랙스미스는 확률만 2배+, 결과 상한은 동일.
 export function rollCraftGrade(isBlacksmith: boolean, rand: () => number = Math.random): CraftGradeKey | null {
   const r = rand() * 100;
@@ -379,7 +409,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   // 광물 질 반영 기준가 — 메이저 평균 등급이 높을수록 가치 상승
   const avgRank = majors.reduce((s, m) => s + m.item.rank * m.qty, 0) / level;
   const basePrice = Math.round(base.price * (1 + Math.max(0, avgRank - 2) * 0.25));
-  const fee = Math.max(20, Math.round(basePrice * 0.15));
+  const fee = craftBaseFee(basePrice);
 
   // 중량 — 넣은 광물 총중량의 1/3 (미스릴제는 가볍고, 아다만타이트제는 무겁다)
   const oreWeight =
