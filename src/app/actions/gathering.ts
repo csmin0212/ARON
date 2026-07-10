@@ -21,6 +21,7 @@ import {
   applyExp,
   baseWeightsFor,
   computeMods,
+  isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
@@ -136,7 +137,8 @@ async function grant(userId: string, nickname: string, locationId: string | null
       }`,
     );
     for (const lv of leveled) {
-      await postSystem(locationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다! 캐릭터 페이지에서 특성을 선택하세요.`);
+      const perkPrompt = isPerkChoiceLevel(lv) ? " 캐릭터 페이지에서 특성을 선택하세요." : "";
+      await postSystem(locationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다!${perkPrompt}`);
     }
   }
   return { full: false as const, sell, exp: expGained };

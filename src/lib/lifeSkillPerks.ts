@@ -182,6 +182,10 @@ export function expForNext(level: number): number {
 // 특성은 Lv4부터 3레벨마다 선택 (4·7·10·13…)
 export const PERK_EVERY = 3;
 
+export function isPerkChoiceLevel(level: number): boolean {
+  return level > 1 && (level - 1) % PERK_EVERY === 0;
+}
+
 // ── 등급 등장 구간표 (레벨 구간별 기본 가중치 [0성..5성]) ──
 // 여기 숫자만 고치면 밸런스가 바뀐다. 상위 구간은 추후 천천히 설계.
 export const LEVEL_BANDS: { min: number; max: number; weights: number[] }[] = [
@@ -414,7 +418,7 @@ export function applyExp(
     prog.level += 1;
     leveled.push(prog.level);
     // 특성은 Lv4부터 3레벨마다(4·7·10·13·16·19…). (레벨-1)%3==0, 시작 레벨1은 제외.
-    if ((prog.level - 1) % PERK_EVERY === 0) {
+    if (isPerkChoiceLevel(prog.level)) {
       state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind, catalog) });
     }
   }

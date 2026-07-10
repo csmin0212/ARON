@@ -21,6 +21,7 @@ import {
   applyExp,
   baseWeightsFor,
   computeMods,
+  isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
@@ -150,9 +151,12 @@ async function grantFish(
       }`,
     );
     for (const lv of leveled) {
+      const perkPrompt = isPerkChoiceLevel(lv)
+        ? " 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요."
+        : "";
       await postSystem(
         locationId,
-        `🆙 ${nickname}님의 낚시 레벨이 ${lv}이 되었다! 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요.`,
+        `🆙 ${nickname}님의 낚시 레벨이 ${lv}이 되었다!${perkPrompt}`,
       );
     }
   }

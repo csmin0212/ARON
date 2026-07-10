@@ -33,6 +33,7 @@ import {
   applyExp,
   baseWeightsFor,
   computeMods,
+  isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
@@ -298,9 +299,12 @@ export async function runActionCommand(
         firstCatch ? " 📖 도감에 새로 등록!" : ` 누적 ${caughtCount}회`
       }`;
       for (const lv of leveled) {
+        const perkPrompt = isPerkChoiceLevel(lv)
+          ? " 내 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요."
+          : "";
         await postSystem(
           locationId,
-          `🆙 ${nickname}님의 ${lifeSkillKind} 레벨이 ${lv}이 되었다! 내 캐릭터 페이지 → 생활 데이터에서 새 특성을 선택하세요.`,
+          `🆙 ${nickname}님의 ${lifeSkillKind} 레벨이 ${lv}이 되었다!${perkPrompt}`,
         );
       }
     } else {
