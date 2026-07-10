@@ -181,6 +181,33 @@ export const BASELINE: Record<string, BaselineRow[]> = {
   ],
 };
 
+// 장비 종류별 기준 중량. 인덱스 = 레벨-1.
+// 최종 중량은 이 값에 메이저 광물 평균 중량 보정을 얹는다.
+const BASELINE_WEIGHT: Record<string, number[]> = {
+  격투: [3, 4, 5, 6, 6],
+  단검: [1, 2, 2, 2, 3],
+  장검: [6, 7, 8, 8, 8],
+  양손검: [10, 11, 12, 13, 14],
+  도끼: [11, 11, 12, 13, 14],
+  타격: [5, 7, 8, 9, 10],
+  창: [8, 10, 11, 12, 12],
+  채찍: [3, 4, 5, 6, 7],
+  카타나: [5, 6, 7, 8, 9],
+  활: [6, 7, 8, 9, 10],
+  방패: [3, 4, 5, 6, 7],
+  몸통: [5, 7, 8, 10, 9],
+  머리: [1, 1, 2, 3, 4],
+  전신: [12, 14, 16, 18, 20],
+  보조: [1, 2, 3, 4, 5],
+};
+
+export function craftEquipmentWeight(categoryKey: string, level: number, avgMajorWeight: number): number {
+  const weights = BASELINE_WEIGHT[categoryKey];
+  const baseWeight = weights?.[Math.min(Math.max(1, level), MAX_MAJORS) - 1] ?? Math.max(1, level);
+  const materialAdjustment = Math.round(avgMajorWeight - 3);
+  return Math.max(1, baseWeight + materialAdjustment);
+}
+
 // ── 제작효과 파서 — "공격력+2, 물방+1, [화염속성]" ──
 const STAT_ALIASES: Record<string, keyof CraftStats> = {
   명중: "hit",
@@ -314,7 +341,7 @@ export type CraftPreview = {
   extras: string[];
   basePrice: number; // 기준가 — 수수료·판매가 산정
   fee: number; // 제작 수수료 (블랙스미스 할인 전)
-  weight: number; // 장비 중량 — 투입 광물 총중량의 1/3 (제련 손실), 최소 1
+  weight: number; // 장비 중량 — 종류/레벨 기준 중량 + 메이저 광물 평균 중량 보정
   effectText: string; // 결과 아이템 효과 설명
 };
 
@@ -411,11 +438,9 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   const basePrice = Math.round(base.price * (1 + Math.max(0, avgRank - 2) * 0.25));
   const fee = craftBaseFee(basePrice);
 
-  // 중량 — 넣은 광물 총중량의 1/3 (미스릴제는 가볍고, 아다만타이트제는 무겁다)
-  const oreWeight =
-    majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) +
-    input.minors.reduce((s, m) => s + (m.weight || 1), 0);
-  const weight = Math.max(1, Math.round(oreWeight / 3));
+  // 중량 — 장비 기준 중량에 메이저 광물 평균 중량을 반영한다.
+  const avgMajorWeight = majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) / level;
+  const weight = craftEquipmentWeight(category.key, level, avgMajorWeight);
 
   // 슬롯 게이팅 — 이 장비 종류(무기/방어구)에 안 맞는 태그는 제거.
   // (예: 화속성 내성=방어구 전용이라 무기엔 안 붙음, 맹독=무기 전용이라 방어구엔 안 붙음)
