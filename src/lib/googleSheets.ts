@@ -234,6 +234,16 @@ export async function syncSheetWeight(tab: string | null, curWeight: number): Pr
 // AA31:AB31 병합 셀 — 값은 앵커(AA31)에만 들어가므로 AB31에 쓰면 화면에 안 보인다.
 export const GOLD_CELL = "AA31";
 
+export async function syncSheetGold(tab: string | null, gold: number): Promise<boolean> {
+  if (!tab) return false;
+  try {
+    return updateValues(`${quoteSheet(tab)}!${GOLD_CELL}`, [[`${gold}G`]]);
+  } catch (error) {
+    console.warn("Failed to sync sheet gold", error);
+    return false;
+  }
+}
+
 // 골드 칸은 경험점처럼 시트의 기존 수식을 보존하고 끝에 +N/-N 만 붙인다.
 // (절대값 덮어쓰기를 하면 시트에 손으로 넣은 수식이 사라지므로)
 export async function appendSheetGold(tab: string | null, delta: number): Promise<boolean> {

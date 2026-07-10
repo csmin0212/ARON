@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
   pushInventoryToSheet,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
@@ -803,7 +803,7 @@ export async function buyFood(_prev: MarketState, formData: FormData): Promise<M
     }),
     incrementDbInventory(ctx.userId, product.name, qty),
   ]);
-  void appendSheetGold(ctx.tab, -totalPrice);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -840,7 +840,7 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
     }),
     decrementDbInventory(ctx.userId, product.name, qty),
   ]);
-  void appendSheetGold(ctx.tab, product.sellPrice * qty);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -1045,7 +1045,7 @@ export async function sellCookedFood(
     }),
     decrementDbInventory(ctx.userId, itemName, qty),
   ]);
-  void appendSheetGold(ctx.tab, gain);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -1400,7 +1400,7 @@ export async function sellLifeCatch(_prev: MarketState, formData: FormData): Pro
       invJson: JSON.stringify(inv),
     },
   });
-  void appendSheetGold(ctx.tab, gain);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -1448,7 +1448,7 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
     }),
     decrementDbInventory(ctx.userId, itemName, qty),
   ]);
-  void appendSheetGold(ctx.tab, gain);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -1495,7 +1495,7 @@ export async function restAtInn(): Promise<MarketState> {
       gold: `${nextGold}G`,
     },
   });
-  void appendSheetGold(sheet.sheetTab, -INN_REST_COST);
+  void enqueueSheetGoldSync(user.id);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -1562,7 +1562,7 @@ export async function buyHouse(
       }),
     },
   });
-  void appendSheetGold(ctx.tab, refund - cost);
+  void enqueueSheetGoldSync(ctx.userId);
 
   if (ctx.locationId) {
     await postSystem(
@@ -1631,7 +1631,7 @@ export async function sellHouse(
       enteredAt: nextLocationId !== sheet?.locationId ? new Date() : undefined,
     },
   });
-  void appendSheetGold(ctx.tab, refund);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");
@@ -1743,7 +1743,7 @@ export async function buyLifeGear(
       invJson: JSON.stringify(inv),
     },
   });
-  void appendSheetGold(ctx.tab, -product.price);
+  void enqueueSheetGoldSync(ctx.userId);
 
   revalidatePath("/world");
   revalidatePath("/profile");

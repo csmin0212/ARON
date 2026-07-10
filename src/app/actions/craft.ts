@@ -9,11 +9,11 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { getActiveItems, type LifeSkillItem } from "@/lib/lifeSkillData";
 import { applySmithingExp, parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
 import {
-  appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
   type SheetInventory,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   applyGradeBonus,
   computeCraft,
@@ -304,7 +304,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
       achStatsJson: achStats,
     },
   });
-  void appendSheetGold(sheet.sheetTab, -fee);
+  void enqueueSheetGoldSync(user.id);
   void appendSheetItem(sheet.sheetTab, name, 1, { effect: effectText, weight: preview.weight });
   if (invTouched) {
     // 인벤에서 광물을 소모했으면 시트 전체 동기화는 다음 pushInventoryToSheet 경로에 맡기고,

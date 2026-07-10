@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { appendSheetGold } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 
 function parseRecipeIngredients(value: string): { name: string; qty: number }[] {
   try {
@@ -136,7 +136,7 @@ export async function drawRecipeGacha(count: number): Promise<GachaState> {
     where: { userId: user.id },
     data: { curGold: nextGold, gold: `${nextGold}G`, ...(invJson ? { invJson } : {}) },
   });
-  void appendSheetGold(sheet.sheetTab, -cost);
+  void enqueueSheetGoldSync(user.id);
 
   revalidatePath("/world");
   revalidatePath("/profile");

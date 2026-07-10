@@ -2,12 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import {
-  appendSheetGold,
   inventoryWeightTotal,
   pushInventoryToSheet,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   addLifeBagItem,
   lifeBagLimit,
@@ -661,7 +661,7 @@ export async function createListingCore(
       expiresAt: listingExpiry(),
     },
   });
-  void appendSheetGold(actor.tab, -fee);
+  void enqueueSheetGoldSync(actor.userId);
   void pushInventoryToSheet(actor.tab, actor.inv);
 
   return {
@@ -717,7 +717,7 @@ export async function buyListingCore(
       gold: `${nextBuyerGold}G`,
     },
   });
-  void appendSheetGold(buyer.tab, -total);
+  void enqueueSheetGoldSync(buyer.userId);
   await prisma.mail.create({
     data: {
       recipientId: buyerId,
@@ -742,7 +742,7 @@ export async function buyListingCore(
       where: { userId: listing.sellerId },
       data: { curGold: nextSellerGold, gold: `${nextSellerGold}G` },
     });
-    void appendSheetGold(sellerSheet.sheetTab, proceeds);
+    void enqueueSheetGoldSync(listing.sellerId);
   }
   await prisma.notification.create({
     data: {
@@ -797,7 +797,7 @@ export async function instantSellCore(
       gold: `${nextGold}G`,
     },
   });
-  void appendSheetGold(actor.tab, gain);
+  void enqueueSheetGoldSync(actor.userId);
   if (isBasic) void pushInventoryToSheet(actor.tab, actor.inv);
 
   return { ok: `${name} x${qty} 즉시매각 완료. +${gain.toLocaleString()}G` };

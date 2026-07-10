@@ -11,6 +11,7 @@ export function rollDice(count = 2): number[] {
 // "105G" / "1,200 G" → 105 / 1200
 export function parseGoldToInt(s: string | null | undefined): number {
   if (!s) return 0;
-  const n = parseInt(String(s).replace(/[^\d]/g, ""), 10);
+  const match = String(s).replace(/,/g, "").match(/-?\d+/);
+  const n = match ? parseInt(match[0], 10) : NaN;
   return Number.isNaN(n) ? 0 : n;
 }

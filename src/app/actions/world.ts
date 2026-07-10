@@ -22,11 +22,11 @@ import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import type { ActionRow, DropEntry } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
 import {
-  appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
   type SheetInventory,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   homeLocationId,
   houseOption,
@@ -196,7 +196,7 @@ async function grantEventRewards(
   const nextGold = (latest.curGold ?? 0) + goldGain;
   if (goldGain > 0) {
     inv.gold = `${nextGold}G`;
-    void appendSheetGold(latest.sheetTab, goldGain);
+    void enqueueSheetGoldSync(userId);
   }
 
   await prisma.characterSheet.update({

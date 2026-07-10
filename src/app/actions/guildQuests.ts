@@ -8,12 +8,12 @@ import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
 import {
-  appendSheetGold,
   appendSheetItem,
   pushInventoryToSheet,
   inventoryWeightTotal,
   type SheetInventory,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   acceptedOffer,
   drawSkillbookNumber,
@@ -217,7 +217,7 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
       achStatsJson: bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"),
     },
   });
-  void appendSheetGold(sheet.sheetTab, offer.gold);
+  void enqueueSheetGoldSync(user.id);
   if (sheetPushNeeded) void pushInventoryToSheet(sheet.sheetTab, inv);
   void checkAndGrant(user.id);
 

@@ -6,12 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import {
-  appendSheetGold,
   inventoryWeightTotal,
   pushInventoryToSheet,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   addLifeBagItem,
   lifeBagLimit,
@@ -569,8 +569,8 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   }
 
   await Promise.all([
-    appendSheetGold(fromSheet.sheetTab, -trade.fromGold + trade.toGold),
-    appendSheetGold(toSheet.sheetTab, -trade.toGold + trade.fromGold),
+    enqueueSheetGoldSync(trade.fromUserId),
+    enqueueSheetGoldSync(trade.toUserId),
     pushInventoryToSheet(fromSheet.sheetTab, fromInv),
     pushInventoryToSheet(toSheet.sheetTab, toInv),
   ]);

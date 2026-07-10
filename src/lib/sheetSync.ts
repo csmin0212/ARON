@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { pushInventoryToSheet, type SheetInventory } from "@/lib/googleSheets";
+import { pushInventoryToSheet, syncSheetGold, type SheetInventory } from "@/lib/googleSheets";
 
 function parseInv(value: string | null): SheetInventory {
   try {
@@ -31,7 +31,11 @@ export async function pushInventoryForUser(
   const inv = parseInv(sheet.invJson);
   if (sheet.curGold != null) inv.gold = `${sheet.curGold}G`;
 
-  const ok = await pushInventoryToSheet(sheet.sheetTab, inv);
+  const [inventoryOk, goldOk] = await Promise.all([
+    pushInventoryToSheet(sheet.sheetTab, inv),
+    sheet.curGold != null ? syncSheetGold(sheet.sheetTab, sheet.curGold) : Promise.resolve(true),
+  ]);
+  const ok = inventoryOk && goldOk;
   if (ok) {
     await prisma.characterSheet.update({
       where: { userId },

@@ -8,11 +8,11 @@ import type { StatEntry } from "./charsheet";
 import type { CharacterSheet } from "@/generated/prisma";
 import { dedupeLifeActions } from "./locationActions";
 import {
-  appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
   type SheetInventory,
 } from "./googleSheets";
+import { enqueueSheetGoldSync } from "./sheetGoldSync";
 import { bumpStat, checkAndGrant } from "./achievements";
 import { loadLifeItems } from "./lifeSkillLoader";
 import {
@@ -334,7 +334,7 @@ export async function runActionCommand(
           where: { userId },
           data: { curGold: nextGold, invJson: nextInvJson },
         });
-        void appendSheetGold(sheet.sheetTab, drop.gold);
+        void enqueueSheetGoldSync(userId);
         resultLine = ` 성공! ✨ ${drop.gold}G 획득!`;
       } else if (drop.item === "꽝") {
         resultLine = " 꽝... 아무 일도 일어나지 않았다.";

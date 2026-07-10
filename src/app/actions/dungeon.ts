@@ -14,10 +14,10 @@ import { pickSkillbookInFamily } from "@/lib/guildQuestsServer";
 import { parseLifeState, statBuffBonus } from "@/lib/lifeSkillPerks";
 import {
   appendSheetFormula,
-  appendSheetGold,
   inventoryWeightTotal,
   type SheetInventory,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 
 const DUNGEON_AP = 60;
 const WEEKLY_LIMIT = 3;
@@ -212,7 +212,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
         where: { userId: user.id },
         data: { invJson: JSON.stringify(inv), curGold: nextGold, gold: `${nextGold}G` },
       });
-      void appendSheetGold(sheet.sheetTab, goldGain);
+      void enqueueSheetGoldSync(user.id);
     } else {
       await prisma.characterSheet.update({
         where: { userId: user.id },

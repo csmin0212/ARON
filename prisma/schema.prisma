@@ -39,6 +39,26 @@ model User {
   notifications Notification[]
   mails         Mail[]
   auctionListings AuctionListing[]
+  sheetSyncJobs SheetSyncJob[]
+}
+
+// 시트 지연 동기화 작업
+model SheetSyncJob {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String    @default("gold")
+  status      String    @default("pending")
+  dueAt       DateTime
+  attempts    Int       @default(0)
+  lastError   String?
+  lockedAt    DateTime?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, kind])
+  @@index([status, dueAt])
 }
 
 // 업적 정의 (GM 시트 '업적' 탭에서 동기화)

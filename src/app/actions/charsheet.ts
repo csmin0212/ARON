@@ -180,8 +180,6 @@ export async function syncSheetInventory(): Promise<void> {
     where: { userId: user.id },
     data: {
       invJson: JSON.stringify(inventory),
-      curGold: parseGoldToInt(inventory.gold),
-      gold: inventory.gold,
       syncedAt: new Date(),
     },
   });

@@ -6,11 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import {
-  appendSheetGold,
   appendSheetItem,
   inventoryWeightTotal,
   type SheetInventory,
 } from "@/lib/googleSheets";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   addLifeBagItem,
   lifeBagLimit,
@@ -229,7 +229,7 @@ export async function claimMail(formData: FormData): Promise<void> {
           },
         });
       }
-      if (mail.gold > 0) void appendSheetGold(sheet.sheetTab, mail.gold);
+      if (mail.gold > 0) void enqueueSheetGoldSync(user.id);
       if (!mail.itemName || mail.itemQty <= 0) {
         await prisma.characterSheet.update({
           where: { userId: user.id },
