@@ -148,8 +148,15 @@ export default function CraftingForge({
     setMajorQty((prev) => {
       const have = defs.get(name)?.have ?? 0;
       const cur = prev[name] ?? 0;
-      const othersTotal = Object.entries(prev).reduce((s, [k, v]) => (k === name ? s : s + v), 0);
-      const next = Math.max(0, Math.min(cur + delta, have, MAX_MAJORS - othersTotal));
+      if (delta > 0 && cur <= 0 && Object.entries(prev).some(([k, v]) => k !== name && v > 0)) {
+        return { [name]: Math.min(1, have, MAX_MAJORS) };
+      }
+      const next = Math.max(0, Math.min(cur + delta, have, MAX_MAJORS));
+      if (next <= 0) {
+        const copy = { ...prev };
+        delete copy[name];
+        return copy;
+      }
       return { ...prev, [name]: next };
     });
   }
@@ -257,6 +264,9 @@ export default function CraftingForge({
                 {totalMajors}/{MAX_MAJORS} → Lv{Math.max(1, totalMajors)}
               </span>
             </div>
+            <p className="mb-2 text-[11px] font-bold text-faint">
+              한 종류만 선택 가능 · 투입 수량이 장비 레벨이 된다.
+            </p>
             {majorsOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">
                 가진 메이저 광물이 없다. 광맥부터 찾아보자.
@@ -281,7 +291,7 @@ export default function CraftingForge({
                           className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30">−</button>
                         <span className="w-6 text-center text-sm font-black text-content">{qty}</span>
                         <button type="button" onClick={() => bumpMajor(def.name, 1)}
-                          disabled={qty >= have || totalMajors >= MAX_MAJORS}
+                          disabled={qty >= have || (qty > 0 && totalMajors >= MAX_MAJORS)}
                           className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30">＋</button>
                       </div>
                     </div>
@@ -297,6 +307,9 @@ export default function CraftingForge({
               <h4 className="text-sm font-extrabold text-content">💎 마이너 재료</h4>
               <span className="text-xs font-black text-violet-600">{minorSel.length}/{maxMinors}</span>
             </div>
+            <p className="mb-2 text-[11px] font-bold text-violet-600">
+              마이너 재료를 넣으면 결과가 매직 아이템으로 표기된다.
+            </p>
             {minorsOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">가진 마이너 광물이 없다.</p>
             ) : (
@@ -348,6 +361,11 @@ export default function CraftingForge({
                       <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-black text-amber-700">
                         중량 {preview.weight}
                       </span>
+                      {preview.isMagic && (
+                        <span className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[11px] font-black text-violet-700">
+                          매직 아이템
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">{preview.effectText}</p>
                     {preview.tags.length > 0 && (

@@ -279,12 +279,27 @@ export function craftFeeRange(
   return { min: Math.min(...fees), max: Math.max(...fees) };
 }
 
-// "상한은 평등, 기대값은 이점" — 블랙스미스는 확률만 유리, 결과 상한은 동일.
-export function rollCraftGrade(isBlacksmith: boolean, rand: () => number = Math.random): CraftGradeKey | null {
+export type CraftGradeRates = { signature: number; master: number; hq: number };
+
+// 요리 등급처럼 숙련 레벨이 올라갈수록 좋은 결과가 열린다.
+// 장비 제작은 재료·피로도 부담이 크므로 요리보다 약간 후한 곡선이고,
+// 블랙스미스는 같은 숙련도에서 확률과 상한이 조금 더 유리하다.
+export function craftGradeRates(smithLevel: number, isBlacksmith: boolean): CraftGradeRates {
+  const level = Math.max(1, Math.floor(smithLevel || 1));
+  return {
+    signature: Math.max(0, Math.min(isBlacksmith ? 12 : 10, (level - 25) * (isBlacksmith ? 0.48 : 0.4))),
+    master: Math.max(0, Math.min(isBlacksmith ? 14 : 12, (level - 15) * (isBlacksmith ? 0.7 : 0.6))),
+    hq: Math.max(0, Math.min(isBlacksmith ? 50 : 45, (isBlacksmith ? 8 : 6) + level * (isBlacksmith ? 1.1 : 1))),
+  };
+}
+
+export function rollCraftGrade(
+  smithLevel: number,
+  isBlacksmith: boolean,
+  rand: () => number = Math.random,
+): CraftGradeKey | null {
   const r = rand() * 100;
-  const signature = isBlacksmith ? 2 : 1.5;
-  const master = isBlacksmith ? 10 : 6;
-  const hq = isBlacksmith ? 20 : 18;
+  const { signature, master, hq } = craftGradeRates(smithLevel, isBlacksmith);
   if (r < signature) return "장인";
   if (r < signature + master) return "명품";
   if (r < signature + master + hq) return "고품질";
@@ -342,6 +357,7 @@ export type CraftPreview = {
   basePrice: number; // 기준가 — 수수료·판매가 산정
   fee: number; // 제작 수수료 (블랙스미스 할인 전)
   weight: number; // 장비 중량 — 종류/레벨 기준 중량 + 메이저 광물 평균 중량 보정
+  isMagic: boolean; // 마이너 재료가 들어간 매직 아이템 여부
   effectText: string; // 결과 아이템 효과 설명
 };
 
@@ -389,6 +405,10 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   if (input.minors.length > maxMinors) return { error: `마이너 재료는 최대 ${maxMinors}종이에요. (대장 레벨로 확장)` };
   for (const m of majors) {
     if ((m.item.craftRole ?? "") !== "메이저") return { error: `${m.item.name}은(는) 메이저 광물이 아니에요.` };
+  }
+  const majorKinds = new Set(majors.map((m) => m.item.name.trim()));
+  if (majorKinds.size > 1) {
+    return { error: "메이저 광물은 한 종류만 넣을 수 있어요. 같은 광물 수량으로 장비 레벨을 올려주세요." };
   }
   for (const m of input.minors) {
     if ((m.craftRole ?? "") !== "마이너") return { error: `${m.name}은(는) 마이너 광물이 아니에요.` };
@@ -441,6 +461,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   // 중량 — 장비 기준 중량에 메이저 광물 평균 중량을 반영한다.
   const avgMajorWeight = majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) / level;
   const weight = craftEquipmentWeight(category.key, level, avgMajorWeight);
+  const isMagic = input.minors.length > 0;
 
   // 슬롯 게이팅 — 이 장비 종류(무기/방어구)에 안 맞는 태그는 제거.
   // (예: 화속성 내성=방어구 전용이라 무기엔 안 붙음, 맹독=무기 전용이라 방어구엔 안 붙음)
@@ -454,6 +475,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     statLine(stats, category.group),
     ...(tagList.length > 0 ? [tagList.map((t) => `[${t}]`).join(" ")] : []),
     ...(extras.length > 0 ? [extras.join(" · ")] : []),
+    ...(isMagic ? ["분류: 매직 아이템"] : []),
     `Lv${level} ${category.key} · ${base.part}`,
   ].join("\n");
 
@@ -470,6 +492,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     basePrice,
     fee,
     weight,
+    isMagic,
     effectText,
   };
 }

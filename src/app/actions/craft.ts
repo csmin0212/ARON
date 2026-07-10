@@ -221,7 +221,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     return { error: `제작 수수료가 부족해요. (최대 ${feeRange.max.toLocaleString()}G 필요)` };
   }
 
-  const grade = rollCraftGrade(blacksmith);
+  const grade = rollCraftGrade(life.smithing.level, blacksmith);
   const sellPrice = craftSellPrice(preview.basePrice, grade);
   const fee = craftFee(preview.fee, sellPrice, blacksmith);
 
@@ -248,6 +248,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     statText,
     ...(preview.tags.length > 0 ? [preview.tags.map((t) => `[${t}]`).join(" ")] : []),
     ...(preview.extras.length > 0 ? [preview.extras.join(" · ")] : []),
+    ...(preview.isMagic ? ["분류: 매직 아이템"] : []),
     `Lv${preview.level} ${preview.category} · ${preview.part}${grade ? ` · ${grade === "장인" ? "장인작" : grade}` : ""}`,
     `제작: ${user.nickname}`,
   ].join("\n");

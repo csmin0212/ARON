@@ -306,6 +306,7 @@ async function currentSheet(): Promise<{
   locationId: string | null;
   ap: number | null;
   apResetAt: Date | null;
+  charClass: string | null;
   curGold: number | null;
   achStatsJson: string | null;
   adventurerRank: string | null;
@@ -326,6 +327,7 @@ async function currentSheet(): Promise<{
     locationId: sheet.locationId,
     ap: sheet.ap,
     apResetAt: sheet.apResetAt,
+    charClass: sheet.charClass,
     curGold: sheet.curGold,
     achStatsJson: sheet.achStatsJson,
     adventurerRank: sheet.adventurerRank,
@@ -847,11 +849,22 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
 
 // 요리 등급 추첨 — 레벨이 높을수록 좋은 등급 확률↑.
 // 장인작(요리사 이름 새김): 고렙에서만 희귀 / 명품: Lv15+ / 고품질: 흔함.
-function rollCookGrade(level: number): string | null {
+function isChushiClass(charClass: string | null | undefined): boolean {
+  return (charClass ?? "").replace(/\s+/g, "").includes("츄시");
+}
+
+function cookGradeRates(levelRaw: number, isChushi: boolean): { signature: number; master: number; hq: number } {
+  const level = Math.max(1, Math.floor(levelRaw || 1));
+  return {
+    signature: Math.max(0, Math.min(isChushi ? 12 : 10, (level - 25) * (isChushi ? 0.48 : 0.4))),
+    master: Math.max(0, Math.min(isChushi ? 14 : 12, (level - 15) * (isChushi ? 0.7 : 0.6))),
+    hq: Math.min(isChushi ? 50 : 45, (isChushi ? 8 : 6) + level * (isChushi ? 1.1 : 1)),
+  };
+}
+
+function rollCookGrade(level: number, isChushi: boolean): string | null {
   const r = Math.random() * 100;
-  const signature = Math.max(0, Math.min(10, (level - 25) * 0.4)); // 장인작: Lv25+, 최대 10%
-  const master = Math.max(0, Math.min(12, (level - 15) * 0.6)); // 명품: Lv15+, 최대 12%
-  const hq = Math.min(45, 6 + level); // 고품질: Lv1 ~7% → 상한 45%
+  const { signature, master, hq } = cookGradeRates(level, isChushi);
   if (r < signature) return "장인";
   if (r < signature + master) return "명품";
   if (r < signature + master + hq) return "고품질";
@@ -906,7 +919,7 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   }
 
   // 등급 추첨 — 요리레벨 비례. 장인작이면 요리사 닉네임이 새겨진다("{닉네임}의 {이름}").
-  const grade = recipe ? rollCookGrade(life.cooking.level) : null;
+  const grade = recipe ? rollCookGrade(life.cooking.level, isChushiClass(ctx.charClass)) : null;
   const gi = gradeInfo(grade);
   const result = recipe
     ? (() => {
