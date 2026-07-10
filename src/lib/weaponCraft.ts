@@ -279,12 +279,12 @@ export function craftFeeRange(
   return { min: Math.min(...fees), max: Math.max(...fees) };
 }
 
-// "상한은 평등, 기대값은 이점" — 블랙스미스는 확률만 2배+, 결과 상한은 동일.
+// "상한은 평등, 기대값은 이점" — 블랙스미스는 확률만 유리, 결과 상한은 동일.
 export function rollCraftGrade(isBlacksmith: boolean, rand: () => number = Math.random): CraftGradeKey | null {
   const r = rand() * 100;
-  const signature = isBlacksmith ? 4 : 1.5;
-  const master = isBlacksmith ? 12 : 6;
-  const hq = isBlacksmith ? 30 : 18;
+  const signature = isBlacksmith ? 2 : 1.5;
+  const master = isBlacksmith ? 10 : 6;
+  const hq = isBlacksmith ? 20 : 18;
   if (r < signature) return "장인";
   if (r < signature + master) return "명품";
   if (r < signature + master + hq) return "고품질";

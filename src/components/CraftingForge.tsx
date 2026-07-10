@@ -340,12 +340,15 @@ export default function CraftingForge({
                   : `${preview.majorRep} ${preview.repName}`;
                 return (
                   <div>
-                    <p className="text-sm font-black text-content">
-                      {customName.trim() || autoName}
-                      <span className="ml-1.5 text-[11px] font-bold text-faint">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-sm font-black text-content">{customName.trim() || autoName}</p>
+                      <span className="rounded-md bg-surface px-1.5 py-0.5 text-[11px] font-bold text-faint">
                         Lv{preview.level} {preview.category} · {preview.part}
                       </span>
-                    </p>
+                      <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-black text-amber-700">
+                        중량 {preview.weight}
+                      </span>
+                    </div>
                     <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted">{preview.effectText}</p>
                     {preview.tags.length > 0 && (
                       <div className="mt-2">
