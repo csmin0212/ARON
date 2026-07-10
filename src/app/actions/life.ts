@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { parseLifeState } from "@/lib/lifeSkillPerks";
+import { parseLifeState, perkIdentityKey } from "@/lib/lifeSkillPerks";
 
 export type LifeActionState = { error?: string; ok?: string } | undefined;
 
@@ -28,6 +28,9 @@ export async function chooseLifePerk(
 
   const picked = choice.options[optionIndex];
   if (!picked) return { error: "잘못된 선택이에요." };
+  if (life.perks.some((perk) => perkIdentityKey(perk) === perkIdentityKey(picked))) {
+    return { error: `[${picked.rarity}] ${picked.name} 특성은 이미 익혔어요.` };
+  }
 
   life.pending.shift();
   life.perks.push({ ...picked, kind: choice.kind });

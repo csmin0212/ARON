@@ -371,6 +371,10 @@ function isMyth(p: { rarity: PerkRarity }): boolean {
   return p.rarity === "신화";
 }
 
+export function perkIdentityKey(p: Pick<LifePerk, "name" | "rarity">): string {
+  return `${p.name.trim()}\u0000${p.rarity}`;
+}
+
 // 레벨업 선택지 3개 생성 (희귀도 개별 추첨)
 export function rollPerkOptions(
   state: LifeState,
@@ -378,6 +382,7 @@ export function rollPerkOptions(
   catalog?: LifeSkillCatalogEntry[],
 ): LifePerk[] {
   const ownedMyth = new Set(state.perks.filter(isMyth).map((p) => p.name));
+  const ownedPerks = new Set(state.perks.map(perkIdentityKey));
   const options: LifePerk[] = [];
   let guard = 0;
   while (options.length < 3 && guard++ < 60) {
@@ -393,7 +398,7 @@ export function rollPerkOptions(
           effectValue,
         })) ?? [];
     const pool = (catalogPool.length > 0 ? catalogPool : tierPerks(kind, rarity)).filter(
-      (p) => !(p.rarity === "신화" && ownedMyth.has(p.name)),
+      (p) => !ownedPerks.has(perkIdentityKey(p)) && !(p.rarity === "신화" && ownedMyth.has(p.name)),
     );
     if (pool.length === 0) continue;
     const pick = pool[Math.floor(Math.random() * pool.length)];

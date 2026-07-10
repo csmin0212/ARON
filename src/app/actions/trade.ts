@@ -12,8 +12,15 @@ import {
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
-import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
-import type { LifeSkillKind } from "@/lib/lifeSkillData";
+import {
+  addLifeBagItem,
+  lifeBagLimit,
+  lifeBagWeight,
+  parseLifeState,
+  type LifeState,
+} from "@/lib/lifeSkillPerks";
+import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 
 export type TradeActionState = {
   ok?: boolean;
@@ -149,6 +156,30 @@ function addItem(inv: SheetInventory, item: TradeSideItem, qty = item.qty): Shee
   return inv;
 }
 
+function parseLifeEffectSnapshot(effect: string | null | undefined): { rank: number | null; text: string | null } {
+  if (!effect) return { rank: null, text: null };
+  const match = effect.match(/^R(\d+)\s*·\s*(.*)$/);
+  if (!match) return { rank: null, text: effect };
+  return {
+    rank: Number(match[1]),
+    text: match[2]?.trim() || null,
+  };
+}
+
+function destinationLifeBag(item: TradeSideItem): LifeSkillKind | null {
+  if (item.source === "낚시" || item.source === "채집" || item.source === "채광") return item.source;
+  return lifeSkillItemKind(item.name);
+}
+
+function addLifeBagItems(
+  life: LifeState,
+  kind: LifeSkillKind,
+  item: { name: string; weight: number; rank: number; text: string },
+  qty: number,
+): void {
+  for (let i = 0; i < qty; i++) addLifeBagItem(life, kind, item);
+}
+
 function readOfferItems(pool: Pool, formData: FormData): TradeSideItem[] {
   const names = formData.getAll("itemName").map((value) => String(value ?? "").trim());
   const qtys = formData.getAll("itemQty");
@@ -211,9 +242,22 @@ async function decrementDbInventory(userId: string, itemName: string, qty: numbe
   });
 }
 
-async function incrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
-  const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
-  if (!item) return;
+async function incrementDbInventory(
+  userId: string,
+  itemName: string,
+  qty: number,
+  snapshot?: TradeSideItem,
+): Promise<void> {
+  const item =
+    (await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } })) ??
+    (await prisma.item.create({
+      data: {
+        id: itemName,
+        name: itemName,
+        category: "기타",
+        desc: snapshot?.effect ?? null,
+      },
+    }));
 
   const existing = await prisma.inventoryEntry.findFirst({
     where: { userId, itemId: item.id, meta: null },
@@ -422,7 +466,9 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const toInvalid = validateSide(toPool, toItems);
   if (toInvalid) return { ok: false, message: `${trade.toUser.nickname}: ${toInvalid}` };
 
-  // 보내는 쪽은 출처(기본/생활 가방)에서 차감, 받는 쪽은 기본 가방으로 수령.
+  await loadLifeItems();
+
+  // 보내는 쪽은 출처(기본/생활 가방)에서 차감, 받는 쪽은 아이템 성격에 맞는 가방으로 수령.
   const removeOffered = (pool: Pool, items: TradeSideItem[]) => {
     for (const item of items) {
       const source = item.source ?? "basic";
@@ -430,10 +476,35 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
       else removeFromLifeBag(pool.life, source, item.name, item.qty);
     }
   };
+  const receiveOffered = (pool: Pool, nickname: string, items: TradeSideItem[]): string | null => {
+    for (const item of items) {
+      const bagKind = destinationLifeBag(item);
+      if (!bagKind) {
+        addItem(pool.inv, item);
+        continue;
+      }
+
+      const lifeItem = findLifeSkillItem(bagKind, item.name);
+      const effectSnapshot = parseLifeEffectSnapshot(item.effect);
+      const weight = item.weight ?? lifeItem?.weight ?? 1;
+      const rank = effectSnapshot.rank ?? lifeItem?.rank ?? 0;
+      const text = effectSnapshot.text ?? lifeItem?.text ?? item.effect ?? "";
+      const bag = pool.life.bags[bagKind];
+      const nextWeight = lifeBagWeight(bag) + weight * item.qty;
+      const maxWeight = lifeBagLimit(pool.life, bagKind);
+      if (nextWeight > maxWeight) {
+        return `${nickname}님의 ${bag.name} 중량을 초과합니다. (${nextWeight}/${maxWeight})`;
+      }
+      addLifeBagItems(pool.life, bagKind, { name: item.name, weight, rank, text }, item.qty);
+    }
+    return null;
+  };
   removeOffered(fromPool, fromItems);
   removeOffered(toPool, toItems);
-  for (const item of toItems) addItem(fromInv, item);
-  for (const item of fromItems) addItem(toInv, item);
+  const fromReceiveInvalid = receiveOffered(fromPool, trade.fromUser.nickname, toItems);
+  if (fromReceiveInvalid) return { ok: false, message: fromReceiveInvalid };
+  const toReceiveInvalid = receiveOffered(toPool, trade.toUser.nickname, fromItems);
+  if (toReceiveInvalid) return { ok: false, message: toReceiveInvalid };
 
   if (fromInv.curWeight != null && fromInv.maxWeight != null && fromInv.curWeight > fromInv.maxWeight) {
     return { ok: false, message: `${trade.fromUser.nickname}님의 가방 중량을 초과합니다.` };
@@ -488,18 +559,20 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   ]);
 
   for (const item of fromItems) {
-    await decrementDbInventory(trade.fromUserId, item.name, item.qty);
-    await incrementDbInventory(trade.toUserId, item.name, item.qty);
+    if ((item.source ?? "basic") === "basic") await decrementDbInventory(trade.fromUserId, item.name, item.qty);
+    if (!destinationLifeBag(item)) await incrementDbInventory(trade.toUserId, item.name, item.qty, item);
   }
   for (const item of toItems) {
-    await decrementDbInventory(trade.toUserId, item.name, item.qty);
-    await incrementDbInventory(trade.fromUserId, item.name, item.qty);
+    if ((item.source ?? "basic") === "basic") await decrementDbInventory(trade.toUserId, item.name, item.qty);
+    if (!destinationLifeBag(item)) await incrementDbInventory(trade.fromUserId, item.name, item.qty, item);
   }
 
-  void appendSheetGold(fromSheet.sheetTab, -trade.fromGold + trade.toGold);
-  void appendSheetGold(toSheet.sheetTab, -trade.toGold + trade.fromGold);
-  void pushInventoryToSheet(fromSheet.sheetTab, fromInv);
-  void pushInventoryToSheet(toSheet.sheetTab, toInv);
+  await Promise.all([
+    appendSheetGold(fromSheet.sheetTab, -trade.fromGold + trade.toGold),
+    appendSheetGold(toSheet.sheetTab, -trade.toGold + trade.fromGold),
+    pushInventoryToSheet(fromSheet.sheetTab, fromInv),
+    pushInventoryToSheet(toSheet.sheetTab, toInv),
+  ]);
   void checkAndGrant(trade.fromUserId);
   void checkAndGrant(trade.toUserId);
   refreshTrade(trade.id, trade.fromUser.username, trade.toUser.username);
