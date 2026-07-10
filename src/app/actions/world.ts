@@ -181,12 +181,15 @@ async function grantEventRewards(
 
     const item = await prisma.item.findFirst({
       where: { OR: [{ id: reward.item }, { name: reward.item }] },
-      select: { id: true, name: true, desc: true },
+      select: { id: true, name: true, desc: true, weight: true },
     });
     const itemName = item?.name ?? reward.item;
     await incrementDbItem(userId, itemName, reward.qty);
-    addInvSnapshotItem(inv, { name: itemName, effect: item?.desc ?? null, weight: null }, reward.qty);
-    void appendSheetItem(latest.sheetTab, itemName, reward.qty, { effect: item?.desc ?? null });
+    addInvSnapshotItem(inv, { name: itemName, effect: item?.desc ?? null, weight: item?.weight ?? null }, reward.qty);
+    void appendSheetItem(latest.sheetTab, itemName, reward.qty, {
+      effect: item?.desc ?? null,
+      weight: item?.weight ?? undefined,
+    });
     lines.push(`${itemName} x${reward.qty}`);
   }
 

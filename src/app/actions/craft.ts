@@ -161,7 +161,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   // 아이템 탭 드롭품(제작효과 有) — 마이너 재료로 합류
   const dropMinors = await prisma.item.findMany({
     where: { craftEffect: { not: null } },
-    select: { name: true, craftEffect: true, sellPrice: true, desc: true },
+    select: { name: true, craftEffect: true, sellPrice: true, desc: true, weight: true },
   });
   for (const it of dropMinors) {
     const key = it.name.trim();
@@ -270,9 +270,10 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
       name,
       category: preview.group,
       sellPrice,
+      weight: preview.weight,
       desc: effectText,
     },
-    update: { category: preview.group, sellPrice, desc: effectText },
+    update: { category: preview.group, sellPrice, weight: preview.weight, desc: effectText },
   });
   const dbItem = await prisma.item.findUnique({ where: { id: name }, select: { id: true } });
   if (dbItem) {

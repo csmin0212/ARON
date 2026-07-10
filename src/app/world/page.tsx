@@ -312,13 +312,13 @@ export default async function WorldPage() {
   ]);
   const locActions = dedupeLifeActions(rawLocActions);
 
-  const itemNames = new Map(
+  const itemCatalog = new Map(
     (
       await prisma.item.findMany({
         where: { id: { in: invEntries.map((e) => e.itemId) } },
-        select: { id: true, name: true },
+        select: { id: true, name: true, weight: true },
       })
-    ).map((it) => [it.id, it.name]),
+    ).map((it) => [it.id, it]),
   );
 
   // 스킬북 — 서버가 정상 지급한 토큰을 보유한 것만 "사용" 대상 (시트 위조 차단)
@@ -345,9 +345,9 @@ export default async function WorldPage() {
     sheetInventory
       ? sheetInventory.items
       : invEntries.map((e) => ({
-          name: itemNames.get(e.itemId) ?? e.itemId,
+          name: itemCatalog.get(e.itemId)?.name ?? e.itemId,
           effect: null,
-          weight: null,
+          weight: itemCatalog.get(e.itemId)?.weight ?? null,
           qty: e.qty,
         }));
   const bagItems = rawBagItems.filter((item) => !lifeSkillItemKind(item.name));
@@ -506,7 +506,7 @@ export default async function WorldPage() {
   // 아이템 탭 드롭품(제작효과 有) — 마이너 재료로 합류 (그리폰 깃털 등)
   const dropMinorDefs = await prisma.item.findMany({
     where: { craftEffect: { not: null } },
-    select: { name: true, craftEffect: true, sellPrice: true, desc: true },
+    select: { name: true, craftEffect: true, sellPrice: true, desc: true, weight: true },
   });
   const mineralNames = new Set(mineralCraftViews.map((entry) => entry.def.name));
   const dropMinorViews: CraftMineralView[] = dropMinorDefs

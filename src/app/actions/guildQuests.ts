@@ -271,7 +271,7 @@ async function drawSkillbookInner(fragKindRaw: string): Promise<DrawResult> {
   state.frags[fragKind] -= FRAG_COST;
   const item = await prisma.item.findFirst({
     where: { OR: [{ id: book.itemId }, { name: book.itemId }] },
-    select: { id: true, name: true, desc: true },
+    select: { id: true, name: true, desc: true, weight: true },
   });
   const itemName = item?.name ?? book.itemId;
   const effect = item?.desc ?? `${book.job ?? "공용"} 스킬 '${book.skillName}'을 취득한다. 소모품`;
@@ -280,7 +280,7 @@ async function drawSkillbookInner(fragKindRaw: string): Promise<DrawResult> {
     (entry) => entry.name.trim() === itemName && (entry.effect ?? null) === effect,
   );
   if (existing) existing.qty += 1;
-  else inv.items.push({ name: itemName, qty: 1, effect, weight: null });
+  else inv.items.push({ name: itemName, qty: 1, effect, weight: item?.weight ?? null });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
 
   await prisma.characterSheet.update({
@@ -289,7 +289,7 @@ async function drawSkillbookInner(fragKindRaw: string): Promise<DrawResult> {
   });
   // 사용 검증용 토큰 — 서버 지급 스킬북만 '사용' 가능(시트 위조 차단, lib/skillbook.ts)
   await grantSkillBookToken(user.id, item?.id ?? book.itemId, 1);
-  void appendSheetItem(sheet.sheetTab, itemName, 1, { effect });
+  void appendSheetItem(sheet.sheetTab, itemName, 1, { effect, weight: item?.weight ?? undefined });
 
   if (unique && sheet.locationId) {
     await postSystem(

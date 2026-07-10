@@ -91,8 +91,8 @@ async function ensureItem(p: PendingCatch): Promise<void> {
   const sellPrice = lifeSkillMarketPrice(FISH, { rank: p.rank, price: p.price } as never);
   await prisma.item.upsert({
     where: { id: p.name },
-    create: { id: p.name, name: p.name, category: lifeSkillCategory(FISH), sellPrice, desc: p.text, order: p.no },
-    update: { name: p.name, category: lifeSkillCategory(FISH), sellPrice, desc: p.text, order: p.no },
+    create: { id: p.name, name: p.name, category: lifeSkillCategory(FISH), sellPrice, weight: p.weight, desc: p.text, order: p.no },
+    update: { name: p.name, category: lifeSkillCategory(FISH), sellPrice, weight: p.weight, desc: p.text, order: p.no },
   });
 }
 

@@ -29,6 +29,7 @@ export type ItemRow = {
   category: string | null;
   buyPrice: number | null;
   sellPrice: number | null;
+  weight: number | null;
   desc: string | null;
   craftEffect: string | null; // 장비 제작 마이너 재료 효과 (드롭품 등)
 };
@@ -212,6 +213,8 @@ export function parseItemsGrid(g: string[][]): ItemRow[] {
     분류: "category",
     구매가: "buyPrice",
     판매가: "sellPrice",
+    중량: "weight",
+    무게: "weight",
     제작효과: "craftEffect",
     "제작 효과": "craftEffect",
     설명: "desc",
@@ -233,6 +236,7 @@ export function parseItemsGrid(g: string[][]): ItemRow[] {
       category: at(g, r, h.col.category) || null,
       buyPrice: num(at(g, r, h.col.buyPrice)),
       sellPrice: num(at(g, r, h.col.sellPrice)),
+      weight: num(at(g, r, h.col.weight)),
       craftEffect: at(g, r, h.col.craftEffect) || null,
       desc: at(g, r, h.col.desc) || null,
     });

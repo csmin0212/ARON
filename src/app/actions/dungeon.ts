@@ -90,15 +90,17 @@ async function giveItemById(
 ): Promise<void> {
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: itemId }, { name: itemId }] },
-    select: { id: true, name: true, desc: true },
+    select: { id: true, name: true, desc: true, weight: true },
   });
   const itemName = catalog?.name ?? itemId;
+  const weight = catalog?.weight ?? 1;
   const found = inv.items.find((i) => i.name.trim() === itemName.trim());
   if (found) {
     found.qty += qty;
     if (!found.effect && catalog?.desc) found.effect = catalog.desc;
+    found.weight ??= weight;
   } else {
-    inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight: 1, qty });
+    inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight, qty });
   }
   await incDbItem(userId, itemId, qty);
   // 스킬북이면 서버 전용 토큰도 지급 — 시트 위조로는 못 얻게 (악용 방지)

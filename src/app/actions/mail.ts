@@ -160,7 +160,7 @@ export async function claimMail(formData: FormData): Promise<void> {
       if (mail.itemName && mail.itemQty > 0) {
         const catalog = await prisma.item.findFirst({
           where: { OR: [{ id: mail.itemName }, { name: mail.itemName }] },
-          select: { id: true, name: true, desc: true },
+          select: { id: true, name: true, desc: true, weight: true },
         });
         // 스냅샷 메타(경매 반송 등) — 강화 장비의 효과·중량은 카탈로그가 아니라 스냅샷이 정본
         let meta: MailItemMeta = {};
@@ -175,7 +175,7 @@ export async function claimMail(formData: FormData): Promise<void> {
         const bagKind = destinationBag(meta, itemName);
         const lifeItem = bagKind ? findLifeSkillItem(bagKind, itemName) : null;
         const effectSnapshot = parseLifeEffectSnapshot(effect);
-        const weight = meta.weight ?? lifeItem?.weight ?? 1;
+        const weight = meta.weight ?? lifeItem?.weight ?? catalog?.weight ?? 1;
 
         if (bagKind) {
           const bag = life.bags[bagKind];

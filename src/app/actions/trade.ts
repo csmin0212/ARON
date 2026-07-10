@@ -256,6 +256,7 @@ async function incrementDbInventory(
         name: itemName,
         category: "기타",
         desc: snapshot?.effect ?? null,
+        weight: snapshot?.weight ?? null,
       },
     }));
 

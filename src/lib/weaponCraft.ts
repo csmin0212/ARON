@@ -317,13 +317,14 @@ export function itemAsCraftMinor(item: {
   craftEffect: string | null;
   sellPrice?: number | null;
   desc?: string | null;
+  weight?: number | null;
 }): LifeSkillItem {
   return {
     no: 0,
     name: item.name,
     rank: 0,
     rarity: "재료",
-    weight: 1,
+    weight: item.weight ?? 1,
     price: item.sellPrice ?? 0,
     exp: 0,
     sizeBase: 0,

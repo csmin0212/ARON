@@ -149,6 +149,7 @@ async function ensureLifeSkillItem(item: LifeSkillItem, kind: LifeSkillKind): Pr
       name: item.name,
       category: lifeSkillCategory(kind),
       sellPrice,
+      weight: item.weight,
       desc: item.text,
       order: item.no,
     },
@@ -156,6 +157,7 @@ async function ensureLifeSkillItem(item: LifeSkillItem, kind: LifeSkillKind): Pr
       name: item.name,
       category: lifeSkillCategory(kind),
       sellPrice,
+      weight: item.weight,
       desc: item.text,
       order: item.no,
     },
@@ -344,14 +346,15 @@ export async function runActionCommand(
         await addItem(userId, item?.id ?? drop.item, drop.qty);
         const itemName = item?.name ?? drop.item;
         const effect = item?.desc ?? null;
+        const weight = item?.weight ?? 1;
         await prisma.characterSheet.update({
           where: { userId },
           data: {
-            invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty, { effect }),
+            invJson: mergeInventorySnapshot(sheet.invJson, itemName, drop.qty, { effect, weight }),
             achStatsJson: bumpStat(sheet.achStatsJson, "아이템획득수", drop.qty),
           },
         });
-        void appendSheetItem(sheet.sheetTab, itemName, drop.qty, { effect });
+        void appendSheetItem(sheet.sheetTab, itemName, drop.qty, { effect, weight });
         resultLine = ` 성공! ✨ ${itemName} x${drop.qty} 획득!`;
       }
     }
