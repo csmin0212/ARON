@@ -249,6 +249,7 @@ export async function claimMail(formData: FormData): Promise<void> {
   revalidatePath("/world");
   revalidatePath("/profile");
   revalidatePath("/", "layout");
+  redirect("/mail");
 }
 
 export async function markMailRead(formData: FormData): Promise<void> {
