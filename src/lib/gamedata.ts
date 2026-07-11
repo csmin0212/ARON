@@ -283,14 +283,36 @@ export function parseIngredients(spec: string): IngredientEntry[] {
   return out.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
-export function pickDrop(drops: DropEntry[]): DropEntry {
-  const total = drops.reduce((s, d) => s + Math.max(1, d.weight), 0);
+// margin(판정 총합 − 목표치, 성공 시 0 이상)이 있으면 꽝 "확률"을 1점당 1%p씩 낮춘다.
+// 꽝 확률은 30% 아래로 내리지 않고(원래 30% 이하면 그대로), 빠진 만큼은 나머지
+// 드랍에 기존 비율대로 배분된다. 결과 텍스트에는 절대 노출하지 않는다.
+export function pickDrop(drops: DropEntry[], margin = 0): DropEntry {
+  let pool = drops;
+  if (margin > 0) {
+    const weightOf = (d: DropEntry) => Math.max(1, d.weight);
+    const totalW = drops.reduce((s, d) => s + weightOf(d), 0);
+    const missW = drops.filter((d) => d.item === "꽝").reduce((s, d) => s + weightOf(d), 0);
+    const otherW = totalW - missW;
+    if (missW > 0 && otherW > 0) {
+      const basePct = (missW / totalW) * 100;
+      const targetPct = Math.min(basePct, Math.max(30, basePct - margin));
+      if (targetPct < basePct) {
+        // 꽝 확률이 정확히 targetPct 가 되도록 꽝 가중치만 재계산 (나머지는 원래 비율 유지)
+        const t = targetPct / 100;
+        const scale = (otherW * t) / (1 - t) / missW;
+        pool = drops.map((d) =>
+          d.item === "꽝" ? { ...d, weight: weightOf(d) * scale } : d,
+        );
+      }
+    }
+  }
+  const total = pool.reduce((s, d) => s + Math.max(1, d.weight), 0);
   let roll = Math.random() * total;
-  for (const d of drops) {
+  for (const d of pool) {
     roll -= Math.max(1, d.weight);
     if (roll <= 0) return d;
   }
-  return drops[drops.length - 1];
+  return pool[pool.length - 1];
 }
 
 // ── 행동 탭 ──

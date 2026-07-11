@@ -211,6 +211,7 @@ export async function runActionCommand(
   const emoji = KIND_EMOJI[target.kind] ?? "✨";
 
   let success = true;
+  let margin = 0; // 판정 여유분 — 드랍 추첨에서 꽝 가중치 보정에만 쓰고 밖으로 드러내지 않는다
   let rollLine = "";
   if (target.statLabel && target.dc != null) {
     const baseMod = statModOf(sheet.statsJson, target.statLabel);
@@ -225,6 +226,7 @@ export async function runActionCommand(
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
     success = total >= target.dc;
+    if (success) margin = total - target.dc;
     rollLine = ` — ${diceText(dice, mod, total, target.dc)}${buff > 0 ? ` 🍲버프 +${buff}` : ""}`;
     await prisma.roll.create({
       data: {
@@ -312,7 +314,7 @@ export async function runActionCommand(
     } else {
       let drop: DropEntry;
       try {
-        drop = pickDrop(JSON.parse(target.dropsJson) as DropEntry[]);
+        drop = pickDrop(JSON.parse(target.dropsJson) as DropEntry[], margin);
       } catch {
         return { error: "드랍테이블이 잘못됐어요. GM에게 알려주세요." };
       }
