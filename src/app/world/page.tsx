@@ -753,19 +753,24 @@ export default async function WorldPage() {
   const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
   const knownRecipes = allRecipes
     .filter((recipe) => recipe.isPublic || discoveredRecipeIds.has(recipe.id))
-    .map((recipe) => ({
-      id: recipe.id,
-      name: recipe.name,
-      rank: recipe.rank,
-      category: recipe.category,
-      ingredients: parseRecipeIngredients(recipe.ingredientsJson)
-        .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
-        .join(", "),
-      resultName: recipe.resultName,
-      sellPrice: recipe.sellPrice,
-      effect: recipe.effect,
-      tags: recipe.tags,
-    }));
+    .map((recipe) => {
+      const ingredientList = parseRecipeIngredients(recipe.ingredientsJson).map((ingredient) => ({
+        name: ingredient.name,
+        qty: ingredient.qty,
+      }));
+      return {
+        id: recipe.id,
+        name: recipe.name,
+        rank: recipe.rank,
+        category: recipe.category,
+        ingredients: ingredientList.map((i) => `${i.name}x${i.qty}`).join(", "),
+        ingredientList, // 원클릭 담기용 구조화 재료
+        resultName: recipe.resultName,
+        sellPrice: recipe.sellPrice,
+        effect: recipe.effect,
+        tags: recipe.tags,
+      };
+    });
   const cookedPrice = new Map(allRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
   cookedPrice.set("실패한 요리", 1);
   const cookedFoods = bagItems

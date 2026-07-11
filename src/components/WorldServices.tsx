@@ -128,6 +128,7 @@ export type KnownRecipeView = {
   rank: string;
   category: string;
   ingredients: string;
+  ingredientList: { name: string; qty: number }[]; // 원클릭 담기용
   resultName: string;
   sellPrice: number;
   effect: string | null;
@@ -1879,22 +1880,80 @@ function CookingKitchen({
     sellCookedFood,
     undefined,
   );
+  const [tab, setTab] = useState<"pot" | "book" | "sell">("pot");
+  // 냄비 — 재료 1개 단위의 이름 배열 (서버 폼 계약: ingredient 히든 인풋 1개 = 1단위)
+  const [pot, setPot] = useState<string[]>([]);
+  const [bookFilter, setBookFilter] = useState("");
+
   const ingredientOptions = useMemo(
     () => mergeItems([...inventoryItems, ...lifeStorageItems]).filter((item) => item.qty > 0),
     [inventoryItems, lifeStorageItems],
   );
-  const slots = Array.from({ length: cooking.maxIngredients }, (_, index) => index);
-  const [selectedIngredients, setSelectedIngredients] = useState<string[]>(
-    Array.from({ length: cooking.maxIngredients }, () => ""),
+  const haveMap = useMemo(
+    () => new Map(ingredientOptions.map((item) => [item.name, item.qty])),
+    [ingredientOptions],
   );
-  const selectedCounts = useMemo(() => {
+  const potCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const name of selectedIngredients) {
-      if (!name) continue;
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
+    for (const name of pot) counts.set(name, (counts.get(name) ?? 0) + 1);
     return counts;
-  }, [selectedIngredients]);
+  }, [pot]);
+
+  function addToPot(name: string) {
+    if (pot.length >= cooking.maxIngredients) return;
+    if ((potCounts.get(name) ?? 0) >= (haveMap.get(name) ?? 0)) return;
+    setPot([...pot, name]);
+  }
+  function removeFromPot(index: number) {
+    setPot(pot.filter((_, i) => i !== index));
+  }
+
+  // 레시피 상태 — 재료 충분 여부·주방 슬롯 초과 여부
+  function recipeStatus(recipe: KnownRecipeView) {
+    const total = recipe.ingredientList.reduce((sum, item) => sum + item.qty, 0);
+    const overCap = total > cooking.maxIngredients;
+    const hasAll = recipe.ingredientList.every(
+      (item) => (haveMap.get(item.name) ?? 0) >= item.qty,
+    );
+    return { total, overCap, hasAll };
+  }
+
+  // 레시피 원클릭 담기 — 필요한 재료를 그대로 냄비에
+  function loadRecipe(recipe: KnownRecipeView) {
+    const units = recipe.ingredientList.flatMap((item) =>
+      Array.from({ length: item.qty }, () => item.name),
+    );
+    setPot(units.slice(0, cooking.maxIngredients));
+    setTab("pot");
+  }
+
+  // 냄비 내용과 정확히 일치하는 발견 레시피 — 예상 결과 미리보기
+  const predicted = useMemo(() => {
+    if (pot.length === 0) return null;
+    return (
+      cooking.knownRecipes.find((recipe) => {
+        const total = recipe.ingredientList.reduce((sum, item) => sum + item.qty, 0);
+        if (total !== pot.length || recipe.ingredientList.length !== potCounts.size) return false;
+        return recipe.ingredientList.every((item) => potCounts.get(item.name) === item.qty);
+      }) ?? null
+    );
+  }, [pot.length, potCounts, cooking.knownRecipes]);
+
+  const filteredRecipes = cooking.knownRecipes.filter((recipe) => {
+    const keyword = bookFilter.trim();
+    if (!keyword) return true;
+    return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients}`.includes(
+      keyword,
+    );
+  });
+
+  const potSlots = Array.from({ length: cooking.maxIngredients }, (_, i) => pot[i] ?? null);
+
+  const TABS = [
+    { key: "pot" as const, label: `🍲 조리대 (${pot.length}/${cooking.maxIngredients})` },
+    { key: "book" as const, label: `📖 레시피북 (${cooking.knownRecipes.length})` },
+    { key: "sell" as const, label: `💰 판매 (${cooking.cookedFoods.length})` },
+  ];
 
   return (
     <div
@@ -1909,109 +1968,258 @@ function CookingKitchen({
         className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-line bg-subtle px-5 py-4">
+        <div className="border-b border-line bg-subtle px-5 pt-4">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
             Cooking
           </p>
           <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
             <span>🍳 {cooking.facilityName}</span>
-            <span className="text-xs font-bold text-amber-500">
-              피로도 {cooking.ap} · 조리 -10
+            <span className="flex shrink-0 items-center gap-1.5">
+              <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-black text-brand-600">
+                재료 최대 {cooking.maxIngredients}개
+              </span>
+              <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-black text-amber-500">
+                ⚡ {cooking.ap} · 조리 -10
+              </span>
             </span>
           </h3>
-          <p className="mt-2 text-xs font-semibold text-muted">
-            재료를 최대 {cooking.maxIngredients}개까지 넣어 조리합니다. 조합이 맞으면 레시피가
-            해금돼요.
-          </p>
+          <div className="mt-3 flex gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`rounded-t-xl px-3.5 py-2 text-sm font-extrabold transition ${
+                  tab === t.key ? "bg-surface text-content shadow-sm" : "text-faint hover:text-muted"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <CookingStateLine state={cookState} />
           <CookingStateLine state={sellState} />
 
-          <section className="rounded-2xl border border-line bg-subtle p-4">
-            <h4 className="mb-3 text-sm font-extrabold text-content">재료 넣기</h4>
-            <form action={cookAction} className="space-y-3">
-              <input type="hidden" name="facility" value={cooking.facility} />
-              <div className="grid gap-2 sm:grid-cols-2">
-                  {slots.map((slot) => (
-                    <select
-                      key={slot}
-                      name="ingredient"
-                      className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-brand-300"
-                      value={selectedIngredients[slot] ?? ""}
-                      onChange={(e) => {
-                        const next = [...selectedIngredients];
-                        next[slot] = e.target.value;
-                        setSelectedIngredients(next);
-                      }}
+          {tab === "pot" && (
+            <>
+              {/* 냄비 슬롯 */}
+              <section className="rounded-2xl border border-line bg-subtle p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-extrabold text-content">🍲 냄비</h4>
+                  {pot.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPot([])}
+                      className="rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-black text-muted transition hover:bg-red-50 hover:text-red-500"
                     >
-                      <option value="">재료 선택 안 함</option>
-                      {ingredientOptions.map((item) => {
-                        const current = selectedIngredients[slot] === item.name ? 1 : 0;
-                        const usedElsewhere = (selectedCounts.get(item.name) ?? 0) - current;
-                        const disabled = usedElsewhere >= item.qty;
-                        return (
-                          <option key={`${slot}-${item.name}`} value={item.name} disabled={disabled}>
-                            {item.name} x{item.qty - usedElsewhere}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  ))}
+                      비우기
+                    </button>
+                  )}
                 </div>
-              <button
-                type="submit"
-                disabled={cookPending || ingredientOptions.length === 0 || cooking.ap < 10}
-                className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-brand-600 disabled:opacity-50"
-              >
-                {cookPending ? "조리 중..." : "조리하기 (-피로도 10)"}
-              </button>
-            </form>
-          </section>
+                <div
+                  className={`grid gap-2 ${
+                    cooking.maxIngredients >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+                  }`}
+                >
+                  {potSlots.map((name, index) =>
+                    name ? (
+                      <button
+                        key={`${name}-${index}`}
+                        type="button"
+                        onClick={() => removeFromPot(index)}
+                        title="눌러서 빼기"
+                        className="group grid min-h-20 place-items-center rounded-2xl border border-brand-200 bg-brand-50 p-2 text-center transition hover:border-red-200 hover:bg-red-50"
+                      >
+                        <span className="line-clamp-2 text-sm font-extrabold text-content">
+                          {name}
+                        </span>
+                        <span className="text-[10px] font-black text-brand-500 group-hover:text-red-500">
+                          ✕ 빼기
+                        </span>
+                      </button>
+                    ) : (
+                      <div
+                        key={`empty-${index}`}
+                        className="grid min-h-20 place-items-center rounded-2xl border border-dashed border-line bg-surface/60 text-xs font-bold text-faint2"
+                      >
+                        빈 칸
+                      </div>
+                    ),
+                  )}
+                </div>
 
-          <section className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-2">
-              <h4 className="text-sm font-extrabold text-content">
-                발견한 레시피 {cooking.knownRecipes.length}개
-              </h4>
+                {/* 예상 결과 미리보기 — 잘못 조리로 재료 날리는 사고 방지 */}
+                {pot.length > 0 && (
+                  <p
+                    className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold ${
+                      predicted
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-amber-50 text-amber-600"
+                    }`}
+                  >
+                    {predicted
+                      ? `✨ 이대로 조리하면 [${predicted.name}] 완성!`
+                      : "❓ 아는 레시피와 일치하지 않아요 — 새로운 발견이거나, 실패작이 나올 수 있어요."}
+                  </p>
+                )}
+
+                <form action={cookAction} className="mt-3">
+                  <input type="hidden" name="facility" value={cooking.facility} />
+                  {pot.map((name, index) => (
+                    <input key={`${name}-${index}`} type="hidden" name="ingredient" value={name} />
+                  ))}
+                  <button
+                    type="submit"
+                    disabled={cookPending || pot.length === 0 || cooking.ap < 10}
+                    className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-brand-600 disabled:opacity-50"
+                  >
+                    {cookPending
+                      ? "조리 중..."
+                      : pot.length === 0
+                        ? "재료를 먼저 넣어주세요"
+                        : `조리하기 (재료 ${pot.length}개 · 피로도 -10)`}
+                  </button>
+                </form>
+              </section>
+
+              {/* 내 재료 — 눌러서 냄비에 추가 */}
+              <section>
+                <div className="mb-2 flex items-center justify-between px-1">
+                  <h4 className="text-sm font-extrabold text-content">🎒 내 재료</h4>
+                  <span className="text-[11px] font-bold text-faint">눌러서 냄비에 넣기</span>
+                </div>
+                {ingredientOptions.length === 0 ? (
+                  <p className="rounded-2xl bg-subtle px-4 py-6 text-center text-sm text-faint">
+                    가진 재료가 없어요.
+                  </p>
+                ) : (
+                  <div className="flex max-h-48 flex-wrap content-start gap-1.5 overflow-y-auto pr-1">
+                    {ingredientOptions.map((item) => {
+                      const used = potCounts.get(item.name) ?? 0;
+                      const left = item.qty - used;
+                      const disabled = left <= 0 || pot.length >= cooking.maxIngredients;
+                      return (
+                        <button
+                          key={item.name}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => addToPot(item.name)}
+                          className="rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-bold text-content transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
+                        >
+                          {item.name} <span className="text-faint">×{left}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+
+          {tab === "book" && (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={bookFilter}
+                  onChange={(e) => setBookFilter(e.target.value)}
+                  placeholder="레시피·재료 검색"
+                  className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-content placeholder:text-faint2 focus:border-brand-400 focus:outline-none"
+                />
+                <span className="shrink-0 text-[11px] font-bold text-faint">
+                  {filteredRecipes.length}개
+                </span>
+              </div>
               {cooking.knownRecipes.length === 0 ? (
-                <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+                <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
                   아직 발견한 레시피가 없어요.
+                  <br />
+                  조리대에서 재료를 조합해 첫 레시피를 발견해보세요!
                 </p>
               ) : (
-                <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                  {cooking.knownRecipes.map((recipe) => (
-                    <li key={recipe.id} className="rounded-2xl border border-line bg-subtle p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-extrabold text-content">{recipe.name}</p>
-                          <p className="mt-0.5 text-[11px] font-bold text-brand-600">
-                            {recipe.rank} · {recipe.category} · 판매가 {recipe.sellPrice}G
-                          </p>
+                <ul className="space-y-2">
+                  {filteredRecipes.map((recipe) => {
+                    const status = recipeStatus(recipe);
+                    return (
+                      <li
+                        key={recipe.id}
+                        className="rounded-2xl border border-line bg-subtle p-3.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-extrabold text-content">
+                              {recipe.name}
+                              <span className="ml-1.5 align-middle text-[11px] font-black text-amber-500">
+                                {recipe.rank}
+                              </span>
+                            </p>
+                            <p className="mt-0.5 text-[11px] font-bold text-faint">
+                              {recipe.category} · {recipe.resultName} · 판매{" "}
+                              {recipe.sellPrice.toLocaleString()}G
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black ${
+                              status.overCap
+                                ? "bg-violet-50 text-violet-500"
+                                : "bg-surface text-muted"
+                            }`}
+                          >
+                            재료 {status.total}개{status.overCap ? " · 집 주방 전용" : ""}
+                          </span>
                         </div>
-                        <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-muted">
-                          {recipe.resultName}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-muted">재료: {recipe.ingredients}</p>
-                      {recipe.effect && (
-                        <p className="mt-1 line-clamp-2 text-xs text-faint">{recipe.effect}</p>
-                      )}
-                    </li>
-                  ))}
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {recipe.ingredientList.map((item) => {
+                            const have = haveMap.get(item.name) ?? 0;
+                            const enough = have >= item.qty;
+                            return (
+                              <span
+                                key={item.name}
+                                className={`rounded-full px-2 py-1 text-[11px] font-bold ${
+                                  enough
+                                    ? "bg-emerald-50 text-emerald-600"
+                                    : "bg-red-50 text-red-500"
+                                }`}
+                              >
+                                {item.name} {Math.min(have, item.qty)}/{item.qty}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {recipe.effect && (
+                          <p className="mt-2 line-clamp-2 text-xs text-faint">{recipe.effect}</p>
+                        )}
+                        <button
+                          type="button"
+                          disabled={!status.hasAll || status.overCap}
+                          onClick={() => loadRecipe(recipe)}
+                          className="mt-2.5 w-full rounded-xl bg-brand-500 px-3 py-2 text-xs font-black text-white transition hover:bg-brand-600 disabled:opacity-40"
+                        >
+                          {status.overCap
+                            ? `이 주방에서는 불가 (재료 ${status.total}개 · 최대 ${cooking.maxIngredients}개)`
+                            : status.hasAll
+                              ? "🍲 재료 담기"
+                              : "재료가 부족해요"}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
-            </div>
+            </section>
+          )}
 
-            <div className="space-y-2">
-              <h4 className="text-sm font-extrabold text-content">요리 판매</h4>
+          {tab === "sell" && (
+            <section className="space-y-2">
               {cooking.cookedFoods.length === 0 ? (
-                <p className="rounded-2xl bg-subtle px-4 py-8 text-center text-sm text-faint">
+                <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
                   판매할 요리가 없어요.
                 </p>
               ) : (
-                <ul className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                <ul className="space-y-2">
                   {cooking.cookedFoods.map((food) => (
                     <li key={food.name} className="rounded-2xl border border-line bg-subtle p-3">
                       <div className="mb-2 flex items-start justify-between gap-3">
@@ -2047,8 +2255,8 @@ function CookingKitchen({
                   ))}
                 </ul>
               )}
-            </div>
-          </section>
+            </section>
+          )}
         </div>
 
         <div className="border-t border-line px-5 py-3">
