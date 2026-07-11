@@ -52,6 +52,7 @@ const MISS_WAIT_MS = 2 * 60_000;
 type PendingCatch = {
   no: number;
   name: string;
+  locationId?: string | null;
   rank: number;
   rarity: string;
   weight: number;
@@ -130,11 +131,11 @@ async function grantFish(
   const leveled = applyExp(life, FISH, expGained, await fetchLifeSkillCatalog());
   const firstCatch = recordCollection(life, FISH, pending.name);
   const caughtCount = recordLifeCatch(life, FISH, pending.name);
-  recordLifeItemLocation(life, FISH, pending.name, sheet.locationId);
+  const locationId = pending.locationId ?? sheet.locationId;
+  recordLifeItemLocation(life, FISH, pending.name, locationId);
   addLifeBagItem(life, FISH, { name: pending.name, weight: pending.weight, rank: pending.rank, text: pending.text });
 
   await ensureItem(pending);
-  const locationId = sheet.locationId;
   let achStats = bumpStat(sheet.achStatsJson, "낚시성공횟수");
   achStats = bumpStat(achStats, "아이템획득수");
   if (locationId) achStats = markStat(achStats, `낚시지역:${locationId}`);
@@ -232,6 +233,7 @@ export async function startFishing(): Promise<FishingStart> {
   const pending: PendingCatch = {
     no: item.no,
     name: item.name,
+    locationId: sheet.locationId,
     rank: item.rank,
     rarity: item.rarity,
     weight: item.weight,
@@ -262,7 +264,7 @@ export async function resolveFishing(landed: boolean): Promise<FishingResolve> {
   if (!pending || pending.status === "searching") {
     return { error: "진행 중인 낚시가 없어요." };
   }
-  const locationId = sheet.locationId;
+  const locationId = pending.locationId ?? sheet.locationId;
 
   if (!landed) {
     // 놓침 — 채집·채광처럼 2분 뒤 다시 물어서 낚을 수 있게 대기 상태로 둔다. (피로도는 이미 소모)

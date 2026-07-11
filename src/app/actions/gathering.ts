@@ -59,6 +59,7 @@ export type GatherCollect =
 type Pending = {
   no: number;
   name: string;
+  locationId?: string | null;
   rank: number;
   rarity: string;
   weight: number;
@@ -105,6 +106,7 @@ async function ensureItem(p: Pending): Promise<void> {
 // 채집물을 실제 가방에 지급 + 숙련도/도감 기록 + 시스템 메시지
 async function grant(userId: string, nickname: string, locationId: string | null, p: Pending, how: string) {
   const sheet = await prisma.characterSheet.findUnique({ where: { userId } });
+  const originLocationId = p.locationId ?? locationId;
   const life = parseLifeState(sheet?.lifeJson);
   const mods = computeMods(life, GATHER);
   const bag = life.bags[GATHER];
@@ -115,12 +117,12 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const leveled = applyExp(life, GATHER, expGained, await fetchLifeSkillCatalog());
   const first = recordCollection(life, GATHER, p.name);
   const count = recordLifeCatch(life, GATHER, p.name);
-  recordLifeItemLocation(life, GATHER, p.name, locationId);
+  recordLifeItemLocation(life, GATHER, p.name, originLocationId);
   addLifeBagItem(life, GATHER, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   await ensureItem(p);
   let achStats = bumpStat(sheet?.achStatsJson, "채집성공횟수");
   achStats = bumpStat(achStats, "아이템획득수");
-  if (locationId) achStats = markStat(achStats, `채집지역:${locationId}`);
+  if (originLocationId) achStats = markStat(achStats, `채집지역:${originLocationId}`);
 
   await prisma.characterSheet.update({
     where: { userId },
@@ -132,16 +134,16 @@ async function grant(userId: string, nickname: string, locationId: string | null
   });
   void checkAndGrant(userId);
   const sell = lifeSkillMarketPrice(GATHER, { rank: p.rank, price: p.price } as never);
-  if (locationId) {
+  if (originLocationId) {
     await postSystem(
-      locationId,
+      originLocationId,
       `🌿 ${nickname}님 ${how} — [${p.rarity}] ${p.name} x1 (판매가 ${sell}G) +숙련도 ${expGained}${
         first ? " 📖 도감 신규!" : ` 누적 ${count}회`
       }`,
     );
     for (const lv of leveled) {
       const perkPrompt = isPerkChoiceLevel(lv) ? " 캐릭터 페이지에서 특성을 선택하세요." : "";
-      await postSystem(locationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다!${perkPrompt}`);
+      await postSystem(originLocationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다!${perkPrompt}`);
     }
   }
   return { full: false as const, sell, exp: expGained };
@@ -202,7 +204,7 @@ export async function startGathering(): Promise<GatherStart> {
 
   const pending: Pending = {
     no: item.no, name: item.name, rank: item.rank, rarity: item.rarity, weight: item.weight,
-    price: item.price, text: item.text, exp: item.exp, size: caught.size, status: "playing",
+    locationId: sheet.locationId, price: item.price, text: item.text, exp: item.exp, size: caught.size, status: "playing",
   };
   await prisma.characterSheet.update({
     where: { userId: user.id },
