@@ -48,16 +48,36 @@ export default async function CollectionPage() {
   const life = parseLifeState(sheet?.lifeJson);
   const items = collectionItems(false);
   const itemNames = items.map(({ item }) => item.name);
-  const [entries, recipes, discoveredRecipes] = await Promise.all([
+  const locationIds = [
+    ...new Set(
+      Object.values(life.locationRecords).flatMap((records) => Object.values(records).flat()),
+    ),
+  ];
+  const [entries, recipes, discoveredRecipes, locations] = await Promise.all([
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, itemId: { in: itemNames } },
       select: { itemId: true, qty: true },
     }),
     prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } }),
     prisma.userRecipe.findMany({ where: { userId: user.id }, select: { recipeId: true } }),
+    prisma.location.findMany({
+      where: { id: { in: locationIds } },
+      select: { id: true, name: true, emoji: true, hidden: true },
+    }),
   ]);
   const inventoryCounts = new Map(entries.map((entry) => [entry.itemId, entry.qty]));
   const discoveredRecipeIds = new Set(discoveredRecipes.map((recipe) => recipe.recipeId));
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+  const recordedLocations = (kind: (typeof items)[number]["kind"], itemName: string) =>
+    (life.locationRecords[kind][itemName] ?? []).map((id) => {
+      const location = locationById.get(id);
+      return {
+        id,
+        name: location?.name ?? id,
+        emoji: location?.emoji ?? null,
+        hidden: location?.hidden ?? false,
+      };
+    });
   const discovered = new Set([
     ...entries.map((entry) => entry.itemId),
     ...life.collection.채집,
@@ -65,16 +85,17 @@ export default async function CollectionPage() {
     ...life.collection.채광,
   ]);
   const lifeEntries: CollectionBookEntry[] = items.map(({ kind, item }) => ({
-      kind,
-      name: item.name,
-      rank: item.rank,
-      rarity: item.rarity,
-      price: lifeSkillMarketPrice(kind, item),
-      weight: item.weight,
-      text: item.text,
-      discovered: discovered.has(item.name),
-      count: life.catchCounts[kind][item.name] ?? inventoryCounts.get(item.name) ?? 0,
-    }));
+    kind,
+    name: item.name,
+    rank: item.rank,
+    rarity: item.rarity,
+    price: lifeSkillMarketPrice(kind, item),
+    weight: item.weight,
+    text: item.text,
+    discovered: discovered.has(item.name),
+    count: life.catchCounts[kind][item.name] ?? inventoryCounts.get(item.name) ?? 0,
+    locations: recordedLocations(kind, item.name),
+  }));
   const cookingEntries: CollectionBookEntry[] = recipes.map((recipe) => ({
     id: recipe.id,
     kind: "요리",

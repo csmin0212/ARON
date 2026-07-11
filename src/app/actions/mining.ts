@@ -27,6 +27,7 @@ import {
   parseLifeState,
   progressOf,
   recordCollection,
+  recordLifeItemLocation,
   recordLifeCatch,
 } from "@/lib/lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
@@ -114,6 +115,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const leveled = applyExp(life, MINE, expGained, await fetchLifeSkillCatalog());
   const first = recordCollection(life, MINE, p.name);
   const count = recordLifeCatch(life, MINE, p.name);
+  recordLifeItemLocation(life, MINE, p.name, locationId);
   addLifeBagItem(life, MINE, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   // 일석이조 — doubleDrop% 확률로 광물 1개 추가 (가방에 여유가 있을 때만)
   const doubled =

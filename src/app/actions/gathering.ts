@@ -27,6 +27,7 @@ import {
   parseLifeState,
   progressOf,
   recordCollection,
+  recordLifeItemLocation,
   recordLifeCatch,
 } from "@/lib/lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
@@ -114,6 +115,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const leveled = applyExp(life, GATHER, expGained, await fetchLifeSkillCatalog());
   const first = recordCollection(life, GATHER, p.name);
   const count = recordLifeCatch(life, GATHER, p.name);
+  recordLifeItemLocation(life, GATHER, p.name, locationId);
   addLifeBagItem(life, GATHER, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   await ensureItem(p);
   let achStats = bumpStat(sheet?.achStatsJson, "채집성공횟수");

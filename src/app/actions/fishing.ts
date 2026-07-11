@@ -27,6 +27,7 @@ import {
   parseLifeState,
   progressOf,
   recordCollection,
+  recordLifeItemLocation,
   recordLifeCatch,
 } from "@/lib/lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
@@ -129,6 +130,7 @@ async function grantFish(
   const leveled = applyExp(life, FISH, expGained, await fetchLifeSkillCatalog());
   const firstCatch = recordCollection(life, FISH, pending.name);
   const caughtCount = recordLifeCatch(life, FISH, pending.name);
+  recordLifeItemLocation(life, FISH, pending.name, sheet.locationId);
   addLifeBagItem(life, FISH, { name: pending.name, weight: pending.weight, rank: pending.rank, text: pending.text });
 
   await ensureItem(pending);

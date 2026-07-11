@@ -17,6 +17,12 @@ export type CollectionBookEntry = {
   text: string;
   discovered: boolean;
   count: number;
+  locations?: {
+    id: string;
+    name: string;
+    emoji?: string | null;
+    hidden: boolean;
+  }[];
   resultName?: string;
   ingredients?: string;
 };
@@ -45,6 +51,7 @@ function pct(found: number, total: number): number {
 
 export default function CollectionRankBook({ entries }: { entries: CollectionBookEntry[] }) {
   const [activeKind, setActiveKind] = useState<CollectionKind>("낚시");
+  const [selectedEntry, setSelectedEntry] = useState<CollectionBookEntry | null>(null);
   const [activeRanks, setActiveRanks] = useState<Record<CollectionKind, number>>({
     낚시: 1,
     채집: 1,
@@ -72,7 +79,10 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
             <button
               key={kind}
               type="button"
-              onClick={() => setActiveKind(kind)}
+              onClick={() => {
+                setActiveKind(kind);
+                setSelectedEntry(null);
+              }}
               className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-extrabold transition ${
                 active
                   ? "bg-surface text-brand-600 shadow-sm"
@@ -131,7 +141,10 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                   <button
                     key={rank}
                     type="button"
-                    onClick={() => setActiveRanks((prev) => ({ ...prev, [kind]: rank }))}
+                    onClick={() => {
+                      setActiveRanks((prev) => ({ ...prev, [kind]: rank }));
+                      setSelectedEntry(null);
+                    }}
                     className={`rounded-xl px-2 py-2 text-center text-[11px] font-extrabold transition ${
                       active
                         ? "bg-surface text-brand-600 shadow-sm"
@@ -153,48 +166,104 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {rankItems.map((entry) => (
-                  <article
-                    key={`${kind}-${entry.id ?? entry.name}`}
-                    className={`rounded-2xl border px-4 py-3 ${
-                      entry.discovered
-                        ? "border-line bg-subtle/55"
-                        : "border-dashed border-line bg-subtle/20 opacity-75"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-extrabold text-content">
-                          {entry.discovered ? entry.name : "???"}
-                        </p>
-                        <p className={`mt-0.5 text-xs font-bold ${RANK_TONE[entry.rank] ?? "text-muted"}`}>
-                          {entry.rarity}
-                        </p>
+                {rankItems.map((entry) => {
+                  const selected =
+                    selectedEntry?.kind === entry.kind &&
+                    (selectedEntry.id ?? selectedEntry.name) === (entry.id ?? entry.name);
+                  return (
+                    <button
+                      key={`${kind}-${entry.id ?? entry.name}`}
+                      type="button"
+                      disabled={!entry.discovered}
+                      onClick={() => setSelectedEntry(entry)}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        entry.discovered
+                          ? selected
+                            ? "border-brand-300 bg-brand-50/70 shadow-sm"
+                            : "border-line bg-subtle/55 hover:border-brand-200 hover:bg-brand-50/40"
+                          : "cursor-default border-dashed border-line bg-subtle/20 opacity-75"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-extrabold text-content">
+                            {entry.discovered ? entry.name : "???"}
+                          </p>
+                          <p className={`mt-0.5 text-xs font-bold ${RANK_TONE[entry.rank] ?? "text-muted"}`}>
+                            {entry.rarity}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
+                          {entry.discovered
+                            ? kind === "요리"
+                              ? `${countLabel} 발견`
+                              : `${countLabel} ${Math.max(1, entry.count)}회`
+                            : "미발견"}
+                        </span>
                       </div>
-                      <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
+                        <span className="rounded bg-surface px-2 py-0.5">중량 {entry.weight}</span>
+                        <span className="rounded bg-surface px-2 py-0.5">판매가 {entry.price}G</span>
+                        {kind === "요리" && entry.discovered && entry.resultName && (
+                          <span className="rounded bg-surface px-2 py-0.5">{entry.resultName}</span>
+                        )}
+                      </div>
+                      <p className="mt-2 line-clamp-3 min-h-[3.75rem] whitespace-pre-line text-xs leading-relaxed text-muted">
                         {entry.discovered
-                          ? kind === "요리"
-                            ? `${countLabel} 발견`
-                            : `${countLabel} ${Math.max(1, entry.count)}회`
-                          : "미발견"}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
-                      <span className="rounded bg-surface px-2 py-0.5">중량 {entry.weight}</span>
-                      <span className="rounded bg-surface px-2 py-0.5">판매가 {entry.price}G</span>
-                      {kind === "요리" && entry.discovered && entry.resultName && (
-                        <span className="rounded bg-surface px-2 py-0.5">{entry.resultName}</span>
-                      )}
-                    </div>
-                    <p className="mt-2 line-clamp-3 min-h-[3.75rem] whitespace-pre-line text-xs leading-relaxed text-muted">
-                      {entry.discovered
-                        ? entry.text
-                        : kind === "요리"
-                          ? "아직 발견하지 못한 레시피입니다."
-                          : "아직 발견하지 못한 항목입니다."}
+                          ? entry.text
+                          : kind === "요리"
+                            ? "아직 발견하지 못한 레시피입니다."
+                            : "아직 발견하지 못한 항목입니다."}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedEntry?.kind === kind && selectedEntry.discovered && (
+              <div className="mt-4 rounded-2xl border border-brand-100 bg-brand-50/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-content">{selectedEntry.name}</p>
+                    <p className={`mt-0.5 text-xs font-bold ${RANK_TONE[selectedEntry.rank] ?? "text-muted"}`}>
+                      {selectedEntry.rarity}
                     </p>
-                  </article>
-                ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[11px] font-bold text-muted">
+                    <span className="rounded bg-surface px-2 py-0.5">중량 {selectedEntry.weight}</span>
+                    <span className="rounded bg-surface px-2 py-0.5">판매가 {selectedEntry.price}G</span>
+                    {selectedEntry.kind !== "요리" && (
+                      <span className="rounded bg-surface px-2 py-0.5">
+                        {countLabel} {Math.max(1, selectedEntry.count)}회
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-muted">{selectedEntry.text}</p>
+                {selectedEntry.kind === "요리" && selectedEntry.ingredients && (
+                  <p className="mt-3 text-xs font-bold text-muted">재료: {selectedEntry.ingredients}</p>
+                )}
+                {selectedEntry.kind !== "요리" && (
+                  <div className="mt-4">
+                    <p className="text-xs font-black text-brand-700">얻은 기록</p>
+                    {selectedEntry.locations && selectedEntry.locations.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {selectedEntry.locations.map((location) => (
+                          <span
+                            key={location.id}
+                            className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold text-content shadow-sm"
+                          >
+                            {location.emoji ?? "📍"} {location.name}
+                            {location.hidden ? " · 히든" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-faint">아직 장소 기록이 없어요. 다음 획득부터 자동으로 남습니다.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </section>

@@ -39,6 +39,8 @@ export type LifeState = {
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
   collection: { 채집: string[]; 낚시: string[]; 채광: string[] };
+  // 도감 장소 기록 — 실제로 획득한 적 있는 장소 ID만 아이템별로 누적한다.
+  locationRecords: Record<LifeSkillKind, Record<string, string[]>>;
   // 생활 전용 임시 가방 — 일반 시트 소지품과 별도로 중량 제한을 둔다.
   bags: Record<LifeSkillKind, LifeBag>;
   tools: Record<LifeSkillKind, string>;
@@ -209,6 +211,7 @@ const EMPTY: LifeState = {
   perks: [],
   pending: [],
   collection: { 채집: [], 낚시: [], 채광: [] },
+  locationRecords: { 채집: {}, 낚시: {}, 채광: {} },
   bags: {
     채집: { name: "약초꾼 가방", maxWeight: 5, items: [] },
     낚시: { name: "낚시꾼 가방", maxWeight: 5, items: [] },
@@ -246,6 +249,33 @@ function normalizeBag(kind: LifeSkillKind, bag: Partial<LifeBag> | undefined): L
   };
 }
 
+const LIFE_KINDS: LifeSkillKind[] = ["채집", "낚시", "채광"];
+
+function uniqueStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function normalizeLocationRecords(
+  records: Partial<Record<LifeSkillKind, Record<string, unknown>>> | undefined,
+): Record<LifeSkillKind, Record<string, string[]>> {
+  const normalized: Record<LifeSkillKind, Record<string, string[]>> = { 채집: {}, 낚시: {}, 채광: {} };
+  for (const kind of LIFE_KINDS) {
+    for (const [itemName, locationIds] of Object.entries(records?.[kind] ?? {})) {
+      const ids = uniqueStrings(locationIds);
+      if (itemName && ids.length > 0) normalized[kind][itemName] = ids;
+    }
+  }
+  return normalized;
+}
+
 export function parseLifeState(json: string | null | undefined): LifeState {
   if (!json) return structuredClone(EMPTY);
   try {
@@ -263,6 +293,7 @@ export function parseLifeState(json: string | null | undefined): LifeState {
         낚시: v.collection?.낚시 ?? [],
         채광: v.collection?.채광 ?? [],
       },
+      locationRecords: normalizeLocationRecords(v.locationRecords),
       bags: {
         채집: normalizeBag("채집", v.bags?.채집),
         낚시: normalizeBag("낚시", v.bags?.낚시),
@@ -329,6 +360,21 @@ export function recordLifeCatch(state: LifeState, kind: LifeSkillKind, itemName:
   const counts = state.catchCounts[kind];
   counts[itemName] = (counts[itemName] ?? 0) + 1;
   return counts[itemName];
+}
+
+export function recordLifeItemLocation(
+  state: LifeState,
+  kind: LifeSkillKind,
+  itemName: string,
+  locationId: string | null | undefined,
+): boolean {
+  const id = locationId?.trim();
+  if (!id) return false;
+  const records = state.locationRecords[kind];
+  const itemRecords = records[itemName] ?? [];
+  if (itemRecords.includes(id)) return false;
+  records[itemName] = [...itemRecords, id];
+  return true;
 }
 
 export function lifeBagWeight(bag: LifeBag): number {
