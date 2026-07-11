@@ -266,6 +266,8 @@ export default function WorldChat({
   function exportLog() {
     const w = window.open("", "_blank");
     if (!w) return;
+    void fetch("/api/world/log-save", { method: "POST" }).catch(() => {}); // 업적 카운터
+
     const esc = escapeHtml;
     const body = messages
       .map((m) => {

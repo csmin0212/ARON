@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "./prisma";
 import { getActiveItems } from "./lifeSkillData";
+import { loadLifeItems } from "./lifeSkillLoader";
 import { lifeBagWeight, parseLifeState } from "./lifeSkillPerks";
 import { parseHousingState } from "./housing";
 
@@ -43,6 +44,13 @@ export function markStat(json: string | null | undefined, name: string): string 
   return JSON.stringify(stats);
 }
 
+// 카운터를 특정 값으로 재설정한 JSON 반환 (주간 리셋 등)
+export function setStat(json: string | null | undefined, name: string, value: number): string {
+  const stats = parseStats(json);
+  stats[name] = value;
+  return JSON.stringify(stats);
+}
+
 const RANK_ORDER: Record<string, number> = { D: 1, C: 2, B: 3, A: 4, S: 5 };
 const TIER_ORDER: Record<string, number> = { small: 1, standard: 2, luxury: 3 };
 const TOOL_TIER: Record<string, number> = {
@@ -51,6 +59,15 @@ const TOOL_TIER: Record<string, number> = {
   "숙련 채집 도구": 1,
   "장인의 채집 도구": 2,
 };
+// 도구 → 생활스킬 종류. 같은 종류의 도구끼리만 등급을 비교한다 (낚싯대로 채집 업적 방지)
+const TOOL_KIND: Record<string, "낚시" | "채집" | "채광"> = {
+  "좋은 낚싯대": "낚시",
+  "고급 낚싯대": "낚시",
+  "숙련 채집 도구": "채집",
+  "장인의 채집 도구": "채집",
+};
+// 요리 제작 등급 서열 (rollCookGrade 결과)
+const COOK_GRADE_ORDER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
 
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 // 활성 풀(시트 동기화본) 기준으로 매번 구성 — 신규 어종/약초가 도감 판정에 반영되게.
@@ -64,8 +81,6 @@ const rankRequirement = (a: AchRow) => {
   const fromName = a.name.match(/R\s*(\d+)/i)?.[1];
   return fromName ? Number(fromName) : null;
 };
-const textRequirement = (a: AchRow) => a.condValue?.trim() || a.name.trim();
-
 function countStatPrefix(stats: Record<string, number>, prefix: string): number {
   return Object.entries(stats).filter(([key, value]) => key.startsWith(prefix) && value > 0).length;
 }
@@ -86,6 +101,7 @@ type AchRow = {
   rewardFame: number;
   badge: string | null;
   name: string;
+  desc: string | null;
 };
 
 // 업적 달성 판정 + 지급. 새로 달성한 업적 목록을 돌려준다.
@@ -102,6 +118,7 @@ export async function checkAndGrant(
         rewardFame: true,
         badge: true,
         name: true,
+        desc: true,
       },
     }),
     prisma.userAchievement.findMany({ where: { userId }, select: { achId: true } }),
@@ -116,47 +133,75 @@ export async function checkAndGrant(
   const types = new Set(pending.map((a) => a.condType));
 
   // ── 상태 수집 (필요한 것만) ──
+  // 도감·희귀도 판정 전에 시트 동기화본 풀을 반드시 로드 — 콜드 인스턴스가
+  // 하드코딩 seed 풀로 판정하면 완성률 과대(오지급)·신규 어종 랭크 누락(미지급)이 난다.
+  await loadLifeItems();
   const life = parseLifeState(sheet?.lifeJson);
   const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
   const stats = parseStats(sheet?.achStatsJson);
   const gold = sheet?.curGold ?? 0;
-  const fame = sheet?.fame ?? 0;
+  let fame = sheet?.fame ?? 0;
   const rank = sheet?.adventurerRank ?? "D";
   const discoveredCount = parseStrArr(sheet?.discoveredJson).length;
-  const ownedTitles = all.filter((a) => earned.has(a.id) && a.rewardTitle).length;
+  let ownedTitles = all.filter((a) => earned.has(a.id) && a.rewardTitle).length;
   const furnitureCount = Object.values(housing.furniture).reduce(
     (n, list) => n + (Array.isArray(list) ? list.length : 0),
     0,
   );
   const houseMaxTier = housing.owned.reduce((m, t) => Math.max(m, TIER_ORDER[t] ?? 0), 0);
-  const toolNames = Object.values((life as { tools?: Record<string, string> }).tools ?? {});
+  const tools = (life as { tools?: Record<string, string> }).tools ?? {};
   const fishingBagWeight = lifeBagWeight(life.bags.낚시);
   const plantBagWeight = lifeBagWeight(life.bags.채집);
   const bestFishingRank = maxKnownRank(life.collection.낚시, rankMapOf("낚시"));
   const bestPlantRank = maxKnownRank(life.collection.채집, rankMapOf("채집"));
+  // 완성률 분자는 현재 풀에 있는 종만 센다 — 풀 개편으로 빠진 옛 종 때문에 100%가 넘는 사고 방지
+  const fishPoolNames = new Set(getActiveItems("낚시").map((i) => i.name));
+  const plantPoolNames = new Set(getActiveItems("채집").map((i) => i.name));
+  const fishInPool = life.collection.낚시.filter((n) => fishPoolNames.has(n)).length;
+  const plantInPool = life.collection.채집.filter((n) => plantPoolNames.has(n)).length;
   const bestSameFishing = maxCount(life.catchCounts.낚시);
   const bestSamePlant = maxCount(life.catchCounts.채집);
   const fishingAreaCount = countStatPrefix(stats, "낚시지역:");
   const plantAreaCount = countStatPrefix(stats, "채집지역:");
 
-  // 방문 토큰 (id + 정규화 이름) — 장소방문/히든장소방문용
+  // 방문 토큰 (id + 정규화 이름) — 장소방문/히든장소방문/지역그룹방문/층전체방문용
   let visitTokens: Set<string> | null = null;
   let visitedStart = false;
-  if (types.has("장소방문") || types.has("히든장소방문")) {
+  let hiddenVisitedCount = 0; // 방문한 히든 장소 수
+  let publicVisitedCount = 0; // 방문한 공개 장소 수
+  let allPublicVisited = false; // 공개 장소 전부 방문 여부
+  let hiddenLocs: { id: string; name: string }[] = [];
+  if (
+    types.has("장소방문") ||
+    types.has("히든장소방문") ||
+    types.has("지역그룹방문") ||
+    types.has("층전체방문")
+  ) {
     const ids = [
       ...parseStrArr(sheet?.visitedJson),
       ...parseStrArr(sheet?.discoveredJson),
       sheet?.locationId ?? "",
     ].filter(Boolean);
-    const locs = await prisma.location.findMany({ select: { id: true, name: true, isStart: true } });
+    const locs = await prisma.location.findMany({
+      select: { id: true, name: true, isStart: true, hidden: true },
+    });
     const locById = new Map(locs.map((l) => [l.id, l]));
     visitTokens = new Set<string>();
+    const visitedIds = new Set<string>();
     for (const id of ids) {
       visitTokens.add(norm(id));
       const loc = locById.get(id);
       if (loc?.isStart) visitedStart = true;
       if (loc?.name) visitTokens.add(norm(loc.name));
+      if (loc && !visitedIds.has(loc.id)) {
+        visitedIds.add(loc.id);
+        if (loc.hidden) hiddenVisitedCount++;
+        else publicVisitedCount++;
+      }
     }
+    const publicLocs = locs.filter((l) => !l.hidden);
+    allPublicVisited = publicLocs.length > 0 && publicLocs.every((l) => visitedIds.has(l.id));
+    hiddenLocs = locs.filter((l) => l.hidden).map((l) => ({ id: l.id, name: l.name }));
   }
 
   // 커뮤니티 카운트 (필요 시에만)
@@ -167,6 +212,11 @@ export async function checkAndGrant(
   if (types.has("댓글작성수"))
     commentCount = await prisma.comment.count({ where: { authorId: userId } });
   if (types.has("추천횟수")) voteCount = await prisma.vote.count({ where: { userId } });
+
+  // 레시피 보유 수 — 요리 발견분(카운터) 외에 가챠 구매분(UserRecipe)까지 포함
+  let recipeCount = 0;
+  if (types.has("요리레시피수"))
+    recipeCount = await prisma.userRecipe.count({ where: { userId } });
 
   let storageUsedWeight = 0,
     storageMaxWeight = 0;
@@ -180,12 +230,14 @@ export async function checkAndGrant(
       box?.entries.reduce((sum, entry) => sum + (entry.weight ?? 0) * entry.qty, 0) ?? 0;
   }
 
-  const earnedCount = earned.size;
+  let earnedCount = earned.size;
   const num = (v: string | null) => {
     const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10);
     return Number.isNaN(n) ? null : n;
   };
   const percent = (current: number, total: number) => (total <= 0 ? 0 : (current / total) * 100);
+  // 조건값이 비어 있으면 설명·이름에서 의도를 읽는다 (시트에서 조건값을 자주 생략하므로)
+  const condSource = (a: AchRow) => [a.condValue, a.desc, a.name].filter(Boolean).join(" ");
 
   function satisfied(a: AchRow): boolean {
     const v = a.condValue;
@@ -207,9 +259,9 @@ export async function checkAndGrant(
       case "채집도감등록수":
         return n != null && life.collection.채집.length >= n;
       case "낚시도감완성률":
-        return n != null && percent(life.collection.낚시.length, getActiveItems("낚시").length) >= n;
+        return n != null && percent(fishInPool, fishPoolNames.size) >= n;
       case "채집도감완성률":
-        return n != null && percent(life.collection.채집.length, getActiveItems("채집").length) >= n;
+        return n != null && percent(plantInPool, plantPoolNames.size) >= n;
       case "희귀도낚시":
         return rankRequirement(a) != null && bestFishingRank >= rankRequirement(a)!;
       case "희귀도채집":
@@ -250,30 +302,104 @@ export async function checkAndGrant(
         return n != null && voteCount >= n;
       case "집구매":
         return housing.owned.length >= (n ?? 1);
-      case "집등급":
-        return houseMaxTier >= (TIER_ORDER[String(v)] ?? 99);
-      case "모험가랭크":
-        return (RANK_ORDER[rank] ?? 0) >= (RANK_ORDER[String(v).toUpperCase()] ?? 99);
-      case "생활장비보유":
-        const toolRequirement = textRequirement(a);
-        return (
-          !!toolRequirement &&
-          (toolNames.includes(toolRequirement) ||
-            toolNames.some((t) => (TOOL_TIER[t] ?? 0) >= (TOOL_TIER[toolRequirement] ?? 99)))
-        );
-      case "요리등급":
-        return n != null && (stats.요리최고등급 ?? 0) >= n;
-      case "요리태그":
-        return !!v && (stats[`요리태그:${v}`] ?? 0) > 0;
+      case "집등급": {
+        // 조건값(small/standard/luxury)이 비어 있으면 업적ID·설명에서 등급을 읽는다
+        const src = norm(`${a.id} ${condSource(a)}`);
+        const tier =
+          v && TIER_ORDER[String(v).trim()]
+            ? String(v).trim()
+            : src.includes("luxury") || src.includes(norm("호화"))
+              ? "luxury"
+              : src.includes("standard") || src.includes(norm("평범")) || src.includes(norm("아늑"))
+                ? "standard"
+                : src.includes("small") || src.includes(norm("작은 집"))
+                  ? "small"
+                  : null;
+        return tier != null && houseMaxTier >= (TIER_ORDER[tier] ?? 99);
+      }
+      case "모험가랭크": {
+        // 조건값이 비어 있으면 업적ID(_c/_b/_a/_s)·이름("C랭크")에서 랭크를 읽는다
+        const fromV = String(v ?? "").trim().toUpperCase();
+        const letter = RANK_ORDER[fromV]
+          ? fromV
+          : (a.id.match(/_rank_([dcbas])$/i)?.[1] ?? a.name.match(/([DCBAS])\s*랭크/i)?.[1])?.toUpperCase() ?? null;
+        return letter != null && (RANK_ORDER[rank] ?? 0) >= (RANK_ORDER[letter] ?? 99);
+      }
+      case "생활장비보유": {
+        // 조건값이 비면 설명("좋은 낚싯대를 구매했다")에서 도구명을 찾고, 같은 종류끼리만 비교
+        const src = norm(condSource(a));
+        const req = Object.keys(TOOL_TIER).find((k) => src.includes(norm(k)));
+        if (!req) return false;
+        const owned = tools[TOOL_KIND[req]] ?? "";
+        return (TOOL_TIER[owned] ?? 0) >= (TOOL_TIER[req] ?? 99);
+      }
+      case "요리등급": {
+        // 숫자 조건값 = 레시피 랭크(레거시), 그 외엔 제작 등급(고품질<명품<장인)을 설명에서 읽는다
+        if (n != null) return (stats.요리최고등급 ?? 0) >= n;
+        const made = stats.요리최고제작등급 ?? 0;
+        const src = norm(condSource(a));
+        if (src.includes(norm("장인")) || src.includes(norm("서명작"))) return made >= 3;
+        if (src.includes(norm("걸작")) || src.includes(norm("명품"))) return made >= 2;
+        if (src.includes(norm("희귀")) || src.includes(norm("고품질"))) return made >= 1;
+        return false;
+      }
+      case "요리태그": {
+        // 카운터 키는 cookingTagTokens 기준("생선"/"채집" + 시트 태그) — 별칭을 흡수한다
+        const explicit = v?.trim();
+        const src = condSource(a);
+        const raw =
+          explicit ||
+          (/(물고기|생선|어획)/.test(src) ? "생선" : /(채집|약초|나물)/.test(src) ? "채집" : null);
+        if (!raw) return false;
+        const alias: Record<string, string> = { 물고기: "생선", 어획물: "생선", 채집물: "채집", 약초: "채집" };
+        return (stats[`요리태그:${alias[raw] ?? raw}`] ?? 0) > 0;
+      }
       case "칭호장착":
         return !!userDecor?.equippedTitle;
-      case "대표배지장착":
-        return !!userDecor?.equippedBadge;
+      case "대표배지장착": {
+        // n>1이면 "서로 다른 배지를 n종 장착해 본" 누적 판정 (장착 슬롯은 1개뿐이므로)
+        const goal = n ?? 1;
+        if (goal <= 1) return !!userDecor?.equippedBadge;
+        return countStatPrefix(stats, "배지장착:") >= goal;
+      }
       case "장소방문":
-        if (!v && a.id === "visit_belltower") return visitedStart;
+        if (!v && a.id === "visit_belltower")
+          return visitedStart || !!visitTokens?.has(norm("종탑거리"));
         return !!v && !!visitTokens && visitTokens.has(norm(v));
-      case "히든장소방문":
-        return !!v && !!visitTokens && visitTokens.has(norm(v));
+      case "히든장소방문": {
+        // 숫자 조건값 = 방문한 히든 장소 수, 문자 조건값 = 특정 장소 방문
+        if (n != null) return hiddenVisitedCount >= n;
+        if (v) return !!visitTokens && visitTokens.has(norm(v));
+        // 조건값이 비면 설명에서 히든 장소명을 찾는다 — 정확히 한 곳만 매치될 때만 사용
+        const src = norm(condSource(a));
+        const matched = hiddenLocs.filter(
+          (l) => src.includes(norm(l.id)) || src.includes(norm(l.name)),
+        );
+        if (matched.length !== 1) return false;
+        return (
+          !!visitTokens &&
+          (visitTokens.has(norm(matched[0].id)) || visitTokens.has(norm(matched[0].name)))
+        );
+      }
+      case "지역그룹방문": {
+        // 층 구분이 아직 없어 "공개 장소 방문 수"로 판정. 2층 업적은 2층이 생길 때까지 잠금.
+        const src = condSource(a);
+        if (/2\s*층/.test(src)) return false;
+        const goal = n ?? (src.match(/(\d+)\s*곳/) ? Number(src.match(/(\d+)\s*곳/)![1]) : null);
+        return goal != null && publicVisitedCount >= goal;
+      }
+      case "층전체방문":
+        return allPublicVisited;
+      case "요리레시피수":
+        return n != null && Math.max(recipeCount, stats.요리레시피수 ?? 0) >= n;
+      case "의뢰수락횟수":
+        return n != null && (stats.의뢰수락횟수 ?? 0) >= n;
+      case "의뢰완료횟수":
+        // 과거 카운터명(길드의뢰완료횟수)과 병행 — 기존 누적치 승계
+        return n != null && Math.max(stats.의뢰완료횟수 ?? 0, stats.길드의뢰완료횟수 ?? 0) >= n;
+      case "길드등록":
+        // 별도 등록 절차가 없음 — 캐릭터 시트 연동자는 전원 길드 소속으로 간주
+        return !!sheet;
       default:
         // 누적 카운터형 — condType 이름과 같은 카운터를 그때그때 bumpStat 하면 자동 작동.
         // (이동횟수·조사성공/실패·낚시/채집 성공/실패·던전/균열 클리어·입장·집휴식·월드채팅·아이템획득 …)
@@ -282,14 +408,43 @@ export async function checkAndGrant(
     }
   }
 
-  const newly = pending.filter(satisfied);
+  // 연쇄 판정 — 지급으로 업적달성수·칭호보유수·명성이 늘면 그 자리에서 재평가
+  const newly: AchRow[] = [];
+  const picked = new Set<string>();
+  for (let round = 0; round < 4; round++) {
+    const batch = pending.filter((a) => !picked.has(a.id) && satisfied(a));
+    if (batch.length === 0) break;
+    for (const a of batch) {
+      newly.push(a);
+      picked.add(a.id);
+      earnedCount += 1;
+      if (a.rewardTitle) ownedTitles += 1;
+      fame += a.rewardFame;
+    }
+  }
   if (newly.length === 0) return [];
 
-  await prisma.userAchievement.createMany({
-    data: newly.map((a) => ({ userId, achId: a.id })),
-    skipDuplicates: true,
-  });
-  return newly.map((a) => ({
+  // 동시 요청과 경합해도 실제로 이 호출이 지급한 것만 인정 (명성 중복 지급 방지)
+  const granted: AchRow[] = [];
+  for (const a of newly) {
+    try {
+      await prisma.userAchievement.create({ data: { userId, achId: a.id } });
+      granted.push(a);
+    } catch {
+      // 이미 지급됨(unique 충돌) — 건너뜀
+    }
+  }
+  if (granted.length === 0) return [];
+
+  const fameGain = granted.reduce((sum, a) => sum + a.rewardFame, 0);
+  if (fameGain > 0) {
+    await prisma.characterSheet.updateMany({
+      where: { userId },
+      data: { fame: { increment: fameGain } },
+    });
+  }
+
+  return granted.map((a) => ({
     id: a.id,
     name: a.name,
     badge: a.badge,

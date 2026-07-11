@@ -957,6 +957,8 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   let achStats = recipe ? bumpStat(sheet?.achStatsJson, "요리성공횟수") : (sheet?.achStatsJson ?? null);
   if (recipe) {
     achStats = setMaxStat(achStats, "요리최고등급", recipeRankNumber(recipe.rank));
+    // 제작 등급(고품질1·명품2·장인3) — '희귀/걸작 요리' 업적 판정용
+    if (grade) achStats = setMaxStat(achStats, "요리최고제작등급", COOK_GRADE_NUMBER[grade] ?? 0);
     for (const tag of cookingTagTokens(recipe)) {
       achStats = bumpStat(achStats, `요리태그:${tag}`);
     }
@@ -1115,6 +1117,9 @@ function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
   return match ? Number.parseInt(match[1], 10) || 0 : 0;
 }
+
+// rollCookGrade 결과 → 서열 숫자 (업적 '요리등급' 판정과 짝)
+const COOK_GRADE_NUMBER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
 
 function cookingTagTokens(recipe: { category: string; tags: string | null }): string[] {
   const tokens = new Set<string>();

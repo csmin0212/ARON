@@ -112,7 +112,7 @@ export async function acceptGuildQuest(offerId: string): Promise<GuildQuestActio
   if (!user) return { error: "로그인이 필요합니다." };
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
-    select: { guildQuestJson: true, adventurerRank: true },
+    select: { guildQuestJson: true, adventurerRank: true, achStatsJson: true },
   });
   if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
 
@@ -124,8 +124,12 @@ export async function acceptGuildQuest(offerId: string): Promise<GuildQuestActio
   state.acceptedId = offer.id;
   await prisma.characterSheet.update({
     where: { userId: user.id },
-    data: { guildQuestJson: JSON.stringify(state) },
+    data: {
+      guildQuestJson: JSON.stringify(state),
+      achStatsJson: bumpStat(sheet.achStatsJson, "의뢰수락횟수"),
+    },
   });
+  void checkAndGrant(user.id);
   revalidatePath("/world");
   return { ok: `[${offer.itemName} x${offer.qty}] 의뢰를 수락했어요. 오늘 안에 납품해주세요!` };
 }
@@ -214,7 +218,8 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
       curGold: nextGold,
       gold: `${nextGold}G`,
       ...(fameDelta > 0 ? { fame: (sheet.fame ?? 0) + fameDelta } : {}),
-      achStatsJson: bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"),
+      // 과거 카운터명(길드의뢰완료횟수)도 같이 올려 기존 누적치와 이어지게 한다
+      achStatsJson: bumpStat(bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"), "의뢰완료횟수"),
     },
   });
   void enqueueSheetGoldSync(user.id);

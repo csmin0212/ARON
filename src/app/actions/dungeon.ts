@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
-import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { bumpStat, checkAndGrant, setStat } from "@/lib/achievements";
 import { rollDice } from "@/lib/dice";
 import { dungeonWeekKey } from "@/lib/world";
 import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
@@ -173,7 +173,10 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   const success = total >= dungeon.dc;
 
   // AP·주간 횟수 차감 + 업적 카운터 (입장 / 성공 시 클리어)
-  let achStats = bumpStat(sheet.achStatsJson, "던전입장");
+  // 주간던전클리어는 주가 바뀌면 0부터 다시 센다 — 평생 누적이면 주간 업적이 아니게 됨
+  let achStats = sheet.achStatsJson;
+  if (sheet.dungeonWeek !== week) achStats = setStat(achStats, "주간던전클리어", 0);
+  achStats = bumpStat(achStats, "던전입장");
   if (success) {
     achStats = bumpStat(achStats, "던전클리어");
     achStats = bumpStat(achStats, "주간던전클리어");

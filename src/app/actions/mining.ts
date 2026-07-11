@@ -124,6 +124,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
   const gotQty = doubled ? 2 : 1;
   await ensureItem(p);
   let achStats = bumpStat(sheet?.achStatsJson, "채광성공횟수");
+  achStats = bumpStat(achStats, "아이템획득수", gotQty);
   if (locationId) achStats = markStat(achStats, `채광지역:${locationId}`);
 
   await prisma.characterSheet.update({

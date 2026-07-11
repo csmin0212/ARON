@@ -134,6 +134,7 @@ async function grantFish(
   await ensureItem(pending);
   const locationId = sheet.locationId;
   let achStats = bumpStat(sheet.achStatsJson, "낚시성공횟수");
+  achStats = bumpStat(achStats, "아이템획득수");
   if (locationId) achStats = markStat(achStats, `낚시지역:${locationId}`);
 
   await prisma.characterSheet.update({
