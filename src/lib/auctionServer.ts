@@ -392,9 +392,10 @@ async function restoreLifeItemsFromBasicInventory(
     const effectSnapshot = parseLifeEffectSnapshot(invItem.effect);
     const weight = invItem.weight ?? lifeItem?.weight ?? 1;
     const bag = life.bags[bagKind];
-    const nextWeight = lifeBagWeight(bag) + weight * qty;
+    const curWeight = lifeBagWeight(bag);
+    const nextWeight = curWeight + weight * qty;
     const maxWeight = lifeBagLimit(life, bagKind);
-    if (nextWeight > maxWeight) continue;
+    if (nextWeight > maxWeight && nextWeight > curWeight) continue;
 
     addLifeBagItems(
       life,
@@ -532,9 +533,10 @@ async function planReturnItemToSeller(
     const rank = meta.rank ?? effectSnapshot.rank ?? lifeItem?.rank ?? 0;
     const text = meta.text ?? effectSnapshot.text ?? lifeItem?.text ?? "";
     const bag = life.bags[bagKind];
-    const nextWeight = lifeBagWeight(bag) + weight * qty;
+    const curWeight = lifeBagWeight(bag);
+    const nextWeight = curWeight + weight * qty;
     const maxWeight = lifeBagLimit(life, bagKind);
-    if (nextWeight > maxWeight) {
+    if (nextWeight > maxWeight && nextWeight > curWeight) {
       return { error: `${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})` };
     }
     addLifeBagItems(
@@ -560,7 +562,7 @@ async function planReturnItemToSeller(
   const weight = meta.weight ?? 1;
   const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
   const nextWeight = curWeight + weight * qty;
-  if (inv.maxWeight != null && nextWeight > inv.maxWeight) {
+  if (inv.maxWeight != null && nextWeight > inv.maxWeight && nextWeight > curWeight) {
     return { error: `가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})` };
   }
   addInvItem(inv, { name, effect: meta.effect, weight }, qty);

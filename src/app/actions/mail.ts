@@ -147,6 +147,7 @@ export async function claimMail(formData: FormData): Promise<void> {
   const hasAttach = mail.gold > 0 || (!!mail.itemName && mail.itemQty > 0);
   if (hasAttach) {
     const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
+    if (!sheet?.sheetTab) mailError("캐릭터 시트 연동 후 첨부를 수령할 수 있어요.");
     if (sheet?.sheetTab) {
       const inv = parseInv(sheet.invJson);
       const life = parseLifeState(sheet.lifeJson);
@@ -179,9 +180,10 @@ export async function claimMail(formData: FormData): Promise<void> {
 
         if (bagKind) {
           const bag = life.bags[bagKind];
-          const nextWeight = lifeBagWeight(bag) + weight * mail.itemQty;
+          const curWeight = lifeBagWeight(bag);
+          const nextWeight = curWeight + weight * mail.itemQty;
           const maxWeight = lifeBagLimit(life, bagKind);
-          if (nextWeight > maxWeight) {
+          if (nextWeight > maxWeight && nextWeight > curWeight) {
             mailError(`${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})`);
           }
           addLifeBagItems(
@@ -198,7 +200,7 @@ export async function claimMail(formData: FormData): Promise<void> {
         } else {
           const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
           const nextWeight = curWeight + weight * mail.itemQty;
-          if (inv.maxWeight != null && nextWeight > inv.maxWeight) {
+          if (inv.maxWeight != null && nextWeight > inv.maxWeight && nextWeight > curWeight) {
             mailError(`가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})`);
           }
           const found = inv.items.find((i) => i.name.trim() === itemName.trim());
