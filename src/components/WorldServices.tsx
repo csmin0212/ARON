@@ -345,6 +345,324 @@ function HousingStateLine({ state }: { state: HousingState }) {
   return null;
 }
 
+type ProductionKind = "낚시" | "채집";
+
+function productionMeta(kind: ProductionKind) {
+  return kind === "낚시"
+    ? {
+        itemId: "aquarium",
+        icon: "🐠",
+        title: "어항",
+        pointName: "어항 점수",
+        verb: "물고기",
+        empty: "물고기를 넣어두면 매일 점수가 쌓입니다.",
+        accent: "from-sky-400 to-cyan-500",
+      }
+    : {
+        itemId: "planter",
+        icon: "🪴",
+        title: "약초 화분",
+        pointName: "화분 점수",
+        verb: "채집물",
+        empty: "채집물을 심어두면 매일 점수가 쌓입니다.",
+        accent: "from-emerald-400 to-lime-500",
+      };
+}
+
+function HousingProductionFacility({
+  kind,
+  housing,
+  onClose,
+}: {
+  kind: ProductionKind;
+  housing: HousingView;
+  onClose: () => void;
+}) {
+  const meta = productionMeta(kind);
+  const data = housing.production[kind];
+  const [stockState, stockAction, stockPending] = useActionState<HousingState, FormData>(
+    stockHousingProduction,
+    undefined,
+  );
+  const [withdrawState, withdrawAction, withdrawPending] = useActionState<HousingState, FormData>(
+    withdrawHousingProduction,
+    undefined,
+  );
+  const [redeemState, redeemAction, redeemPending] = useActionState<HousingState, FormData>(
+    redeemHousingProduction,
+    undefined,
+  );
+  const slotPlaceholders = Array.from({ length: 5 }, (_, i) => data.slots[i] ?? null);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={meta.title}
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Home Facility
+          </p>
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-2xl font-extrabold text-content">
+                {meta.icon} {meta.title}
+              </h3>
+              <p className="mt-1 text-xs font-bold text-faint">
+                {housing.atHome ? "본인 집 시설 사용 가능" : "본인 집에서만 상호작용 가능"}
+              </p>
+            </div>
+            <span className="rounded-full bg-surface px-3 py-1.5 text-sm font-black text-brand-600">
+              {data.slots.length}/5
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <HousingStateLine state={stockState} />
+          <HousingStateLine state={withdrawState} />
+          <HousingStateLine state={redeemState} />
+
+          <section className={`rounded-3xl bg-gradient-to-br ${meta.accent} p-4 text-white shadow-sm`}>
+            <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-white/75">
+                  Balance
+                </p>
+                <p className="mt-1 text-3xl font-black">{data.points.toLocaleString()}P</p>
+                <p className="mt-1 text-sm font-bold text-white/85">{meta.pointName}</p>
+              </div>
+              <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
+                <p className="text-xs font-bold text-white/75">매일 적립</p>
+                <p className="mt-1 text-xl font-black">+{data.dailyPoints.toLocaleString()}P</p>
+              </div>
+              <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
+                <p className="text-xs font-bold text-white/75">초기화</p>
+                <p className="mt-1 text-xl font-black">자정</p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h4 className="text-sm font-extrabold text-content">보관 슬롯</h4>
+              <span className="text-xs font-bold text-faint">
+                등급별 점수가 매일 누적됩니다
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {slotPlaceholders.map((slot, index) =>
+                slot ? (
+                  <form
+                    key={`${slot.name}-${index}`}
+                    action={withdrawAction}
+                    className="min-h-28 rounded-2xl border border-line bg-subtle p-3"
+                  >
+                    <input type="hidden" name="kind" value={kind} />
+                    <input type="hidden" name="index" value={index} />
+                    <p className="text-[11px] font-black text-brand-600">R{slot.rank}</p>
+                    <p className="mt-1 line-clamp-2 text-sm font-extrabold text-content">
+                      {slot.name}
+                    </p>
+                    <p className="mt-1 text-[11px] font-bold text-faint">중량 {slot.weight}</p>
+                    <button
+                      type="submit"
+                      disabled={withdrawPending || !housing.atHome}
+                      className="mt-2 w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] font-black text-muted transition hover:bg-subtle-hover disabled:opacity-50"
+                    >
+                      빼기
+                    </button>
+                  </form>
+                ) : (
+                  <div
+                    key={`empty-${index}`}
+                    className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-line bg-subtle/55 p-3 text-center"
+                  >
+                    <span className="text-xs font-bold text-faint">빈 슬롯</span>
+                  </div>
+                ),
+              )}
+            </div>
+          </section>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <form action={stockAction} className="rounded-2xl border border-line bg-subtle p-4">
+              <input type="hidden" name="kind" value={kind} />
+              <p className="text-sm font-extrabold text-content">가방에서 넣기</p>
+              <p className="mt-1 text-xs text-faint">{meta.verb} 최대 5개까지 보관합니다.</p>
+              <div className="mt-3 flex gap-2">
+                <select
+                  name="itemName"
+                  disabled={stockPending || !housing.atHome || data.bagItems.length === 0}
+                  className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content"
+                >
+                  {data.bagItems.length === 0 ? (
+                    <option value="">가방에 넣을 항목 없음</option>
+                  ) : (
+                    data.bagItems.map((item) => (
+                      <option key={item.name} value={item.name}>
+                        R{item.rank} · {item.name} x{item.qty}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="submit"
+                  disabled={stockPending || !housing.atHome || data.bagItems.length === 0}
+                  className="shrink-0 rounded-xl bg-brand-500 px-4 py-2 text-sm font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
+                >
+                  넣기
+                </button>
+              </div>
+            </form>
+
+            <form action={redeemAction} className="rounded-2xl border border-line bg-subtle p-4">
+              <input type="hidden" name="kind" value={kind} />
+              <p className="text-sm font-extrabold text-content">도감에서 꺼내기</p>
+              <p className="mt-1 text-xs text-faint">도감 등록 기록이 있는 항목만 선택됩니다.</p>
+              <div className="mt-3 flex gap-2">
+                <select
+                  name="itemName"
+                  disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
+                  className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-bold text-content"
+                >
+                  {data.redeemItems.length === 0 ? (
+                    <option value="">꺼낼 수 있는 항목 없음</option>
+                  ) : (
+                    data.redeemItems.map((item) => (
+                      <option key={item.name} value={item.name}>
+                        R{item.rank} · {item.name} · {item.cost.toLocaleString()}P
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="submit"
+                  disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
+                  className="shrink-0 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  꺼내기
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {data.slots.length === 0 && (
+            <p className="rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-faint">
+              {meta.empty}
+            </p>
+          )}
+        </div>
+
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DailyFurnitureFacility({
+  itemId,
+  housing,
+  onClose,
+}: {
+  itemId: string;
+  housing: HousingView;
+  onClose: () => void;
+}) {
+  const item = FURNITURE_OPTIONS.find((option) => option.id === itemId);
+  const [state, action, pending] = useActionState<HousingState, FormData>(useFurniture, undefined);
+  if (!item) return null;
+  const usedToday = housing.furnitureUsedToday[item.id] ?? false;
+  const effectText =
+    item.effect.type === "daily_ap"
+      ? `피로도 +${item.effect.amount}`
+      : item.effect.type === "daily_gold"
+        ? `${item.effect.min}-${item.effect.max}G`
+        : item.desc;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={item.name}
+        className="w-full max-w-md overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Home Facility
+          </p>
+          <h3 className="mt-1 text-2xl font-extrabold text-content">
+            {item.emoji} {item.name}
+          </h3>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <HousingStateLine state={state} />
+          <div className="rounded-3xl border border-line bg-subtle p-4">
+            <p className="text-sm font-bold leading-relaxed text-muted">{item.desc}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-2xl bg-surface px-3 py-3">
+                <p className="text-xs font-bold text-faint">효과</p>
+                <p className="mt-1 text-lg font-black text-content">{effectText}</p>
+              </div>
+              <div className="rounded-2xl bg-surface px-3 py-3">
+                <p className="text-xs font-bold text-faint">상태</p>
+                <p className="mt-1 text-lg font-black text-content">
+                  {usedToday ? "완료" : "가능"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <form action={action}>
+            <input type="hidden" name="itemId" value={item.id} />
+            <button
+              type="submit"
+              disabled={pending || usedToday || !housing.atHome}
+              className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
+            >
+              {!housing.atHome
+                ? "본인 집에서만 사용 가능"
+                : usedToday
+                  ? "오늘 사용 완료"
+                  : item.interactLabel}
+            </button>
+          </form>
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CookingStateLine({ state }: { state: CookingState }) {
   if (state?.error) {
     return (
@@ -892,6 +1210,205 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
   );
 }
 
+// ── 가구 탭 — 내 가구 쇼룸 + 카테고리별 상점 ──
+const FURNITURE_GROUPS = [
+  {
+    key: "bed",
+    icon: "🛏️",
+    title: "침구류",
+    note: "휴식 회복은 보유한 침대 중 가장 좋은 것 하나만 적용돼요.",
+    tile: "border-amber-200/70 bg-amber-50",
+    match: (item: (typeof FURNITURE_OPTIONS)[number]) => item.effect.type === "rest_bonus",
+  },
+  {
+    key: "work",
+    icon: "⚙️",
+    title: "기능 가구",
+    note: "구매하면 시설 목록에 전용 카드가 생겨요. 하루 1회 · KST 자정 초기화.",
+    tile: "border-sky-200/70 bg-sky-50",
+    match: (item: (typeof FURNITURE_OPTIONS)[number]) =>
+      item.effect.type === "daily_ap" ||
+      item.effect.type === "daily_gold" ||
+      item.effect.type === "production",
+  },
+  {
+    key: "deco",
+    icon: "🎀",
+    title: "꾸미기 · 손님맞이",
+    note: "집의 분위기와 손님맞이를 담당해요.",
+    tile: "border-rose-200/70 bg-rose-50",
+    match: (item: (typeof FURNITURE_OPTIONS)[number]) =>
+      item.effect.type === "nameplate" || item.effect.type === "guestbook",
+  },
+] as const;
+
+function furnitureGroupOf(item: (typeof FURNITURE_OPTIONS)[number]) {
+  return FURNITURE_GROUPS.find((group) => group.match(item)) ?? FURNITURE_GROUPS[1];
+}
+
+function FurnitureTab({
+  housing,
+  owned,
+  bedBonus,
+  furnAction,
+  furnPending,
+}: {
+  housing: HousingView;
+  owned: boolean;
+  bedBonus: number;
+  furnAction: (formData: FormData) => void;
+  furnPending: boolean;
+}) {
+  const ownedSet = new Set(housing.furnitureOwned);
+  const ownedItems = FURNITURE_OPTIONS.filter((item) => ownedSet.has(item.id));
+
+  // 보유 타일 상태 한 줄 — 지금 뭘 해주고 있는지
+  function ownedStatus(item: (typeof FURNITURE_OPTIONS)[number]): {
+    text: string;
+    tone: string;
+  } {
+    const effect = item.effect;
+    if (effect.type === "rest_bonus") {
+      return effect.amount === bedBonus
+        ? { text: `휴식 +${effect.amount} 적용중`, tone: "text-emerald-600" }
+        : { text: `휴식 +${effect.amount} · 대기`, tone: "text-faint" };
+    }
+    if (effect.type === "daily_ap" || effect.type === "daily_gold") {
+      const usedToday = housing.furnitureUsedToday[item.id] ?? false;
+      return usedToday
+        ? { text: "오늘 사용 완료", tone: "text-faint" }
+        : { text: `${item.interactLabel} 가능`, tone: "text-emerald-600" };
+    }
+    if (effect.type === "production") {
+      const data = housing.production[effect.kind];
+      return {
+        text: `${data.points.toLocaleString()}P · ${data.slots.length}/5`,
+        tone: "text-brand-600",
+      };
+    }
+    if (effect.type === "nameplate") {
+      return housing.homeName
+        ? { text: `‘${housing.homeName}’`, tone: "text-brand-600" }
+        : { text: "휴식 탭에서 이름 짓기", tone: "text-faint" };
+    }
+    return { text: "방명록 열림", tone: "text-brand-600" };
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* 내 가구 쇼룸 */}
+      <section>
+        <div className="mb-2 flex items-center justify-between px-1">
+          <h4 className="text-sm font-extrabold text-content">🏠 내 가구</h4>
+          <span className="text-[11px] font-bold text-faint">
+            가구는 캐릭터 소유 — 집을 옮겨도 유지돼요
+          </span>
+        </div>
+        {ownedItems.length === 0 ? (
+          <div className="grid place-items-center rounded-2xl border border-dashed border-line bg-subtle/60 px-4 py-8 text-center">
+            <p className="text-sm font-bold text-faint">
+              아직 가구가 없어요.
+              <br />
+              아래 상점에서 첫 가구를 들여보세요!
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {ownedItems.map((item) => {
+              const group = furnitureGroupOf(item);
+              const status = ownedStatus(item);
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-2xl border p-3 text-center ${group.tile}`}
+                >
+                  <span className="block text-3xl drop-shadow-sm">{item.emoji}</span>
+                  <p className="mt-1.5 truncate text-sm font-extrabold text-content">
+                    {item.name}
+                  </p>
+                  <p className={`mt-0.5 truncate text-[11px] font-bold ${status.tone}`}>
+                    {status.text}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 가구 상점 — 카테고리별, 미보유만 */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <h4 className="text-sm font-extrabold text-content">🛒 가구 상점</h4>
+          {!owned && (
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-600">
+              집을 먼저 구매해주세요
+            </span>
+          )}
+        </div>
+        {FURNITURE_GROUPS.map((group) => {
+          const forSale = FURNITURE_OPTIONS.filter(
+            (item) => group.match(item) && !ownedSet.has(item.id),
+          );
+          return (
+            <div key={group.key}>
+              <div className="mb-1.5 flex items-baseline gap-2 px-1">
+                <p className="text-xs font-extrabold text-content">
+                  {group.icon} {group.title}
+                </p>
+                <p className="hidden truncate text-[11px] text-faint sm:block">{group.note}</p>
+              </div>
+              {forSale.length === 0 ? (
+                <p className="rounded-2xl border border-line bg-subtle px-4 py-2.5 text-xs font-bold text-faint">
+                  ✨ {group.title}는 모두 보유중이에요.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {forSale.map((item) => (
+                    <form
+                      key={item.id}
+                      action={furnAction}
+                      onSubmit={(e) => {
+                        if (!owned) {
+                          e.preventDefault();
+                          window.alert("집을 먼저 구매해주세요.");
+                        }
+                      }}
+                      className="group rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50/60"
+                    >
+                      <input type="hidden" name="itemId" value={item.id} />
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border text-xl ${group.tile}`}
+                        >
+                          {item.emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-extrabold text-content">{item.name}</p>
+                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-faint">
+                            {item.desc}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={furnPending}
+                        className="mt-2.5 w-full rounded-xl bg-emerald-500/90 px-3 py-1.5 text-xs font-black text-white transition group-hover:bg-emerald-500 disabled:opacity-50"
+                      >
+                        {item.price.toLocaleString()}G 구매
+                      </button>
+                    </form>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
 function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () => void }) {
   const [tab, setTab] = useState<"rest" | "buy" | "furniture">("rest");
   const [buyState, buyAction, buyPending] = useActionState<HousingState, FormData>(
@@ -910,24 +1427,8 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
     buyFurniture,
     undefined,
   );
-  const [interactState, interactAction, interactPending] = useActionState<HousingState, FormData>(
-    useFurniture,
-    undefined,
-  );
   const [renameState, renameAction, renamePending] = useActionState<HousingState, FormData>(
     renameHome,
-    undefined,
-  );
-  const [stockState, stockAction, stockPending] = useActionState<HousingState, FormData>(
-    stockHousingProduction,
-    undefined,
-  );
-  const [withdrawProdState, withdrawProdAction, withdrawProdPending] = useActionState<HousingState, FormData>(
-    withdrawHousingProduction,
-    undefined,
-  );
-  const [redeemState, redeemAction, redeemPending] = useActionState<HousingState, FormData>(
-    redeemHousingProduction,
     undefined,
   );
   const [inviteState, inviteAction, invitePending] = useActionState<FriendState, FormData>(
@@ -936,7 +1437,6 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
   );
   const owned = housing.options.some((option) => option.owned);
   const ownedOption = housing.options.find((option) => option.owned) ?? null;
-  const ownedFurniture = new Set(housing.furnitureOwned);
   const hasNameplate = housing.furnitureOwned.some(
     (id) => FURNITURE_OPTIONS.find((f) => f.id === id)?.effect.type === "nameplate",
   );
@@ -1005,11 +1505,7 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
           <HousingStateLine state={restState} />
           <HousingStateLine state={sellState} />
           <HousingStateLine state={furnState} />
-          <HousingStateLine state={interactState} />
           <HousingStateLine state={renameState} />
-          <HousingStateLine state={stockState} />
-          <HousingStateLine state={withdrawProdState} />
-          <HousingStateLine state={redeemState} />
           {(inviteState?.error || inviteState?.ok) && (
             <p
               className={`rounded-xl px-3 py-2 text-xs font-bold ${
@@ -1227,194 +1723,13 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
           )}
 
           {tab === "furniture" && (
-            <section className="space-y-2">
-              <h4 className="text-sm font-extrabold text-content">🪑 가구</h4>
-              <p className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs font-bold leading-relaxed text-brand-600">
-                가구는 캐릭터 소유라 집을 옮겨도 그대로 유지됩니다. 상호작용 가구는 하루
-                1회, 본인 집에서만 사용할 수 있어요. (KST 자정 초기화)
-              </p>
-              {!owned && (
-                <p className="rounded-2xl bg-subtle px-4 py-3 text-xs text-faint">
-                  집을 먼저 구매하면 가구를 들일 수 있어요.
-                </p>
-              )}
-              <div className="grid gap-2">
-                {FURNITURE_OPTIONS.map((item) => {
-                  const isOwned = ownedFurniture.has(item.id);
-                  const usedToday = housing.furnitureUsedToday[item.id] ?? false;
-                  return (
-                    <div
-                      key={item.id}
-                      className="rounded-2xl border border-line bg-subtle p-3"
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="text-xl">{item.emoji}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-extrabold text-content">
-                            {item.name}
-                          </span>
-                          <span className="mt-0.5 block text-[11px] leading-relaxed text-faint">
-                            {item.desc}
-                          </span>
-                        </span>
-                        {isOwned ? (
-                          <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
-                            보유중
-                          </span>
-                        ) : (
-                          <form
-                            action={furnAction}
-                            className="shrink-0"
-                            onSubmit={(e) => {
-                              if (!owned) {
-                                e.preventDefault();
-                                window.alert("집을 먼저 구매해주세요.");
-                              }
-                            }}
-                          >
-                            <input type="hidden" name="itemId" value={item.id} />
-                            <button
-                              type="submit"
-                              disabled={furnPending}
-                              className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-600 transition hover:bg-emerald-100 disabled:opacity-50"
-                            >
-                              {item.price.toLocaleString()}G
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                      {isOwned && item.interactLabel && (
-                        <form action={interactAction} className="mt-2">
-                          <input type="hidden" name="itemId" value={item.id} />
-                          <button
-                            type="submit"
-                            disabled={interactPending || usedToday || !housing.atHome}
-                            className="w-full rounded-xl bg-brand-500 px-3 py-2 text-xs font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
-                          >
-                            {!housing.atHome
-                              ? `${item.interactLabel} — 본인 집에서만`
-                              : usedToday
-                                ? `오늘 ${item.interactLabel} 완료`
-                                : item.interactLabel}
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {owned && (
-                <div className="mt-4 grid gap-3">
-                  {(["낚시", "채집"] as const).map((kind) => {
-                    const itemId = kind === "낚시" ? "aquarium" : "planter";
-                    if (!ownedFurniture.has(itemId)) return null;
-                    const data = housing.production[kind];
-                    const title = kind === "낚시" ? "🐠 어항" : "🪴 약초 화분";
-                    const pointName = kind === "낚시" ? "어항 점수" : "화분 점수";
-                    return (
-                      <section key={kind} className="rounded-2xl border border-brand-100 bg-brand-50/50 p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-black text-content">{title}</p>
-                            <p className="mt-0.5 text-xs font-bold text-brand-600">
-                              {pointName} {data.points.toLocaleString()}P · 매일 +{data.dailyPoints.toLocaleString()}P
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-black text-brand-600">
-                            {data.slots.length}/5
-                          </span>
-                        </div>
-
-                        {data.slots.length > 0 && (
-                          <div className="mt-3 space-y-1.5">
-                            {data.slots.map((slot, index) => (
-                              <form
-                                key={`${kind}-${slot.name}-${index}`}
-                                action={withdrawProdAction}
-                                className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2"
-                              >
-                                <input type="hidden" name="kind" value={kind} />
-                                <input type="hidden" name="index" value={index} />
-                                <span className="min-w-0 flex-1 truncate text-xs font-bold text-content">
-                                  R{slot.rank} · {slot.name}
-                                </span>
-                                <button
-                                  type="submit"
-                                  disabled={withdrawProdPending || !housing.atHome}
-                                  className="rounded-lg border border-line px-2 py-1 text-[11px] font-black text-muted transition hover:bg-subtle disabled:opacity-50"
-                                >
-                                  빼기
-                                </button>
-                              </form>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <form action={stockAction} className="rounded-xl bg-surface p-2">
-                            <input type="hidden" name="kind" value={kind} />
-                            <p className="mb-1 text-[11px] font-black text-faint">가방에서 넣기</p>
-                            <div className="flex gap-1.5">
-                              <select
-                                name="itemName"
-                                disabled={stockPending || !housing.atHome || data.bagItems.length === 0}
-                                className="min-w-0 flex-1 rounded-lg border border-line bg-subtle px-2 py-1.5 text-xs font-bold text-content"
-                              >
-                                {data.bagItems.length === 0 ? (
-                                  <option value="">가방 비어 있음</option>
-                                ) : (
-                                  data.bagItems.map((item) => (
-                                    <option key={item.name} value={item.name}>
-                                      R{item.rank} · {item.name} x{item.qty}
-                                    </option>
-                                  ))
-                                )}
-                              </select>
-                              <button
-                                type="submit"
-                                disabled={stockPending || !housing.atHome || data.bagItems.length === 0}
-                                className="rounded-lg bg-brand-500 px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-50"
-                              >
-                                넣기
-                              </button>
-                            </div>
-                          </form>
-
-                          <form action={redeemAction} className="rounded-xl bg-surface p-2">
-                            <input type="hidden" name="kind" value={kind} />
-                            <p className="mb-1 text-[11px] font-black text-faint">도감에서 꺼내기</p>
-                            <div className="flex gap-1.5">
-                              <select
-                                name="itemName"
-                                disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
-                                className="min-w-0 flex-1 rounded-lg border border-line bg-subtle px-2 py-1.5 text-xs font-bold text-content"
-                              >
-                                {data.redeemItems.length === 0 ? (
-                                  <option value="">등록된 항목 없음</option>
-                                ) : (
-                                  data.redeemItems.map((item) => (
-                                    <option key={item.name} value={item.name}>
-                                      R{item.rank} · {item.name} · {item.cost.toLocaleString()}P
-                                    </option>
-                                  ))
-                                )}
-                              </select>
-                              <button
-                                type="submit"
-                                disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
-                                className="rounded-lg bg-emerald-500 px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-50"
-                              >
-                                꺼내기
-                              </button>
-                            </div>
-                          </form>
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+            <FurnitureTab
+              housing={housing}
+              owned={owned}
+              bedBonus={bedBonus}
+              furnAction={furnAction}
+              furnPending={furnPending}
+            />
           )}
         </div>
 
@@ -1866,6 +2181,8 @@ export default function WorldServices({
   const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
+  const [productionOpen, setProductionOpen] = useState<ProductionKind | null>(null);
+  const [dailyFurnitureOpen, setDailyFurnitureOpen] = useState<string | null>(null);
   const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | "reforge" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
@@ -1894,6 +2211,13 @@ export default function WorldServices({
   const gems = items.filter(isGem);
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
+  const ownedFurniture = useMemo(() => new Set(housing.furnitureOwned), [housing.furnitureOwned]);
+  const productionFacilities = (["낚시", "채집"] as const).filter((kind) =>
+    ownedFurniture.has(productionMeta(kind).itemId),
+  );
+  const dailyFacilities = FURNITURE_OPTIONS.filter(
+    (item) => ownedFurniture.has(item.id) && item.interactLabel && item.effect.type !== "production",
+  );
 
   if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !canGacha) return null;
 
@@ -2017,6 +2341,57 @@ export default function WorldServices({
               </span>
             </button>
           )}
+          {canHousing &&
+            productionFacilities.map((kind) => {
+              const meta = productionMeta(kind);
+              const data = housing.production[kind];
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setProductionOpen(kind)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-100"
+                >
+                  <span className="text-xl">{meta.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-extrabold text-content">{meta.title}</span>
+                    <span className="text-[11px] font-bold text-brand-600">
+                      {meta.pointName} {data.points.toLocaleString()}P · 매일 +{data.dailyPoints.toLocaleString()}P
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-xs font-black text-brand-600">
+                    {data.slots.length}/5
+                  </span>
+                </button>
+              );
+            })}
+          {canHousing &&
+            dailyFacilities.map((item) => {
+              const usedToday = housing.furnitureUsedToday[item.id] ?? false;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setDailyFurnitureOpen(item.id)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+                >
+                  <span className="text-xl">{item.emoji}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-extrabold text-content">{item.name}</span>
+                    <span className="text-[11px] text-faint">
+                      {usedToday ? "오늘 사용 완료" : `${item.interactLabel} 가능`}
+                    </span>
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${
+                      usedToday ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                    }`}
+                  >
+                    {usedToday ? "완료" : "사용"}
+                  </span>
+                </button>
+              );
+            })}
           {canHousing && (
             <button
               type="button"
@@ -2083,6 +2458,22 @@ export default function WorldServices({
       {innOpen && <InnRest inn={inn} onClose={() => setInnOpen(false)} />}
 
       {housingOpen && <HousingPanel housing={housing} onClose={() => setHousingOpen(false)} />}
+
+      {productionOpen && (
+        <HousingProductionFacility
+          kind={productionOpen}
+          housing={housing}
+          onClose={() => setProductionOpen(null)}
+        />
+      )}
+
+      {dailyFurnitureOpen && (
+        <DailyFurnitureFacility
+          itemId={dailyFurnitureOpen}
+          housing={housing}
+          onClose={() => setDailyFurnitureOpen(null)}
+        />
+      )}
 
       {open && (
         <div
