@@ -60,7 +60,10 @@ import { lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerk
 import { parseGoldToInt } from "@/lib/dice";
 import {
   HOUSE_OPTIONS,
+  hasFurnitureEffect,
+  homeDisplayName,
   homeLocationId,
+  homeOwnerFromLocationId,
   homeTierFromLocationId,
   houseOption,
   houseSellPrice,
@@ -68,6 +71,8 @@ import {
   isHomeLocationId,
   parseHousingState,
 } from "@/lib/housing";
+import FriendsDock from "@/components/FriendsDock";
+import GuestbookCard from "@/components/GuestbookCard";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -202,6 +207,8 @@ export default async function WorldPage() {
   const nextRegenMin = nextFatigueRegenMinutes(sheet.ap, sheet.apResetAt);
   const atHome = isHomeLocationId(sheet.locationId);
   const housingState = parseHousingState(sheet.housingJson, sheet.houseTier);
+  const homeOwnerId = homeOwnerFromLocationId(sheet.locationId);
+  const atMyHome = atHome && homeOwnerId === user.id; // 친구 집 방문 중이면 false
   const activeHomeTier = homeTierFromLocationId(sheet.locationId) ?? sheet.houseTier;
   const bellTowerLocations =
     atHome || housingState.owned.length > 0
@@ -215,14 +222,37 @@ export default async function WorldPage() {
     sheet.locationId && !atHome
       ? await prisma.location.findUnique({ where: { id: sheet.locationId } })
       : null;
-  const house = houseOption(activeHomeTier);
+  // 내가 보유한 집 (하우징 메뉴·입장 목록용) — 지금 서 있는 집과 별개
+  const house = houseOption(housingState.owned[0] ?? sheet.houseTier);
+  const hereHouse = houseOption(atHome ? activeHomeTier : null);
+  // 친구 집 방문 중이면 주인 정보를 불러와 문패를 표시
+  const homeOwner =
+    atHome && !atMyHome && homeOwnerId
+      ? await prisma.user.findUnique({
+          where: { id: homeOwnerId },
+          select: { id: true, nickname: true },
+        })
+      : null;
+  const homeOwnerSheet = homeOwner
+    ? await prisma.characterSheet.findUnique({
+        where: { userId: homeOwner.id },
+        select: { housingJson: true, houseTier: true },
+      })
+    : null;
+  const homeOwnerHousing = homeOwner
+    ? parseHousingState(homeOwnerSheet?.housingJson, homeOwnerSheet?.houseTier)
+    : null;
   const here =
-    atHome && house
+    atHome && hereHouse && homeOwnerId
       ? {
-          id: homeLocationId(user.id, house.tier),
-          name: "본인 집",
+          id: homeLocationId(homeOwnerId, hereHouse.tier),
+          name: atMyHome
+            ? homeDisplayName(user.nickname, housingState, hereHouse.tier)
+            : homeDisplayName(homeOwner?.nickname ?? "누군가", homeOwnerHousing ?? housingState, hereHouse.tier),
           emoji: "🏠",
-          desc: `${house.name}입니다. 하우징 메뉴에서 휴식하고, 이후 가구를 배치할 수 있어요.`,
+          desc: atMyHome
+            ? `${hereHouse.name}입니다. 하우징 메뉴에서 휴식하고 가구를 배치할 수 있어요.`
+            : `${homeOwner?.nickname ?? "친구"}님의 집에 놀러 왔어요. 방명록대가 있다면 인사를 남겨보세요.`,
           image: null,
           connJson: bellTower ? JSON.stringify([bellTower.id]) : "[]",
           hidden: false,
@@ -553,6 +583,85 @@ export default async function WorldPage() {
     maxAp: FATIGUE_MAX,
     restedToday: restedTodayKst(sheet.restedAt),
   };
+  // ── 친구 목록 + 현재 위치 (히든 장소는 가림) ──
+  const friendRows = await prisma.friendship.findMany({
+    where: { status: "accepted", OR: [{ userId: user.id }, { friendId: user.id }] },
+    include: {
+      user: { select: { id: true, nickname: true } },
+      friend: { select: { id: true, nickname: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  const friendUsers = friendRows.map((row) => (row.userId === user.id ? row.friend : row.user));
+  const friendSheets = friendUsers.length
+    ? await prisma.characterSheet.findMany({
+        where: { userId: { in: friendUsers.map((f) => f.id) } },
+        select: { userId: true, locationId: true },
+      })
+    : [];
+  const friendLocIds = [
+    ...new Set(
+      friendSheets
+        .map((s) => s.locationId)
+        .filter((id): id is string => !!id && !isHomeLocationId(id)),
+    ),
+  ];
+  const friendLocs = friendLocIds.length
+    ? await prisma.location.findMany({
+        where: { id: { in: friendLocIds } },
+        select: { id: true, name: true, emoji: true, hidden: true },
+      })
+    : [];
+  const friendLocById = new Map(friendLocs.map((l) => [l.id, l]));
+  const friendSheetByUser = new Map(friendSheets.map((s) => [s.userId, s]));
+  const friendViews = friendUsers.map((f) => {
+    const locId = friendSheetByUser.get(f.id)?.locationId ?? null;
+    let where = "🚪 월드 밖";
+    if (locId && isHomeLocationId(locId)) {
+      where = homeOwnerFromLocationId(locId) === f.id ? "🏠 자택" : "🏠 친구 집 방문 중";
+    } else if (locId) {
+      const loc = friendLocById.get(locId);
+      where = !loc || loc.hidden ? "🕶️ 어딘가…" : `${loc.emoji ?? "📍"} ${loc.name}`;
+    }
+    return { id: f.id, nickname: f.nickname, where };
+  });
+  const friendRequests = (
+    await prisma.friendship.findMany({
+      where: { friendId: user.id, status: "pending" },
+      include: { user: { select: { nickname: true } } },
+      orderBy: { createdAt: "asc" },
+    })
+  ).map((row) => ({ id: row.id, nickname: row.user.nickname }));
+  const houseInvites = (
+    await prisma.houseInvite.findMany({
+      where: { toId: user.id },
+      include: { from: { select: { nickname: true } } },
+      orderBy: { createdAt: "desc" },
+    })
+  ).map((row) => ({ id: row.id, nickname: row.from.nickname }));
+
+  // ── 방명록 — 지금 서 있는 집(내 집 또는 친구 집)의 것 ──
+  const guestbookHousing = atMyHome ? housingState : homeOwnerHousing;
+  const hasGuestbookStand = guestbookHousing
+    ? hasFurnitureEffect(guestbookHousing, "guestbook")
+    : false;
+  const guestbookEntries =
+    atHome && homeOwnerId && hasGuestbookStand
+      ? (
+          await prisma.houseGuestbook.findMany({
+            where: { ownerId: homeOwnerId },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            include: { author: { select: { nickname: true } } },
+          })
+        ).map((entry) => ({
+          id: entry.id,
+          author: entry.author.nickname,
+          content: entry.content,
+          at: entry.createdAt.toISOString(),
+        }))
+      : [];
+
   const housing: HousingView = {
     gold: sheet.curGold ?? (parseGoldToInt(sheetInventory?.gold) || 0),
     ap,
@@ -561,7 +670,7 @@ export default async function WorldPage() {
     name: house?.name ?? null,
     restAmount: house?.restAmount ?? null,
     restedToday: restedTodayKst(sheet.houseRestedAt),
-    atHome,
+    atHome: atMyHome,
     options: HOUSE_OPTIONS.map((option) => ({
       tier: option.tier,
       name: option.name,
@@ -571,10 +680,19 @@ export default async function WorldPage() {
       owned: option.tier === house?.tier,
       sellPrice: houseSellPrice(option.tier),
     })),
+    furnitureOwned: housingState.items,
+    furnitureUsedToday: Object.fromEntries(
+      housingState.items.map((id) => [
+        id,
+        housingState.usedAt[id] ? restedTodayKst(new Date(housingState.usedAt[id])) : false,
+      ]),
+    ),
+    homeName: housingState.homeName,
+    friends: friendViews.map((f) => ({ id: f.id, nickname: f.nickname })),
   };
-  const canHousing = atHome || isBellTowerLocation(here);
-  const cookingEnabled = canMarket || atHome;
-  const cookingFacility = atHome ? "home" : "public";
+  const canHousing = atMyHome || isBellTowerLocation(here);
+  const cookingEnabled = canMarket || atMyHome;
+  const cookingFacility = atMyHome ? "home" : "public";
   const allRecipes = cookingEnabled
     ? await prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } })
     : [];
@@ -613,8 +731,8 @@ export default async function WorldPage() {
   const cooking: CookingView = {
     enabled: cookingEnabled,
     facility: cookingFacility,
-    facilityName: atHome ? "집 주방" : "공용 주방",
-    maxIngredients: atHome ? 4 : 3,
+    facilityName: atMyHome ? "집 주방" : "공용 주방",
+    maxIngredients: atMyHome ? 4 : 3,
     ap,
     knownRecipes,
     cookedFoods,
@@ -821,6 +939,14 @@ export default async function WorldPage() {
         )}
       </div>
 
+      {atHome && hasGuestbookStand && (
+        <GuestbookCard
+          entries={guestbookEntries}
+          canWrite={!atMyHome}
+          ownerNickname={atMyHome ? user.nickname : (homeOwner?.nickname ?? "친구")}
+        />
+      )}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <WorldChat
@@ -954,6 +1080,13 @@ export default async function WorldPage() {
             craftAp={ap}
             craftTags={craftTags}
             craftTagSlots={craftTagSlots}
+          />
+
+          <FriendsDock
+            friends={friendViews}
+            requests={friendRequests}
+            invites={houseInvites}
+            canInvite={housingState.owned.length > 0}
           />
 
           <BagInventory

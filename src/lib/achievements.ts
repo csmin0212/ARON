@@ -144,10 +144,12 @@ export async function checkAndGrant(
   const rank = sheet?.adventurerRank ?? "D";
   const discoveredCount = parseStrArr(sheet?.discoveredJson).length;
   let ownedTitles = all.filter((a) => earned.has(a.id) && a.rewardTitle).length;
-  const furnitureCount = Object.values(housing.furniture).reduce(
-    (n, list) => n + (Array.isArray(list) ? list.length : 0),
-    0,
-  );
+  const furnitureCount =
+    housing.items.length + // 보유 가구 (캐릭터 귀속)
+    Object.values(housing.furniture).reduce(
+      (n, list) => n + (Array.isArray(list) ? list.length : 0),
+      0,
+    );
   const houseMaxTier = housing.owned.reduce((m, t) => Math.max(m, TIER_ORDER[t] ?? 0), 0);
   const tools = (life as { tools?: Record<string, string> }).tools ?? {};
   const fishingBagWeight = lifeBagWeight(life.bags.낚시);

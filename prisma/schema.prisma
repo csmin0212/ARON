@@ -40,6 +40,52 @@ model User {
   mails         Mail[]
   auctionListings AuctionListing[]
   sheetSyncJobs SheetSyncJob[]
+  friendshipsFrom  Friendship[]     @relation("FriendshipFrom")
+  friendshipsTo    Friendship[]     @relation("FriendshipTo")
+  houseInvitesFrom HouseInvite[]    @relation("HouseInviteFrom")
+  houseInvitesTo   HouseInvite[]    @relation("HouseInviteTo")
+  guestbookOwned   HouseGuestbook[] @relation("GuestbookOwner")
+  guestbookWritten HouseGuestbook[] @relation("GuestbookAuthor")
+}
+
+// 친구 — userId(요청 보낸 쪽) → friendId(받은 쪽). status: pending | accepted
+model Friendship {
+  id        String   @id @default(cuid())
+  userId    String
+  friendId  String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  user   User @relation("FriendshipFrom", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipTo", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([friendId, status])
+}
+
+// 집 초대 — 집 주인(fromId)이 친구(toId)를 자택으로 초대. 수락/거절 시 삭제.
+model HouseInvite {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  createdAt DateTime @default(now())
+  from User @relation("HouseInviteFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   User @relation("HouseInviteTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId])
+  @@index([toId])
+}
+
+// 집 방명록 — 방문객(author)이 집 주인(owner)의 방명록대에 남긴 글
+model HouseGuestbook {
+  id        Int      @id @default(autoincrement())
+  ownerId   String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  owner  User @relation("GuestbookOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  author User @relation("GuestbookAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
 }
 
 // 시트 지연 동기화 작업

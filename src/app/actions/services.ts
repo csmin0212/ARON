@@ -19,7 +19,7 @@ import {
   lifeBagWeight,
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
-import { findLifeSkillItem, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { findLifeSkillItem, getActiveItems, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
@@ -34,6 +34,10 @@ import {
   storageWeightBonus,
 } from "@/lib/adventurerRank";
 import {
+  bedRestBonus,
+  furnitureOption,
+  hasFurnitureEffect,
+  homeOwnerFromLocationId,
   homeTierFromLocationId,
   houseOption,
   houseSellPrice,
@@ -877,7 +881,9 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
 
   const facility = String(formData.get("facility") ?? "public");
-  const atHome = isHomeLocationId(ctx.locationId);
+  // 집 주방은 본인 집만 — 친구 집에 놀러 간 상태는 해당 없음
+  const atHome =
+    isHomeLocationId(ctx.locationId) && homeOwnerFromLocationId(ctx.locationId) === ctx.userId;
   const canPublic = await canUsePublicKitchen(ctx.locationId);
   const maxIngredients = atHome || facility === "home" ? 4 : 3;
   if (facility === "home" && !atHome) return { error: "집 주방은 본인 집에서만 사용할 수 있어요." };
@@ -1561,7 +1567,9 @@ export async function buyHouse(
       curGold: nextGold,
       gold: `${nextGold}G`,
       invJson: JSON.stringify(inv),
+      // 가구(items)·문패 이름·상호작용 기록은 캐릭터 귀속 — 집을 옮겨도 유지
       housingJson: serializeHousingState({
+        ...housing,
         owned: [selected.tier],
         furniture: { [selected.tier]: housing.furniture[selected.tier] ?? [] },
       }),
@@ -1628,7 +1636,8 @@ export async function sellHouse(
     where: { userId: ctx.userId },
     data: {
       houseTier: remaining[0] ?? null,
-      housingJson: serializeHousingState({ owned: remaining, furniture: nextFurniture }),
+      // 가구는 집이 아니라 캐릭터 귀속 — 집을 팔아도 items 는 남는다
+      housingJson: serializeHousingState({ ...housing, owned: remaining, furniture: nextFurniture }),
       curGold: nextGold,
       gold: `${nextGold}G`,
       invJson: JSON.stringify(inv),
@@ -1666,6 +1675,10 @@ export async function restAtHome(): Promise<HousingState> {
   if (!isHomeLocationId(sheet.locationId)) {
     return { error: "본인 집에서만 휴식할 수 있어요." };
   }
+  // 친구 집에 놀러 간 상태에서는 휴식 불가 — 집 주인 본인만
+  if (homeOwnerFromLocationId(sheet.locationId) !== user.id) {
+    return { error: "본인 집에서만 휴식할 수 있어요." };
+  }
 
   const option = houseOption(currentTier);
   if (!option) return { error: "집 정보가 올바르지 않아요." };
@@ -1680,7 +1693,8 @@ export async function restAtHome(): Promise<HousingState> {
     return { error: "피로도가 이미 가득 찼어요." };
   }
 
-  const newAp = Math.min(FATIGUE_MAX, fresh.value + option.restAmount);
+  const bedBonus = bedRestBonus(housing); // 침구류 가구 — 보유 침대 중 최고 보너스만 적용
+  const newAp = Math.min(FATIGUE_MAX, fresh.value + option.restAmount + bedBonus);
   const gained = newAp - fresh.value;
   await prisma.characterSheet.update({
     where: { userId: user.id },
@@ -1696,6 +1710,193 @@ export async function restAtHome(): Promise<HousingState> {
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `${option.name}에서 휴식했어요. 피로도 +${gained} (${newAp}/${FATIGUE_MAX})` };
+}
+
+// ── 가구 구매 — 종탑 거리(가구점) 또는 본인 집에서. 가구는 캐릭터 귀속(집을 옮겨도 유지) ──
+export async function buyFurniture(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const item = furnitureOption(String(formData.get("itemId") ?? ""));
+  if (!item) return { error: "판매 목록에 없는 가구입니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { houseTier: true, housingJson: true, achStatsJson: true },
+  });
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  if (housing.owned.length === 0) return { error: "집이 있어야 가구를 들일 수 있어요." };
+  if (housing.items.includes(item.id)) return { error: `${item.name}은(는) 이미 보유 중이에요.` };
+
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  if (currentGold < item.price) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${item.price.toLocaleString()}G)` };
+  }
+
+  const nextGold = currentGold - item.price;
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      invJson: JSON.stringify(inv),
+      housingJson: serializeHousingState({ ...housing, items: [...housing.items, item.id] }),
+      achStatsJson: bumpStat(sheet?.achStatsJson, "가구구매횟수"),
+    },
+  });
+  void enqueueSheetGoldSync(ctx.userId);
+  void checkAndGrant(ctx.userId);
+
+  revalidatePath("/world");
+  return { ok: `${item.emoji} ${item.name}을(를) 집에 들였어요!` };
+}
+
+// ── 가구 상호작용 — 본인 집에서 하루 1회 (KST 자정 초기화) ──
+export async function useFurniture(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const item = furnitureOption(String(formData.get("itemId") ?? ""));
+  if (!item || !item.interactLabel) return { error: "상호작용할 수 없는 가구예요." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: {
+      ap: true,
+      apResetAt: true,
+      houseTier: true,
+      housingJson: true,
+      locationId: true,
+      curGold: true,
+      invJson: true,
+      lifeJson: true,
+    },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+  if (
+    !isHomeLocationId(sheet.locationId) ||
+    homeOwnerFromLocationId(sheet.locationId) !== user.id
+  ) {
+    return { error: "본인 집에서만 사용할 수 있어요." };
+  }
+  const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+  if (!housing.items.includes(item.id)) return { error: `${item.name}을(를) 보유하고 있지 않아요.` };
+
+  const now = new Date();
+  const lastUsed = housing.usedAt[item.id] ? new Date(housing.usedAt[item.id]) : null;
+  if (lastUsed && restedTodayKst(lastUsed, now)) {
+    return { error: `오늘은 이미 ${item.name}을(를) 사용했어요. (KST 자정 초기화)` };
+  }
+
+  const nextUsedAt = { ...housing.usedAt, [item.id]: now.toISOString() };
+  const housingJson = serializeHousingState({ ...housing, usedAt: nextUsedAt });
+
+  if (item.effect.type === "daily_ap") {
+    const fresh = regenFatigue(sheet.ap, sheet.apResetAt, now);
+    if (fresh.value >= FATIGUE_MAX) return { error: "피로도가 이미 가득 찼어요." };
+    const newAp = Math.min(FATIGUE_MAX, fresh.value + item.effect.amount);
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { ap: newAp, apResetAt: fresh.at, housingJson },
+    });
+    revalidatePath("/world");
+    return { ok: `${item.emoji} ${item.interactLabel} 완료! 피로도 +${newAp - fresh.value} (${newAp}/${FATIGUE_MAX})` };
+  }
+
+  if (item.effect.type === "daily_gold") {
+    const { min, max } = item.effect;
+    const gain = min + Math.floor(Math.random() * (max - min + 1));
+    const currentGold = sheet.curGold ?? 0;
+    const nextGold = currentGold + gain;
+    let invJson = sheet.invJson;
+    try {
+      const inv = invJson
+        ? (JSON.parse(invJson) as SheetInventory)
+        : { gold: null, curWeight: null, maxWeight: null, items: [] };
+      inv.gold = `${nextGold}G`;
+      invJson = JSON.stringify(inv);
+    } catch {
+      invJson = sheet.invJson;
+    }
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { curGold: nextGold, gold: `${nextGold}G`, invJson, housingJson },
+    });
+    void enqueueSheetGoldSync(user.id);
+    revalidatePath("/world");
+    return { ok: `${item.emoji} 짤랑! ${gain}G가 떨어졌다.` };
+  }
+
+  if (item.effect.type === "daily_forage") {
+    const kind = item.effect.kind;
+    const maxRank = item.effect.maxRank;
+    await loadLifeItems();
+    const pool = getActiveItems(kind).filter(
+      (entry) => entry.rank <= maxRank && entry.rank >= 0 && entry.price > 0,
+    );
+    if (pool.length === 0) return { error: "지금은 나올 것이 없어 보인다." };
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+
+    const life = parseLifeState(sheet.lifeJson);
+    const bag = life.bags[kind];
+    const bagWeight = lifeBagWeight(bag);
+    const bagMax = lifeBagLimit(life, kind);
+    if (bagWeight + picked.weight > bagMax) {
+      return { error: `${bag.name}이 가득 차서 받을 수 없어요. (${bagWeight} + ${picked.weight} / ${bagMax})` };
+    }
+    addLifeBagItem(life, kind, {
+      name: picked.name,
+      weight: picked.weight,
+      rank: picked.rank,
+      text: picked.text,
+    });
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { lifeJson: JSON.stringify(life), housingJson },
+    });
+    revalidatePath("/world");
+    return { ok: `${item.emoji} ${item.interactLabel} 완료! ${picked.name}을(를) 얻었다. (${bag.name})` };
+  }
+
+  return { error: "상호작용할 수 없는 가구예요." };
+}
+
+// ── 문패 — 집 이름 짓기 (문패 가구 보유 시) ──
+export async function renameHome(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const raw = String(formData.get("name") ?? "").trim();
+  if (!raw) return { error: "집 이름을 입력해주세요." };
+  if (raw.length > 16) return { error: "집 이름은 16자 이내로 지어주세요." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { houseTier: true, housingJson: true },
+  });
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  if (housing.owned.length === 0) return { error: "집이 있어야 이름을 지을 수 있어요." };
+  if (!hasFurnitureEffect(housing, "nameplate")) {
+    return { error: "문패를 먼저 구매해야 집 이름을 지을 수 있어요." };
+  }
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: { housingJson: serializeHousingState({ ...housing, homeName: raw }) },
+  });
+  revalidatePath("/world");
+  return { ok: `🪧 이제 이 집은 '${user.nickname}의 ${raw}'입니다.` };
 }
 
 export async function buyLifeGear(

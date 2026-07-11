@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useActionState } from "react";
 import {
+  buyFurniture,
   buyHouse,
   buyFood,
   buyLifeGear,
@@ -9,6 +10,7 @@ import {
   depositToStorage,
   enchantWeapon,
   promoteAdventurerRank,
+  renameHome,
   restAtHome,
   restAtInn,
   sellCookedFood,
@@ -16,6 +18,7 @@ import {
   sellFood,
   reforgeItem,
   upgradeWeapon,
+  useFurniture,
   withdrawFromStorage,
   type CookingState,
   type GuildState,
@@ -25,7 +28,9 @@ import {
   type ServiceState,
   type StorageState,
 } from "@/app/actions/services";
+import { inviteToHouse, type FriendState } from "@/app/actions/friends";
 import { enterHome } from "@/app/actions/world";
+import { FURNITURE_OPTIONS } from "@/lib/housing";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
@@ -75,7 +80,7 @@ export type HousingView = {
   name: string | null;
   restAmount: number | null;
   restedToday: boolean;
-  atHome: boolean;
+  atHome: boolean; // 본인 집에 있을 때만 true (친구 집 방문은 false)
   options: {
     tier: string;
     name: string;
@@ -85,6 +90,10 @@ export type HousingView = {
     owned: boolean;
     sellPrice: number;
   }[];
+  furnitureOwned: string[]; // 보유 가구 id — 집을 옮겨도 유지
+  furnitureUsedToday: Record<string, boolean>; // 가구 id → 오늘 상호작용 여부
+  homeName: string | null; // 문패로 지은 집 이름
+  friends: { id: string; nickname: string }[]; // 집 초대 대상 (친구만)
 };
 
 export type KnownRecipeView = {
@@ -834,6 +843,7 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
 }
 
 function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () => void }) {
+  const [tab, setTab] = useState<"rest" | "buy" | "furniture">("rest");
   const [buyState, buyAction, buyPending] = useActionState<HousingState, FormData>(
     buyHouse,
     undefined,
@@ -846,8 +856,39 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
     sellHouse,
     undefined,
   );
+  const [furnState, furnAction, furnPending] = useActionState<HousingState, FormData>(
+    buyFurniture,
+    undefined,
+  );
+  const [interactState, interactAction, interactPending] = useActionState<HousingState, FormData>(
+    useFurniture,
+    undefined,
+  );
+  const [renameState, renameAction, renamePending] = useActionState<HousingState, FormData>(
+    renameHome,
+    undefined,
+  );
+  const [inviteState, inviteAction, invitePending] = useActionState<FriendState, FormData>(
+    inviteToHouse,
+    undefined,
+  );
   const owned = housing.options.some((option) => option.owned);
   const ownedOption = housing.options.find((option) => option.owned) ?? null;
+  const ownedFurniture = new Set(housing.furnitureOwned);
+  const hasNameplate = housing.furnitureOwned.some(
+    (id) => FURNITURE_OPTIONS.find((f) => f.id === id)?.effect.type === "nameplate",
+  );
+  // 침구류 보너스 — 보유 침대 중 최고만 적용
+  const bedBonus = housing.furnitureOwned.reduce((max, id) => {
+    const effect = FURNITURE_OPTIONS.find((f) => f.id === id)?.effect;
+    return effect?.type === "rest_bonus" ? Math.max(max, effect.amount) : max;
+  }, 0);
+
+  const TABS = [
+    { key: "rest" as const, label: "🛏️ 휴식" },
+    { key: "buy" as const, label: "🏡 집 구매" },
+    { key: "furniture" as const, label: "🪑 가구" },
+  ];
 
   return (
     <div
@@ -862,157 +903,343 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
         className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-line bg-subtle px-5 py-4">
+        <div className="border-b border-line bg-subtle px-5 pt-4">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
             Housing
           </p>
           <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold text-content">
-            <span>🏠 하우징</span>
+            <span>
+              🏠 하우징
+              {housing.homeName && (
+                <span className="ml-2 align-middle text-sm font-bold text-faint">
+                  🪧 {housing.homeName}
+                </span>
+              )}
+            </span>
             <span className="text-sm font-bold text-emerald-500">
               {housing.gold.toLocaleString()}G
             </span>
           </h3>
+          <div className="mt-3 flex gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`rounded-t-xl px-4 py-2 text-sm font-extrabold transition ${
+                  tab === t.key
+                    ? "bg-surface text-content shadow-sm"
+                    : "text-faint hover:text-muted"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <HousingStateLine state={buyState} />
           <HousingStateLine state={restState} />
           <HousingStateLine state={sellState} />
-
-          {owned ? (
-            <section className="rounded-2xl border border-line bg-subtle p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-lg font-extrabold text-content">{housing.name}</p>
-                  <p className="mt-1 text-sm text-muted">
-                    가구를 배치해 생활 보너스를 얻는 공간입니다.
-                  </p>
-                </div>
-                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
-                  보유중
-                </span>
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl bg-surface px-3 py-3">
-                  <p className="text-xs font-bold text-faint">휴식 회복</p>
-                  <p className="mt-1 text-lg font-extrabold text-content">
-                    +{housing.restAmount}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-surface px-3 py-3">
-                  <p className="text-xs font-bold text-faint">현재 피로도</p>
-                  <p className="mt-1 text-lg font-extrabold text-content">
-                    {housing.ap}/{housing.maxAp}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-surface px-3 py-3">
-                  <p className="text-xs font-bold text-faint">초기화</p>
-                  <p className="mt-1 text-sm font-extrabold text-content">KST 자정</p>
-                </div>
-              </div>
-              <form action={restAction} className="mt-4">
-                <button
-                  type="submit"
-                  disabled={restPending || housing.restedToday || !housing.atHome}
-                  className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
-                >
-                  {housing.atHome
-                    ? housing.restedToday
-                      ? "오늘 집 휴식 완료"
-                      : "집에서 휴식"
-                    : "본인 집에서만 휴식 가능"}
-                </button>
-              </form>
-            </section>
-          ) : (
-            <p className="rounded-2xl bg-subtle px-4 py-3 text-sm text-muted">
-              종탑 거리의 중개인을 통해 집을 구매할 수 있어요. 집을 사면 이동 가능 구역에
-              본인 집이 생깁니다.
+          <HousingStateLine state={furnState} />
+          <HousingStateLine state={interactState} />
+          <HousingStateLine state={renameState} />
+          {(inviteState?.error || inviteState?.ok) && (
+            <p
+              className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                inviteState.error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
+              }`}
+            >
+              {inviteState.error ?? inviteState.ok}
             </p>
           )}
 
-          <section className="space-y-2">
-            <h4 className="text-sm font-extrabold text-content">주택 목록</h4>
-            {ownedOption && (
-              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-700">
-                소유 주택은 인당 1개입니다. 다른 집을 구매하면 기존 집을 자동 판매하고
-                판매가의 50%인 {ownedOption.sellPrice.toLocaleString()}G를 돌려받습니다.
-              </p>
-            )}
-            <div className="grid gap-2">
-              {housing.options.map((option) => (
-                <div
-                  key={option.tier}
-                  className="rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50"
-                >
-                  <form
-                    action={option.owned ? enterHome : buyAction}
-                    onSubmit={(e) => {
-                      if (option.owned) return;
-                      if (!ownedOption) return;
-                      const ok = window.confirm(
-                        `소유 주택은 인당 1개입니다. 기존 집(${ownedOption.name})을 판매해 ${ownedOption.sellPrice.toLocaleString()}G를 돌려받고 ${option.name}을 구매합니다. 진행하시겠습니까?`,
-                      );
-                      if (!ok) e.preventDefault();
-                    }}
-                  >
-                  <input type="hidden" name="tier" value={option.tier} />
-                  <button
-                    type="submit"
-                    disabled={buyPending}
-                    className="flex w-full items-start gap-3 text-left disabled:opacity-50"
-                  >
-                    <span className="text-xl">🏡</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-extrabold text-content">
-                        {option.name}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-faint">{option.note}</span>
+          {tab === "rest" && (
+            <>
+              {owned ? (
+                <section className="rounded-2xl border border-line bg-subtle p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-extrabold text-content">
+                        {housing.homeName ?? housing.name}
+                      </p>
+                      <p className="mt-1 text-sm text-muted">
+                        가구를 배치해 생활 보너스를 얻는 공간입니다.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
+                      보유중
                     </span>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${
-                        option.owned
-                          ? "bg-brand-50 text-brand-600"
-                          : "bg-emerald-50 text-emerald-600"
-                      }`}
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-xl bg-surface px-3 py-3">
+                      <p className="text-xs font-bold text-faint">휴식 회복</p>
+                      <p className="mt-1 text-lg font-extrabold text-content">
+                        +{(housing.restAmount ?? 0) + bedBonus}
+                        {bedBonus > 0 && (
+                          <span className="ml-1 text-xs font-bold text-brand-500">
+                            (침대 +{bedBonus})
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-surface px-3 py-3">
+                      <p className="text-xs font-bold text-faint">현재 피로도</p>
+                      <p className="mt-1 text-lg font-extrabold text-content">
+                        {housing.ap}/{housing.maxAp}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-surface px-3 py-3">
+                      <p className="text-xs font-bold text-faint">초기화</p>
+                      <p className="mt-1 text-sm font-extrabold text-content">KST 자정</p>
+                    </div>
+                  </div>
+                  <form action={restAction} className="mt-4">
+                    <button
+                      type="submit"
+                      disabled={restPending || housing.restedToday || !housing.atHome}
+                      className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
                     >
-                      {option.owned ? "입장" : `${option.price.toLocaleString()}G`}
-                    </span>
-                  </button>
-                </form>
-                  {option.owned && (
+                      {housing.atHome
+                        ? housing.restedToday
+                          ? "오늘 집 휴식 완료"
+                          : "집에서 휴식"
+                        : "본인 집에서만 휴식 가능"}
+                    </button>
+                  </form>
+                </section>
+              ) : (
+                <p className="rounded-2xl bg-subtle px-4 py-3 text-sm text-muted">
+                  종탑 거리의 중개인을 통해 집을 구매할 수 있어요. 집을 사면 이동 가능
+                  구역에 본인 집이 생깁니다.
+                </p>
+              )}
+
+              {owned && hasNameplate && (
+                <section className="rounded-2xl border border-line bg-subtle p-4">
+                  <p className="text-sm font-extrabold text-content">🪧 문패</p>
+                  <p className="mt-1 text-xs text-faint">
+                    집 이름을 지으면 문패에 &lsquo;OO의 {housing.homeName ?? "…"}&rsquo;처럼
+                    새겨져요. (16자 이내)
+                  </p>
+                  <form action={renameAction} className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      name="name"
+                      maxLength={16}
+                      defaultValue={housing.homeName ?? ""}
+                      placeholder="예: 아늑한 다락방"
+                      className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-content placeholder:text-faint2 focus:border-brand-400 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={renamePending}
+                      className="shrink-0 rounded-xl bg-brand-500 px-3 py-2 text-xs font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
+                    >
+                      이름 짓기
+                    </button>
+                  </form>
+                </section>
+              )}
+
+              {owned && (
+                <section className="rounded-2xl border border-line bg-subtle p-4">
+                  <p className="text-sm font-extrabold text-content">💌 집으로 초대</p>
+                  <p className="mt-1 text-xs font-bold text-brand-500">
+                    친구만 집에 초대할 수 있어요!
+                  </p>
+                  {housing.friends.length === 0 ? (
+                    <p className="mt-2 rounded-xl bg-surface px-3 py-2.5 text-xs text-faint">
+                      아직 친구가 없어요. 월드 화면의 👥 친구 패널에서 친구를 추가해보세요.
+                    </p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {housing.friends.map((friend) => (
+                        <form
+                          key={friend.id}
+                          action={inviteAction}
+                          className="flex items-center gap-2"
+                        >
+                          <input type="hidden" name="friendId" value={friend.id} />
+                          <span className="min-w-0 flex-1 truncate text-sm font-bold text-content">
+                            {friend.nickname}
+                          </span>
+                          <button
+                            type="submit"
+                            disabled={invitePending}
+                            className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-black text-brand-600 transition hover:bg-brand-100 disabled:opacity-50"
+                          >
+                            초대하기
+                          </button>
+                        </form>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+
+          {tab === "buy" && (
+            <section className="space-y-2">
+              <h4 className="text-sm font-extrabold text-content">주택 목록</h4>
+              {ownedOption && (
+                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-700">
+                  소유 주택은 인당 1개입니다. 다른 집을 구매하면 기존 집을 자동 판매하고
+                  판매가의 50%인 {ownedOption.sellPrice.toLocaleString()}G를 돌려받습니다.
+                  가구는 집을 옮겨도 그대로 유지돼요.
+                </p>
+              )}
+              <div className="grid gap-2">
+                {housing.options.map((option) => (
+                  <div
+                    key={option.tier}
+                    className="rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50"
+                  >
                     <form
-                      action={sellAction}
+                      action={option.owned ? enterHome : buyAction}
                       onSubmit={(e) => {
+                        if (option.owned) return;
+                        if (!ownedOption) return;
                         const ok = window.confirm(
-                          `${option.name}을 판매하고 ${option.sellPrice.toLocaleString()}G를 돌려받습니다. 진행하시겠습니까?`,
+                          `소유 주택은 인당 1개입니다. 기존 집(${ownedOption.name})을 판매해 ${ownedOption.sellPrice.toLocaleString()}G를 돌려받고 ${option.name}을 구매합니다. 진행하시겠습니까?`,
                         );
                         if (!ok) e.preventDefault();
                       }}
-                      className="mt-2"
                     >
                       <input type="hidden" name="tier" value={option.tier} />
                       <button
                         type="submit"
-                        disabled={sellPending}
-                        className="w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                        disabled={buyPending}
+                        className="flex w-full items-start gap-3 text-left disabled:opacity-50"
                       >
-                        판매하고 {option.sellPrice.toLocaleString()}G 받기
+                        <span className="text-xl">🏡</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-extrabold text-content">
+                            {option.name}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-faint">
+                            {option.note}
+                          </span>
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${
+                            option.owned
+                              ? "bg-brand-50 text-brand-600"
+                              : "bg-emerald-50 text-emerald-600"
+                          }`}
+                        >
+                          {option.owned ? "입장" : `${option.price.toLocaleString()}G`}
+                        </span>
                       </button>
                     </form>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
+                    {option.owned && (
+                      <form
+                        action={sellAction}
+                        onSubmit={(e) => {
+                          const ok = window.confirm(
+                            `${option.name}을 판매하고 ${option.sellPrice.toLocaleString()}G를 돌려받습니다. 진행하시겠습니까?`,
+                          );
+                          if (!ok) e.preventDefault();
+                        }}
+                        className="mt-2"
+                      >
+                        <input type="hidden" name="tier" value={option.tier} />
+                        <button
+                          type="submit"
+                          disabled={sellPending}
+                          className="w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                        >
+                          판매하고 {option.sellPrice.toLocaleString()}G 받기
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
-          <section className="rounded-2xl border border-dashed border-line p-4">
-            <p className="text-sm font-extrabold text-content">🪑 가구 배치</p>
-            <p className="mt-1 text-sm text-faint">
-              준비 중입니다. 이후 침대, 책상, 조리대 같은 가구를 추가하고 보너스를 붙일 수
-              있게 확장할 예정입니다.
-            </p>
-          </section>
+          {tab === "furniture" && (
+            <section className="space-y-2">
+              <h4 className="text-sm font-extrabold text-content">🪑 가구</h4>
+              <p className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-xs font-bold leading-relaxed text-brand-600">
+                가구는 캐릭터 소유라 집을 옮겨도 그대로 유지됩니다. 상호작용 가구는 하루
+                1회, 본인 집에서만 사용할 수 있어요. (KST 자정 초기화)
+              </p>
+              {!owned && (
+                <p className="rounded-2xl bg-subtle px-4 py-3 text-xs text-faint">
+                  집을 먼저 구매하면 가구를 들일 수 있어요.
+                </p>
+              )}
+              <div className="grid gap-2">
+                {FURNITURE_OPTIONS.map((item) => {
+                  const isOwned = ownedFurniture.has(item.id);
+                  const usedToday = housing.furnitureUsedToday[item.id] ?? false;
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-line bg-subtle p-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="text-xl">{item.emoji}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-extrabold text-content">
+                            {item.name}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] leading-relaxed text-faint">
+                            {item.desc}
+                          </span>
+                        </span>
+                        {isOwned ? (
+                          <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
+                            보유중
+                          </span>
+                        ) : (
+                          <form
+                            action={furnAction}
+                            className="shrink-0"
+                            onSubmit={(e) => {
+                              if (!owned) {
+                                e.preventDefault();
+                                window.alert("집을 먼저 구매해주세요.");
+                              }
+                            }}
+                          >
+                            <input type="hidden" name="itemId" value={item.id} />
+                            <button
+                              type="submit"
+                              disabled={furnPending}
+                              className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-600 transition hover:bg-emerald-100 disabled:opacity-50"
+                            >
+                              {item.price.toLocaleString()}G
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                      {isOwned && item.interactLabel && (
+                        <form action={interactAction} className="mt-2">
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <button
+                            type="submit"
+                            disabled={interactPending || usedToday || !housing.atHome}
+                            className="w-full rounded-xl bg-brand-500 px-3 py-2 text-xs font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
+                          >
+                            {!housing.atHome
+                              ? `${item.interactLabel} — 본인 집에서만`
+                              : usedToday
+                                ? `오늘 ${item.interactLabel} 완료`
+                                : item.interactLabel}
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
 
         <div className="border-t border-line px-5 py-3">
