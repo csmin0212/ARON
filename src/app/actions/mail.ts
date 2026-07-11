@@ -16,6 +16,7 @@ import {
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
+  recordCollection,
   type LifeState,
 } from "@/lib/lifeSkillPerks";
 import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
@@ -222,6 +223,7 @@ export async function claimMail(formData: FormData): Promise<void> {
             },
             mail.itemQty,
           );
+          recordCollection(life, bagKind, itemName);
         } else {
           const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
           const nextWeight = curWeight + weight * mail.itemQty;

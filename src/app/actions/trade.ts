@@ -17,6 +17,7 @@ import {
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
+  recordCollection,
   type LifeState,
 } from "@/lib/lifeSkillPerks";
 import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
@@ -497,6 +498,7 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
         return `${nickname}님의 ${bag.name} 중량을 초과합니다. (${nextWeight}/${maxWeight})`;
       }
       addLifeBagItems(pool.life, bagKind, { name: item.name, weight, rank, text }, item.qty);
+      recordCollection(pool.life, bagKind, item.name);
     }
     return null;
   };

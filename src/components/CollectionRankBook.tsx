@@ -182,7 +182,9 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                           {entry.discovered
                             ? kind === "요리"
                               ? `${countLabel} 발견`
-                              : `${countLabel} ${Math.max(1, entry.count)}회`
+                              : entry.count > 0
+                                ? `${countLabel} ${entry.count}회`
+                                : "획득 기록"
                             : "미발견"}
                         </span>
                       </div>
@@ -203,7 +205,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                       {entry.discovered && kind !== "요리" && (
                         <div className="mt-3 border-t border-line/70 pt-2">
                           <p className="text-[11px] font-black text-brand-700">얻은 기록</p>
-                          {entry.locations && entry.locations.length > 0 ? (
+                          {entry.locations && entry.locations.length > 0 && (
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               {entry.locations.map((location) => (
                                 <span
@@ -215,10 +217,6 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                                 </span>
                               ))}
                             </div>
-                          ) : (
-                            <p className="mt-1.5 text-[11px] text-faint">
-                              아직 장소 기록이 없어요. 다음 획득부터 자동으로 남습니다.
-                            </p>
                           )}
                         </div>
                       )}

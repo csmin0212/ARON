@@ -40,6 +40,7 @@ import {
   progressOf,
   recordLifeCatch,
   recordCollection,
+  recordLifeItemLocation,
   statBuffBonus,
 } from "./lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "./skillCatalog";
@@ -286,6 +287,7 @@ export async function runActionCommand(
       const leveled = applyExp(life, lifeSkillKind, expGained, await fetchLifeSkillCatalog());
       const firstCatch = recordCollection(life, lifeSkillKind, item.name);
       const caughtCount = recordLifeCatch(life, lifeSkillKind, item.name);
+      recordLifeItemLocation(life, lifeSkillKind, item.name, locationId);
       addLifeBagItem(life, lifeSkillKind, {
         name: item.name,
         weight: item.weight,
