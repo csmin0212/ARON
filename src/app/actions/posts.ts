@@ -83,6 +83,80 @@ export async function createPost(_prev: FormState, formData: FormData): Promise<
   redirect(`/post/${newId}`);
 }
 
+export async function updatePost(_prev: FormState, formData: FormData): Promise<FormState> {
+  const id = Number(formData.get("id"));
+  if (!id) return { error: "잘못된 요청입니다." };
+
+  const post = await prisma.post.findUnique({ where: { id } });
+  if (!post) return { error: "게시글을 찾을 수 없습니다." };
+
+  const user = await getCurrentUser();
+  const password = String(formData.get("password") ?? "");
+
+  // 권한 검사 — 삭제와 동일. 회원 글: 본인만 / 익명 글: 비밀번호 일치
+  if (post.authorId) {
+    if (!user || user.id !== post.authorId) return { error: "수정 권한이 없습니다." };
+  } else {
+    if (!post.anonPass) return { error: "비밀번호가 없는 익명 글은 수정할 수 없어요." };
+    if (!(await verifyPassword(password, post.anonPass)))
+      return { error: "비밀번호가 일치하지 않습니다." };
+  }
+
+  const category = String(formData.get("category") ?? post.category);
+  const title = String(formData.get("title") ?? "").trim();
+  const content = String(formData.get("content") ?? "").trim();
+  const imageIds = String(formData.get("imageIds") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0)
+    .slice(0, 10);
+
+  if (!isValidCategory(category)) return { error: "잘못된 말머리입니다." };
+  if (title.length < 1 || title.length > 100)
+    return { error: "제목은 1~100자로 입력해주세요." };
+  if (content.length < 1 || content.length > 10000)
+    return { error: "내용을 입력해주세요. (최대 10000자)" };
+  // 공지는 회원 글만
+  if (category === "NOTICE" && !post.authorId)
+    return { error: "공지는 회원 글만 지정할 수 있어요." };
+
+  // 거래 필드 — 거래글이면 채우고, 아니면 비운다
+  let tradeData: { price: number | null; tradeType: string | null; tradeStatus: string | null };
+  if (category === "TRADE") {
+    const tradeType = String(formData.get("tradeType") ?? "SELL");
+    if (tradeType !== "SELL" && tradeType !== "BUY")
+      return { error: "거래 유형을 선택해주세요." };
+    const price = Math.floor(Number(formData.get("price") ?? 0));
+    if (!Number.isFinite(price) || price < 0 || price > 1_000_000_000)
+      return { error: "가격(골드)을 올바르게 입력해주세요." };
+    // 기존 거래 상태는 유지 (판매중/거래완료)
+    tradeData = { price, tradeType, tradeStatus: post.tradeStatus ?? "OPEN" };
+  } else {
+    tradeData = { price: null, tradeType: null, tradeStatus: null };
+  }
+
+  await prisma.post.update({
+    where: { id },
+    data: { category, title, content, ...tradeData },
+  });
+
+  // 이미지 동기화 — 폼이 보낸 목록을 이 글의 최종 이미지 집합으로 맞춘다.
+  // 새로 올린(미연결) 이미지만 연결하고, 목록에서 빠진 이 글의 이미지는 삭제.
+  if (imageIds.length > 0) {
+    await prisma.image.updateMany({
+      where: { id: { in: imageIds }, postId: null },
+      data: { postId: id },
+    });
+  }
+  await prisma.image.deleteMany({
+    where: { postId: id, id: { notIn: imageIds.length > 0 ? imageIds : [-1] } },
+  });
+
+  revalidatePath(`/post/${id}`);
+  revalidatePath("/");
+  redirect(`/post/${id}`);
+}
+
 export async function deletePost(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   const password = String(formData.get("password") ?? "");

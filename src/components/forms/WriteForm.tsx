@@ -2,23 +2,42 @@
 
 import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createPost, type FormState } from "@/app/actions/posts";
+import { createPost, updatePost, type FormState } from "@/app/actions/posts";
 import { CATEGORIES } from "@/lib/categories";
 
 type UploadedImage = { id: number; url: string };
 
+// 수정 모드 초기값 — 있으면 편집, 없으면 새 글 작성
+export type EditInitial = {
+  id: number;
+  category: string;
+  title: string;
+  content: string;
+  price: number | null;
+  tradeType: string | null;
+  isAnon: boolean; // 익명 글이면 수정 시 비밀번호 필요
+  images: { id: number; url: string }[];
+};
+
 const inputCls =
   "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
-export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
+export default function WriteForm({
+  isLoggedIn,
+  initial,
+}: {
+  isLoggedIn: boolean;
+  initial?: EditInitial;
+}) {
   const router = useRouter();
+  const isEdit = !!initial;
   const [state, formAction, pending] = useActionState<FormState, FormData>(
-    createPost,
+    isEdit ? updatePost : createPost,
     undefined,
   );
   const [asAnon, setAsAnon] = useState(!isLoggedIn);
-  const [category, setCategory] = useState("GENERAL");
-  const [images, setImages] = useState<UploadedImage[]>([]);
+  const [category, setCategory] = useState(initial?.category ?? "GENERAL");
+  const [images, setImages] = useState<UploadedImage[]>(initial?.images ?? []);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -53,12 +72,16 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
     setImages((prev) => prev.filter((img) => img.id !== id));
   }
 
-  const showAnonFields = !isLoggedIn || asAnon;
-  const categories = isLoggedIn ? CATEGORIES : CATEGORIES.filter((c) => c.key !== "NOTICE");
+  // 새 글: 익명 옵션에 따라 익명 필드. 수정 글: 익명 글이면 비밀번호로 인증.
+  const showAnonFields = !isEdit && (!isLoggedIn || asAnon);
+  // 수정 시 공지 지정은 회원 글만. 새 글은 로그인 시에만 공지 가능.
+  const canNotice = isEdit ? !initial.isAnon : isLoggedIn;
+  const categories = canNotice ? CATEGORIES : CATEGORIES.filter((c) => c.key !== "NOTICE");
   const isTrade = category === "TRADE";
 
   return (
     <form action={formAction} className="space-y-4">
+      {isEdit && <input type="hidden" name="id" value={initial.id} />}
       {/* 말머리 */}
       <div>
         <label className="mb-1.5 block text-sm font-semibold text-content">말머리</label>
@@ -96,7 +119,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
                     type="radio"
                     name="tradeType"
                     value={o.v}
-                    defaultChecked={i === 0}
+                    defaultChecked={initial?.tradeType ? initial.tradeType === o.v : i === 0}
                     className="peer sr-only"
                   />
                   <span className="inline-flex rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-muted transition peer-checked:border-emerald-400 peer-checked:bg-emerald-100 peer-checked:text-emerald-700">
@@ -115,7 +138,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
                 name="price"
                 type="number"
                 min={0}
-                defaultValue={0}
+                defaultValue={initial?.price ?? 0}
                 className={inputCls}
               />
               <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500">
@@ -129,7 +152,13 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
       {/* 제목 */}
       <div>
         <label className="mb-1.5 block text-sm font-semibold text-content">제목</label>
-        <input name="title" maxLength={100} className={inputCls} placeholder="제목을 입력하세요" />
+        <input
+          name="title"
+          maxLength={100}
+          defaultValue={initial?.title}
+          className={inputCls}
+          placeholder="제목을 입력하세요"
+        />
       </div>
 
       {/* 내용 */}
@@ -138,6 +167,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
         <textarea
           name="content"
           rows={12}
+          defaultValue={initial?.content}
           className={`${inputCls} resize-y leading-relaxed`}
           placeholder={isTrade ? "매물 설명, 거래 방식 등을 적어주세요." : "내용을 입력하세요. 꿀팁 공유 ㄱㄱ"}
         />
@@ -191,8 +221,8 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
 
       <input type="hidden" name="imageIds" value={images.map((i) => i.id).join(",")} />
 
-      {/* 익명 옵션 */}
-      {isLoggedIn && (
+      {/* 익명 옵션 (새 글 전용 — 수정 시엔 작성자 변경 불가) */}
+      {isLoggedIn && !isEdit && (
         <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
@@ -203,6 +233,22 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
           />
           익명으로 작성하기
         </label>
+      )}
+
+      {/* 수정 인증 — 익명 글은 비밀번호로 본인 확인 */}
+      {isEdit && initial.isAnon && (
+        <div className="rounded-xl bg-subtle p-4">
+          <label className="mb-1 block text-xs font-medium text-faint">
+            비밀번호 <span className="text-faint2">(작성 시 설정한 익명 비밀번호)</span>
+          </label>
+          <input
+            name="password"
+            type="password"
+            maxLength={20}
+            className={inputCls}
+            placeholder="수정하려면 비밀번호를 입력하세요"
+          />
+        </div>
       )}
 
       {showAnonFields && (
@@ -245,7 +291,7 @@ export default function WriteForm({ isLoggedIn }: { isLoggedIn: boolean }) {
           disabled={pending}
           className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-60"
         >
-          {pending ? "등록 중…" : "등록"}
+          {pending ? (isEdit ? "수정 중…" : "등록 중…") : isEdit ? "수정 완료" : "등록"}
         </button>
       </div>
     </form>

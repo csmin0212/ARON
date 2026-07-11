@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import Link from "next/link";
 import { deletePost } from "@/app/actions/posts";
 
 export default function PostActions({
@@ -33,12 +34,20 @@ export default function PostActions({
   }
 
   return (
-    <button
-      onClick={handleDelete}
-      disabled={pending}
-      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-faint transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50"
-    >
-      🗑 삭제
-    </button>
+    <div className="flex items-center gap-1">
+      <Link
+        href={`/post/${postId}/edit`}
+        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-faint transition hover:bg-brand-50 hover:text-brand-600"
+      >
+        ✏️ 수정
+      </Link>
+      <button
+        onClick={handleDelete}
+        disabled={pending}
+        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-faint transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50"
+      >
+        🗑 삭제
+      </button>
+    </div>
   );
 }
