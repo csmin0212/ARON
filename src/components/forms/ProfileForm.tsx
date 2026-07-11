@@ -12,11 +12,13 @@ const inputCls =
 export default function ProfileForm({
   initialNickname,
   initialAvatar,
+  initialStatus,
   initialColor,
   initialCover,
 }: {
   initialNickname: string;
   initialAvatar: string | null;
+  initialStatus?: string | null;
   initialColor?: string | null;
   initialCover?: string | null;
 }) {
@@ -26,6 +28,7 @@ export default function ProfileForm({
   );
   const [nickname, setNickname] = useState(initialNickname);
   const [avatar, setAvatar] = useState<string>(initialAvatar ?? "");
+  const [statusText, setStatusText] = useState<string>(initialStatus ?? "");
   const [color, setColor] = useState<string>(initialColor ?? "");
   const [cover, setCover] = useState<string>(initialCover ?? "");
   const [uploading, setUploading] = useState(false);
@@ -81,6 +84,11 @@ export default function ProfileForm({
             <p className="mb-1 min-w-0 truncate text-lg font-extrabold text-content">
               {nickname || "닉네임"}
             </p>
+            {statusText && (
+              <span className="mb-2 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
+                {statusText}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -95,6 +103,18 @@ export default function ProfileForm({
           maxLength={12}
           className={inputCls}
           placeholder="캐릭터 이름"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-semibold text-content">상태 표시</label>
+        <input
+          name="profileStatus"
+          value={statusText}
+          onChange={(e) => setStatusText(e.target.value)}
+          maxLength={20}
+          className={inputCls}
+          placeholder="온라인 / 오프라인 / 사냥중"
         />
       </div>
 

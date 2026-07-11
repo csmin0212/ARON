@@ -127,6 +127,7 @@ export default async function ProfilePage({
         nickname={user.nickname}
         username={user.username}
         avatar={user.avatar}
+        status={user.profileStatus}
         level={sheet?.level}
         rank={rank}
         tags={tags}
@@ -189,6 +190,7 @@ export default async function ProfilePage({
         <ProfileForm
           initialNickname={user.nickname}
           initialAvatar={user.avatar}
+          initialStatus={user.profileStatus}
           initialColor={user.profileColor}
           initialCover={user.profileCover}
         />

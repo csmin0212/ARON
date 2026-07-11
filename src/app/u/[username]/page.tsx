@@ -241,6 +241,7 @@ export default async function CharacterPage({
         nickname={profile.nickname}
         username={profile.username}
         avatar={profile.avatar}
+        status={profile.profileStatus}
         level={profile.sheet?.level}
         rank={profile.sheet?.adventurerRank}
         tags={tags}

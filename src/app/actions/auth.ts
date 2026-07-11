@@ -79,9 +79,11 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
 
   const nickname = String(formData.get("nickname") ?? "").trim();
   const avatar = String(formData.get("avatar") ?? "").trim();
+  const statusRaw = String(formData.get("profileStatus") ?? "").trim();
 
   if (nickname.length < 1 || nickname.length > 12)
     return { error: "닉네임은 1~12자로 입력해주세요." };
+  if (statusRaw.length > 20) return { error: "상태 표시는 20자 이내로 입력해주세요." };
 
   const colorRaw = String(formData.get("profileColor") ?? "").trim();
   const profileColor = isHexColor(colorRaw) ? colorRaw : null;
@@ -92,7 +94,13 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { nickname, avatar: avatar || null, profileColor, profileCover },
+    data: {
+      nickname,
+      avatar: avatar || null,
+      profileStatus: statusRaw || null,
+      profileColor,
+      profileCover,
+    },
   });
 
   revalidatePath("/", "layout");

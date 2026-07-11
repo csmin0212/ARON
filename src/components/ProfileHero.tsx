@@ -8,6 +8,7 @@ export default function ProfileHero({
   nickname,
   username,
   avatar,
+  status,
   level,
   rank,
   tags = [],
@@ -21,6 +22,7 @@ export default function ProfileHero({
   nickname: string;
   username: string;
   avatar: string | null;
+  status?: string | null;
   level?: number | null;
   rank?: string | null;
   tags?: string[];
@@ -74,7 +76,14 @@ export default function ProfileHero({
             </span>
           )}
         </div>
-        <p className="text-sm text-faint">@{username}</p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-2">
+          <p className="text-sm text-faint">@{username}</p>
+          {status && (
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
+              {status}
+            </span>
+          )}
+        </div>
 
         {(title || badge) && (
           <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-bold text-brand-600">

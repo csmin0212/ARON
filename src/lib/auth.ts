@@ -50,6 +50,7 @@ export type SessionUser = {
   username: string;
   nickname: string;
   avatar: string | null;
+  profileStatus: string | null;
   profileColor: string | null;
   profileCover: string | null;
   equippedTitle: string | null;
@@ -73,6 +74,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
         username: true,
         nickname: true,
         avatar: true,
+        profileStatus: true,
         profileColor: true,
         profileCover: true,
         equippedTitle: true,

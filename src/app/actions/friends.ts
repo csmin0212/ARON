@@ -63,12 +63,38 @@ export async function sendFriendRequest(
   }
   if (existing) {
     // 상대가 먼저 보낸 요청이 있으면 서로 원한 것 — 바로 수락
-    await prisma.friendship.update({ where: { id: existing.id }, data: { status: "accepted" } });
+    await prisma.$transaction([
+      prisma.friendship.update({ where: { id: existing.id }, data: { status: "accepted" } }),
+      prisma.notification.create({
+        data: {
+          userId: target.id,
+          kind: "friend",
+          title: "친구 요청 수락",
+          body: `${user.nickname}님과 친구가 되었어요.`,
+          href: "/world",
+        },
+      }),
+    ]);
+    revalidatePath("/notifications");
+    revalidatePath("/", "layout");
     revalidatePath("/world");
     return { ok: `${target.nickname}님과 친구가 되었어요! 🎉` };
   }
 
-  await prisma.friendship.create({ data: { userId: user.id, friendId: target.id } });
+  await prisma.$transaction([
+    prisma.friendship.create({ data: { userId: user.id, friendId: target.id } }),
+    prisma.notification.create({
+      data: {
+        userId: target.id,
+        kind: "friend",
+        title: "친구 요청",
+        body: `${user.nickname}님이 친구 요청을 보냈어요.`,
+        href: "/world",
+      },
+    }),
+  ]);
+  revalidatePath("/notifications");
+  revalidatePath("/", "layout");
   revalidatePath("/world");
   return { ok: `${target.nickname}님에게 친구 요청을 보냈어요.` };
 }
@@ -92,7 +118,20 @@ export async function respondFriendRequest(
   }
 
   if (accept) {
-    await prisma.friendship.update({ where: { id }, data: { status: "accepted" } });
+    await prisma.$transaction([
+      prisma.friendship.update({ where: { id }, data: { status: "accepted" } }),
+      prisma.notification.create({
+        data: {
+          userId: request.userId,
+          kind: "friend",
+          title: "친구 요청 수락",
+          body: `${user.nickname}님과 친구가 되었어요.`,
+          href: "/world",
+        },
+      }),
+    ]);
+    revalidatePath("/notifications");
+    revalidatePath("/", "layout");
     revalidatePath("/world");
     return { ok: `${request.user.nickname}님과 친구가 되었어요! 🎉` };
   }
