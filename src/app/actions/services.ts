@@ -18,8 +18,9 @@ import {
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
+  recordCollection,
 } from "@/lib/lifeSkillPerks";
-import { findLifeSkillItem, getActiveItems, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { findLifeSkillItem, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
@@ -35,17 +36,21 @@ import {
 } from "@/lib/adventurerRank";
 import {
   bedRestBonus,
+  accrueHousingProduction,
   furnitureOption,
   hasFurnitureEffect,
   homeOwnerFromLocationId,
   homeTierFromLocationId,
   houseOption,
   houseSellPrice,
+  HOUSING_PRODUCTION_MAX_SLOTS,
   isBellTowerLocation,
   isHomeLocationId,
   ownedHouseOptions,
   parseHousingState,
+  productionRedeemCost,
   serializeHousingState,
+  type HousingProductionKind,
 } from "@/lib/housing";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
@@ -59,6 +64,7 @@ export type GuildState = { error?: string; ok?: string } | undefined;
 const STEEL_FRAGMENT = "강철 파편";
 const MOON_FRAGMENT = "달의 파편";
 const COOKING_AP_COST = 10;
+const STORAGE_UPGRADE_STEP = 10;
 const FAILED_DISH = {
   name: "실패한 요리",
   effect: "정체를 알 수 없는 요리 실패작. 판매는 가능하다.",
@@ -531,6 +537,10 @@ async function storageBox(userId: string): Promise<{ id: string; maxWeight: numb
   });
 }
 
+function storageUpgradeCost(maxWeight: number): number {
+  return Math.max(1000, Math.max(0, maxWeight) * 100);
+}
+
 async function storageWeight(boxId: string): Promise<number> {
   const entries = await prisma.storageEntry.findMany({
     where: { boxId, qty: { gt: 0 } },
@@ -571,6 +581,11 @@ function parseLifeEffectSnapshot(effect: string | null | undefined): { rank: num
 
 function formQty(formData: FormData): number {
   return Math.max(1, Math.min(99, Number(formData.get("qty") ?? 1) || 1));
+}
+
+function productionKindOf(value: FormDataEntryValue | null): HousingProductionKind | null {
+  const raw = String(value ?? "");
+  return raw === "낚시" || raw === "채집" ? raw : null;
 }
 
 export async function depositToStorage(
@@ -765,6 +780,209 @@ export async function withdrawFromStorage(
 
   revalidatePath("/world");
   return { ok: `${entry.name} x${qty} 꺼내기 완료.` };
+}
+
+export async function expandStorage(
+  _prev: StorageState,
+  _formData: FormData,
+): Promise<StorageState> {
+  void _prev;
+  void _formData;
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const box = await storageBox(ctx.userId);
+  const cost = storageUpgradeCost(box.maxWeight);
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  if (currentGold < cost) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${cost.toLocaleString()}G)` };
+  }
+
+  const nextGold = currentGold - cost;
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
+  await Promise.all([
+    prisma.storageBox.update({
+      where: { id: box.id },
+      data: { maxWeight: box.maxWeight + STORAGE_UPGRADE_STEP },
+    }),
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: { curGold: nextGold, gold: `${nextGold}G`, invJson: JSON.stringify(inv) },
+    }),
+  ]);
+  void enqueueSheetGoldSync(ctx.userId);
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `창고 최대 중량 +${STORAGE_UPGRADE_STEP}. (${box.maxWeight} → ${box.maxWeight + STORAGE_UPGRADE_STEP})` };
+}
+
+export async function stockHousingProduction(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const kind = productionKindOf(formData.get("kind"));
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  if (!kind || !itemName) return { error: "넣을 항목이 올바르지 않습니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { houseTier: true, housingJson: true, locationId: true, lifeJson: true },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+  if (!isHomeLocationId(sheet.locationId) || homeOwnerFromLocationId(sheet.locationId) !== user.id) {
+    return { error: "본인 집에서만 사용할 수 있어요." };
+  }
+
+  const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+  const requiredFurniture = kind === "낚시" ? "aquarium" : "planter";
+  if (!housing.items.includes(requiredFurniture)) {
+    return { error: kind === "낚시" ? "어항이 필요합니다." : "약초 화분이 필요합니다." };
+  }
+  accrueHousingProduction(housing);
+  if (housing.production[kind].slots.length >= HOUSING_PRODUCTION_MAX_SLOTS) {
+    return { error: "이미 5개까지 넣어두었어요." };
+  }
+
+  const life = parseLifeState(sheet.lifeJson);
+  const bag = life.bags[kind];
+  const bagItem = bag.items.find((item) => item.name === itemName && item.qty > 0);
+  if (!bagItem) return { error: `${bag.name}에 ${itemName}이(가) 없어요.` };
+
+  bagItem.qty -= 1;
+  bag.items = bag.items.filter((item) => item.qty > 0);
+  housing.production[kind].slots.push({
+    name: bagItem.name,
+    rank: Math.max(0, Math.min(5, bagItem.rank)),
+    weight: bagItem.weight,
+    text: bagItem.text,
+  });
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      lifeJson: JSON.stringify(life),
+      housingJson: serializeHousingState(housing),
+    },
+  });
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${bagItem.name}을(를) ${kind === "낚시" ? "어항" : "화분"}에 넣었어요.` };
+}
+
+export async function withdrawHousingProduction(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const kind = productionKindOf(formData.get("kind"));
+  const index = Number(formData.get("index") ?? -1);
+  if (!kind || !Number.isInteger(index) || index < 0) return { error: "꺼낼 항목이 올바르지 않습니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { houseTier: true, housingJson: true, locationId: true, lifeJson: true },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+  if (!isHomeLocationId(sheet.locationId) || homeOwnerFromLocationId(sheet.locationId) !== user.id) {
+    return { error: "본인 집에서만 사용할 수 있어요." };
+  }
+
+  const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+  accrueHousingProduction(housing);
+  const slot = housing.production[kind].slots[index];
+  if (!slot) return { error: "꺼낼 항목이 없어요." };
+
+  const life = parseLifeState(sheet.lifeJson);
+  const bag = life.bags[kind];
+  const currentWeight = lifeBagWeight(bag);
+  const maxWeight = lifeBagLimit(life, kind);
+  if (currentWeight + slot.weight > maxWeight) {
+    return { error: `${bag.name} 중량이 부족합니다. (${currentWeight + slot.weight}/${maxWeight})` };
+  }
+
+  housing.production[kind].slots.splice(index, 1);
+  addLifeBagItem(life, kind, slot);
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      lifeJson: JSON.stringify(life),
+      housingJson: serializeHousingState(housing),
+    },
+  });
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${slot.name}을(를) ${bag.name}으로 꺼냈어요.` };
+}
+
+export async function redeemHousingProduction(
+  _prev: HousingState,
+  formData: FormData,
+): Promise<HousingState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const kind = productionKindOf(formData.get("kind"));
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  if (!kind || !itemName) return { error: "꺼낼 항목이 올바르지 않습니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { houseTier: true, housingJson: true, locationId: true, lifeJson: true },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+  if (!isHomeLocationId(sheet.locationId) || homeOwnerFromLocationId(sheet.locationId) !== user.id) {
+    return { error: "본인 집에서만 사용할 수 있어요." };
+  }
+
+  await loadLifeItems();
+  const lifeItem = findLifeSkillItem(kind, itemName);
+  if (!lifeItem) return { error: "도감 항목을 찾지 못했어요." };
+  const life = parseLifeState(sheet.lifeJson);
+  if (!life.collection[kind].includes(itemName)) {
+    return { error: "도감에 등록한 적 있는 항목만 꺼낼 수 있어요." };
+  }
+
+  const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+  const requiredFurniture = kind === "낚시" ? "aquarium" : "planter";
+  if (!housing.items.includes(requiredFurniture)) {
+    return { error: kind === "낚시" ? "어항이 필요합니다." : "약초 화분이 필요합니다." };
+  }
+  accrueHousingProduction(housing);
+  const cost = productionRedeemCost(lifeItem.rank);
+  if (housing.production[kind].points < cost) {
+    return { error: `포인트가 부족합니다. (${housing.production[kind].points.toLocaleString()}/${cost.toLocaleString()})` };
+  }
+
+  const bag = life.bags[kind];
+  const currentWeight = lifeBagWeight(bag);
+  const maxWeight = lifeBagLimit(life, kind);
+  if (currentWeight + lifeItem.weight > maxWeight) {
+    return { error: `${bag.name} 중량이 부족합니다. (${currentWeight + lifeItem.weight}/${maxWeight})` };
+  }
+
+  housing.production[kind].points -= cost;
+  addLifeBagItem(life, kind, {
+    name: lifeItem.name,
+    weight: lifeItem.weight,
+    rank: lifeItem.rank,
+    text: lifeItem.text,
+  });
+  recordCollection(life, kind, lifeItem.name);
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      lifeJson: JSON.stringify(life),
+      housingJson: serializeHousingState(housing),
+    },
+  });
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${lifeItem.name}을(를) ${bag.name}으로 꺼냈어요. -${cost.toLocaleString()}P` };
 }
 
 export async function buyFood(_prev: MarketState, formData: FormData): Promise<MarketState> {
@@ -1833,37 +2051,6 @@ export async function useFurniture(
     void enqueueSheetGoldSync(user.id);
     revalidatePath("/world");
     return { ok: `${item.emoji} 짤랑! ${gain}G가 떨어졌다.` };
-  }
-
-  if (item.effect.type === "daily_forage") {
-    const kind = item.effect.kind;
-    const maxRank = item.effect.maxRank;
-    await loadLifeItems();
-    const pool = getActiveItems(kind).filter(
-      (entry) => entry.rank <= maxRank && entry.rank >= 0 && entry.price > 0,
-    );
-    if (pool.length === 0) return { error: "지금은 나올 것이 없어 보인다." };
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-
-    const life = parseLifeState(sheet.lifeJson);
-    const bag = life.bags[kind];
-    const bagWeight = lifeBagWeight(bag);
-    const bagMax = lifeBagLimit(life, kind);
-    if (bagWeight + picked.weight > bagMax) {
-      return { error: `${bag.name}이 가득 차서 받을 수 없어요. (${bagWeight} + ${picked.weight} / ${bagMax})` };
-    }
-    addLifeBagItem(life, kind, {
-      name: picked.name,
-      weight: picked.weight,
-      rank: picked.rank,
-      text: picked.text,
-    });
-    await prisma.characterSheet.update({
-      where: { userId: user.id },
-      data: { lifeJson: JSON.stringify(life), housingJson },
-    });
-    revalidatePath("/world");
-    return { ok: `${item.emoji} ${item.interactLabel} 완료! ${picked.name}을(를) 얻었다. (${bag.name})` };
   }
 
   return { error: "상호작용할 수 없는 가구예요." };

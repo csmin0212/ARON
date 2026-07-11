@@ -9,7 +9,9 @@ import {
   cookDish,
   depositToStorage,
   enchantWeapon,
+  expandStorage,
   promoteAdventurerRank,
+  redeemHousingProduction,
   renameHome,
   restAtHome,
   restAtInn,
@@ -17,8 +19,10 @@ import {
   sellHouse,
   sellFood,
   reforgeItem,
+  stockHousingProduction,
   upgradeWeapon,
   useFurniture,
+  withdrawHousingProduction,
   withdrawFromStorage,
   type CookingState,
   type GuildState,
@@ -92,8 +96,30 @@ export type HousingView = {
   }[];
   furnitureOwned: string[]; // 보유 가구 id — 집을 옮겨도 유지
   furnitureUsedToday: Record<string, boolean>; // 가구 id → 오늘 상호작용 여부
+  production: Record<"낚시" | "채집", HousingProductionView>;
   homeName: string | null; // 문패로 지은 집 이름
   friends: { id: string; nickname: string }[]; // 집 초대 대상 (친구만)
+};
+
+export type HousingProductionView = {
+  points: number;
+  dailyPoints: number;
+  slots: {
+    name: string;
+    rank: number;
+    weight: number;
+    text: string;
+  }[];
+  bagItems: {
+    name: string;
+    rank: number;
+    qty: number;
+  }[];
+  redeemItems: {
+    name: string;
+    rank: number;
+    cost: number;
+  }[];
 };
 
 export type KnownRecipeView = {
@@ -128,6 +154,8 @@ export type CookingView = {
 export type StorageView = {
   maxWeight: number;
   usedWeight: number;
+  upgradeCost: number;
+  upgradeAmount: number;
   items: StorageItemView[];
 };
 
@@ -403,6 +431,10 @@ function StorageManager({
     withdrawFromStorage,
     undefined,
   );
+  const [upgradeState, upgradeAction, upgradePending] = useActionState<StorageState, FormData>(
+    expandStorage,
+    undefined,
+  );
   const [view, setView] = useState<"deposit" | "storage">("deposit");
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const lifeItems = useMemo(
@@ -451,6 +483,24 @@ function StorageManager({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          <StorageStateLine state={upgradeState} />
+          <form action={upgradeAction} className="mb-3 rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold text-content">창고 확장</p>
+                <p className="mt-0.5 text-xs text-brand-600">
+                  최대 중량 +{storage.upgradeAmount} · {storage.upgradeCost.toLocaleString()}G
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={upgradePending}
+                className="rounded-xl bg-brand-500 px-3 py-2 text-xs font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
+              >
+                확장
+              </button>
+            </div>
+          </form>
           {/* 맡기기 / 창고 탭 */}
           <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-subtle p-1">
             {(
@@ -868,6 +918,18 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
     renameHome,
     undefined,
   );
+  const [stockState, stockAction, stockPending] = useActionState<HousingState, FormData>(
+    stockHousingProduction,
+    undefined,
+  );
+  const [withdrawProdState, withdrawProdAction, withdrawProdPending] = useActionState<HousingState, FormData>(
+    withdrawHousingProduction,
+    undefined,
+  );
+  const [redeemState, redeemAction, redeemPending] = useActionState<HousingState, FormData>(
+    redeemHousingProduction,
+    undefined,
+  );
   const [inviteState, inviteAction, invitePending] = useActionState<FriendState, FormData>(
     inviteToHouse,
     undefined,
@@ -945,6 +1007,9 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
           <HousingStateLine state={furnState} />
           <HousingStateLine state={interactState} />
           <HousingStateLine state={renameState} />
+          <HousingStateLine state={stockState} />
+          <HousingStateLine state={withdrawProdState} />
+          <HousingStateLine state={redeemState} />
           {(inviteState?.error || inviteState?.ok) && (
             <p
               className={`rounded-xl px-3 py-2 text-xs font-bold ${
@@ -1238,6 +1303,117 @@ function HousingPanel({ housing, onClose }: { housing: HousingView; onClose: () 
                   );
                 })}
               </div>
+              {owned && (
+                <div className="mt-4 grid gap-3">
+                  {(["낚시", "채집"] as const).map((kind) => {
+                    const itemId = kind === "낚시" ? "aquarium" : "planter";
+                    if (!ownedFurniture.has(itemId)) return null;
+                    const data = housing.production[kind];
+                    const title = kind === "낚시" ? "🐠 어항" : "🪴 약초 화분";
+                    const pointName = kind === "낚시" ? "어항 점수" : "화분 점수";
+                    return (
+                      <section key={kind} className="rounded-2xl border border-brand-100 bg-brand-50/50 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-black text-content">{title}</p>
+                            <p className="mt-0.5 text-xs font-bold text-brand-600">
+                              {pointName} {data.points.toLocaleString()}P · 매일 +{data.dailyPoints.toLocaleString()}P
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-black text-brand-600">
+                            {data.slots.length}/5
+                          </span>
+                        </div>
+
+                        {data.slots.length > 0 && (
+                          <div className="mt-3 space-y-1.5">
+                            {data.slots.map((slot, index) => (
+                              <form
+                                key={`${kind}-${slot.name}-${index}`}
+                                action={withdrawProdAction}
+                                className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2"
+                              >
+                                <input type="hidden" name="kind" value={kind} />
+                                <input type="hidden" name="index" value={index} />
+                                <span className="min-w-0 flex-1 truncate text-xs font-bold text-content">
+                                  R{slot.rank} · {slot.name}
+                                </span>
+                                <button
+                                  type="submit"
+                                  disabled={withdrawProdPending || !housing.atHome}
+                                  className="rounded-lg border border-line px-2 py-1 text-[11px] font-black text-muted transition hover:bg-subtle disabled:opacity-50"
+                                >
+                                  빼기
+                                </button>
+                              </form>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <form action={stockAction} className="rounded-xl bg-surface p-2">
+                            <input type="hidden" name="kind" value={kind} />
+                            <p className="mb-1 text-[11px] font-black text-faint">가방에서 넣기</p>
+                            <div className="flex gap-1.5">
+                              <select
+                                name="itemName"
+                                disabled={stockPending || !housing.atHome || data.bagItems.length === 0}
+                                className="min-w-0 flex-1 rounded-lg border border-line bg-subtle px-2 py-1.5 text-xs font-bold text-content"
+                              >
+                                {data.bagItems.length === 0 ? (
+                                  <option value="">가방 비어 있음</option>
+                                ) : (
+                                  data.bagItems.map((item) => (
+                                    <option key={item.name} value={item.name}>
+                                      R{item.rank} · {item.name} x{item.qty}
+                                    </option>
+                                  ))
+                                )}
+                              </select>
+                              <button
+                                type="submit"
+                                disabled={stockPending || !housing.atHome || data.bagItems.length === 0}
+                                className="rounded-lg bg-brand-500 px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-50"
+                              >
+                                넣기
+                              </button>
+                            </div>
+                          </form>
+
+                          <form action={redeemAction} className="rounded-xl bg-surface p-2">
+                            <input type="hidden" name="kind" value={kind} />
+                            <p className="mb-1 text-[11px] font-black text-faint">도감에서 꺼내기</p>
+                            <div className="flex gap-1.5">
+                              <select
+                                name="itemName"
+                                disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
+                                className="min-w-0 flex-1 rounded-lg border border-line bg-subtle px-2 py-1.5 text-xs font-bold text-content"
+                              >
+                                {data.redeemItems.length === 0 ? (
+                                  <option value="">등록된 항목 없음</option>
+                                ) : (
+                                  data.redeemItems.map((item) => (
+                                    <option key={item.name} value={item.name}>
+                                      R{item.rank} · {item.name} · {item.cost.toLocaleString()}P
+                                    </option>
+                                  ))
+                                )}
+                              </select>
+                              <button
+                                type="submit"
+                                disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
+                                className="rounded-lg bg-emerald-500 px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-50"
+                              >
+                                꺼내기
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
         </div>

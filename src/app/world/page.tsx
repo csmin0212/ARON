@@ -38,6 +38,7 @@ import WorldServices, {
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
+  findLifeSkillItem,
   getActiveItems,
   lifeSkillItemKind,
   type LocationLifeConfig,
@@ -60,6 +61,7 @@ import { lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerk
 import { parseGoldToInt } from "@/lib/dice";
 import {
   HOUSE_OPTIONS,
+  accrueHousingProduction,
   hasFurnitureEffect,
   homeDisplayName,
   homeLocationId,
@@ -70,11 +72,17 @@ import {
   isBellTowerLocation,
   isHomeLocationId,
   parseHousingState,
+  productionDailyPoints,
+  productionRedeemCost,
+  serializeHousingState,
 } from "@/lib/housing";
 import FriendsDock from "@/components/FriendsDock";
 import GuestbookCard from "@/components/GuestbookCard";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
+
+const STORAGE_UPGRADE_STEP = 10;
+const storageUpgradeCost = (maxWeight: number) => Math.max(1000, Math.max(0, maxWeight) * 100);
 
 function ApBar({ ap, nextRegenMin }: { ap: number; nextRegenMin: number | null }) {
   return (
@@ -207,6 +215,12 @@ export default async function WorldPage() {
   const nextRegenMin = nextFatigueRegenMinutes(sheet.ap, sheet.apResetAt);
   const atHome = isHomeLocationId(sheet.locationId);
   const housingState = parseHousingState(sheet.housingJson, sheet.houseTier);
+  if (accrueHousingProduction(housingState)) {
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { housingJson: serializeHousingState(housingState) },
+    });
+  }
   const homeOwnerId = homeOwnerFromLocationId(sheet.locationId);
   const atMyHome = atHome && homeOwnerId === user.id; // 친구 집 방문 중이면 false
   const activeHomeTier = homeTierFromLocationId(sheet.locationId) ?? sheet.houseTier;
@@ -397,6 +411,8 @@ export default async function WorldPage() {
         (sum, item) => sum + (item.weight ?? 0) * Math.max(0, item.qty),
         0,
       ) ?? 0,
+    upgradeCost: storageUpgradeCost(storageBox?.maxWeight ?? 30),
+    upgradeAmount: STORAGE_UPGRADE_STEP,
     items:
       storageBox?.entries.map((item) => ({
         id: item.id,
@@ -575,7 +591,7 @@ export default async function WorldPage() {
   // 암시장(뒷골목)은 추후 프리미엄 매입처로 확장 여지를 둔 자리.
   // const canBlackMarket = hasServiceKeyword(here, locActions, ["암시장", "뒷골목"]);
   const canStorage =
-    canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
+    atMyHome || canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
   const canInn = hasServiceKeyword(here, locActions, ["여관", "숙소", "inn"]);
   const inn: InnView = {
     gold: sheet.curGold ?? 0,
@@ -662,6 +678,37 @@ export default async function WorldPage() {
         }))
       : [];
 
+  const housingProduction = (["낚시", "채집"] as const).reduce(
+    (acc, kind) => {
+      const production = housingState.production[kind];
+      const bagItems = life.bags[kind].items
+        .filter((item) => item.qty > 0)
+        .map((item) => ({
+          name: item.name,
+          rank: item.rank,
+          qty: item.qty,
+        }));
+      const redeemItems = life.collection[kind]
+        .map((name) => findLifeSkillItem(kind, name))
+        .filter((item): item is NonNullable<typeof item> => item != null)
+        .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name, "ko"))
+        .map((item) => ({
+          name: item.name,
+          rank: item.rank,
+          cost: productionRedeemCost(item.rank),
+        }));
+      acc[kind] = {
+        points: production.points,
+        dailyPoints: productionDailyPoints(production),
+        slots: production.slots,
+        bagItems,
+        redeemItems,
+      };
+      return acc;
+    },
+    {} as HousingView["production"],
+  );
+
   const housing: HousingView = {
     gold: sheet.curGold ?? (parseGoldToInt(sheetInventory?.gold) || 0),
     ap,
@@ -687,6 +734,7 @@ export default async function WorldPage() {
         housingState.usedAt[id] ? restedTodayKst(new Date(housingState.usedAt[id])) : false,
       ]),
     ),
+    production: housingProduction,
     homeName: housingState.homeName,
     friends: friendViews.map((f) => ({ id: f.id, nickname: f.nickname })),
   };

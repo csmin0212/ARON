@@ -34,3 +34,9 @@ export function rankAtLeast(rank: string | null | undefined, min: string): boole
 export function storageWeightBonus(rank: string | null | undefined): number {
   return rankAtLeast(rank, "C") ? 10 : 0;
 }
+
+// 경매장 동시 등록 슬롯 — 랭크업마다 +5 (D 5 → C 10 → B 15 → A 20 → S 25)
+export function auctionSlots(rank: string | null | undefined): number {
+  const order = ADVENTURER_RANKS as readonly string[];
+  return 5 * (Math.max(0, order.indexOf(normalizeAdventurerRank(rank))) + 1);
+}

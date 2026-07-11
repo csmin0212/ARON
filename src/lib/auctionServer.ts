@@ -31,13 +31,11 @@ import {
   netProceeds,
   parseAuctionMeta,
   parseCookedName,
-  AUCTION_BASE_SLOTS,
-  AUCTION_RANK_BONUS_SLOTS,
   type AuctionCategory,
   type AuctionItemMeta,
   type AuctionSource,
 } from "@/lib/auction";
-import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
+import { auctionSlots, normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 
 export type AuctionResult = { ok?: string; error?: string };
 
@@ -606,8 +604,8 @@ export async function createListingCore(
   const actor = await loadActorSheet(userId);
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
 
-  // 동시 등록 슬롯 — 창고 대용 악용 방지. A랭크+ 슬롯 보너스.
-  const slots = AUCTION_BASE_SLOTS + (rankAtLeast(actor.rank, "A") ? AUCTION_RANK_BONUS_SLOTS : 0);
+  // 동시 등록 슬롯 — 창고 대용 악용 방지. 길드 랭크업마다 +5 (D 5 → S 25).
+  const slots = auctionSlots(actor.rank);
   const activeCount = await prisma.auctionListing.count({
     where: { sellerId: userId, status: "active" },
   });
