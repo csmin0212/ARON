@@ -319,7 +319,8 @@ export function parseWorldGrid(g: string[][]): WorldRow[] {
 
 // 마스터 시트의 "맵" 탭을 불러와 파싱
 export async function fetchWorldRows(): Promise<WorldRow[]> {
-  const url = `https://docs.google.com/spreadsheets/d/${WORLD_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
+  // headers=1 필수 — headers=0 이면 gviz 가 숫자만 있는 컬럼의 헤더 셀을 빈 값으로 날림 (gamedata.ts fetchTab 참고)
+  const url = `https://docs.google.com/spreadsheets/d/${WORLD_SHEET_ID}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(
     WORLD_TAB,
   )}`;
   const res = await fetch(url, { redirect: "follow", cache: "no-store" });

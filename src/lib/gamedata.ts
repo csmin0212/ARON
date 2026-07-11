@@ -190,7 +190,9 @@ const num = (v: string): number | null => {
 };
 
 async function fetchTab(sheetId: string, tab: string): Promise<string[][] | null> {
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(tab)}`;
+  // headers=1 필수 — headers=0 이면 gviz 가 숫자만 있는 컬럼을 number 타입으로 판정해
+  // 문자열인 헤더 셀(예: '중량')을 빈 값으로 날려버림 → 컬럼 매핑 실패
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}`;
   const res = await fetch(url, { redirect: "follow", cache: "no-store" });
   if (!res.ok) return null;
   const text = await res.text();
