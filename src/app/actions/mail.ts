@@ -72,6 +72,23 @@ function mailError(message: string): never {
   redirect(`/mail?error=${encodeURIComponent(message)}`);
 }
 
+function isRedirectError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    String((error as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
+
+async function releaseClaimAndError(id: string, recipientId: string, message: string): Promise<never> {
+  await prisma.mail.updateMany({
+    where: { id, recipientId },
+    data: { claimedAt: null },
+  });
+  mailError(message);
+}
+
 function destinationBag(meta: MailItemMeta, itemName: string): LifeSkillKind | null {
   if (meta.source === "낚시" || meta.source === "채집" || meta.source === "채광") return meta.source;
   const kindByName = lifeSkillItemKind(itemName);
@@ -144,10 +161,18 @@ export async function claimMail(formData: FormData): Promise<void> {
   const mail = await prisma.mail.findUnique({ where: { id } });
   if (!mail || mail.recipientId !== user.id || mail.claimedAt) return;
 
+  const claimedAt = new Date();
+  const claimed = await prisma.mail.updateMany({
+    where: { id, recipientId: user.id, claimedAt: null },
+    data: { claimedAt, readAt: mail.readAt ?? claimedAt },
+  });
+  if (claimed.count !== 1) return;
+
   const hasAttach = mail.gold > 0 || (!!mail.itemName && mail.itemQty > 0);
-  if (hasAttach) {
+  try {
+    if (hasAttach) {
     const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
-    if (!sheet?.sheetTab) mailError("캐릭터 시트 연동 후 첨부를 수령할 수 있어요.");
+    if (!sheet?.sheetTab) await releaseClaimAndError(id, user.id, "캐릭터 시트 연동 후 첨부를 수령할 수 있어요.");
     if (sheet?.sheetTab) {
       const inv = parseInv(sheet.invJson);
       const life = parseLifeState(sheet.lifeJson);
@@ -184,7 +209,7 @@ export async function claimMail(formData: FormData): Promise<void> {
           const nextWeight = curWeight + weight * mail.itemQty;
           const maxWeight = lifeBagLimit(life, bagKind);
           if (nextWeight > maxWeight && nextWeight > curWeight) {
-            mailError(`${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})`);
+            await releaseClaimAndError(id, user.id, `${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})`);
           }
           addLifeBagItems(
             life,
@@ -201,7 +226,7 @@ export async function claimMail(formData: FormData): Promise<void> {
           const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
           const nextWeight = curWeight + weight * mail.itemQty;
           if (inv.maxWeight != null && nextWeight > inv.maxWeight && nextWeight > curWeight) {
-            mailError(`가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})`);
+            await releaseClaimAndError(id, user.id, `가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})`);
           }
           const found = inv.items.find((i) => i.name.trim() === itemName.trim());
           if (found) {
@@ -239,12 +264,16 @@ export async function claimMail(formData: FormData): Promise<void> {
         });
       }
     }
+    }
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    await prisma.mail.updateMany({
+      where: { id, recipientId: user.id },
+      data: { claimedAt: null },
+    });
+    console.warn("Failed to claim mail", error);
+    mailError("우편 수령 중 오류가 발생했습니다. 다시 시도해주세요.");
   }
-
-  await prisma.mail.update({
-    where: { id },
-    data: { claimedAt: new Date(), readAt: mail.readAt ?? new Date() },
-  });
   revalidatePath("/mail");
   revalidatePath("/world");
   revalidatePath("/profile");
