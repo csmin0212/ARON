@@ -3,7 +3,7 @@
 
 export type WeeklyIncomeSkill = {
   name: string; // 시트 스킬란 표기와 대조 (공백 무시)
-  stat: string; // 능력치 라벨 — 금액 = 능력치 × 100G
+  stat: string; // 능력치 라벨 — 금액 = 판정 보정치(2D+X 의 X) × 100G
   emoji: string;
 };
 
@@ -67,7 +67,8 @@ export type WeeklyIncomeView = {
 
 // ── 수령 가능 목록 계산 (서버·클라 공용 순수 함수) ──
 // charsheet.ts 를 끌어오지 않도록 필요한 최소 형태만 받는다.
-type StatLike = { label: string; value: number | null };
+// 【능력치】는 판정 보정치(2D+X 의 X, mod)를 가리킨다 — 기본치(value)가 아님.
+type StatLike = { label: string; value: number | null; mod: number | null };
 type SkillLike = { name: string; sl: number };
 type InvLike = { items?: { name: string; qty: number }[] };
 
@@ -93,7 +94,7 @@ export function buildWeeklyIncomeEntries(input: {
   const stats = parseJson<StatLike[]>(input.statsJson) ?? [];
   const inv = parseJson<InvLike>(input.invJson);
   const statValue = (label: string) =>
-    stats.find((stat) => stat.label === label)?.value ?? null;
+    stats.find((stat) => stat.label === label)?.mod ?? null;
   const learnedSet = new Set(learned.filter((s) => s.sl >= 1).map((s) => normalizeSkillName(s.name)));
   const claimedSet = new Set(input.claimed);
 
@@ -108,7 +109,7 @@ export function buildWeeklyIncomeEntries(input: {
       name: skill.name,
       formula:
         value != null
-          ? `【${skill.stat}】 ${value} × ${WEEKLY_INCOME_STAT_MULT}G`
+          ? `【${skill.stat}】 +${value} × ${WEEKLY_INCOME_STAT_MULT}G`
           : `【${skill.stat}】 능력치 미확인 — 시트 재동기화 필요`,
       amount: value != null ? Math.max(0, value * WEEKLY_INCOME_STAT_MULT) : 0,
       claimed: claimedSet.has(skill.name),
