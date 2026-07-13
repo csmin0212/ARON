@@ -1383,40 +1383,51 @@ function WeeklyIncomePanel({
   );
 }
 
-// ── 가구 탭 — 내 가구 쇼룸 + 카테고리별 상점 ──
-const FURNITURE_GROUPS = [
-  {
-    key: "bed",
-    icon: "🛏️",
-    title: "침구류",
-    note: "상위 침대로 교체하면 기존 침대는 반값에 판매돼요.",
-    tile: "border-amber-200/70 bg-amber-50",
-    match: (item: (typeof FURNITURE_OPTIONS)[number]) => item.effect.type === "rest_bonus",
-  },
-  {
-    key: "work",
-    icon: "⚙️",
-    title: "기능 가구",
-    note: "구매하면 시설 목록에 전용 카드가 생겨요. 하루 1회 · KST 자정 초기화.",
-    tile: "border-sky-200/70 bg-sky-50",
-    match: (item: (typeof FURNITURE_OPTIONS)[number]) =>
-      item.effect.type === "daily_ap" ||
-      item.effect.type === "daily_gold" ||
-      item.effect.type === "production",
-  },
-  {
-    key: "deco",
-    icon: "🎀",
-    title: "꾸미기 · 손님맞이",
-    note: "집의 분위기와 손님맞이를 담당해요.",
-    tile: "border-rose-200/70 bg-rose-50",
-    match: (item: (typeof FURNITURE_OPTIONS)[number]) =>
-      item.effect.type === "nameplate" || item.effect.type === "guestbook",
-  },
+// ── 가구 탭 — 내 가구 쇼룸 + 계열별 상점 ──
+type FurnitureItem = (typeof FURNITURE_OPTIONS)[number];
+
+// 가구별 타일 색 — 쇼룸·상점 공통
+function furnitureTile(item: FurnitureItem): string {
+  switch (item.family) {
+    case "bed":
+      return "border-amber-200/70 bg-amber-50";
+    case "aquarium":
+      return "border-sky-200/70 bg-sky-50";
+    case "planter":
+      return "border-emerald-200/70 bg-emerald-50";
+    case "bank":
+      return "border-yellow-200/70 bg-yellow-50";
+  }
+  if (item.effect.type === "daily_ap") return "border-orange-200/70 bg-orange-50";
+  return "border-rose-200/70 bg-rose-50"; // 문패·방명록대
+}
+
+// 상점 섹션 — 계열(3단계)은 family, 단품은 ids 로 묶는다
+const FURNITURE_SECTIONS: readonly {
+  key: string;
+  icon: string;
+  title: string;
+  note: string;
+  family?: FurnitureItem["family"];
+  ids?: readonly string[];
+}[] = [
+  { key: "bed", icon: "🛏️", title: "침구류", note: "집 휴식 회복량 상승", family: "bed" },
+  { key: "aquarium", icon: "🐠", title: "어항 (낚시)", note: "물고기 보관 → 매일 어항 점수", family: "aquarium" },
+  { key: "planter", icon: "🪴", title: "화분 (채집)", note: "채집물 보관 → 매일 화분 점수", family: "planter" },
+  { key: "bank", icon: "🐖", title: "저금통", note: "하루 1회 흔들어 골드 획득", family: "bank" },
+  { key: "func", icon: "🔥", title: "기타 기능", note: "하루 1회 상호작용", ids: ["fireplace"] },
+  { key: "deco", icon: "🎀", title: "꾸미기 · 손님맞이", note: "집 이름 · 방명록", ids: ["nameplate", "guestbook_stand"] },
 ] as const;
 
-function furnitureGroupOf(item: (typeof FURNITURE_OPTIONS)[number]) {
-  return FURNITURE_GROUPS.find((group) => group.match(item)) ?? FURNITURE_GROUPS[1];
+function sectionItems(section: (typeof FURNITURE_SECTIONS)[number]): FurnitureItem[] {
+  if (section.family) {
+    return FURNITURE_OPTIONS.filter((item) => item.family === section.family).sort(
+      (a, b) => (a.tier ?? 0) - (b.tier ?? 0),
+    );
+  }
+  return (section.ids ?? [])
+    .map((id) => FURNITURE_OPTIONS.find((item) => item.id === id))
+    .filter((item): item is FurnitureItem => !!item);
 }
 
 function FurnitureTab({
@@ -1488,12 +1499,11 @@ function FurnitureTab({
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {ownedItems.map((item) => {
-              const group = furnitureGroupOf(item);
               const status = ownedStatus(item);
               return (
                 <div
                   key={item.id}
-                  className={`rounded-2xl border p-3 text-center ${group.tile}`}
+                  className={`rounded-2xl border p-3 text-center ${furnitureTile(item)}`}
                 >
                   <span className="block text-3xl drop-shadow-sm">{item.emoji}</span>
                   <p className="mt-1.5 truncate text-sm font-extrabold text-content">
@@ -1519,84 +1529,114 @@ function FurnitureTab({
             </span>
           )}
         </div>
-        {FURNITURE_GROUPS.map((group) => {
-          // 같은 계열은 상위 교체 방식 — 보유 등급 이하 티어는 상점에서 숨긴다
-          const forSale = FURNITURE_OPTIONS.filter((item) => {
-            if (!group.match(item) || ownedSet.has(item.id)) return false;
-            if (!item.family) return true;
-            const ownedInFamily = ownedItems.find((o) => o.family === item.family);
-            return !ownedInFamily || (ownedInFamily.tier ?? 0) < (item.tier ?? 0);
-          });
+        {FURNITURE_SECTIONS.map((section) => {
+          const items = sectionItems(section);
+          const ownedInFamily = section.family
+            ? (ownedItems.find((o) => o.family === section.family) ?? null)
+            : null;
+          const cols = items.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
           return (
-            <div key={group.key}>
+            <div key={section.key}>
               <div className="mb-1.5 flex items-baseline gap-2 px-1">
                 <p className="text-xs font-extrabold text-content">
-                  {group.icon} {group.title}
+                  {section.icon} {section.title}
                 </p>
-                <p className="hidden truncate text-[11px] text-faint sm:block">{group.note}</p>
+                <p className="hidden truncate text-[11px] text-faint sm:block">{section.note}</p>
               </div>
-              {forSale.length === 0 ? (
-                <p className="rounded-2xl border border-line bg-subtle px-4 py-2.5 text-xs font-bold text-faint">
-                  ✨ {group.title}는 모두 보유중이에요.
-                </p>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {forSale.map((item) => {
-                    const upgradeFrom = item.family
-                      ? (ownedItems.find((o) => o.family === item.family) ?? null)
+              <div className={`grid gap-2 ${cols}`}>
+                {items.map((item) => {
+                  const isOwned = ownedSet.has(item.id);
+                  // 계열에서 더 높은 등급을 이미 보유 → 이 하위 등급은 지나감
+                  const surpassed =
+                    !isOwned && !!ownedInFamily && (ownedInFamily.tier ?? 0) > (item.tier ?? 0);
+                  // 하위 등급 보유 상태에서 이 상위 등급을 사면 교체(반값 환급)
+                  const upgradeFrom =
+                    !isOwned && !surpassed && ownedInFamily && ownedInFamily.id !== item.id
+                      ? ownedInFamily
                       : null;
-                    const refund = upgradeFrom ? Math.floor(upgradeFrom.price / 2) : 0;
-                    return (
-                      <form
-                        key={item.id}
-                        action={furnAction}
-                        onSubmit={(e) => {
-                          if (!owned) {
-                            e.preventDefault();
-                            window.alert("집을 먼저 구매해주세요.");
-                            return;
-                          }
-                          if (upgradeFrom) {
-                            const ok = window.confirm(
-                              `기존 ${upgradeFrom.name}을(를) ${refund.toLocaleString()}G에 판매하고 ${item.name}(으)로 교체합니다. 넣어둔 내용물과 점수는 그대로 유지돼요. 진행할까요?`,
-                            );
-                            if (!ok) e.preventDefault();
-                          }
-                        }}
-                        className="group rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50/60"
-                      >
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <div className="flex items-start gap-2.5">
-                          <span
-                            className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border text-xl ${group.tile}`}
-                          >
-                            {item.emoji}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-extrabold text-content">{item.name}</p>
-                            <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-faint">
-                              {item.desc}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={furnPending}
-                          className={`mt-2.5 w-full rounded-xl px-3 py-1.5 text-xs font-black text-white transition disabled:opacity-50 ${
-                            upgradeFrom
-                              ? "bg-brand-500/90 group-hover:bg-brand-500"
-                              : "bg-emerald-500/90 group-hover:bg-emerald-500"
-                          }`}
+                  const refund = upgradeFrom ? Math.floor(upgradeFrom.price / 2) : 0;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex flex-col rounded-2xl border p-3 ${
+                        isOwned
+                          ? "border-brand-300 bg-brand-50/70"
+                          : surpassed
+                            ? "border-line bg-subtle/50 opacity-70"
+                            : "border-line bg-subtle"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-lg ${furnitureTile(item)}`}
                         >
-                          {upgradeFrom
-                            ? `${item.price.toLocaleString()}G 교체 (기존 ${refund.toLocaleString()}G 환급)`
-                            : `${item.price.toLocaleString()}G 구매`}
-                        </button>
-                      </form>
-                    );
-                  })}
-                </div>
-              )}
+                          {item.emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-extrabold text-content">
+                            {item.name}
+                          </p>
+                          {item.tier != null && (
+                            <p className="text-[10px] font-black text-faint">{item.tier}단계</p>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-2 line-clamp-2 min-h-[2.4em] text-[11px] leading-relaxed text-faint">
+                        {item.desc}
+                      </p>
+
+                      {isOwned ? (
+                        <span className="mt-2.5 w-full rounded-xl bg-brand-500 px-3 py-1.5 text-center text-xs font-black text-white">
+                          ✅ 사용중
+                        </span>
+                      ) : surpassed ? (
+                        <span className="mt-2.5 w-full rounded-xl bg-subtle-hover px-3 py-1.5 text-center text-xs font-black text-faint">
+                          하위 등급
+                        </span>
+                      ) : (
+                        <form
+                          action={furnAction}
+                          onSubmit={(e) => {
+                            if (!owned) {
+                              e.preventDefault();
+                              window.alert("집을 먼저 구매해주세요.");
+                              return;
+                            }
+                            if (upgradeFrom) {
+                              const ok = window.confirm(
+                                `기존 ${upgradeFrom.name}을(를) ${refund.toLocaleString()}G에 판매하고 ${item.name}(으)로 교체합니다. 넣어둔 내용물과 점수는 그대로 유지돼요. 진행할까요?`,
+                              );
+                              if (!ok) e.preventDefault();
+                            }
+                          }}
+                          className="mt-2.5"
+                        >
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <button
+                            type="submit"
+                            disabled={furnPending}
+                            className={`w-full rounded-xl px-3 py-1.5 text-xs font-black text-white transition disabled:opacity-50 ${
+                              upgradeFrom
+                                ? "bg-brand-500/90 hover:bg-brand-500"
+                                : "bg-emerald-500/90 hover:bg-emerald-500"
+                            }`}
+                          >
+                            {upgradeFrom
+                              ? `${item.price.toLocaleString()}G 교체`
+                              : `${item.price.toLocaleString()}G 구매`}
+                          </button>
+                          {upgradeFrom && (
+                            <p className="mt-1 text-center text-[10px] font-bold text-faint">
+                              기존 {refund.toLocaleString()}G 환급
+                            </p>
+                          )}
+                        </form>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
