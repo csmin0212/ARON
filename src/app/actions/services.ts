@@ -144,6 +144,18 @@ function parseInv(value: string | null): SheetInventory {
   return { gold: null, curWeight: null, maxWeight: null, items: [] };
 }
 
+function mirrorGoldInInvJson(value: string | null, gold: number): string | null {
+  try {
+    const inv = value
+      ? (JSON.parse(value) as SheetInventory)
+      : { gold: null, curWeight: null, maxWeight: null, items: [] };
+    inv.gold = `${gold}G`;
+    return JSON.stringify(inv);
+  } catch {
+    return value;
+  }
+}
+
 function findInvItem(inv: SheetInventory, name: string): SheetInventoryItem | null {
   return inv.items.find((item) => item.name.trim() === name.trim()) ?? null;
 }
@@ -2140,16 +2152,7 @@ export async function claimWeeklyIncome(
 
   const currentGold = sheet.curGold ?? 0;
   const nextGold = currentGold + entry.amount;
-  let invJson = sheet.invJson;
-  try {
-    const inv = invJson
-      ? (JSON.parse(invJson) as SheetInventory)
-      : { gold: null, curWeight: null, maxWeight: null, items: [] };
-    inv.gold = `${nextGold}G`;
-    invJson = JSON.stringify(inv);
-  } catch {
-    invJson = sheet.invJson;
-  }
+  const invJson = mirrorGoldInInvJson(sheet.invJson, nextGold);
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
@@ -2170,6 +2173,80 @@ export async function claimWeeklyIncome(
 
   revalidatePath("/world");
   return { ok: `${entry.emoji} [${entry.name}] 수령 완료! +${entry.amount.toLocaleString()}G` };
+}
+
+export async function claimAllWeeklyIncome(
+  prev: ServiceState,
+  formData: FormData,
+): Promise<ServiceState> {
+  void prev;
+  void formData;
+
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: {
+      locationId: true,
+      level: true,
+      statsJson: true,
+      sheetSkillsJson: true,
+      invJson: true,
+      weeklyIncomeJson: true,
+      curGold: true,
+    },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+
+  const location = sheet.locationId
+    ? await prisma.location.findUnique({
+        where: { id: sheet.locationId },
+        select: { id: true, name: true },
+      })
+    : null;
+  const atPlaza = `${location?.id ?? ""} ${location?.name ?? ""}`.includes("분수");
+  if (!atPlaza) return { error: "주간 수입은 분수 광장에서만 받을 수 있어요." };
+
+  const week = dungeonWeekKey();
+  const state = parseWeeklyIncomeState(sheet.weeklyIncomeJson, week);
+  const entries = buildWeeklyIncomeEntries({
+    sheetSkillsJson: sheet.sheetSkillsJson,
+    statsJson: sheet.statsJson,
+    invJson: sheet.invJson,
+    level: sheet.level,
+    claimed: state.claimed,
+  });
+  const claimable = entries.filter((entry) => !entry.claimed && entry.amount > 0);
+  if (claimable.length === 0) {
+    return { error: "한번에 받을 수 있는 주간 수입이 없어요." };
+  }
+
+  const total = claimable.reduce((sum, entry) => sum + entry.amount, 0);
+  const currentGold = sheet.curGold ?? 0;
+  const nextGold = currentGold + total;
+  const invJson = mirrorGoldInInvJson(sheet.invJson, nextGold);
+  const claimed = Array.from(new Set([...state.claimed, ...claimable.map((entry) => entry.key)]));
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      invJson,
+      weeklyIncomeJson: JSON.stringify({ week, claimed }),
+    },
+  });
+  void enqueueSheetGoldSync(user.id);
+  if (location) {
+    await postSystem(
+      location.id,
+      `💰 ${user.nickname}님이 주간 수입 ${claimable.length}건으로 ${total.toLocaleString()}G를 벌었습니다!`,
+    );
+  }
+
+  revalidatePath("/world");
+  return { ok: `주간 수입 ${claimable.length}건 수령 완료! +${total.toLocaleString()}G` };
 }
 
 export async function buyLifeGear(

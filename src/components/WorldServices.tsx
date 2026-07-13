@@ -5,6 +5,7 @@ import {
   buyFurniture,
   buyHouse,
   buyFood,
+  claimAllWeeklyIncome,
   claimWeeklyIncome,
   buyLifeGear,
   cookDish,
@@ -1226,6 +1227,13 @@ function WeeklyIncomePanel({
     claimWeeklyIncome,
     undefined,
   );
+  const [allState, allAction, allPending] = useActionState<ServiceState, FormData>(
+    claimAllWeeklyIncome,
+    undefined,
+  );
+  const [lastActionKind, setLastActionKind] = useState<"single" | "all">("single");
+  const feedback = lastActionKind === "all" ? allState ?? state : state ?? allState;
+  const anyPending = pending || allPending;
   const remaining = income.entries.filter((entry) => !entry.claimed);
   const remainingTotal = remaining.reduce((sum, entry) => sum + entry.amount, 0);
   const [, month, day] = income.week.split("-");
@@ -1252,13 +1260,13 @@ function WeeklyIncomePanel({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {(state?.error || state?.ok) && (
+          {(feedback?.error || feedback?.ok) && (
             <p
               className={`rounded-xl px-3 py-2 text-xs font-bold ${
-                state.error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
+                feedback.error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
               }`}
             >
-              {state.error ?? state.ok}
+              {feedback.error ?? feedback.ok}
             </p>
           )}
 
@@ -1279,7 +1287,16 @@ function WeeklyIncomePanel({
               <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
                 <p className="text-xs font-bold text-white/75">초기화</p>
                 <p className="mt-1 text-lg font-black">월요일 자정</p>
-                <p className="text-[11px] font-bold text-white/70">던전 주간과 동일</p>
+                <form action={allAction} className="mt-3">
+                  <button
+                    type="submit"
+                    disabled={anyPending || remainingTotal <= 0}
+                    onClick={() => setLastActionKind("all")}
+                    className="w-full rounded-xl bg-white px-3 py-2 text-xs font-black text-amber-600 shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    한번에 받기
+                  </button>
+                </form>
               </div>
             </div>
           </section>
@@ -1328,7 +1345,8 @@ function WeeklyIncomePanel({
                       <input type="hidden" name="key" value={entry.key} />
                       <button
                         type="submit"
-                        disabled={pending || entry.amount <= 0}
+                        disabled={anyPending || entry.amount <= 0}
+                        onClick={() => setLastActionKind("single")}
                         className="rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-black text-white transition hover:bg-amber-600 disabled:opacity-50"
                       >
                         {entry.amount.toLocaleString()}G 받기
