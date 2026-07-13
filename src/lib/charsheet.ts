@@ -27,7 +27,11 @@ export type ParsedSheet = {
   adventurerRank: string | null;
   fame: number | null;
   stats: StatEntry[];
+  skills: SheetSkill[];
 };
+
+// 시트 스킬란에서 SL 1 이상 찍힌(=배운) 스킬
+export type SheetSkill = { name: string; sl: number };
 
 const ABILITY_LABELS = ["근력", "재주", "민첩", "지력", "감지", "정신", "행운"];
 const ABILITY_KEYS = ["STR", "DEX", "AGI", "INT", "PER", "SPI", "LUK"];
@@ -138,7 +142,8 @@ async function fetchSheetByApi(tabName: string): Promise<string[][] | null> {
   const token = await accessToken();
   if (!token) return null;
 
-  const range = `${quoteSheet(tabName)}!A1:AK80`;
+  // 스킬란(B65:D104, B144:D181)까지 포함해야 하므로 181행까지 읽는다
+  const range = `${quoteSheet(tabName)}!A1:AK181`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_SHEET_ID}/values/${encodeURIComponent(
     range,
   )}`;
@@ -156,16 +161,6 @@ function find(g: string[][], text: string): [number, number] | null {
     const row = g[r] || [];
     for (let c = 0; c < row.length; c++) {
       if ((row[c] ?? "").trim() === text) return [r, c];
-    }
-  }
-  return null;
-}
-
-function findIncludes(g: string[][], text: string): [number, number] | null {
-  for (let r = 0; r < g.length; r++) {
-    const row = g[r] || [];
-    for (let c = 0; c < row.length; c++) {
-      if ((row[c] ?? "").trim().includes(text)) return [r, c];
     }
   }
   return null;
@@ -203,30 +198,11 @@ function rankFromFame(fame: number | null): string | null {
   return "D";
 }
 
-function fameCellsAround(g: string[][]): string[] {
-  const cells = [
+function fameCells(g: string[][]): string[] {
+  return [
     at(g, 9, 14), // O10
     at(g, 8, 14), // O9
-  ];
-  const label = findIncludes(g, "명성");
-  if (label) {
-    const [lr, lc] = label;
-    cells.push(
-      at(g, lr, lc),
-      at(g, lr, lc + 1),
-      at(g, lr, lc + 2),
-      at(g, lr + 1, lc),
-      at(g, lr + 1, lc + 1),
-      at(g, lr + 2, lc),
-    );
-  }
-  cells.push(
-    at(g, 8, 13), // N9
-    at(g, 8, 15), // P9
-    at(g, 9, 13), // N10
-    at(g, 9, 15), // P10
-  );
-  return cells.filter(Boolean);
+  ].filter(Boolean);
 }
 
 function below(g: string[][], label: string, dr = 1, dc = 0): string | null {
@@ -242,6 +218,29 @@ function beside(g: string[][], label: string, dc = 1): string | null {
 export function isValidTabName(name: string): boolean {
   const t = name.trim();
   return t.length >= 1 && t.length <= 40;
+}
+
+// 스킬란 파싱 — 이름 B65:D104·B144:D181 (병합 셀, 값은 B열), SL G65:G104·G144:G181.
+// SL 1 이상만 "배운 스킬"로 인정한다.
+function parseSheetSkills(g: string[][]): SheetSkill[] {
+  const blocks: [number, number][] = [
+    [64, 103], // 65~104행 (0-기준)
+    [143, 180], // 144~181행
+  ];
+  const skills: SheetSkill[] = [];
+  const seen = new Set<string>();
+  for (const [from, to] of blocks) {
+    for (let r = from; r <= to; r++) {
+      const name = at(g, r, 1); // B열
+      if (!name || name === "-") continue;
+      const sl = toFirstNum(at(g, r, 6)); // G열
+      if (sl == null || sl < 1) continue;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      skills.push({ name, sl });
+    }
+  }
+  return skills;
 }
 
 export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
@@ -265,10 +264,10 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
   }
 
   const hp = find(g, "HP");
-  const fameCells = fameCellsAround(g); // O9:O10 plus nearby "명성" label cells
-  const fame = fameCells.map(toFirstNum).find((value) => value != null) ?? null;
+  const fameValues = fameCells(g); // O9:O10 only
+  const fame = fameValues.map(toFirstNum).find((value) => value != null) ?? 0;
   const adventurerRank =
-    fameCells.map(parseRank).find((value) => value != null) ?? rankFromFame(fame);
+    fameValues.map(parseRank).find((value) => value != null) ?? rankFromFame(fame);
   return {
     charName: tabName,
     charClass: below(g, "메인 클래스", 1, 0),
@@ -285,6 +284,7 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
     adventurerRank,
     fame,
     stats,
+    skills: parseSheetSkills(g),
   };
 }
 

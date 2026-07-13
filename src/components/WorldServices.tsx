@@ -5,6 +5,7 @@ import {
   buyFurniture,
   buyHouse,
   buyFood,
+  claimWeeklyIncome,
   buyLifeGear,
   cookDish,
   depositToStorage,
@@ -35,6 +36,7 @@ import {
 import { inviteToHouse, type FriendState } from "@/app/actions/friends";
 import { enterHome } from "@/app/actions/world";
 import { FURNITURE_OPTIONS } from "@/lib/housing";
+import type { WeeklyIncomeView } from "@/lib/weeklyIncome";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
@@ -64,6 +66,7 @@ type Props = {
   craftAp: number;
   craftTags: Record<string, string>;
   craftTagSlots: Record<string, string>;
+  weeklyIncome: WeeklyIncomeView | null; // 분수 광장에서만 채워짐
 };
 
 export type InnView = {
@@ -1202,6 +1205,151 @@ function QuestBoard({ guild, onClose }: { guild: GuildView; onClose: () => void 
             type="button"
             onClick={onClose}
             className="w-full rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 분수 광장 주간 수입 — 프리 플레이 스킬·우상 환전소 ──
+function WeeklyIncomePanel({
+  income,
+  onClose,
+}: {
+  income: WeeklyIncomeView;
+  onClose: () => void;
+}) {
+  const [state, action, pending] = useActionState<ServiceState, FormData>(
+    claimWeeklyIncome,
+    undefined,
+  );
+  const remaining = income.entries.filter((entry) => !entry.claimed);
+  const remainingTotal = remaining.reduce((sum, entry) => sum + entry.amount, 0);
+  const [, month, day] = income.week.split("-");
+  const weekLabel = `${Number(month)}/${Number(day)} 주간`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="주간 수입"
+        className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-subtle px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-faint">
+            Fountain Plaza
+          </p>
+          <h3 className="mt-1 text-2xl font-extrabold text-content">💰 주간 수입</h3>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {(state?.error || state?.ok) && (
+            <p
+              className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                state.error ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
+              }`}
+            >
+              {state.error ?? state.ok}
+            </p>
+          )}
+
+          <section className="rounded-3xl bg-gradient-to-br from-amber-400 to-yellow-500 p-4 text-white shadow-sm">
+            <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr]">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-white/75">
+                  {weekLabel}
+                </p>
+                <p className="mt-1 text-3xl font-black">
+                  {remainingTotal.toLocaleString()}
+                  <span className="ml-1 text-lg">G</span>
+                </p>
+                <p className="mt-1 text-sm font-bold text-white/85">
+                  이번 주 받을 수 있는 금액
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
+                <p className="text-xs font-bold text-white/75">초기화</p>
+                <p className="mt-1 text-lg font-black">월요일 자정</p>
+                <p className="text-[11px] font-bold text-white/70">던전 주간과 동일</p>
+              </div>
+            </div>
+          </section>
+
+          {income.entries.length === 0 ? (
+            <div className="grid place-items-center rounded-2xl border border-dashed border-line bg-subtle/60 px-4 py-10 text-center">
+              <p className="text-sm font-bold leading-relaxed text-faint">
+                받을 수 있는 주간 수입이 없어요.
+                <br />
+                프리 플레이 스킬(SL 1 이상)을 배웠거나 우상을 갖고 있다면,
+                <br />
+                프로필에서 시트를 다시 동기화해보세요.
+              </p>
+            </div>
+          ) : (
+            <section className="space-y-2">
+              {income.entries.map((entry) => (
+                <div
+                  key={entry.key}
+                  className={`flex items-center gap-3 rounded-2xl border p-3 ${
+                    entry.claimed
+                      ? "border-line bg-subtle/60 opacity-75"
+                      : "border-amber-200/80 bg-subtle"
+                  }`}
+                >
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-amber-200/70 bg-amber-50 text-xl">
+                    {entry.emoji}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1.5 text-sm font-extrabold text-content">
+                      {entry.name}
+                      <span className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-black text-faint">
+                        {entry.kind === "skill" ? "스킬" : "아이템"}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] font-bold text-faint">
+                      {entry.formula}
+                    </p>
+                  </div>
+                  {entry.claimed ? (
+                    <span className="shrink-0 rounded-full bg-surface px-3 py-1.5 text-xs font-black text-faint">
+                      ✅ 수령 완료
+                    </span>
+                  ) : (
+                    <form action={action} className="shrink-0">
+                      <input type="hidden" name="key" value={entry.key} />
+                      <button
+                        type="submit"
+                        disabled={pending || entry.amount <= 0}
+                        className="rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-black text-white transition hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        {entry.amount.toLocaleString()}G 받기
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ))}
+              <p className="px-1 text-[11px] font-bold text-faint">
+                스킬·아이템을 새로 배우거나 얻었다면, 프로필에서 시트를 다시 동기화해야 목록에
+                반영돼요.
+              </p>
+            </section>
+          )}
+        </div>
+
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
           >
             닫기
           </button>
@@ -2378,10 +2526,12 @@ export default function WorldServices({
   craftAp,
   craftTags,
   craftTagSlots,
+  weeklyIncome,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
+  const [incomeOpen, setIncomeOpen] = useState(false);
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
@@ -2427,7 +2577,7 @@ export default function WorldServices({
     (item) => ownedFurniture.has(item.id) && item.interactLabel && item.effect.type !== "production",
   );
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !canGacha) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !canGacha && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -2549,6 +2699,32 @@ export default function WorldServices({
               </span>
             </button>
           )}
+          {weeklyIncome && (
+            <button
+              type="button"
+              onClick={() => setIncomeOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 px-3.5 py-3 text-left transition hover:border-amber-300 hover:from-amber-100 hover:to-yellow-100"
+            >
+              <span className="text-xl">💰</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-content">주간 수입</span>
+                <span className="text-[11px] font-bold text-amber-600">
+                  {weeklyIncome.entries.length === 0
+                    ? "프리 플레이 스킬 · 우상 환전소"
+                    : `받을 수 있는 항목 ${weeklyIncome.entries.filter((e) => !e.claimed).length}건`}
+                </span>
+              </span>
+              {weeklyIncome.entries.some((e) => !e.claimed) && (
+                <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-black text-white">
+                  {weeklyIncome.entries
+                    .filter((e) => !e.claimed)
+                    .reduce((sum, e) => sum + e.amount, 0)
+                    .toLocaleString()}
+                  G
+                </span>
+              )}
+            </button>
+          )}
           {canHousing &&
             productionFacilities.map((kind) => {
               const meta = productionMeta(kind);
@@ -2666,6 +2842,10 @@ export default function WorldServices({
       {innOpen && <InnRest inn={inn} onClose={() => setInnOpen(false)} />}
 
       {housingOpen && <HousingPanel housing={housing} onClose={() => setHousingOpen(false)} />}
+
+      {incomeOpen && weeklyIncome && (
+        <WeeklyIncomePanel income={weeklyIncome} onClose={() => setIncomeOpen(false)} />
+      )}
 
       {productionOpen && (
         <HousingProductionFacility

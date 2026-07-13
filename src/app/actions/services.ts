@@ -25,7 +25,8 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
-import { FATIGUE_MAX, regenFatigue, restedTodayKst } from "@/lib/world";
+import { FATIGUE_MAX, dungeonWeekKey, regenFatigue, restedTodayKst } from "@/lib/world";
+import { buildWeeklyIncomeEntries, parseWeeklyIncomeState } from "@/lib/weeklyIncome";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import {
@@ -2084,6 +2085,91 @@ export async function renameHome(
   });
   revalidatePath("/world");
   return { ok: `🪧 이제 이 집은 '${user.nickname}의 ${raw}'입니다.` };
+}
+
+// ── 분수 광장 주간 수입 — 프리 플레이 스킬·우상 환전 (주 1회, 던전 주간과 동일 초기화) ──
+export async function claimWeeklyIncome(
+  _prev: ServiceState,
+  formData: FormData,
+): Promise<ServiceState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const key = String(formData.get("key") ?? "").trim();
+  if (!key) return { error: "받을 항목을 찾지 못했어요." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: {
+      locationId: true,
+      level: true,
+      statsJson: true,
+      sheetSkillsJson: true,
+      invJson: true,
+      weeklyIncomeJson: true,
+      curGold: true,
+    },
+  });
+  if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
+
+  // 분수 광장에서만
+  const location = sheet.locationId
+    ? await prisma.location.findUnique({
+        where: { id: sheet.locationId },
+        select: { id: true, name: true },
+      })
+    : null;
+  const atPlaza = `${location?.id ?? ""} ${location?.name ?? ""}`.includes("분수");
+  if (!atPlaza) return { error: "주간 수입은 분수 광장에서만 받을 수 있어요." };
+
+  const week = dungeonWeekKey();
+  const state = parseWeeklyIncomeState(sheet.weeklyIncomeJson, week);
+  const entries = buildWeeklyIncomeEntries({
+    sheetSkillsJson: sheet.sheetSkillsJson,
+    statsJson: sheet.statsJson,
+    invJson: sheet.invJson,
+    level: sheet.level,
+    claimed: state.claimed,
+  });
+  const entry = entries.find((item) => item.key === key);
+  if (!entry) return { error: "받을 수 있는 항목이 아니에요. 시트를 다시 동기화해보세요." };
+  if (entry.claimed) return { error: `[${entry.name}]은 이번 주에 이미 받았어요. (월요일 자정 초기화)` };
+  if (entry.amount <= 0) {
+    return { error: "금액을 계산할 수 없어요. 프로필에서 시트를 다시 동기화해주세요." };
+  }
+
+  const currentGold = sheet.curGold ?? 0;
+  const nextGold = currentGold + entry.amount;
+  let invJson = sheet.invJson;
+  try {
+    const inv = invJson
+      ? (JSON.parse(invJson) as SheetInventory)
+      : { gold: null, curWeight: null, maxWeight: null, items: [] };
+    inv.gold = `${nextGold}G`;
+    invJson = JSON.stringify(inv);
+  } catch {
+    invJson = sheet.invJson;
+  }
+
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      invJson,
+      weeklyIncomeJson: JSON.stringify({ week, claimed: [...state.claimed, entry.key] }),
+    },
+  });
+  void enqueueSheetGoldSync(user.id);
+  if (location) {
+    await postSystem(
+      location.id,
+      `💰 ${user.nickname}님이 [${entry.name}]으로 ${entry.amount.toLocaleString()}G를 벌었습니다!`,
+    );
+  }
+
+  revalidatePath("/world");
+  return { ok: `${entry.emoji} [${entry.name}] 수령 완료! +${entry.amount.toLocaleString()}G` };
 }
 
 export async function buyLifeGear(

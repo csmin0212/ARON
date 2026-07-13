@@ -78,6 +78,11 @@ import {
 } from "@/lib/housing";
 import FriendsDock from "@/components/FriendsDock";
 import GuestbookCard from "@/components/GuestbookCard";
+import {
+  buildWeeklyIncomeEntries,
+  parseWeeklyIncomeState,
+  type WeeklyIncomeView,
+} from "@/lib/weeklyIncome";
 
 export const metadata = { title: "월드 · 아리안로드 온라인 갤러리" };
 
@@ -739,6 +744,23 @@ export default async function WorldPage() {
     friends: friendViews.map((f) => ({ id: f.id, nickname: f.nickname })),
   };
   const canHousing = atMyHome || isBellTowerLocation(here);
+  // 분수 광장 — 주간 수입 (프리 플레이 스킬·우상 환전)
+  const atPlaza = `${here.id} ${here.name}`.includes("분수");
+  let weeklyIncome: WeeklyIncomeView | null = null;
+  if (atPlaza) {
+    const week = dungeonWeekKey();
+    const incomeState = parseWeeklyIncomeState(sheet.weeklyIncomeJson, week);
+    weeklyIncome = {
+      week,
+      entries: buildWeeklyIncomeEntries({
+        sheetSkillsJson: sheet.sheetSkillsJson,
+        statsJson: sheet.statsJson,
+        invJson: sheet.invJson,
+        level: sheet.level,
+        claimed: incomeState.claimed,
+      }),
+    };
+  }
   const cookingEnabled = canMarket || atMyHome;
   const cookingFacility = atMyHome ? "home" : "public";
   const allRecipes = cookingEnabled
@@ -1133,6 +1155,7 @@ export default async function WorldPage() {
             craftAp={ap}
             craftTags={craftTags}
             craftTagSlots={craftTagSlots}
+            weeklyIncome={weeklyIncome}
           />
 
           <FriendsDock

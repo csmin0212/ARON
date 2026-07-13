@@ -356,6 +356,8 @@ model CharacterSheet {
   lifeJson       String? // 생활스킬 상태 JSON { fishing/plant: {exp,level}, perks[], pending[] }
   adventurerRank String    @default("D") // 모험가 길드 등급
   fame           Int       @default(0) // 다음 등급까지 누적 명성치
+  sheetSkillsJson  String? // 시트 스킬란(B65:D104, B144:D181)에서 SL 1+ 인 스킬 [{name, sl}]
+  weeklyIncomeJson String? // 분수 광장 주간 수입 수령 상태 { week, claimed: [] } — 던전 주간 키 기준
   syncedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

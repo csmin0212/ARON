@@ -139,11 +139,12 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     fate: parsed.fate,
     gold: inventory?.gold ?? parsed.gold,
     adventurerRank: parsed.adventurerRank ?? undefined,
-    fame: parsed.fame ?? undefined,
+    fame: parsed.fame ?? 0,
     curHp: parsed.hp,
     curMp: parsed.mp,
     curGold: parseGoldToInt(inventory?.gold ?? parsed.gold),
     statsJson: JSON.stringify(parsed.stats),
+    sheetSkillsJson: JSON.stringify(parsed.skills), // SL 1+ 스킬 — 주간 수입 판정용
     invJson: inventory ? JSON.stringify(inventory) : undefined,
     syncedAt: new Date(),
   };
