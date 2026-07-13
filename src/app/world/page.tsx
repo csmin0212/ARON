@@ -72,8 +72,10 @@ import {
   isBellTowerLocation,
   isHomeLocationId,
   parseHousingState,
+  ownedProductionOption,
   productionDailyPoints,
   productionRedeemCost,
+  productionSlotCap,
   serializeHousingState,
 } from "@/lib/housing";
 import FriendsDock from "@/components/FriendsDock";
@@ -702,9 +704,13 @@ export default async function WorldPage() {
           rank: item.rank,
           cost: productionRedeemCost(item.rank),
         }));
+      const facility = ownedProductionOption(housingState, kind);
       acc[kind] = {
         points: production.points,
         dailyPoints: productionDailyPoints(production),
+        capacity: productionSlotCap(housingState, kind),
+        facilityName: facility?.name ?? (kind === "낚시" ? "어항" : "약초 화분"),
+        facilityEmoji: facility?.emoji ?? (kind === "낚시" ? "🐠" : "🪴"),
         slots: production.slots,
         bagItems,
         redeemItems,

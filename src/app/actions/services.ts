@@ -39,17 +39,20 @@ import {
   bedRestBonus,
   accrueHousingProduction,
   furnitureOption,
+  furnitureSellPrice,
   hasFurnitureEffect,
   homeOwnerFromLocationId,
   homeTierFromLocationId,
   houseOption,
   houseSellPrice,
-  HOUSING_PRODUCTION_MAX_SLOTS,
   isBellTowerLocation,
   isHomeLocationId,
+  ownedFamilyOption,
   ownedHouseOptions,
+  ownedProductionOption,
   parseHousingState,
   productionRedeemCost,
+  productionSlotCap,
   serializeHousingState,
   type HousingProductionKind,
 } from "@/lib/housing";
@@ -851,13 +854,14 @@ export async function stockHousingProduction(
   }
 
   const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
-  const requiredFurniture = kind === "낚시" ? "aquarium" : "planter";
-  if (!housing.items.includes(requiredFurniture)) {
+  const facility = ownedProductionOption(housing, kind);
+  if (!facility) {
     return { error: kind === "낚시" ? "어항이 필요합니다." : "약초 화분이 필요합니다." };
   }
   accrueHousingProduction(housing);
-  if (housing.production[kind].slots.length >= HOUSING_PRODUCTION_MAX_SLOTS) {
-    return { error: "이미 5개까지 넣어두었어요." };
+  const cap = productionSlotCap(housing, kind);
+  if (housing.production[kind].slots.length >= cap) {
+    return { error: `${facility.name}에는 ${cap}개까지만 넣을 수 있어요.` };
   }
 
   const life = parseLifeState(sheet.lifeJson);
@@ -882,7 +886,7 @@ export async function stockHousingProduction(
   });
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: `${bagItem.name}을(를) ${kind === "낚시" ? "어항" : "화분"}에 넣었어요.` };
+  return { ok: `${bagItem.name}을(를) ${facility.name}에 넣었어요.` };
 }
 
 export async function withdrawHousingProduction(
@@ -1973,21 +1977,37 @@ export async function buyFurniture(
   if (housing.owned.length === 0) return { error: "집이 있어야 가구를 들일 수 있어요." };
   if (housing.items.includes(item.id)) return { error: `${item.name}은(는) 이미 보유 중이에요.` };
 
+  // 같은 계열은 한 개만 — 상위 구매 시 하위를 반값에 자동 판매하고 교체 (집과 동일한 방식)
+  const owned = item.family ? ownedFamilyOption(housing, item.family) : null;
+  if (owned && (owned.tier ?? 0) >= (item.tier ?? 0)) {
+    return { error: `이미 같은 등급 이상인 ${owned.name}을(를) 보유 중이에요.` };
+  }
+  const refund = owned ? furnitureSellPrice(owned) : 0;
+
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
-  if (currentGold < item.price) {
-    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${item.price.toLocaleString()}G)` };
+  if (currentGold + refund < item.price) {
+    return {
+      error: `골드가 부족합니다. (${(currentGold + refund).toLocaleString()}G/${item.price.toLocaleString()}G${refund > 0 ? ", 기존 가구 매각금 포함" : ""})`,
+    };
   }
 
-  const nextGold = currentGold - item.price;
+  const nextGold = currentGold + refund - item.price;
   const inv = ctx.inv;
   inv.gold = `${nextGold}G`;
+  const nextItems = [...housing.items.filter((id) => id !== owned?.id), item.id];
+  // 하루 1회 사용 기록은 교체한 가구로 승계 — 업그레이드 당일 이중 사용 방지
+  const nextUsedAt = { ...housing.usedAt };
+  if (owned && nextUsedAt[owned.id]) {
+    nextUsedAt[item.id] = nextUsedAt[owned.id];
+    delete nextUsedAt[owned.id];
+  }
   await prisma.characterSheet.update({
     where: { userId: ctx.userId },
     data: {
       curGold: nextGold,
       gold: `${nextGold}G`,
       invJson: JSON.stringify(inv),
-      housingJson: serializeHousingState({ ...housing, items: [...housing.items, item.id] }),
+      housingJson: serializeHousingState({ ...housing, items: nextItems, usedAt: nextUsedAt }),
       achStatsJson: bumpStat(sheet?.achStatsJson, "가구구매횟수"),
     },
   });
@@ -1995,7 +2015,11 @@ export async function buyFurniture(
   void checkAndGrant(ctx.userId);
 
   revalidatePath("/world");
-  return { ok: `${item.emoji} ${item.name}을(를) 집에 들였어요!` };
+  return {
+    ok: owned
+      ? `${item.emoji} ${owned.name}을(를) ${refund.toLocaleString()}G에 판매하고 ${item.name}(으)로 교체했어요!`
+      : `${item.emoji} ${item.name}을(를) 집에 들였어요!`,
+  };
 }
 
 // ── 가구 상호작용 — 본인 집에서 하루 1회 (KST 자정 초기화) ──

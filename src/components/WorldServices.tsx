@@ -108,6 +108,9 @@ export type HousingView = {
 export type HousingProductionView = {
   points: number;
   dailyPoints: number;
+  capacity: number; // 보유 가구 티어별 보관 한도 (미보유 0)
+  facilityName: string; // 보유 가구 이름 (어항/큰 어항/산호 수족관 …)
+  facilityEmoji: string;
   slots: {
     name: string;
     rank: number;
@@ -397,7 +400,8 @@ function HousingProductionFacility({
     redeemHousingProduction,
     undefined,
   );
-  const slotPlaceholders = Array.from({ length: 5 }, (_, i) => data.slots[i] ?? null);
+  const capacity = Math.max(data.capacity, data.slots.length);
+  const slotPlaceholders = Array.from({ length: capacity }, (_, i) => data.slots[i] ?? null);
 
   return (
     <div
@@ -419,14 +423,14 @@ function HousingProductionFacility({
           <div className="mt-1 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-2xl font-extrabold text-content">
-                {meta.icon} {meta.title}
+                {data.facilityEmoji} {data.facilityName}
               </h3>
               <p className="mt-1 text-xs font-bold text-faint">
                 {housing.atHome ? "본인 집 시설 사용 가능" : "본인 집에서만 상호작용 가능"}
               </p>
             </div>
             <span className="rounded-full bg-surface px-3 py-1.5 text-sm font-black text-brand-600">
-              {data.slots.length}/5
+              {data.slots.length}/{capacity}
             </span>
           </div>
         </div>
@@ -502,7 +506,9 @@ function HousingProductionFacility({
             <form action={stockAction} className="rounded-2xl border border-line bg-subtle p-4">
               <input type="hidden" name="kind" value={kind} />
               <p className="text-sm font-extrabold text-content">가방에서 넣기</p>
-              <p className="mt-1 text-xs text-faint">{meta.verb} 최대 5개까지 보관합니다.</p>
+              <p className="mt-1 text-xs text-faint">
+                {meta.verb} 최대 {capacity}개까지 보관합니다.
+              </p>
               <div className="mt-3 flex gap-2">
                 <select
                   name="itemName"
@@ -1383,7 +1389,7 @@ const FURNITURE_GROUPS = [
     key: "bed",
     icon: "🛏️",
     title: "침구류",
-    note: "휴식 회복은 보유한 침대 중 가장 좋은 것 하나만 적용돼요.",
+    note: "상위 침대로 교체하면 기존 침대는 반값에 판매돼요.",
     tile: "border-amber-200/70 bg-amber-50",
     match: (item: (typeof FURNITURE_OPTIONS)[number]) => item.effect.type === "rest_bonus",
   },
@@ -1449,7 +1455,7 @@ function FurnitureTab({
     if (effect.type === "production") {
       const data = housing.production[effect.kind];
       return {
-        text: `${data.points.toLocaleString()}P · ${data.slots.length}/5`,
+        text: `${data.points.toLocaleString()}P · ${data.slots.length}/${Math.max(data.capacity, data.slots.length)}`,
         tone: "text-brand-600",
       };
     }
@@ -1514,9 +1520,13 @@ function FurnitureTab({
           )}
         </div>
         {FURNITURE_GROUPS.map((group) => {
-          const forSale = FURNITURE_OPTIONS.filter(
-            (item) => group.match(item) && !ownedSet.has(item.id),
-          );
+          // 같은 계열은 상위 교체 방식 — 보유 등급 이하 티어는 상점에서 숨긴다
+          const forSale = FURNITURE_OPTIONS.filter((item) => {
+            if (!group.match(item) || ownedSet.has(item.id)) return false;
+            if (!item.family) return true;
+            const ownedInFamily = ownedItems.find((o) => o.family === item.family);
+            return !ownedInFamily || (ownedInFamily.tier ?? 0) < (item.tier ?? 0);
+          });
           return (
             <div key={group.key}>
               <div className="mb-1.5 flex items-baseline gap-2 px-1">
@@ -1531,41 +1541,60 @@ function FurnitureTab({
                 </p>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {forSale.map((item) => (
-                    <form
-                      key={item.id}
-                      action={furnAction}
-                      onSubmit={(e) => {
-                        if (!owned) {
-                          e.preventDefault();
-                          window.alert("집을 먼저 구매해주세요.");
-                        }
-                      }}
-                      className="group rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50/60"
-                    >
-                      <input type="hidden" name="itemId" value={item.id} />
-                      <div className="flex items-start gap-2.5">
-                        <span
-                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border text-xl ${group.tile}`}
-                        >
-                          {item.emoji}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-extrabold text-content">{item.name}</p>
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-faint">
-                            {item.desc}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={furnPending}
-                        className="mt-2.5 w-full rounded-xl bg-emerald-500/90 px-3 py-1.5 text-xs font-black text-white transition group-hover:bg-emerald-500 disabled:opacity-50"
+                  {forSale.map((item) => {
+                    const upgradeFrom = item.family
+                      ? (ownedItems.find((o) => o.family === item.family) ?? null)
+                      : null;
+                    const refund = upgradeFrom ? Math.floor(upgradeFrom.price / 2) : 0;
+                    return (
+                      <form
+                        key={item.id}
+                        action={furnAction}
+                        onSubmit={(e) => {
+                          if (!owned) {
+                            e.preventDefault();
+                            window.alert("집을 먼저 구매해주세요.");
+                            return;
+                          }
+                          if (upgradeFrom) {
+                            const ok = window.confirm(
+                              `기존 ${upgradeFrom.name}을(를) ${refund.toLocaleString()}G에 판매하고 ${item.name}(으)로 교체합니다. 넣어둔 내용물과 점수는 그대로 유지돼요. 진행할까요?`,
+                            );
+                            if (!ok) e.preventDefault();
+                          }
+                        }}
+                        className="group rounded-2xl border border-line bg-subtle p-3 transition hover:border-brand-300 hover:bg-brand-50/60"
                       >
-                        {item.price.toLocaleString()}G 구매
-                      </button>
-                    </form>
-                  ))}
+                        <input type="hidden" name="itemId" value={item.id} />
+                        <div className="flex items-start gap-2.5">
+                          <span
+                            className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border text-xl ${group.tile}`}
+                          >
+                            {item.emoji}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-extrabold text-content">{item.name}</p>
+                            <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-faint">
+                              {item.desc}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={furnPending}
+                          className={`mt-2.5 w-full rounded-xl px-3 py-1.5 text-xs font-black text-white transition disabled:opacity-50 ${
+                            upgradeFrom
+                              ? "bg-brand-500/90 group-hover:bg-brand-500"
+                              : "bg-emerald-500/90 group-hover:bg-emerald-500"
+                          }`}
+                        >
+                          {upgradeFrom
+                            ? `${item.price.toLocaleString()}G 교체 (기존 ${refund.toLocaleString()}G 환급)`
+                            : `${item.price.toLocaleString()}G 구매`}
+                        </button>
+                      </form>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2588,8 +2617,14 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
   const ownedFurniture = useMemo(() => new Set(housing.furnitureOwned), [housing.furnitureOwned]);
+  // 티어 무관 — 해당 종류의 생산 가구(어항·화분 계열)를 하나라도 보유하면 시설 노출
   const productionFacilities = (["낚시", "채집"] as const).filter((kind) =>
-    ownedFurniture.has(productionMeta(kind).itemId),
+    FURNITURE_OPTIONS.some(
+      (item) =>
+        item.effect.type === "production" &&
+        item.effect.kind === kind &&
+        ownedFurniture.has(item.id),
+    ),
   );
   const dailyFacilities = FURNITURE_OPTIONS.filter(
     (item) => ownedFurniture.has(item.id) && item.interactLabel && item.effect.type !== "production",
@@ -2754,15 +2789,17 @@ export default function WorldServices({
                   onClick={() => setProductionOpen(kind)}
                   className="flex w-full items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-100"
                 >
-                  <span className="text-xl">{meta.icon}</span>
+                  <span className="text-xl">{data.facilityEmoji}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-extrabold text-content">{meta.title}</span>
+                    <span className="block text-sm font-extrabold text-content">
+                      {data.facilityName}
+                    </span>
                     <span className="text-[11px] font-bold text-brand-600">
                       {meta.pointName} {data.points.toLocaleString()}P · 매일 +{data.dailyPoints.toLocaleString()}P
                     </span>
                   </span>
                   <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-xs font-black text-brand-600">
-                    {data.slots.length}/5
+                    {data.slots.length}/{Math.max(data.capacity, data.slots.length)}
                   </span>
                 </button>
               );

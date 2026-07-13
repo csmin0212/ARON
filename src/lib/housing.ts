@@ -2,7 +2,8 @@ export type HouseTier = "small" | "standard" | "luxury";
 export type HousingProductionKind = "낚시" | "채집";
 
 export const HOUSING_PRODUCTION_KINDS: readonly HousingProductionKind[] = ["낚시", "채집"] as const;
-export const HOUSING_PRODUCTION_MAX_SLOTS = 5;
+// 파싱 시 허용하는 절대 상한 (최상위 가구 기준). 실제 보관 한도는 보유 가구의 slots.
+export const HOUSING_PRODUCTION_MAX_SLOTS = 15;
 export const HOUSING_PRODUCTION_SCORE_BY_RANK = [1, 3, 6, 10, 30, 100] as const;
 export const HOUSING_PRODUCTION_COST_BY_RANK = [10, 50, 100, 250, 1000, 5000] as const;
 
@@ -72,7 +73,7 @@ export type FurnitureEffect =
   | { type: "rest_bonus"; amount: number } // 침구류 — 집 휴식 회복량 가산 (보유 침대 중 최댓값만 적용)
   | { type: "daily_ap"; amount: number } // 하루 1회 상호작용 — 피로도 회복
   | { type: "daily_gold"; min: number; max: number } // 하루 1회 상호작용 — 골드
-  | { type: "production"; kind: HousingProductionKind } // 어항/화분 — 투입 아이템으로 일일 포인트 생산
+  | { type: "production"; kind: HousingProductionKind; slots: number } // 어항/화분 — 투입 한도는 티어별
   | { type: "nameplate" } // 집 이름 짓기 해금
   | { type: "guestbook" }; // 방문객 방명록 해금
 
@@ -84,6 +85,9 @@ export type FurnitureOption = {
   desc: string;
   interactLabel: string | null; // null 이면 패시브(버튼 없음)
   effect: FurnitureEffect;
+  // 같은 family 는 한 개만 보유 — 상위 tier 구매 시 하위를 반값에 자동 판매하고 교체 (집과 동일)
+  family?: "bed" | "aquarium" | "planter" | "bank";
+  tier?: number; // family 내 등급 (1이 최하위)
 };
 
 export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
@@ -95,6 +99,8 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     desc: "삐걱거리지만 눕긴 눕는다. 집 휴식 회복 +10.",
     interactLabel: null,
     effect: { type: "rest_bonus", amount: 10 },
+    family: "bed",
+    tier: 1,
   },
   {
     id: "bed_cozy",
@@ -104,6 +110,8 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     desc: "볕에 말린 이불 냄새가 난다. 집 휴식 회복 +20.",
     interactLabel: null,
     effect: { type: "rest_bonus", amount: 20 },
+    family: "bed",
+    tier: 2,
   },
   {
     id: "bed_cloud",
@@ -113,6 +121,8 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     desc: "눕는 순간 기억이 끊긴다. 집 휴식 회복 +40.",
     interactLabel: null,
     effect: { type: "rest_bonus", amount: 40 },
+    family: "bed",
+    tier: 3,
   },
   {
     id: "fireplace",
@@ -130,7 +140,31 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     price: 2000,
     desc: "채집물을 최대 5개 심어 매일 화분 점수를 모은다. 점수로 도감에 등록한 채집물을 꺼낼 수 있다.",
     interactLabel: null,
-    effect: { type: "production", kind: "채집" },
+    effect: { type: "production", kind: "채집", slots: 5 },
+    family: "planter",
+    tier: 1,
+  },
+  {
+    id: "planter_terrace",
+    name: "약초 화단",
+    emoji: "🌷",
+    price: 5000,
+    desc: "창가를 가득 채운 화단. 채집물을 최대 10개까지 심어둘 수 있다.",
+    interactLabel: null,
+    effect: { type: "production", kind: "채집", slots: 10 },
+    family: "planter",
+    tier: 2,
+  },
+  {
+    id: "planter_garden",
+    name: "비밀 정원",
+    emoji: "🌺",
+    price: 15000,
+    desc: "집 뒤편에 꾸민 나만의 정원. 채집물을 최대 15개까지 심어둘 수 있다.",
+    interactLabel: null,
+    effect: { type: "production", kind: "채집", slots: 15 },
+    family: "planter",
+    tier: 3,
   },
   {
     id: "aquarium",
@@ -139,7 +173,31 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     price: 2000,
     desc: "물고기를 최대 5마리 넣어 매일 어항 점수를 모은다. 점수로 도감에 등록한 물고기를 꺼낼 수 있다.",
     interactLabel: null,
-    effect: { type: "production", kind: "낚시" },
+    effect: { type: "production", kind: "낚시", slots: 5 },
+    family: "aquarium",
+    tier: 1,
+  },
+  {
+    id: "aquarium_grand",
+    name: "큰 어항",
+    emoji: "🐟",
+    price: 5000,
+    desc: "수초와 자갈까지 갖춘 널찍한 어항. 물고기를 최대 10마리까지 넣을 수 있다.",
+    interactLabel: null,
+    effect: { type: "production", kind: "낚시", slots: 10 },
+    family: "aquarium",
+    tier: 2,
+  },
+  {
+    id: "aquarium_coral",
+    name: "산호 수족관",
+    emoji: "🪸",
+    price: 15000,
+    desc: "산호가 흔들리는 바닷속 한 조각. 물고기를 최대 15마리까지 넣을 수 있다.",
+    interactLabel: null,
+    effect: { type: "production", kind: "낚시", slots: 15 },
+    family: "aquarium",
+    tier: 3,
   },
   {
     id: "piggy_bank",
@@ -149,6 +207,30 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     desc: "어디서 모아오는 걸까. 하루 1회 흔들면 동전이 떨어진다. (5~30G)",
     interactLabel: "흔들기",
     effect: { type: "daily_gold", min: 5, max: 30 },
+    family: "bank",
+    tier: 1,
+  },
+  {
+    id: "piggy_gold",
+    name: "황금 돼지 저금통",
+    emoji: "🪙",
+    price: 5000,
+    desc: "금빛으로 반질반질한 복돼지. 하루 1회 흔들면 제법 묵직하게 떨어진다. (30~50G)",
+    interactLabel: "흔들기",
+    effect: { type: "daily_gold", min: 30, max: 50 },
+    family: "bank",
+    tier: 2,
+  },
+  {
+    id: "dragon_vault",
+    name: "용의 금고",
+    emoji: "🐉",
+    price: 12000,
+    desc: "작은 용이 보물을 물어다 쌓아두는 금고. 하루 1회 열면 반짝인다. (50~100G)",
+    interactLabel: "금고 열기",
+    effect: { type: "daily_gold", min: 50, max: 100 },
+    family: "bank",
+    tier: 3,
   },
   {
     id: "nameplate",
@@ -172,6 +254,38 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
 
 export function furnitureOption(id: string | null | undefined): FurnitureOption | null {
   return FURNITURE_OPTIONS.find((option) => option.id === id) ?? null;
+}
+
+export function furnitureSellPrice(option: FurnitureOption): number {
+  return Math.floor(option.price / 2);
+}
+
+// family 내에서 보유 중인 가구 (한 개만 존재한다는 전제 — 최고 티어 반환)
+export function ownedFamilyOption(
+  state: HousingStateData,
+  family: NonNullable<FurnitureOption["family"]>,
+): FurnitureOption | null {
+  return state.items
+    .map((id) => furnitureOption(id))
+    .filter((option): option is FurnitureOption => option?.family === family)
+    .reduce<FurnitureOption | null>(
+      (best, option) => (!best || (option.tier ?? 0) > (best.tier ?? 0) ? option : best),
+      null,
+    );
+}
+
+// 보유한 생산 가구 (어항/화분 계열) — 없으면 null
+export function ownedProductionOption(
+  state: HousingStateData,
+  kind: HousingProductionKind,
+): FurnitureOption | null {
+  return ownedFamilyOption(state, kind === "낚시" ? "aquarium" : "planter");
+}
+
+// 해당 종류의 보관 한도 — 보유 가구 티어 기준 (없으면 0)
+export function productionSlotCap(state: HousingStateData, kind: HousingProductionKind): number {
+  const owned = ownedProductionOption(state, kind);
+  return owned?.effect.type === "production" ? owned.effect.slots : 0;
 }
 
 export type HousingStateData = {
