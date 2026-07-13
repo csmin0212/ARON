@@ -938,10 +938,15 @@ export default async function WorldPage() {
     );
   }
 
-  // 적용 중인 요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 낚시·채집 행운은 한 칩으로 합침)
+  // 적용 중인 요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 생활 행운은 한 칩으로 합침)
   const buffRows: WorldBuff[] = [];
   for (const buff of life.cookingBuffs.lifeLuck) {
-    const kinds = buff.kind === "both" ? ["낚시", "채집"] : [buff.kind];
+    const kinds =
+      buff.kind === "all"
+        ? ["낚시", "채집", "채광"]
+        : buff.kind === "both"
+          ? ["낚시", "채집"]
+          : [buff.kind];
     const found = buffRows.find(
       (row) => row.until === buff.until && row.label.endsWith(`행운 +${buff.amount}`) && row.icon === "🍀",
     );

@@ -24,6 +24,7 @@ import {
   isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
+  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordCollection,
@@ -171,7 +172,7 @@ export async function startGathering(): Promise<GatherStart> {
   if (!pool?.enabled) return { error: "여기서는 채집을 할 수 없어요." };
 
   const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, GATHER);
+  const mods = computeMods(life, GATHER, lifeLuckModFromStats(sheet.statsJson));
 
   // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
   const apCost = Math.max(1, action.apCost - mods.apCostDown);
@@ -186,7 +187,7 @@ export async function startGathering(): Promise<GatherStart> {
   await loadLifeItems();
   let caught;
   try {
-    caught = pickLifeSkillCatch(GATHER, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+    caught = pickLifeSkillCatch(GATHER, { ...pool, weights: adjustedRankWeights(mods, regionBase, level) });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "채집 목록 설정을 확인해주세요." };
   }

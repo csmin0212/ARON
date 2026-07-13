@@ -227,7 +227,12 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
   // 같은 요리에서 나온 낚시·채집 버프(출처·수치·만료 동일)는 한 줄로 합쳐 보여준다.
   const luckRows: { source: string; amount: number; until: string; kinds: string[] }[] = [];
   for (const buff of activeLuck) {
-    const kinds = buff.kind === "both" ? ["낚시", "채집"] : [buff.kind];
+    const kinds =
+      buff.kind === "all"
+        ? ["낚시", "채집", "채광"]
+        : buff.kind === "both"
+          ? ["낚시", "채집"]
+          : [buff.kind];
     const found = luckRows.find(
       (row) => row.source === buff.source && row.amount === buff.amount && row.until === buff.until,
     );

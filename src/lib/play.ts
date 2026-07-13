@@ -36,6 +36,7 @@ import {
   isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
+  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordLifeCatch,
@@ -256,7 +257,7 @@ export async function runActionCommand(
         return { error: `이 장소에서는 ${lifeSkillKind}을 할 수 없어요.` };
       }
       const life = parseLifeState(sheet.lifeJson);
-      const mods = computeMods(life, lifeSkillKind);
+      const mods = computeMods(life, lifeSkillKind, lifeLuckModFromStats(sheet.statsJson));
       const level = progressOf(life, lifeSkillKind).level;
       const levelBase = baseWeightsFor(level);
       const regionBase = locationPool.weights
@@ -267,7 +268,7 @@ export async function runActionCommand(
       try {
         caught = pickLifeSkillCatch(lifeSkillKind, {
           ...locationPool,
-          weights: adjustedRankWeights(mods, regionBase),
+          weights: adjustedRankWeights(mods, regionBase, level),
         });
       } catch (e) {
         return { error: e instanceof Error ? e.message : `${lifeSkillKind} 목록 설정을 확인해주세요.` };

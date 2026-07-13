@@ -1291,20 +1291,25 @@ export async function sellCookedFood(
   return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
 }
 
-function parseLifeLuck(effect: string): { kind: LifeSkillKind | "both"; amount: number } | null {
-  const match = effect.match(/(?:낚시·채집|낚시|채집)\s*행운\s*\+(\d+)/);
+function parseLifeLuck(effect: string): { kind: LifeSkillKind | "both" | "all"; amount: number } | null {
+  const match = effect.match(/(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+(\d+)/);
   if (!match) return null;
   const amount = Number.parseInt(match[1], 10);
   if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (effect.includes("낚시·채집·채광")) return { kind: "all", amount };
   if (effect.includes("낚시·채집")) return { kind: "both", amount };
   if (effect.includes("낚시")) return { kind: "낚시", amount };
   if (effect.includes("채집")) return { kind: "채집", amount };
+  if (effect.includes("채광")) return { kind: "채광", amount };
   return null;
 }
 
 function parseSessionBuff(effect: string): string | null {
   const match = effect.match(/세션\s*버프\s*:\s*([^\n(]+)/);
-  return match?.[1]?.trim() || null;
+  if (match?.[1]) return match[1].trim();
+  const scenario = effect.match(/시나리오\s*종료\s*시\s*까지\s*지속\s*[.。]?\s*([^\n]+)/);
+  if (scenario?.[1]) return scenario[1].replace(/\s*버프\s*$/i, "").trim();
+  return null;
 }
 
 // "30분 동안 감지 판정 +1" — 월드 판정 버프 (행동·탐색·던전 판정에 적용).
@@ -1312,7 +1317,7 @@ function parseSessionBuff(effect: string): string | null {
 function parseStatBuff(effect: string): { label: string; amount: number } | null {
   if (/세션\s*버프/.test(effect)) return null;
   const match = effect.match(
-    /(근력|재주|민첩|지력|감지|정신|행운|원하는\s*능력|모든\s*능력)\s*판정\s*\+(\d+)/,
+    /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+(\d+)(?:\s*(?:증가|버프))?/,
   );
   if (!match) return null;
   const amount = Number.parseInt(match[2], 10);
@@ -1330,12 +1335,13 @@ function rollD6(n: number): number {
 // "HP [2D] 회복", "MP 3 회복" 등 회복 효과를 파싱해 굴린 회복량 목록을 반환.
 function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number }[] {
   const out: { resource: "HP" | "MP"; amount: number }[] = [];
-  // "HP [2D] 회복", "HP [2D]+1 회복"(주사위+평탄), "MP 3 회복"(평탄) 모두 처리
-  const re = /\b(HP|MP)\s*(?:\[(\d+)\s*D\](?:\s*\+\s*(\d+))?|(\d+))\s*점?\s*회복/gi;
+  // "HP [2D] 회복", "HP 1D회복", "HP [2D]+1 회복", "MP 3 회복" 모두 처리
+  const re = /\b(HP|MP)\s*(?:\[(\d+)\s*D\]|(\d+)\s*D)(?:\s*\+\s*(\d+))?\s*점?\s*회복|\b(HP|MP)\s*(\d+)\s*점?\s*회복/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(effect))) {
-    const resource = m[1].toUpperCase() as "HP" | "MP";
-    const amount = m[2] ? rollD6(Number(m[2])) + (m[3] ? Number(m[3]) : 0) : Number(m[4]);
+    const resource = (m[1] ?? m[5]).toUpperCase() as "HP" | "MP";
+    const dice = m[2] ?? m[3];
+    const amount = dice ? rollD6(Number(dice)) + (m[4] ? Number(m[4]) : 0) : Number(m[6]);
     if (amount > 0) out.push({ resource, amount });
   }
   return out;
@@ -1427,11 +1433,11 @@ export async function useCookingItem(
 
   if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
-    // 같은 종류(낚시/채집)엔 행운 버프 1개만 — 가장 높은 수치가 남는다.
-    // 낚시·채집은 슬롯이 따로라, 낚시 버프는 채집 버프를 건드리지 않는다. (채광 등 확장 시 동일 규칙 적용)
+    // 같은 종류엔 행운 버프 1개만 — 가장 높은 수치가 남는다.
+    // 낚시·채집·채광은 슬롯이 따로라, 적용되는 종류만 교체한다.
     // 더 약한(미만) 요리는 소모하지 않고 거부. 같은 수치는 시간 갱신용으로 허용.
-    const kindsOf = (k: LifeSkillKind | "both"): LifeSkillKind[] =>
-      k === "both" ? ["낚시", "채집"] : [k];
+    const kindsOf = (k: LifeSkillKind | "both" | "all"): LifeSkillKind[] =>
+      k === "all" ? ["낚시", "채집", "채광"] : k === "both" ? ["낚시", "채집"] : [k];
     const bestFor = (k: LifeSkillKind) =>
       Math.max(
         0,
@@ -1458,6 +1464,11 @@ export async function useCookingItem(
       const remain = kindsOf(b.kind).filter((k) => !applicable.includes(k));
       if (remain.length === kindsOf(b.kind).length) rest.push(b);
       else if (remain.length === 1) rest.push({ ...b, kind: remain[0] });
+      else if (remain.length === 2 && remain.includes("낚시") && remain.includes("채집")) {
+        rest.push({ ...b, kind: "both" });
+      } else if (remain.length > 0) {
+        for (const kind of remain) rest.push({ ...b, kind });
+      }
     }
     for (const k of applicable) {
       rest.push({ kind: k, amount: lifeLuck.amount, until: until.toISOString(), source: itemName });

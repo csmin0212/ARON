@@ -24,6 +24,7 @@ import {
   isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
+  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordCollection,
@@ -178,7 +179,7 @@ export async function startMining(): Promise<MineStart> {
   if (!pool?.enabled) return { error: "여기서는 채광을 할 수 없어요." };
 
   const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, MINE);
+  const mods = computeMods(life, MINE, lifeLuckModFromStats(sheet.statsJson));
 
   // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
   const apCost = Math.max(1, action.apCost - mods.apCostDown);
@@ -193,7 +194,7 @@ export async function startMining(): Promise<MineStart> {
   await loadLifeItems();
   let caught;
   try {
-    caught = pickLifeSkillCatch(MINE, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+    caught = pickLifeSkillCatch(MINE, { ...pool, weights: adjustedRankWeights(mods, regionBase, level) });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "채광 목록 설정을 확인해주세요." };
   }
