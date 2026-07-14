@@ -58,6 +58,7 @@ import {
 } from "@/lib/guildQuests";
 import type { QuestOfferView } from "@/components/GuildQuestBoard";
 import { lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
+import { gradeInfo, parseCookedName } from "@/lib/auction";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   HOUSE_OPTIONS,
@@ -801,14 +802,22 @@ export default async function WorldPage() {
     });
   const cookedPrice = new Map(allRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
   cookedPrice.set("실패한 요리", 1);
+  // 등급 요리("고품질 ○○", "○○의 △△")도 판매 목록에 포함 — 접두어를 떼어 기본 레시피와 대조하고
+  // 등급 배수(priceMult)를 곱한 단가를 표기. 접두어만 우연히 걸리는 재료는 base 매칭으로 걸러진다.
   const cookedFoods = bagItems
-    .filter((item) => cookedPrice.has(item.name.trim()))
-    .map((item) => ({
-      name: item.name.trim(),
-      qty: item.qty,
-      unitPrice: cookedPrice.get(item.name.trim()) ?? 1,
-      effect: item.effect,
-    }));
+    .map((item) => {
+      const raw = item.name.trim();
+      if (cookedPrice.has(raw)) {
+        return { name: raw, qty: item.qty, unitPrice: cookedPrice.get(raw) ?? 1, effect: item.effect };
+      }
+      const { base, grade } = parseCookedName(raw);
+      if (grade && cookedPrice.has(base)) {
+        const unit = Math.round((cookedPrice.get(base) ?? 1) * (gradeInfo(grade)?.priceMult ?? 1));
+        return { name: raw, qty: item.qty, unitPrice: unit, effect: item.effect };
+      }
+      return null;
+    })
+    .filter((food): food is NonNullable<typeof food> => food != null && food.qty > 0);
   const cooking: CookingView = {
     enabled: cookingEnabled,
     facility: cookingFacility,

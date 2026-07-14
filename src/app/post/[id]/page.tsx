@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
@@ -31,15 +32,24 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const postId = Number(id);
   if (!postId) notFound();
 
-  const found = await prisma.post.findUnique({ where: { id: postId } });
-  if (!found) notFound();
+  // 조회수 증가 — 단, Next 라우터 prefetch 요청에서는 세지 않는다.
+  // (목록에서 링크가 화면에 들어오면 프리페치로 페이지가 서버 렌더돼 조회수가 부풀던 문제)
+  const h = await headers();
+  const isPrefetch =
+    h.get("next-router-prefetch") === "1" ||
+    (h.get("purpose") ?? h.get("sec-purpose") ?? "").includes("prefetch");
 
-  // 조회수 증가
-  const post = await prisma.post.update({
-    where: { id: postId },
-    data: { views: { increment: 1 } },
-    include: { author: { select: { id: true, username: true, nickname: true, avatar: true } } },
-  });
+  const authorSelect = {
+    author: { select: { id: true, username: true, nickname: true, avatar: true } },
+  } as const;
+  const post = isPrefetch
+    ? await prisma.post.findUnique({ where: { id: postId }, include: authorSelect })
+    : await prisma.post.update({
+        where: { id: postId },
+        data: { views: { increment: 1 } },
+        include: authorSelect,
+      });
+  if (!post) notFound();
 
   const user = await getCurrentUser();
   const category = getCategory(post.category);

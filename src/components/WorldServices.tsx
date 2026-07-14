@@ -1445,6 +1445,91 @@ function FurnitureTab({
 }) {
   const ownedSet = new Set(housing.furnitureOwned);
   const ownedItems = FURNITURE_OPTIONS.filter((item) => ownedSet.has(item.id));
+  const [detail, setDetail] = useState<FurnitureItem | null>(null);
+
+  // 구매/교체 상태 계산 — 카드·상세 모달 공용
+  function purchaseInfo(item: FurnitureItem) {
+    const isOwned = ownedSet.has(item.id);
+    const fam = item.family ? (ownedItems.find((o) => o.family === item.family) ?? null) : null;
+    const surpassed = !isOwned && !!fam && (fam.tier ?? 0) > (item.tier ?? 0);
+    const upgradeFrom = !isOwned && !surpassed && fam && fam.id !== item.id ? fam : null;
+    const refund = upgradeFrom ? Math.floor(upgradeFrom.price / 2) : 0;
+    return { isOwned, surpassed, upgradeFrom, refund };
+  }
+
+  // 효과 한 줄 요약 (상세 모달용)
+  function effectSummary(item: FurnitureItem): string {
+    const e = item.effect;
+    switch (e.type) {
+      case "rest_bonus":
+        return `집 휴식 회복 +${e.amount}`;
+      case "daily_ap":
+        return `하루 1회 · 피로도 +${e.amount}`;
+      case "daily_gold":
+        return `하루 1회 · ${e.min}~${e.max}G`;
+      case "production":
+        return `${e.kind} ${e.slots}칸 보관 · 매일 점수 적립`;
+      case "nameplate":
+        return "집 이름 짓기 해금";
+      case "guestbook":
+        return "방문객 방명록 해금";
+    }
+  }
+
+  // 구매/교체 버튼 또는 상태 배지 — 카드·상세 모달 공용
+  function purchaseAction(item: FurnitureItem) {
+    const { isOwned, surpassed, upgradeFrom, refund } = purchaseInfo(item);
+    if (isOwned) {
+      return (
+        <span className="block w-full rounded-xl bg-brand-500 px-3 py-1.5 text-center text-xs font-black text-white">
+          ✅ 사용중
+        </span>
+      );
+    }
+    if (surpassed) {
+      return (
+        <span className="block w-full rounded-xl bg-subtle-hover px-3 py-1.5 text-center text-xs font-black text-faint">
+          하위 등급
+        </span>
+      );
+    }
+    return (
+      <form
+        action={furnAction}
+        onSubmit={(e) => {
+          if (!owned) {
+            e.preventDefault();
+            window.alert("집을 먼저 구매해주세요.");
+            return;
+          }
+          if (upgradeFrom) {
+            const ok = window.confirm(
+              `기존 ${upgradeFrom.name}을(를) ${refund.toLocaleString()}G에 판매하고 ${item.name}(으)로 교체합니다. 넣어둔 내용물과 점수는 그대로 유지돼요. 진행할까요?`,
+            );
+            if (!ok) e.preventDefault();
+          }
+        }}
+      >
+        <input type="hidden" name="itemId" value={item.id} />
+        <button
+          type="submit"
+          disabled={furnPending}
+          className={`w-full rounded-xl px-3 py-1.5 text-xs font-black text-white transition disabled:opacity-50 ${
+            upgradeFrom ? "bg-brand-500/90 hover:bg-brand-500" : "bg-emerald-500/90 hover:bg-emerald-500"
+          }`}
+        >
+          {upgradeFrom
+            ? `${item.price.toLocaleString()}G 교체`
+            : `${item.price.toLocaleString()}G 구매`}
+        </button>
+        {upgradeFrom && (
+          <p className="mt-1 text-center text-[10px] font-bold text-faint">
+            기존 {refund.toLocaleString()}G 환급
+          </p>
+        )}
+      </form>
+    );
+  }
 
   // 보유 타일 상태 한 줄 — 지금 뭘 해주고 있는지
   function ownedStatus(item: (typeof FURNITURE_OPTIONS)[number]): {
@@ -1501,9 +1586,11 @@ function FurnitureTab({
             {ownedItems.map((item) => {
               const status = ownedStatus(item);
               return (
-                <div
+                <button
                   key={item.id}
-                  className={`rounded-2xl border p-3 text-center ${furnitureTile(item)}`}
+                  type="button"
+                  onClick={() => setDetail(item)}
+                  className={`rounded-2xl border p-3 text-center transition hover:brightness-95 ${furnitureTile(item)}`}
                 >
                   <span className="block text-3xl drop-shadow-sm">{item.emoji}</span>
                   <p className="mt-1.5 truncate text-sm font-extrabold text-content">
@@ -1512,7 +1599,7 @@ function FurnitureTab({
                   <p className={`mt-0.5 truncate text-[11px] font-bold ${status.tone}`}>
                     {status.text}
                   </p>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -1531,9 +1618,6 @@ function FurnitureTab({
         </div>
         {FURNITURE_SECTIONS.map((section) => {
           const items = sectionItems(section);
-          const ownedInFamily = section.family
-            ? (ownedItems.find((o) => o.family === section.family) ?? null)
-            : null;
           const cols = items.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
           return (
             <div key={section.key}>
@@ -1545,17 +1629,7 @@ function FurnitureTab({
               </div>
               <div className={`grid gap-2 ${cols}`}>
                 {items.map((item) => {
-                  const isOwned = ownedSet.has(item.id);
-                  // 계열에서 더 높은 등급을 이미 보유 → 이 하위 등급은 지나감
-                  const surpassed =
-                    !isOwned && !!ownedInFamily && (ownedInFamily.tier ?? 0) > (item.tier ?? 0);
-                  // 하위 등급 보유 상태에서 이 상위 등급을 사면 교체(반값 환급)
-                  const upgradeFrom =
-                    !isOwned && !surpassed && ownedInFamily && ownedInFamily.id !== item.id
-                      ? ownedInFamily
-                      : null;
-                  const refund = upgradeFrom ? Math.floor(upgradeFrom.price / 2) : 0;
-
+                  const { isOwned, surpassed } = purchaseInfo(item);
                   return (
                     <div
                       key={item.id}
@@ -1567,72 +1641,32 @@ function FurnitureTab({
                             : "border-line bg-subtle"
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-lg ${furnitureTile(item)}`}
-                        >
-                          {item.emoji}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-extrabold text-content">
-                            {item.name}
-                          </p>
-                          {item.tier != null && (
-                            <p className="text-[10px] font-black text-faint">{item.tier}단계</p>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-2 line-clamp-2 min-h-[2.4em] text-[11px] leading-relaxed text-faint">
-                        {item.desc}
-                      </p>
-
-                      {isOwned ? (
-                        <span className="mt-2.5 w-full rounded-xl bg-brand-500 px-3 py-1.5 text-center text-xs font-black text-white">
-                          ✅ 사용중
-                        </span>
-                      ) : surpassed ? (
-                        <span className="mt-2.5 w-full rounded-xl bg-subtle-hover px-3 py-1.5 text-center text-xs font-black text-faint">
-                          하위 등급
-                        </span>
-                      ) : (
-                        <form
-                          action={furnAction}
-                          onSubmit={(e) => {
-                            if (!owned) {
-                              e.preventDefault();
-                              window.alert("집을 먼저 구매해주세요.");
-                              return;
-                            }
-                            if (upgradeFrom) {
-                              const ok = window.confirm(
-                                `기존 ${upgradeFrom.name}을(를) ${refund.toLocaleString()}G에 판매하고 ${item.name}(으)로 교체합니다. 넣어둔 내용물과 점수는 그대로 유지돼요. 진행할까요?`,
-                              );
-                              if (!ok) e.preventDefault();
-                            }
-                          }}
-                          className="mt-2.5"
-                        >
-                          <input type="hidden" name="itemId" value={item.id} />
-                          <button
-                            type="submit"
-                            disabled={furnPending}
-                            className={`w-full rounded-xl px-3 py-1.5 text-xs font-black text-white transition disabled:opacity-50 ${
-                              upgradeFrom
-                                ? "bg-brand-500/90 hover:bg-brand-500"
-                                : "bg-emerald-500/90 hover:bg-emerald-500"
-                            }`}
+                      <button
+                        type="button"
+                        onClick={() => setDetail(item)}
+                        className="flex-1 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-lg ${furnitureTile(item)}`}
                           >
-                            {upgradeFrom
-                              ? `${item.price.toLocaleString()}G 교체`
-                              : `${item.price.toLocaleString()}G 구매`}
-                          </button>
-                          {upgradeFrom && (
-                            <p className="mt-1 text-center text-[10px] font-bold text-faint">
-                              기존 {refund.toLocaleString()}G 환급
+                            {item.emoji}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-extrabold text-content">
+                              {item.name}
                             </p>
-                          )}
-                        </form>
-                      )}
+                            {item.tier != null && (
+                              <p className="text-[10px] font-black text-faint">{item.tier}단계</p>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-[11px] font-bold text-faint2">ⓘ</span>
+                        </div>
+                        <p className="mt-2 line-clamp-2 min-h-[2.4em] text-[11px] leading-relaxed text-faint">
+                          {item.desc}
+                        </p>
+                      </button>
+                      <div className="mt-2.5">{purchaseAction(item)}</div>
                     </div>
                   );
                 })}
@@ -1641,6 +1675,71 @@ function FurnitureTab({
           );
         })}
       </section>
+
+      {/* 가구 상세 — 카드 클릭 시 전체 설명 + 구매/취소 */}
+      {detail && (
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-black/50 px-4 py-6"
+          role="presentation"
+          onClick={() => setDetail(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={detail.name}
+            className="w-full max-w-sm overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`flex items-center gap-3 border-b border-line p-5 ${furnitureTile(detail)}`}>
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-surface/70 text-3xl">
+                {detail.emoji}
+              </span>
+              <div className="min-w-0">
+                <p className="text-lg font-extrabold text-content">{detail.name}</p>
+                <p className="mt-0.5 text-xs font-bold text-muted">
+                  {detail.tier != null ? `${detail.tier}단계 · ` : ""}
+                  {effectSummary(detail)}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-4 p-5">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-content">
+                {detail.desc}
+              </p>
+              {(() => {
+                const { isOwned, upgradeFrom, refund } = purchaseInfo(detail);
+                return (
+                  <div className="space-y-1.5">
+                    {!isOwned && (
+                      <div className="flex items-baseline justify-between rounded-xl bg-subtle px-3 py-2">
+                        <span className="text-xs font-bold text-faint">
+                          {upgradeFrom ? "교체 비용" : "구매 비용"}
+                        </span>
+                        <span className="text-sm font-extrabold text-content">
+                          {detail.price.toLocaleString()}G
+                          {upgradeFrom && (
+                            <span className="ml-1 text-[11px] font-bold text-emerald-500">
+                              (기존 {refund.toLocaleString()}G 환급)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {purchaseAction(detail)}
+                  </div>
+                );
+              })()}
+              <button
+                type="button"
+                onClick={() => setDetail(null)}
+                className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
