@@ -19,9 +19,10 @@ export async function GET() {
   });
   if (!sheet?.locationId) return Response.json({ people: [] });
 
+  // 폴링 엔드포인트 — user 정보만 쓰므로 무거운 시트 JSON 컬럼은 가져오지 않는다 (egress 절감)
   const rows = await prisma.characterSheet.findMany({
     where: { locationId: sheet.locationId },
-    include: { user: { select: { username: true, nickname: true, avatar: true } } },
+    select: { userId: true, user: { select: { username: true, nickname: true, avatar: true } } },
     orderBy: { updatedAt: "desc" },
     take: 50,
   });

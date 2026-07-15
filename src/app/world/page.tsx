@@ -339,9 +339,11 @@ export default async function WorldPage() {
     ? [house]
     : HOUSE_OPTIONS.filter((option) => housingState.owned.includes(option.tier)).slice(0, 1);
 
+  // 같은 장소의 다른 플레이어 — 표시엔 user 정보만 쓰므로 무거운 시트 JSON 컬럼은 가져오지 않는다
+  // (붐비는 장소에서 매 로드마다 전체 시트를 전송하던 egress 폭증 원인)
   const others = await prisma.characterSheet.findMany({
     where: { locationId: here.id, userId: { not: user.id } },
-    include: { user: { select: { username: true, nickname: true, avatar: true } } },
+    select: { userId: true, user: { select: { username: true, nickname: true, avatar: true } } },
     orderBy: { updatedAt: "desc" },
     take: 20,
   });
