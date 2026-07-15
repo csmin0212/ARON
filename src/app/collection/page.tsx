@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getCookingRecipes } from "@/lib/gameCatalog";
 import { collectionItems, isSeaLifeItem, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
@@ -58,7 +59,7 @@ export default async function CollectionPage() {
       where: { userId: user.id, itemId: { in: itemNames } },
       select: { itemId: true, qty: true },
     }),
-    prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } }),
+    getCookingRecipes(),
     prisma.userRecipe.findMany({ where: { userId: user.id }, select: { recipeId: true } }),
     prisma.location.findMany({
       where: { id: { in: locationIds } },

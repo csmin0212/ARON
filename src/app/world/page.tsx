@@ -59,6 +59,7 @@ import {
 import type { QuestOfferView } from "@/components/GuildQuestBoard";
 import { lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { gradeInfo, parseCookedName } from "@/lib/auction";
+import { getCookingRecipes, getCraftEffectItems, getCraftTagRows } from "@/lib/gameCatalog";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   HOUSE_OPTIONS,
@@ -572,11 +573,8 @@ export default async function WorldPage() {
       used: usedCraftMinerals.has(def.name),
     }))
     .filter((entry) => entry.have > 0);
-  // 아이템 탭 드롭품(제작효과 有) — 마이너 재료로 합류 (그리폰 깃털 등)
-  const dropMinorDefs = await prisma.item.findMany({
-    where: { craftEffect: { not: null } },
-    select: { name: true, craftEffect: true, sellPrice: true, desc: true, weight: true },
-  });
+  // 아이템 탭 드롭품(제작효과 有) — 마이너 재료로 합류 (그리폰 깃털 등). 정적 카탈로그라 캐시.
+  const dropMinorDefs = await getCraftEffectItems();
   const mineralNames = new Set(mineralCraftViews.map((entry) => entry.def.name));
   const dropMinorViews: CraftMineralView[] = dropMinorDefs
     .filter((it) => !mineralNames.has(it.name.trim()))
@@ -589,8 +587,8 @@ export default async function WorldPage() {
     }))
     .filter((entry) => entry.have > 0);
   const craftMinerals = [...mineralCraftViews, ...dropMinorViews];
-  // [태그] 룰 사전 — 제작특성 탭 동기화본
-  const craftTagRows = await prisma.craftTag.findMany({ orderBy: { order: "asc" } });
+  // [태그] 룰 사전 — 제작특성 탭 동기화본 (정적 카탈로그라 캐시)
+  const craftTagRows = await getCraftTagRows();
   const craftTags = Object.fromEntries(craftTagRows.map((tag) => [tag.name, tag.desc]));
   const craftTagSlots = Object.fromEntries(craftTagRows.map((tag) => [tag.name, tag.slot]));
   const canMarket = hasServiceKeyword(here, locActions, [
@@ -785,9 +783,7 @@ export default async function WorldPage() {
   }
   const cookingEnabled = canMarket || atMyHome;
   const cookingFacility = atMyHome ? "home" : "public";
-  const allRecipes = cookingEnabled
-    ? await prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } })
-    : [];
+  const allRecipes = cookingEnabled ? await getCookingRecipes() : [];
   const discoveredRecipes = cookingEnabled
     ? await prisma.userRecipe.findMany({
         where: { userId: user.id },

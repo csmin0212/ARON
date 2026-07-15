@@ -819,6 +819,7 @@ export async function syncWorldMap(
   }
 
   revalidatePath("/world");
+  // 캐시된 정적 카탈로그(레시피·제작특성·제작효과 아이템)는 gameCatalog 의 TTL(5분)로 갱신된다.
   const okMsg = `동기화 완료 — ${parts.join(" · ")}`;
   return warns.length > 0 ? { ok: okMsg, error: `⚠ ${warns.join(" / ")}` } : { ok: okMsg };
 }

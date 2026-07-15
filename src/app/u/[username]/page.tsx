@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
+import { getCookingRecipes } from "@/lib/gameCatalog";
 import { getCurrentUser } from "@/lib/auth";
 import { formatFullDate } from "@/lib/format";
 import type { SheetInventory } from "@/lib/googleSheets";
@@ -140,7 +141,7 @@ export default async function CharacterPage({
           take: 20,
         })
       : Promise.resolve([]),
-    prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } }),
+    getCookingRecipes(),
     prisma.userRecipe.findMany({ where: { userId: profile.id }, select: { recipeId: true } }),
   ]);
   const earnedSet = new Set(earnedRows.map((r) => r.achId));
