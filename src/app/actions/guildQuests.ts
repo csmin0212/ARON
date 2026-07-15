@@ -106,6 +106,42 @@ async function decrementDbInventoryByName(userId: string, itemName: string, qty:
   else await prisma.inventoryEntry.update({ where: { id: entry.id }, data: { qty: next } });
 }
 
+// ── 창고(StorageBox) 재고 — 가방 중량과 무관하게 납품 재료로 인정 ──
+type StorageMatch = { id: string; name: string; qty: number };
+
+async function loadStorageMatches(
+  userId: string,
+  matcher: (name: string) => boolean,
+): Promise<StorageMatch[]> {
+  const box = await prisma.storageBox.findUnique({
+    where: { userId },
+    include: { entries: true },
+  });
+  if (!box) return [];
+  return box.entries
+    .filter((entry) => entry.qty > 0 && matcher(entry.name))
+    .map((entry) => ({ id: entry.id, name: entry.name.trim(), qty: entry.qty }));
+}
+
+function storageMatchTotal(rows: StorageMatch[]): number {
+  return rows.reduce((sum, row) => sum + Math.max(0, row.qty), 0);
+}
+
+// 창고에서 qty 만큼 소모 — 등급 없는 원본(짧은 이름) 우선. 실제 소모한 개수를 반환.
+async function consumeStorage(rows: StorageMatch[], qty: number): Promise<number> {
+  let remaining = qty;
+  const sorted = [...rows].sort((a, b) => a.name.length - b.name.length);
+  for (const row of sorted) {
+    if (remaining <= 0) break;
+    const take = Math.min(row.qty, remaining);
+    remaining -= take;
+    const next = row.qty - take;
+    if (next <= 0) await prisma.storageEntry.delete({ where: { id: row.id } });
+    else await prisma.storageEntry.update({ where: { id: row.id }, data: { qty: next } });
+  }
+  return qty - remaining;
+}
+
 // ── 의뢰 수락 ──
 export async function acceptGuildQuest(offerId: string): Promise<GuildQuestActionState> {
   const user = await getCurrentUser();
@@ -174,22 +210,42 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
   const inv = parseInv(sheet.invJson);
   let sheetPushNeeded = false;
 
+  // 재고 = 가방/시트 인벤 + 창고. 가방이 모자라면 창고에서 채워 납품한다 (중량 무관).
   if (LIFE_KINDS.has(offer.kind)) {
     const kind = offer.kind as LifeSkillKind;
-    const have = lifeBagQty(life, kind, offer.itemName);
-    if (have < offer.qty) {
-      return { error: `${offer.itemName}이(가) 부족해요. (보유 ${have} / 필요 ${offer.qty})` };
+    const bagHave = lifeBagQty(life, kind, offer.itemName);
+    const storeRows = await loadStorageMatches(
+      user.id,
+      (name) => name.trim() === offer.itemName.trim(),
+    );
+    const storeHave = storageMatchTotal(storeRows);
+    if (bagHave + storeHave < offer.qty) {
+      return {
+        error: `${offer.itemName}이(가) 부족해요. (보유 ${bagHave + storeHave} / 필요 ${offer.qty})`,
+      };
     }
-    consumeLifeBag(life, kind, offer.itemName, offer.qty);
+    const fromBag = Math.min(bagHave, offer.qty);
+    if (fromBag > 0) consumeLifeBag(life, kind, offer.itemName, fromBag);
+    if (offer.qty - fromBag > 0) await consumeStorage(storeRows, offer.qty - fromBag);
   } else {
-    const have = foodQty(inv, offer.itemName);
-    if (have < offer.qty) {
-      return { error: `${offer.itemName}이(가) 부족해요. (보유 ${have} / 필요 ${offer.qty})` };
+    const bagHave = foodQty(inv, offer.itemName);
+    const storeRows = await loadStorageMatches(user.id, (name) =>
+      matchesFood(name, offer.itemName),
+    );
+    const storeHave = storageMatchTotal(storeRows);
+    if (bagHave + storeHave < offer.qty) {
+      return {
+        error: `${offer.itemName}이(가) 부족해요. (보유 ${bagHave + storeHave} / 필요 ${offer.qty})`,
+      };
     }
-    const used = consumeFood(inv, offer.itemName, offer.qty);
-    // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다
-    for (const [name, qty] of used) void decrementDbInventoryByName(user.id, name, qty).catch(() => {});
-    sheetPushNeeded = true;
+    const fromBag = Math.min(bagHave, offer.qty);
+    if (fromBag > 0) {
+      const used = consumeFood(inv, offer.itemName, fromBag);
+      // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다
+      for (const [name, qty] of used) void decrementDbInventoryByName(user.id, name, qty).catch(() => {});
+      sheetPushNeeded = true;
+    }
+    if (offer.qty - fromBag > 0) await consumeStorage(storeRows, offer.qty - fromBag);
   }
 
   // 보상 — 골드 + 파편 (+ 주간 3회 달성 시 명성 1 + 리롤권 1)

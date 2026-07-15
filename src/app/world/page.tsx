@@ -473,12 +473,25 @@ export default async function WorldPage() {
     };
   });
   const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
-  // 길드 일일 의뢰 — lazy 리셋(자정/주간) + 보유 수량·스킬북 교환 목록 조립
+  // 길드 일일 의뢰 — lazy 리셋(자정/주간) + 보유 수량·스킬북 교환 목록 조립.
+  // 창고(storageBox) 재고도 납품 가능하므로 보유 수량에 합산한다.
   const { state: gq } = await loadGuildQuestState(user.id, sheet);
+  const questStorageQty = (offer: (typeof gq.offers)[number]): number => {
+    const t = offer.itemName.trim();
+    return (
+      storageBox?.entries
+        .filter((entry) => {
+          const n = entry.name.trim();
+          // 요리 의뢰는 등급 접두 인정, 그 외는 정확히 일치
+          return offer.kind === "요리" ? n === t || n.endsWith(` ${t}`) : n === t;
+        })
+        .reduce((sum, entry) => sum + Math.max(0, entry.qty), 0) ?? 0
+    );
+  };
   const questOffers: QuestOfferView[] = gq.offers.map((offer) => ({
     ...offer,
     have:
-      offer.kind === "요리"
+      (offer.kind === "요리"
         ? rawBagItems
             .filter((item) => {
               const n = item.name.trim();
@@ -488,7 +501,7 @@ export default async function WorldPage() {
             .reduce((sum, item) => sum + Math.max(0, item.qty), 0)
         : life.bags[offer.kind].items
             .filter((item) => item.name.trim() === offer.itemName.trim())
-            .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+            .reduce((sum, item) => sum + Math.max(0, item.qty), 0)) + questStorageQty(offer),
   }));
   const bookTokens = await prisma.inventoryEntry.findMany({
     where: { userId: user.id, meta: SKILLBOOK_META, qty: { gt: 0 } },
