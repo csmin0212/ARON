@@ -14,12 +14,24 @@ import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
+  applyAlchemyExp,
   applyCookingExp,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
   recordCollection,
 } from "@/lib/lifeSkillPerks";
+import {
+  BREW_AP_COST,
+  BREW_MAX_MINUTES,
+  BREW_MIN_MINUTES,
+  WEAK_PRICE_MULT,
+  brewHint,
+  buildPotionName,
+  judgeBrew,
+  parsePendingBrew,
+  parsePotionName,
+} from "@/lib/alchemy";
 import { findLifeSkillItem, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
@@ -45,8 +57,10 @@ import {
   homeTierFromLocationId,
   houseOption,
   houseSellPrice,
+  alchemyToleranceBonus,
   isBellTowerLocation,
   isHomeLocationId,
+  ownedAlchemyLab,
   ownedFamilyOption,
   ownedHouseOptions,
   ownedProductionOption,
@@ -63,6 +77,7 @@ export type LifeShopState = { error?: string; ok?: string } | undefined;
 export type MarketState = { error?: string; ok?: string } | undefined;
 export type HousingState = { error?: string; ok?: string } | undefined;
 export type CookingState = { error?: string; ok?: string } | undefined;
+export type AlchemyState = { error?: string; ok?: string } | undefined;
 export type GuildState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
@@ -1269,6 +1284,299 @@ export async function sellCookedFood(
   const baseUnit = base === FAILED_DISH.name ? FAILED_DISH.sellPrice : recipe?.sellPrice;
   if (!baseUnit) return { error: "요리 판매가를 찾지 못했습니다." };
   const unitPrice = Math.round(baseUnit * (gradeInfo(grade)?.priceMult ?? 1));
+
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  const gain = unitPrice * qty;
+  const nextGold = currentGold + gain;
+  const inv = consumeInvItem(ctx.inv, itemName, qty);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  inv.gold = `${nextGold}G`;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        invJson: JSON.stringify(inv),
+      },
+    }),
+    decrementDbInventory(ctx.userId, itemName, qty),
+  ]);
+  void enqueueSheetGoldSync(ctx.userId);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${itemName} x${qty} 판매 완료. +${gain.toLocaleString()}G` };
+}
+
+// ── 연금술 — 본인 집 공방에서 타이머 제조 ──
+// 흐름: startBrew(재료·피로도 소모, 시간 설정) → 대기 → collectBrew(수식어·등급 판정, 지급).
+// 수식어: 최적시간 ±허용오차(레시피 오차 + 공방 티어 보너스) = '완벽한' / ±35% 구간 = 무수식어 / 그 밖 = '약한'.
+function isAlchemistClass(charClass: string | null | undefined): boolean {
+  return (charClass ?? "").replace(/\s+/g, "").includes("알케미");
+}
+
+// 재료 이름과 일치하는 가방 아이템 이름 목록 — 등급/수식어가 붙은 포션("성수 [고품질]")도
+// 기본 이름이 같으면 체인 레시피 재료로 인정한다. 원본 이름이 먼저 소모되도록 정렬.
+function matchingPotionNames(inv: SheetInventory, name: string): string[] {
+  const target = name.trim();
+  const variants = inv.items
+    .filter((item) => item.qty > 0 && item.name.trim() !== target)
+    .map((item) => item.name.trim())
+    .filter((raw) => parsePotionName(raw).base === target);
+  return [target, ...new Set(variants)];
+}
+
+function availableBrewQty(
+  inv: SheetInventory,
+  life: ReturnType<typeof parseLifeState>,
+  name: string,
+): number {
+  const invQty = matchingPotionNames(inv, name).reduce((sum, n) => sum + itemQty(inv, n), 0);
+  return invQty + lifeItemQty(life, name);
+}
+
+async function consumeBrewIngredient(
+  userId: string,
+  inv: SheetInventory,
+  life: ReturnType<typeof parseLifeState>,
+  name: string,
+  qty: number,
+): Promise<void> {
+  let remaining = qty - consumeLifeItem(life, name, qty);
+  for (const variant of matchingPotionNames(inv, name)) {
+    if (remaining <= 0) return;
+    const used = Math.min(itemQty(inv, variant), remaining);
+    if (used <= 0) continue;
+    consumeInvItem(inv, variant, used);
+    await decrementDbInventory(userId, variant, used);
+    remaining -= used;
+  }
+}
+
+export async function startBrew(_prev: AlchemyState, formData: FormData): Promise<AlchemyState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const atHome =
+    isHomeLocationId(ctx.locationId) && homeOwnerFromLocationId(ctx.locationId) === ctx.userId;
+  if (!atHome) return { error: "연금술은 본인 집 공방에서만 할 수 있어요." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { houseTier: true, housingJson: true, lifeJson: true, pendingBrewJson: true },
+  });
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  const lab = ownedAlchemyLab(housing);
+  if (!lab) return { error: "연금술 공방 가구가 필요해요. (종탑 거리 가구점 · 1,000G)" };
+
+  if (parsePendingBrew(sheet?.pendingBrewJson)) {
+    return { error: "이미 가마에 무언가 끓고 있어요. 먼저 수령하거나 비워주세요." };
+  }
+
+  const recipeId = String(formData.get("recipeId") ?? "").trim();
+  const minutes = Math.trunc(Number(formData.get("minutes")));
+  if (!Number.isFinite(minutes) || minutes < BREW_MIN_MINUTES || minutes > BREW_MAX_MINUTES) {
+    return { error: `제조 시간은 ${BREW_MIN_MINUTES}~${BREW_MAX_MINUTES}분 사이로 정해주세요.` };
+  }
+  const recipe = await prisma.alchemyRecipe.findUnique({ where: { id: recipeId } });
+  if (!recipe) return { error: "포션 목록에 없는 레시피예요." };
+
+  const fresh = regenFatigue(ctx.ap, ctx.apResetAt);
+  if (fresh.value < BREW_AP_COST) {
+    return { error: `피로도가 부족합니다. (${fresh.value}/${BREW_AP_COST})` };
+  }
+
+  const life = parseLifeState(sheet?.lifeJson);
+  const ingredients = parseRecipeIngredients(recipe.ingredientsJson);
+  for (const ingredient of ingredients) {
+    const have = availableBrewQty(ctx.inv, life, ingredient.name);
+    if (have < ingredient.qty) {
+      return { error: `${ingredient.name} 수량이 부족합니다. (${have}/${ingredient.qty})` };
+    }
+  }
+
+  const inv = ctx.inv;
+  for (const ingredient of ingredients) {
+    await consumeBrewIngredient(ctx.userId, inv, life, ingredient.name, ingredient.qty);
+  }
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+
+  const now = Date.now();
+  const pending = {
+    recipeId: recipe.id,
+    minutes,
+    startedAt: now,
+    readyAt: now + minutes * 60_000,
+  };
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      ap: fresh.value - BREW_AP_COST,
+      apResetAt: fresh.at,
+      invJson: JSON.stringify(inv),
+      lifeJson: JSON.stringify(life),
+      pendingBrewJson: JSON.stringify(pending),
+    },
+  });
+
+  revalidatePath("/world");
+  return {
+    ok: `⚗️ ${recipe.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
+  };
+}
+
+export async function cancelBrew(): Promise<AlchemyState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { pendingBrewJson: true },
+  });
+  if (!parsePendingBrew(sheet?.pendingBrewJson)) return { error: "진행 중인 제조가 없어요." };
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: { pendingBrewJson: null },
+  });
+  revalidatePath("/world");
+  return { ok: "가마를 비웠어요. (재료와 피로도는 돌아오지 않아요)" };
+}
+
+export async function collectBrew(): Promise<AlchemyState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+
+  const atHome =
+    isHomeLocationId(ctx.locationId) && homeOwnerFromLocationId(ctx.locationId) === ctx.userId;
+  if (!atHome) return { error: "가마는 본인 집 공방에 있어요. 집으로 돌아가주세요." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: {
+      houseTier: true,
+      housingJson: true,
+      lifeJson: true,
+      pendingBrewJson: true,
+      achStatsJson: true,
+    },
+  });
+  const pending = parsePendingBrew(sheet?.pendingBrewJson);
+  if (!pending) return { error: "진행 중인 제조가 없어요." };
+
+  const now = Date.now();
+  if (now < pending.readyAt) {
+    const left = Math.ceil((pending.readyAt - now) / 60_000);
+    return { error: `아직 끓는 중이에요. 약 ${left}분 남았어요.` };
+  }
+
+  const recipe = await prisma.alchemyRecipe.findUnique({ where: { id: pending.recipeId } });
+  if (!recipe) {
+    await prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: { pendingBrewJson: null },
+    });
+    return { error: "레시피 정보가 사라졌어요. 가마를 비웠습니다." };
+  }
+
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  const life = parseLifeState(sheet?.lifeJson);
+
+  // 판정 — 공방 티어 보너스(0/±1/±2)와 레시피 자체 오차를 합산한 허용 범위
+  const tolerance = recipe.tolerance + (alchemyToleranceBonus(housing) ?? 0);
+  const modifier = judgeBrew(pending.minutes, recipe.bestMinutes, tolerance);
+  const grade = rollCookGrade(life.alchemy.level, isAlchemistClass(ctx.charClass));
+  const gi = gradeInfo(grade);
+
+  const price = Math.round(
+    recipe.sellPrice * (gi?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+  );
+  const label =
+    grade === "장인" ? `✨${ctx.nickname}의 장인작 — ` : grade ? `✨${grade} — ` : "";
+  const baseEffect = recipe.effect
+    ? (gi?.effectBonus ?? 0) > 0
+      ? enhanceEffectText(recipe.effect, gi?.effectBonus ?? 0)
+      : recipe.effect
+    : "";
+  const effectLines = [
+    baseEffect ? `${label}${baseEffect}` : label || "",
+    modifier === "완벽한" && recipe.perfectEffect ? `✨완벽 — ${recipe.perfectEffect}` : "",
+    modifier === "약한" ? "⚠️약한 — 수치 효과 절반(끝수 올림)." : "",
+    `판매가 ${price}G`,
+  ].filter(Boolean);
+
+  const resultName = buildPotionName(recipe.resultName, modifier, grade, ctx.nickname);
+  const inv = addInvItem(
+    ctx.inv,
+    { name: resultName, effect: effectLines.join("\n"), weight: recipe.weight },
+    recipe.resultQty,
+  );
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+
+  const levels = applyAlchemyExp(life, Math.max(1, recipe.skillExp));
+  const firstPerfect = modifier === "완벽한" && !life.alchemyPerfect.includes(recipe.id);
+  if (firstPerfect) life.alchemyPerfect.push(recipe.id);
+
+  let achStats = bumpStat(sheet?.achStatsJson, "연금성공횟수");
+  achStats = setMaxStat(achStats, "연금최고등급", recipeRankNumber(recipe.rank));
+  if (grade) achStats = setMaxStat(achStats, "연금최고제작등급", COOK_GRADE_NUMBER[grade] ?? 0);
+  if (modifier === "완벽한") achStats = bumpStat(achStats, "연금완벽횟수");
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        invJson: JSON.stringify(inv),
+        lifeJson: JSON.stringify(life),
+        pendingBrewJson: null,
+        achStatsJson: achStats,
+      },
+    }),
+    incrementDbInventory(ctx.userId, resultName, recipe.resultQty),
+  ]);
+  void appendSheetItem(ctx.tab, resultName, recipe.resultQty, {
+    effect: effectLines.join("\n"),
+    weight: recipe.weight,
+  });
+  await checkAndGrant(ctx.userId);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return {
+    ok: [
+      modifier === "완벽한" ? "✨완벽한 제조!" : "",
+      grade === "장인" ? `✨${ctx.nickname}의 장인작!` : grade ? `✨${grade}!` : "",
+      `⚗️ ${resultName} x${recipe.resultQty} 완성.`,
+      brewHint(pending.minutes, recipe.bestMinutes, modifier),
+      firstPerfect ? `📖 ${recipe.name}의 최적 시간을 완전히 익혔어요!` : "",
+      `연금술 숙련도 +${Math.max(1, recipe.skillExp)}`,
+      levels.length > 0 ? `연금술 Lv.${levels.at(-1)} 달성.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
+export async function sellPotion(_prev: AlchemyState, formData: FormData): Promise<AlchemyState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  const qty = formQty(formData);
+  if (!itemName) return { error: "판매할 포션이 올바르지 않습니다." };
+  if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
+
+  const { base, modifier, grade } = parsePotionName(itemName);
+  const recipe = await prisma.alchemyRecipe.findFirst({
+    where: { resultName: base },
+    select: { sellPrice: true },
+  });
+  if (!recipe) return { error: "포션 판매가를 찾지 못했습니다." };
+  const unitPrice = Math.round(
+    recipe.sellPrice * (gradeInfo(grade)?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+  );
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const gain = unitPrice * qty;

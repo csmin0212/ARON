@@ -16,6 +16,7 @@ export const DUNGEON_TAB = process.env.DUNGEON_TAB_NAME || "던전";
 export const ACHIEVEMENTS_TAB = process.env.ACHIEVEMENTS_TAB_NAME || "업적";
 export const EVENTS_TAB = process.env.EVENTS_TAB_NAME || "이벤트";
 export const RECIPES_TAB = process.env.RECIPES_TAB_NAME || "레시피";
+export const POTIONS_TAB = process.env.POTIONS_TAB_NAME || "포션";
 export const FISH_TAB = process.env.FISH_TAB_NAME || "물고기";
 export const GATHER_TAB = process.env.GATHER_TAB_NAME || "채집";
 export const MINERAL_TAB = process.env.MINERAL_TAB_NAME || "광물";
@@ -100,6 +101,13 @@ export type RecipeRow = {
   sellPrice: number;
   weight: number;
   isPublic: boolean;
+};
+
+// 연금술 포션 — 레시피 공통 필드 + 타이머(최적시간·오차·완벽효과)
+export type PotionRow = RecipeRow & {
+  bestMinutes: number;
+  tolerance: number;
+  perfectEffect: string | null;
 };
 
 export type SkillRow = {
@@ -645,6 +653,76 @@ export function parseRecipesGrid(g: string[][]): RecipeRow[] {
   return rows;
 }
 
+// ── 포션(연금술) 탭 ──
+// 포션ID | 이름 | 분류 | 등급 | 필요시설 | 재료 | 결과 | 효과 | 지속 | 숙련도 | 태그 | 공개 | 판매가 | 최적시간(분) | 오차(분) | 완벽효과
+export function parsePotionsGrid(g: string[][]): PotionRow[] {
+  const h = findHeader(g, ["이름", "재료", "최적시간"], {
+    포션ID: "id",
+    레시피ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    분류: "category",
+    등급: "rank",
+    필요시설: "facility",
+    시설: "facility",
+    재료: "ingredients",
+    결과: "result",
+    판매가: "sellPrice",
+    중량: "weight",
+    효과: "effect",
+    지속: "duration",
+    숙련도: "skillExp",
+    태그: "tags",
+    공개: "isPublic",
+    최적시간: "bestMinutes",
+    오차: "tolerance",
+    완벽효과: "perfectEffect",
+    "완벽 효과": "perfectEffect",
+  });
+  if (!h) throw new Error("포션 탭이 없거나 헤더(이름/재료/최적시간)가 없어요.");
+
+  const rows: PotionRow[] = [];
+  const seen = new Set<string>();
+  for (let r = h.row + 1; r < g.length; r++) {
+    const name = at(g, r, h.col.name);
+    const ingredientsSpec = at(g, r, h.col.ingredients);
+    const resultSpec = at(g, r, h.col.result);
+    if (!name || !ingredientsSpec || !resultSpec) continue;
+
+    const id = at(g, r, h.col.id) || name;
+    if (/[,，]/.test(id)) throw new Error(`포션ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+    if (seen.has(id)) throw new Error(`포션ID '${id}' 가 중복됐어요.`);
+    seen.add(id);
+
+    const result = parseIngredients(resultSpec)[0];
+    if (!result) throw new Error(`포션 '${id}' 결과가 비어 있어요.`);
+    const publicRaw = at(g, r, h.col.isPublic);
+    rows.push({
+      id,
+      name,
+      category: at(g, r, h.col.category) || "포션",
+      rank: at(g, r, h.col.rank) || "R1",
+      facility: at(g, r, h.col.facility) || "연금술 공방",
+      ingredients: parseIngredients(ingredientsSpec),
+      resultName: result.name,
+      resultQty: result.qty,
+      effect: at(g, r, h.col.effect) || null,
+      duration: at(g, r, h.col.duration) || null,
+      skillExp: num(at(g, r, h.col.skillExp)) ?? 0,
+      tags: at(g, r, h.col.tags) || null,
+      sellPrice: num(at(g, r, h.col.sellPrice)) ?? 1,
+      weight: num(at(g, r, h.col.weight)) ?? 1,
+      isPublic: /^(y|yes|true|1|공개)$/i.test(publicRaw),
+      bestMinutes: Math.max(1, num(at(g, r, h.col.bestMinutes)) ?? 5),
+      tolerance: Math.max(0, num(at(g, r, h.col.tolerance)) ?? 0),
+      perfectEffect: at(g, r, h.col.perfectEffect) || null,
+    });
+  }
+  if (rows.length === 0) throw new Error("포션 탭에 포션이 없어요.");
+  return rows;
+}
+
 // ── 스킬 탭 ──
 // 스킬ID | 이름 | 계열 | 직업/종류 | 타입 | 등급 | 설명 | 효과키 | 효과값 | 소모품 | 공개유무 | 활성
 export function parseSkillsGrid(g: string[][]): SkillRow[] {
@@ -829,6 +907,13 @@ export async function fetchRecipesRows(): Promise<RecipeRow[] | null> {
     (await fetchTab(WORLD_SHEET_ID, RECIPES_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, RECIPES_TAB));
   if (!g) return null;
   return parseRecipesGrid(g);
+}
+
+export async function fetchPotionsRows(): Promise<PotionRow[] | null> {
+  const g =
+    (await fetchTab(WORLD_SHEET_ID, POTIONS_TAB)) ?? (await fetchTab(MASTER_SHEET_ID, POTIONS_TAB));
+  if (!g) return null;
+  return parsePotionsGrid(g);
 }
 
 // ── 물고기/채집/광물 탭 → 생활 아이템 ──

@@ -13,6 +13,7 @@ import {
   fetchEventsRows,
   fetchAchievementsRows,
   fetchRecipesRows,
+  fetchPotionsRows,
   fetchLifeItemsRows,
   fetchCraftTagsRows,
   fetchSkillsRows,
@@ -702,6 +703,42 @@ export async function syncWorldMap(
     }
   } catch (e) {
     warns.push(e instanceof Error ? e.message : "레시피 탭 오류");
+  }
+
+  // 7-1b) 포션(연금술) (선택) — 정의만 교체.
+  try {
+    const potions = await fetchPotionsRows();
+    if (potions) {
+      await prisma.$transaction([
+        prisma.alchemyRecipe.deleteMany(),
+        prisma.alchemyRecipe.createMany({
+          data: potions.map((potion, i) => ({
+            id: potion.id,
+            name: potion.name,
+            category: potion.category,
+            rank: potion.rank,
+            facility: potion.facility,
+            ingredientsJson: JSON.stringify(potion.ingredients),
+            resultName: potion.resultName,
+            resultQty: potion.resultQty,
+            effect: potion.effect,
+            duration: potion.duration,
+            skillExp: potion.skillExp,
+            tags: potion.tags,
+            sellPrice: potion.sellPrice,
+            weight: potion.weight,
+            isPublic: potion.isPublic,
+            bestMinutes: potion.bestMinutes,
+            tolerance: potion.tolerance,
+            perfectEffect: potion.perfectEffect,
+            order: i,
+          })),
+        }),
+      ]);
+      parts.push(`포션 ${potions.length}개`);
+    }
+  } catch (e) {
+    warns.push(e instanceof Error ? e.message : "포션 탭 오류");
   }
 
   // 7-2) 물고기·채집 (선택) — 낚시/채집 풀의 단일 진실원.

@@ -75,7 +75,8 @@ export type FurnitureEffect =
   | { type: "daily_gold"; min: number; max: number } // 하루 1회 상호작용 — 골드
   | { type: "production"; kind: HousingProductionKind; slots: number } // 어항/화분 — 투입 한도는 티어별
   | { type: "nameplate" } // 집 이름 짓기 해금
-  | { type: "guestbook" }; // 방문객 방명록 해금
+  | { type: "guestbook" } // 방문객 방명록 해금
+  | { type: "alchemy"; tolerance: number }; // 연금술 공방 — 완벽 판정 허용 오차(분) 보너스
 
 export type FurnitureOption = {
   id: string;
@@ -86,7 +87,7 @@ export type FurnitureOption = {
   interactLabel: string | null; // null 이면 패시브(버튼 없음)
   effect: FurnitureEffect;
   // 같은 family 는 한 개만 보유 — 상위 tier 구매 시 하위를 반값에 자동 판매하고 교체 (집과 동일)
-  family?: "bed" | "aquarium" | "planter" | "bank";
+  family?: "bed" | "aquarium" | "planter" | "bank" | "alchemy";
   tier?: number; // family 내 등급 (1이 최하위)
 };
 
@@ -233,6 +234,39 @@ export const FURNITURE_OPTIONS: readonly FurnitureOption[] = [
     tier: 3,
   },
   {
+    id: "alchemy_lab",
+    name: "연금술 공방",
+    emoji: "⚗️",
+    price: 1000,
+    desc: "포션을 달이는 작은 가마와 증류기. 집에서 연금술 제조가 가능해진다. (완벽 판정: 최적 시간 정확히)",
+    interactLabel: null,
+    effect: { type: "alchemy", tolerance: 0 },
+    family: "alchemy",
+    tier: 1,
+  },
+  {
+    id: "alchemy_lab_fine",
+    name: "정밀 연금 공방",
+    emoji: "🧪",
+    price: 3000,
+    desc: "눈금이 촘촘한 유리 기구와 모래시계. 완벽 판정 허용 오차 ±1분.",
+    interactLabel: null,
+    effect: { type: "alchemy", tolerance: 1 },
+    family: "alchemy",
+    tier: 2,
+  },
+  {
+    id: "alchemy_lab_sage",
+    name: "현자의 연금 공방",
+    emoji: "🔮",
+    price: 10000,
+    desc: "스스로 온도를 맞추는 마도 가마. 완벽 판정 허용 오차 ±2분.",
+    interactLabel: null,
+    effect: { type: "alchemy", tolerance: 2 },
+    family: "alchemy",
+    tier: 3,
+  },
+  {
     id: "nameplate",
     name: "문패",
     emoji: "🪧",
@@ -272,6 +306,17 @@ export function ownedFamilyOption(
       (best, option) => (!best || (option.tier ?? 0) > (best.tier ?? 0) ? option : best),
       null,
     );
+}
+
+// 보유한 연금술 공방 (최고 티어) — 없으면 null
+export function ownedAlchemyLab(state: HousingStateData): FurnitureOption | null {
+  return ownedFamilyOption(state, "alchemy");
+}
+
+// 공방 티어에 따른 완벽 판정 허용 오차(분) 보너스 — 미보유 시 null
+export function alchemyToleranceBonus(state: HousingStateData): number | null {
+  const lab = ownedAlchemyLab(state);
+  return lab?.effect.type === "alchemy" ? lab.effect.tolerance : null;
 }
 
 // 보유한 생산 가구 (어항/화분 계열) — 없으면 null

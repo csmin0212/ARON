@@ -57,9 +57,16 @@ import {
   WEEK_GOAL,
 } from "@/lib/guildQuests";
 import type { QuestOfferView } from "@/components/GuildQuestBoard";
-import { lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
+import { expForNext, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
 import { gradeInfo, parseCookedName } from "@/lib/auction";
-import { getCookingRecipes, getCraftEffectItems, getCraftTagRows } from "@/lib/gameCatalog";
+import { WEAK_PRICE_MULT, parsePendingBrew, parsePotionName } from "@/lib/alchemy";
+import type { AlchemyRecipeView, AlchemyView } from "@/components/AlchemyLab";
+import {
+  getAlchemyRecipes,
+  getCookingRecipes,
+  getCraftEffectItems,
+  getCraftTagRows,
+} from "@/lib/gameCatalog";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   HOUSE_OPTIONS,
@@ -71,8 +78,10 @@ import {
   homeTierFromLocationId,
   houseOption,
   houseSellPrice,
+  alchemyToleranceBonus,
   isBellTowerLocation,
   isHomeLocationId,
+  ownedAlchemyLab,
   parseHousingState,
   ownedProductionOption,
   productionDailyPoints,
@@ -851,6 +860,80 @@ export default async function WorldPage() {
     knownRecipes,
     cookedFoods,
   };
+  // ── 연금술 — 본인 집 + 연금술 공방 가구가 있을 때만 ──
+  const alchemyLab = ownedAlchemyLab(housingState);
+  const alchemyEnabled = atMyHome && alchemyLab != null;
+  const alchemyRecipes = alchemyEnabled ? await getAlchemyRecipes() : [];
+  const alchemyRecipeViews: AlchemyRecipeView[] = alchemyRecipes.map((recipe) => {
+    const ingredientList = parseRecipeIngredients(recipe.ingredientsJson).map((ingredient) => ({
+      name: ingredient.name,
+      qty: ingredient.qty,
+    }));
+    // 최적시간·완벽효과는 비밀 — 완벽 제조에 성공한 포션만 공개
+    const mastered = life.alchemyPerfect.includes(recipe.id);
+    return {
+      id: recipe.id,
+      name: recipe.name,
+      rank: recipe.rank,
+      category: recipe.category,
+      ingredients: ingredientList.map((i) => `${i.name}x${i.qty}`).join(", "),
+      ingredientList,
+      resultName: recipe.resultName,
+      sellPrice: recipe.sellPrice,
+      effect: recipe.effect,
+      duration: recipe.duration,
+      skillExp: recipe.skillExp,
+      tags: recipe.tags,
+      mastered,
+      bestMinutes: mastered ? recipe.bestMinutes : null,
+      perfectEffect: mastered ? recipe.perfectEffect : null,
+    };
+  });
+  const potionPrice = new Map(alchemyRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
+  const potionsForSale = alchemyEnabled
+    ? bagItems
+        .map((item) => {
+          const raw = item.name.trim();
+          const { base, modifier, grade } = parsePotionName(raw);
+          if (!potionPrice.has(base)) return null;
+          const unit = Math.round(
+            (potionPrice.get(base) ?? 1) *
+              (gradeInfo(grade)?.priceMult ?? 1) *
+              (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+          );
+          return { name: raw, qty: item.qty, unitPrice: unit, effect: item.effect };
+        })
+        .filter((potion): potion is NonNullable<typeof potion> => potion != null && potion.qty > 0)
+    : [];
+  let brewing: AlchemyView["brewing"] = null;
+  if (alchemyEnabled && sheet.pendingBrewJson) {
+    const pendingBrew = parsePendingBrew(sheet.pendingBrewJson);
+    if (pendingBrew) {
+      const brewRecipe = alchemyRecipes.find((recipe) => recipe.id === pendingBrew.recipeId);
+      brewing = {
+        recipeId: pendingBrew.recipeId,
+        recipeName: brewRecipe?.name ?? "알 수 없는 포션",
+        minutes: pendingBrew.minutes,
+        startedAt: pendingBrew.startedAt,
+        readyAt: pendingBrew.readyAt,
+      };
+    }
+  }
+  const alchemy: AlchemyView = {
+    enabled: alchemyEnabled,
+    labName: alchemyLab?.name ?? "연금술 공방",
+    labEmoji: alchemyLab?.emoji ?? "⚗️",
+    labTier: alchemyLab?.tier ?? 0,
+    tolerance: alchemyToleranceBonus(housingState) ?? 0,
+    ap,
+    gold: housing.gold,
+    level: life.alchemy.level,
+    exp: life.alchemy.exp,
+    expToNext: expForNext(life.alchemy.level),
+    recipes: alchemyRecipeViews,
+    brewing,
+    potions: potionsForSale,
+  };
   let gatherPending: PendingGatherView | null = null;
   if (sheet.pendingGatherJson) {
     try {
@@ -1186,6 +1269,7 @@ export default async function WorldPage() {
             canHousing={canHousing}
             canGacha={here.id === "대상야영지"}
             cooking={cooking}
+            alchemy={alchemy}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}

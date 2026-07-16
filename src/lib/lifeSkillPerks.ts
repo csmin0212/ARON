@@ -35,6 +35,8 @@ export type LifeState = {
   mining: SkillProgress;
   cooking: SkillProgress;
   smithing: SkillProgress; // 대장(장비 제작) — 레벨업 시 마이너 슬롯 확장
+  alchemy: SkillProgress; // 연금술(포션 제조) — 레벨은 등급 추첨 확률에 반영
+  alchemyPerfect: string[]; // 완벽 제조에 성공한 포션ID — 최적시간·완벽효과 해금 표시
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
@@ -208,6 +210,8 @@ const EMPTY: LifeState = {
   mining: { exp: 0, level: 1 },
   cooking: { exp: 0, level: 1 },
   smithing: { exp: 0, level: 1 },
+  alchemy: { exp: 0, level: 1 },
+  alchemyPerfect: [],
   perks: [],
   pending: [],
   collection: { 채집: [], 낚시: [], 채광: [] },
@@ -286,6 +290,8 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       mining: v.mining ?? { exp: 0, level: 1 },
       cooking: v.cooking ?? { exp: 0, level: 1 },
       smithing: v.smithing ?? { exp: 0, level: 1 },
+      alchemy: v.alchemy ?? { exp: 0, level: 1 },
+      alchemyPerfect: uniqueStrings(v.alchemyPerfect),
       perks: v.perks ?? [],
       pending: v.pending ?? [],
       collection: {
@@ -478,6 +484,19 @@ export function applyExp(
 
 export function applyCookingExp(state: LifeState, gained: number): number[] {
   const prog = state.cooking;
+  prog.exp += gained;
+  const leveled: number[] = [];
+  while (prog.exp >= expForNext(prog.level)) {
+    prog.exp -= expForNext(prog.level);
+    prog.level += 1;
+    leveled.push(prog.level);
+  }
+  return leveled;
+}
+
+// 연금술 숙련 — 요리와 동일 곡선, 특성 없이 레벨만 (레벨 = 등급 추첨 확률)
+export function applyAlchemyExp(state: LifeState, gained: number): number[] {
+  const prog = state.alchemy;
   prog.exp += gained;
   const leveled: number[] = [];
   while (prog.exp >= expForNext(prog.level)) {

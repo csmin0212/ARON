@@ -16,6 +16,12 @@ export const getCookingRecipes = unstable_cache(
   { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
 );
 
+export const getAlchemyRecipes = unstable_cache(
+  () => prisma.alchemyRecipe.findMany({ orderBy: { order: "asc" } }),
+  ["catalog:alchemy-recipes"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
 export const getCraftTagRows = unstable_cache(
   () =>
     prisma.craftTag.findMany({

@@ -41,6 +41,7 @@ import type { WeeklyIncomeView } from "@/lib/weeklyIncome";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
+import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import RecipeGacha from "@/components/RecipeGacha";
 import { detectForgeSlot } from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
@@ -54,6 +55,7 @@ type Props = {
   canHousing: boolean;
   canGacha: boolean;
   cooking: CookingView;
+  alchemy: AlchemyView;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
@@ -1473,6 +1475,10 @@ function FurnitureTab({
         return "집 이름 짓기 해금";
       case "guestbook":
         return "방문객 방명록 해금";
+      case "alchemy":
+        return e.tolerance > 0
+          ? `연금술 제조 해금 · 완벽 판정 ±${e.tolerance}분`
+          : "연금술 제조 해금 (완벽 판정: 정확히)";
     }
   }
 
@@ -2699,6 +2705,7 @@ export default function WorldServices({
   canHousing,
   canGacha,
   cooking,
+  alchemy,
   inventoryItems,
   lifeStorageItems,
   lifeShop,
@@ -2722,6 +2729,7 @@ export default function WorldServices({
   const [questOpen, setQuestOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
+  const [alchemyOpen, setAlchemyOpen] = useState(false);
   const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
@@ -2769,7 +2777,7 @@ export default function WorldServices({
     (item) => ownedFurniture.has(item.id) && item.interactLabel && item.effect.type !== "production",
   );
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !canGacha && !weeklyIncome) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -2833,6 +2841,32 @@ export default function WorldServices({
                   {cooking.facilityName} · 재료 최대 {cooking.maxIngredients}개 · 피로도 10
                 </span>
               </span>
+            </button>
+          )}
+          {alchemy.enabled && (
+            <button
+              type="button"
+              onClick={() => setAlchemyOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-3.5 py-3 text-left transition hover:border-violet-300 hover:from-violet-100 hover:to-fuchsia-100 dark:from-violet-950/40 dark:to-fuchsia-950/30"
+            >
+              <span className={`text-xl ${alchemy.brewing ? "alch-glow inline-block" : ""}`}>
+                {alchemy.labEmoji}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-content">{alchemy.labName}</span>
+                <span className="text-[11px] font-bold text-violet-600 dark:text-violet-300">
+                  {alchemy.brewing
+                    ? Date.now() >= alchemy.brewing.readyAt
+                      ? `${alchemy.brewing.recipeName} 완성!`
+                      : `${alchemy.brewing.recipeName} 끓는 중…`
+                    : `연금술 Lv.${alchemy.level} · 완벽 판정 ±${alchemy.tolerance}분`}
+                </span>
+              </span>
+              {alchemy.brewing && Date.now() >= alchemy.brewing.readyAt && (
+                <span className="shrink-0 rounded-full bg-violet-500 px-2.5 py-1 text-xs font-black text-white">
+                  ✨수령
+                </span>
+              )}
             </button>
           )}
           {canGacha && (
@@ -3028,6 +3062,15 @@ export default function WorldServices({
           inventoryItems={inventoryItems}
           lifeStorageItems={lifeStorageItems}
           onClose={() => setCookingOpen(false)}
+        />
+      )}
+
+      {alchemyOpen && (
+        <AlchemyLab
+          alchemy={alchemy}
+          inventoryItems={inventoryItems}
+          lifeItems={lifeStorageItems}
+          onClose={() => setAlchemyOpen(false)}
         />
       )}
 

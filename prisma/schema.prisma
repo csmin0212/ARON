@@ -159,6 +159,32 @@ model CookingRecipe {
   @@index([resultName])
 }
 
+// 연금술 포션 레시피 (GM 시트 '포션' 탭에서 동기화). 요리 레시피 + 타이머(최적시간·오차·완벽효과).
+model AlchemyRecipe {
+  id              String   @id // 포션ID
+  name            String
+  category        String
+  rank            String
+  facility        String
+  ingredientsJson String // [{ name, qty }]
+  resultName      String
+  resultQty       Int      @default(1)
+  effect          String?
+  duration        String?
+  skillExp        Int      @default(0)
+  tags            String?
+  sellPrice       Int      @default(1)
+  weight          Int      @default(1)
+  isPublic        Boolean  @default(false)
+  bestMinutes     Int      @default(5) // 최적 제조 시간(분)
+  tolerance       Int      @default(0) // 완벽 판정 기본 허용 오차(분) — 공방 확장 보너스와 합산
+  perfectEffect   String? // 정확한 분을 맞췄을 때 붙는 부가 효과
+  order           Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@index([resultName])
+}
+
 // 스킬 정의 (GM 시트 '스킬' 탭에서 동기화). 생활 특성, 스킬북, 전투/직업 스킬까지 확장 가능.
 model Skill {
   id          String   @id // 스킬ID
@@ -346,6 +372,7 @@ model CharacterSheet {
   pendingCatchJson String? // 낚시 미니게임 진행 중 걸린 어종(서버 추첨 결과) — 성공 시 지급
   pendingGatherJson String? // 채집 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
   pendingMineJson String? // 채광 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
+  pendingBrewJson String? // 연금술 제조 진행 상태 { recipeId, minutes, readyAt } — 백그라운드 타이머
   guildQuestJson String? // 길드 일일 의뢰 상태 JSON { day, offers[], acceptedId, 리롤권, 주간, 파편 } — lib/guildQuests.ts
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
   dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
