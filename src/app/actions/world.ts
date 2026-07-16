@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
+import { WORLD_GM_ONLY } from "@/lib/worldAccess";
 import { fetchWorldRows, regenFatigue, FATIGUE_MAX, dungeonWeekKey } from "@/lib/world";
 import {
   fetchItemsRows,
@@ -323,6 +324,8 @@ function autoLifeActions(
 export async function enterWorld(): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
+  // 본편 개시 전 — GM 외 입장 차단 (UI 우회 방지)
+  if (WORLD_GM_ONLY && !isGmUsername(user.username)) return;
 
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet) return;
