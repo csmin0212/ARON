@@ -108,6 +108,8 @@ export type PotionRow = RecipeRow & {
   bestMinutes: number;
   tolerance: number;
   perfectEffect: string | null;
+  adeptPerfectEffect: string | null;
+  masterPerfectEffect: string | null;
 };
 
 export type SkillRow = {
@@ -679,6 +681,12 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
     오차: "tolerance",
     완벽효과: "perfectEffect",
     "완벽 효과": "perfectEffect",
+    숙련완벽효과: "adeptPerfectEffect",
+    "숙련 완벽효과": "adeptPerfectEffect",
+    "숙련 완벽 효과": "adeptPerfectEffect",
+    장인완벽효과: "masterPerfectEffect",
+    "장인 완벽효과": "masterPerfectEffect",
+    "장인 완벽 효과": "masterPerfectEffect",
   });
   if (!h) throw new Error("포션 탭이 없거나 헤더(이름/재료/최적시간)가 없어요.");
 
@@ -717,6 +725,8 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
       bestMinutes: Math.max(1, num(at(g, r, h.col.bestMinutes)) ?? 5),
       tolerance: Math.max(0, num(at(g, r, h.col.tolerance)) ?? 0),
       perfectEffect: at(g, r, h.col.perfectEffect) || null,
+      adeptPerfectEffect: at(g, r, h.col.adeptPerfectEffect) || null,
+      masterPerfectEffect: at(g, r, h.col.masterPerfectEffect) || null,
     });
   }
   if (rows.length === 0) throw new Error("포션 탭에 포션이 없어요.");

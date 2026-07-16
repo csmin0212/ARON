@@ -35,8 +35,9 @@ export type LifeState = {
   mining: SkillProgress;
   cooking: SkillProgress;
   smithing: SkillProgress; // 대장(장비 제작) — 레벨업 시 마이너 슬롯 확장
-  alchemy: SkillProgress; // 연금술(포션 제조) — 레벨은 등급 추첨 확률에 반영
+  alchemy: SkillProgress; // 연금술(하위호환 표시값) — 실제 레벨은 장인 달성 포션 수로 계산
   alchemyPerfect: string[]; // 완벽 제조에 성공한 포션ID — 최적시간·완벽효과 해금 표시
+  alchemyMastery: Record<string, number>; // 포션ID별 숙련도. 60=숙련, 180=장인
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
@@ -212,6 +213,7 @@ const EMPTY: LifeState = {
   smithing: { exp: 0, level: 1 },
   alchemy: { exp: 0, level: 1 },
   alchemyPerfect: [],
+  alchemyMastery: {},
   perks: [],
   pending: [],
   collection: { 채집: [], 낚시: [], 채광: [] },
@@ -267,6 +269,21 @@ function uniqueStrings(value: unknown): string[] {
   ];
 }
 
+function normalizeAlchemyMastery(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, number> = {};
+  for (const [id, raw] of Object.entries(value)) {
+    const exp =
+      typeof raw === "number"
+        ? raw
+        : raw && typeof raw === "object" && "exp" in raw && typeof raw.exp === "number"
+          ? raw.exp
+          : 0;
+    if (id.trim() && exp > 0) out[id.trim()] = Math.trunc(exp);
+  }
+  return out;
+}
+
 function normalizeLocationRecords(
   records: Partial<Record<LifeSkillKind, Record<string, unknown>>> | undefined,
 ): Record<LifeSkillKind, Record<string, string[]>> {
@@ -281,10 +298,10 @@ function normalizeLocationRecords(
 }
 
 export function parseLifeState(json: string | null | undefined): LifeState {
-  if (!json) return structuredClone(EMPTY);
+  if (!json) return withDerivedAlchemyLevel(structuredClone(EMPTY));
   try {
     const v = JSON.parse(json) as Partial<LifeState>;
-    return {
+    return withDerivedAlchemyLevel({
       fishing: v.fishing ?? { exp: 0, level: 1 },
       plant: v.plant ?? { exp: 0, level: 1 },
       mining: v.mining ?? { exp: 0, level: 1 },
@@ -292,6 +309,7 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       smithing: v.smithing ?? { exp: 0, level: 1 },
       alchemy: v.alchemy ?? { exp: 0, level: 1 },
       alchemyPerfect: uniqueStrings(v.alchemyPerfect),
+      alchemyMastery: normalizeAlchemyMastery(v.alchemyMastery),
       perks: v.perks ?? [],
       pending: v.pending ?? [],
       collection: {
@@ -332,9 +350,9 @@ export function parseLifeState(json: string | null | undefined): LifeState {
             )
           : [],
       },
-    };
+    });
   } catch {
-    return structuredClone(EMPTY);
+    return withDerivedAlchemyLevel(structuredClone(EMPTY));
   }
 }
 
@@ -494,17 +512,64 @@ export function applyCookingExp(state: LifeState, gained: number): number[] {
   return leveled;
 }
 
-// 연금술 숙련 — 요리와 동일 곡선, 특성 없이 레벨만 (레벨 = 등급 추첨 확률)
-export function applyAlchemyExp(state: LifeState, gained: number): number[] {
-  const prog = state.alchemy;
-  prog.exp += gained;
-  const leveled: number[] = [];
-  while (prog.exp >= expForNext(prog.level)) {
-    prog.exp -= expForNext(prog.level);
-    prog.level += 1;
-    leveled.push(prog.level);
-  }
-  return leveled;
+export const ALCHEMY_ADEPT_MASTERY = 60;
+export const ALCHEMY_MASTER_MASTERY = 180;
+
+export type AlchemyMasteryRank = "기본" | "숙련" | "장인";
+
+export function alchemyMasteryRank(exp: number): AlchemyMasteryRank {
+  if (exp >= ALCHEMY_MASTER_MASTERY) return "장인";
+  if (exp >= ALCHEMY_ADEPT_MASTERY) return "숙련";
+  return "기본";
+}
+
+export function alchemyMasterySuffix(exp: number): string | null {
+  const rank = alchemyMasteryRank(exp);
+  if (rank === "장인") return "명품";
+  if (rank === "숙련") return "고급";
+  return null;
+}
+
+export function alchemyMasterCount(state: Pick<LifeState, "alchemyMastery">): number {
+  return Object.values(state.alchemyMastery).filter((exp) => alchemyMasteryRank(exp) === "장인").length;
+}
+
+export function alchemyLevel(state: Pick<LifeState, "alchemyMastery">): number {
+  return 1 + alchemyMasterCount(state);
+}
+
+function withDerivedAlchemyLevel(state: LifeState): LifeState {
+  state.alchemy = { exp: 0, level: alchemyLevel(state) };
+  return state;
+}
+
+export function recordAlchemyCraft(
+  state: LifeState,
+  recipeId: string,
+  perfect: boolean,
+): {
+  before: number;
+  after: number;
+  gained: number;
+  rank: AlchemyMasteryRank;
+  becameAdept: boolean;
+  becameMaster: boolean;
+} {
+  const id = recipeId.trim();
+  const before = Math.max(0, state.alchemyMastery[id] ?? 0);
+  const gained = perfect ? 3 : 1;
+  const after = before + gained;
+  state.alchemyMastery[id] = after;
+  state.alchemy = { exp: 0, level: alchemyLevel(state) };
+
+  return {
+    before,
+    after,
+    gained,
+    rank: alchemyMasteryRank(after),
+    becameAdept: before < ALCHEMY_ADEPT_MASTERY && after >= ALCHEMY_ADEPT_MASTERY,
+    becameMaster: before < ALCHEMY_MASTER_MASTERY && after >= ALCHEMY_MASTER_MASTERY,
+  };
 }
 
 // 대장(장비 제작) 숙련 — 요리와 동일 곡선, 특성 없이 레벨만 (레벨업 = 마이너 슬롯 확장)

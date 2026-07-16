@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useActionState } from "react";
+import { useEffect, useMemo, useState, useActionState } from "react";
 import {
   buyFurniture,
   buyHouse,
@@ -2731,6 +2731,7 @@ export default function WorldServices({
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
   const [alchemyOpen, setAlchemyOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
@@ -2777,6 +2778,13 @@ export default function WorldServices({
   const dailyFacilities = FURNITURE_OPTIONS.filter(
     (item) => ownedFurniture.has(item.id) && item.interactLabel && item.effect.type !== "production",
   );
+  const alchemyReady = !!alchemy.brewing && nowMs >= alchemy.brewing.readyAt;
+
+  useEffect(() => {
+    if (!alchemy.brewing) return;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [alchemy.brewing]);
 
   if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !weeklyIncome) return null;
 
@@ -2857,13 +2865,13 @@ export default function WorldServices({
                 <span className="block text-sm font-extrabold text-content">{alchemy.labName}</span>
                 <span className="text-[11px] font-bold text-violet-600 dark:text-violet-300">
                   {alchemy.brewing
-                    ? Date.now() >= alchemy.brewing.readyAt
+                    ? alchemyReady
                       ? `${alchemy.brewing.recipeName} 완성!`
                       : `${alchemy.brewing.recipeName} 끓는 중…`
-                    : `연금술 Lv.${alchemy.level} · 완벽 판정 ±${alchemy.tolerance}분`}
+                    : `연금술 Lv.${alchemy.level} · 장인 ${alchemy.masterCount}/${alchemy.recipeCount} · 완벽 판정 ±${alchemy.tolerance}분`}
                 </span>
               </span>
-              {alchemy.brewing && Date.now() >= alchemy.brewing.readyAt && (
+              {alchemyReady && (
                 <span className="shrink-0 rounded-full bg-violet-500 px-2.5 py-1 text-xs font-black text-white">
                   ✨수령
                 </span>

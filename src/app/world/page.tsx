@@ -57,9 +57,18 @@ import {
   WEEK_GOAL,
 } from "@/lib/guildQuests";
 import type { QuestOfferView } from "@/components/GuildQuestBoard";
-import { expForNext, lifeBagLimit, lifeBagWeight, parseLifeState } from "@/lib/lifeSkillPerks";
+import {
+  ALCHEMY_ADEPT_MASTERY,
+  ALCHEMY_MASTER_MASTERY,
+  alchemyLevel,
+  alchemyMasterCount,
+  alchemyMasteryRank,
+  lifeBagLimit,
+  lifeBagWeight,
+  parseLifeState,
+} from "@/lib/lifeSkillPerks";
 import { gradeInfo, parseCookedName } from "@/lib/auction";
-import { WEAK_PRICE_MULT, parsePendingBrew, parsePotionName } from "@/lib/alchemy";
+import { WEAK_PRICE_MULT, alchemyGradeInfo, parsePendingBrew, parsePotionName } from "@/lib/alchemy";
 import type { AlchemyRecipeView, AlchemyView } from "@/components/AlchemyLab";
 import {
   getAlchemyRecipes,
@@ -871,6 +880,14 @@ export default async function WorldPage() {
     }));
     // 최적시간·완벽효과는 비밀 — 완벽 제조에 성공한 포션만 공개
     const mastered = life.alchemyPerfect.includes(recipe.id);
+    const masteryExp = life.alchemyMastery[recipe.id] ?? 0;
+    const masteryRank = alchemyMasteryRank(masteryExp);
+    const nextMastery =
+      masteryExp < ALCHEMY_ADEPT_MASTERY
+        ? ALCHEMY_ADEPT_MASTERY
+        : masteryExp < ALCHEMY_MASTER_MASTERY
+          ? ALCHEMY_MASTER_MASTERY
+          : null;
     return {
       id: recipe.id,
       name: recipe.name,
@@ -885,8 +902,13 @@ export default async function WorldPage() {
       skillExp: recipe.skillExp,
       tags: recipe.tags,
       mastered,
+      masteryExp,
+      masteryRank,
+      nextMastery,
       bestMinutes: mastered ? recipe.bestMinutes : null,
       perfectEffect: mastered ? recipe.perfectEffect : null,
+      adeptPerfectEffect: mastered ? recipe.perfectEffect : null,
+      masterPerfectEffect: null,
     };
   });
   const potionPrice = new Map(alchemyRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
@@ -898,7 +920,7 @@ export default async function WorldPage() {
           if (!potionPrice.has(base)) return null;
           const unit = Math.round(
             (potionPrice.get(base) ?? 1) *
-              (gradeInfo(grade)?.priceMult ?? 1) *
+              (alchemyGradeInfo(grade)?.priceMult ?? 1) *
               (modifier === "약한" ? WEAK_PRICE_MULT : 1),
           );
           return { name: raw, qty: item.qty, unitPrice: unit, effect: item.effect };
@@ -927,9 +949,9 @@ export default async function WorldPage() {
     tolerance: alchemyToleranceBonus(housingState) ?? 0,
     ap,
     gold: housing.gold,
-    level: life.alchemy.level,
-    exp: life.alchemy.exp,
-    expToNext: expForNext(life.alchemy.level),
+    level: alchemyLevel(life),
+    masterCount: alchemyMasterCount(life),
+    recipeCount: alchemyRecipes.length,
     recipes: alchemyRecipeViews,
     brewing,
     potions: potionsForSale,

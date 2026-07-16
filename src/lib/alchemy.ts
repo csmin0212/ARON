@@ -1,10 +1,8 @@
 // ── 연금술 — 타이머 제조 규칙 ──
 // 핵심 메커니즘은 '기다림': 레시피마다 숨겨진 최적 시간(분)이 있고, 플레이어가 직접
 // 제조 시간을 정한다. 정확히(오차 이내) 맞추면 '완벽한 ~'(완벽효과 부여),
-// 크게 벗어나면 '약한 ~'(효과 절반·판매가 절반). 등급([고품질] 등)은 요리와 동일 확률.
-// 이름 형식: "완벽한 MP 포션 [고품질]" — 수식어는 앞, 등급은 뒤.
-
-import { COOK_GRADES, SIGNATURE_GRADE } from "@/lib/auction";
+// 크게 벗어나면 '약한 ~'(효과 절반·판매가 절반). 숙련 등급은 포션별 누적 숙련도로 결정된다.
+// 이름 형식: "완벽한 MP 포션 [고급]" — 수식어는 앞, 숙련 표기는 뒤.
 
 export const BREW_AP_COST = 10;
 export const BREW_MIN_MINUTES = 1;
@@ -28,22 +26,21 @@ export function judgeBrew(minutes: number, bestMinutes: number, tolerance: numbe
   return "약한";
 }
 
-const GRADE_KEYS = COOK_GRADES.map((g) => g.key);
+export const ALCHEMY_GRADE_INFO: Record<string, { priceMult: number }> = {
+  고급: { priceMult: 1.4 },
+  명품: { priceMult: 2.0 },
+};
 
-// "완벽한 MP 포션 [고품질]" / "약한 화주" / "성수 [뭇별의 장인작]"
+const GRADE_KEYS = Object.keys(ALCHEMY_GRADE_INFO);
+
+// "완벽한 MP 포션 [고급]" / "약한 화주" / "성수 [명품]"
 export function buildPotionName(
   base: string,
   modifier: BrewModifier,
   grade: string | null,
-  nickname: string,
 ): string {
   const prefix = modifier ? `${modifier} ` : "";
-  const suffix =
-    grade === SIGNATURE_GRADE.key
-      ? ` [${nickname}의 장인작]`
-      : grade
-        ? ` [${grade}]`
-        : "";
+  const suffix = grade ? ` [${grade}]` : "";
   return `${prefix}${base}${suffix}`;
 }
 
@@ -68,11 +65,82 @@ export function parsePotionName(raw: string): {
   if (m) {
     const label = m[1];
     if (GRADE_KEYS.includes(label)) grade = label;
-    else if (/의 장인작$/.test(label)) grade = SIGNATURE_GRADE.key;
+    else if (label === "고품질") grade = "고급"; // 구버전 연금술 포션 호환
     if (grade) s = s.slice(0, s.length - m[0].length).trim();
   }
 
   return { base: s, modifier, grade };
+}
+
+export function alchemyGradeInfo(grade: string | null): { priceMult: number } | null {
+  if (!grade) return null;
+  return ALCHEMY_GRADE_INFO[grade] ?? null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function addFlatRecoveryBonus(effect: string, bonus: number): string | null {
+  if (bonus <= 0 || !/\[(\d+)\s*D\]/.test(effect)) return null;
+  let changed = false;
+  const next = effect.replace(
+    /\[(\d+)\s*D\](?:\s*\+\s*(\d+))?(\s*점?\s*회복)/g,
+    (_m, dice: string, flat: string | undefined, tail: string) => {
+      changed = true;
+      return `[${dice}D]+${Number(flat ?? 0) + bonus}${tail}`;
+    },
+  );
+  return changed ? next : null;
+}
+
+function addTargetBonus(effect: string, target: string, bonus: number): string | null {
+  if (bonus <= 0 || !target.trim()) return null;
+  const normalizedTarget = target.trim();
+
+  if (normalizedTarget.includes("대미지 경감")) {
+    let changed = false;
+    const next = effect.replace(/(대미지에\s*)-(\d+)/, (_m, head: string, value: string) => {
+      changed = true;
+      return `${head}-${Number(value) + bonus}`;
+    });
+    return changed ? next : null;
+  }
+
+  const targetPattern = escapeRegExp(normalizedTarget).replace(/\\\s+/g, "\\s*");
+  const re = new RegExp(`(${targetPattern}[^.。\\n]*?\\+)\\s*(\\d+)`);
+  let changed = false;
+  const next = effect.replace(re, (_m, head: string, value: string) => {
+    changed = true;
+    return `${head}${Number(value) + bonus}`;
+  });
+  return changed ? next : null;
+}
+
+// 완벽 효과를 별도 줄로 늘어놓지 않고 기본 효과의 수식에 합친다.
+// 예: "HP [2D] 회복" + "회복량에 +3" x2 => "HP [2D]+6 회복"
+export function mergePotionPerfectEffect(
+  baseEffect: string | null | undefined,
+  perfectEffect: string | null | undefined,
+  stacks: number,
+): { effect: string; merged: boolean } {
+  const base = baseEffect?.trim() ?? "";
+  const perfect = perfectEffect?.trim() ?? "";
+  if (!base || !perfect || stacks <= 0) return { effect: base, merged: false };
+
+  const recovery = perfect.match(/회복량에\s*\+(\d+)/);
+  if (recovery) {
+    const merged = addFlatRecoveryBonus(base, Number(recovery[1]) * stacks);
+    if (merged) return { effect: merged, merged: true };
+  }
+
+  const targetBonus = perfect.match(/추가로\s*(.+?)에\s*\+(\d+)/);
+  if (targetBonus) {
+    const merged = addTargetBonus(base, targetBonus[1], Number(targetBonus[2]) * stacks);
+    if (merged) return { effect: merged, merged: true };
+  }
+
+  return { effect: base, merged: false };
 }
 
 // 진행 중인 제조 상태 (CharacterSheet.pendingBrewJson)

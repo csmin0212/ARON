@@ -14,8 +14,10 @@ import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
-  applyAlchemyExp,
+  ALCHEMY_MASTER_MASTERY,
   applyCookingExp,
+  alchemyMasterySuffix,
+  recordAlchemyCraft,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
@@ -26,9 +28,11 @@ import {
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
   WEAK_PRICE_MULT,
+  alchemyGradeInfo,
   brewHint,
   buildPotionName,
   judgeBrew,
+  mergePotionPerfectEffect,
   parsePendingBrew,
   parsePotionName,
 } from "@/lib/alchemy";
@@ -1311,13 +1315,9 @@ export async function sellCookedFood(
 }
 
 // ── 연금술 — 본인 집 공방에서 타이머 제조 ──
-// 흐름: startBrew(재료·피로도 소모, 시간 설정) → 대기 → collectBrew(수식어·등급 판정, 지급).
+// 흐름: startBrew(재료·피로도 소모, 시간 설정) → 대기 → collectBrew(수식어·숙련 표기 판정, 지급).
 // 수식어: 최적시간 ±허용오차(레시피 오차 + 공방 티어 보너스) = '완벽한' / ±35% 구간 = 무수식어 / 그 밖 = '약한'.
-function isAlchemistClass(charClass: string | null | undefined): boolean {
-  return (charClass ?? "").replace(/\s+/g, "").includes("알케미");
-}
-
-// 재료 이름과 일치하는 가방 아이템 이름 목록 — 등급/수식어가 붙은 포션("성수 [고품질]")도
+// 재료 이름과 일치하는 가방 아이템 이름 목록 — 등급/수식어가 붙은 포션("성수 [고급]")도
 // 기본 이름이 같으면 체인 레시피 재료로 인정한다. 원본 이름이 먼저 소모되도록 정렬.
 function matchingPotionNames(inv: SheetInventory, name: string): string[] {
   const target = name.trim();
@@ -1376,20 +1376,43 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     return { error: "이미 가마에 무언가 끓고 있어요. 먼저 수령하거나 비워주세요." };
   }
 
+  const life = parseLifeState(sheet?.lifeJson);
+
+  // 두 가지 진입로 — ① 레시피 탭(recipeId): 완벽 제조로 최적 시간을 익힌 포션만,
+  // 최적 시간으로 바로 가마에 올린다. ② 가마(재료 조합 + 시간): 요리처럼 조합을 맞춰 실험.
   const recipeId = String(formData.get("recipeId") ?? "").trim();
-  const minutes = Math.trunc(Number(formData.get("minutes")));
-  if (!Number.isFinite(minutes) || minutes < BREW_MIN_MINUTES || minutes > BREW_MAX_MINUTES) {
-    return { error: `제조 시간은 ${BREW_MIN_MINUTES}~${BREW_MAX_MINUTES}분 사이로 정해주세요.` };
+  let recipe: Awaited<ReturnType<typeof prisma.alchemyRecipe.findFirst>>;
+  let minutes: number;
+  if (recipeId) {
+    recipe = await prisma.alchemyRecipe.findUnique({ where: { id: recipeId } });
+    if (!recipe) return { error: "포션 목록에 없는 레시피예요." };
+    if (!life.alchemyPerfect.includes(recipe.id)) {
+      return { error: "아직 최적 시간을 익히지 못한 포션이에요. 가마에서 직접 실험해보세요." };
+    }
+    minutes = recipe.bestMinutes;
+  } else {
+    minutes = Math.trunc(Number(formData.get("minutes")));
+    if (!Number.isFinite(minutes) || minutes < BREW_MIN_MINUTES || minutes > BREW_MAX_MINUTES) {
+      return { error: `제조 시간은 ${BREW_MIN_MINUTES}~${BREW_MAX_MINUTES}분 사이로 정해주세요.` };
+    }
+    const potIngredients = ingredientsFromForm(formData);
+    if (potIngredients.length === 0) return { error: "재료를 하나 이상 넣어주세요." };
+    const recipes = await prisma.alchemyRecipe.findMany({ orderBy: { order: "asc" } });
+    const key = ingredientKey(potIngredients);
+    recipe =
+      recipes.find((item) => ingredientKey(parseRecipeIngredients(item.ingredientsJson)) === key) ??
+      null;
+    // 조합 불일치는 아무것도 소모하지 않는다 — 연금술의 수수께끼는 조합이 아니라 '시간'.
+    if (!recipe) {
+      return { error: "가마가 부글거리기만 한다… 조합이 맞지 않아요. (재료는 소모되지 않았어요)" };
+    }
   }
-  const recipe = await prisma.alchemyRecipe.findUnique({ where: { id: recipeId } });
-  if (!recipe) return { error: "포션 목록에 없는 레시피예요." };
 
   const fresh = regenFatigue(ctx.ap, ctx.apResetAt);
   if (fresh.value < BREW_AP_COST) {
     return { error: `피로도가 부족합니다. (${fresh.value}/${BREW_AP_COST})` };
   }
 
-  const life = parseLifeState(sheet?.lifeJson);
   const ingredients = parseRecipeIngredients(recipe.ingredientsJson);
   for (const ingredient of ingredients) {
     const have = availableBrewQty(ctx.inv, life, ingredient.name);
@@ -1486,27 +1509,30 @@ export async function collectBrew(): Promise<AlchemyState> {
   // 판정 — 공방 티어 보너스(0/±1/±2)와 레시피 자체 오차를 합산한 허용 범위
   const tolerance = recipe.tolerance + (alchemyToleranceBonus(housing) ?? 0);
   const modifier = judgeBrew(pending.minutes, recipe.bestMinutes, tolerance);
-  const grade = rollCookGrade(life.alchemy.level, isAlchemistClass(ctx.charClass));
-  const gi = gradeInfo(grade);
+  const mastery = recordAlchemyCraft(life, recipe.id, modifier === "완벽한");
+  const grade = alchemyMasterySuffix(mastery.after);
+  const gi = alchemyGradeInfo(grade);
 
   const price = Math.round(
     recipe.sellPrice * (gi?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
   );
-  const label =
-    grade === "장인" ? `✨${ctx.nickname}의 장인작 — ` : grade ? `✨${grade} — ` : "";
-  const baseEffect = recipe.effect
-    ? (gi?.effectBonus ?? 0) > 0
-      ? enhanceEffectText(recipe.effect, gi?.effectBonus ?? 0)
-      : recipe.effect
-    : "";
+  const label = grade ? `✨${grade} — ` : "";
+  const perfectStacks = modifier === "완벽한" ? (mastery.rank === "기본" ? 1 : 2) : 0;
+  const mergedEffect = mergePotionPerfectEffect(recipe.effect, recipe.perfectEffect, perfectStacks);
+  const baseEffect = mergedEffect.effect;
   const effectLines = [
     baseEffect ? `${label}${baseEffect}` : label || "",
-    modifier === "완벽한" && recipe.perfectEffect ? `✨완벽 — ${recipe.perfectEffect}` : "",
+    modifier === "완벽한" && recipe.perfectEffect && !mergedEffect.merged
+      ? `✨완벽 — ${recipe.perfectEffect}`
+      : "",
+    modifier === "완벽한" && mastery.rank !== "기본" && recipe.perfectEffect && !mergedEffect.merged
+      ? `✨고급 완벽 — ${recipe.perfectEffect}`
+      : "",
     modifier === "약한" ? "⚠️약한 — 수치 효과 절반(끝수 올림)." : "",
     `판매가 ${price}G`,
   ].filter(Boolean);
 
-  const resultName = buildPotionName(recipe.resultName, modifier, grade, ctx.nickname);
+  const resultName = buildPotionName(recipe.resultName, modifier, grade);
   const inv = addInvItem(
     ctx.inv,
     { name: resultName, effect: effectLines.join("\n"), weight: recipe.weight },
@@ -1514,13 +1540,12 @@ export async function collectBrew(): Promise<AlchemyState> {
   );
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
 
-  const levels = applyAlchemyExp(life, Math.max(1, recipe.skillExp));
   const firstPerfect = modifier === "완벽한" && !life.alchemyPerfect.includes(recipe.id);
   if (firstPerfect) life.alchemyPerfect.push(recipe.id);
 
   let achStats = bumpStat(sheet?.achStatsJson, "연금성공횟수");
   achStats = setMaxStat(achStats, "연금최고등급", recipeRankNumber(recipe.rank));
-  if (grade) achStats = setMaxStat(achStats, "연금최고제작등급", COOK_GRADE_NUMBER[grade] ?? 0);
+  if (grade) achStats = setMaxStat(achStats, "연금최고제작등급", grade === "명품" ? 2 : 1);
   if (modifier === "완벽한") achStats = bumpStat(achStats, "연금완벽횟수");
 
   await Promise.all([
@@ -1546,12 +1571,13 @@ export async function collectBrew(): Promise<AlchemyState> {
   return {
     ok: [
       modifier === "완벽한" ? "✨완벽한 제조!" : "",
-      grade === "장인" ? `✨${ctx.nickname}의 장인작!` : grade ? `✨${grade}!` : "",
+      grade ? `✨${grade}!` : "",
       `⚗️ ${resultName} x${recipe.resultQty} 완성.`,
       brewHint(pending.minutes, recipe.bestMinutes, modifier),
       firstPerfect ? `📖 ${recipe.name}의 최적 시간을 완전히 익혔어요!` : "",
-      `연금술 숙련도 +${Math.max(1, recipe.skillExp)}`,
-      levels.length > 0 ? `연금술 Lv.${levels.at(-1)} 달성.` : "",
+      `${recipe.name} 숙련도 +${mastery.gained} (${mastery.after}/${ALCHEMY_MASTER_MASTERY})`,
+      mastery.becameAdept ? `${recipe.name} 숙련 달성. 이제 [고급]으로 제조됩니다.` : "",
+      mastery.becameMaster ? `${recipe.name} 장인 달성. 연금술 Lv.${life.alchemy.level}.` : "",
     ]
       .filter(Boolean)
       .join(" "),
@@ -1575,7 +1601,7 @@ export async function sellPotion(_prev: AlchemyState, formData: FormData): Promi
   });
   if (!recipe) return { error: "포션 판매가를 찾지 못했습니다." };
   const unitPrice = Math.round(
-    recipe.sellPrice * (gradeInfo(grade)?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+    recipe.sellPrice * (alchemyGradeInfo(grade)?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
   );
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);

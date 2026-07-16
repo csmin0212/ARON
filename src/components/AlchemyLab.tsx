@@ -1,8 +1,8 @@
 "use client";
 
 // 연금술 공방 — 집 가구(연금술 공방)로 해금되는 타이머 제조 시설.
-// 핵심 재미는 '기다림': 레시피마다 숨겨진 최적 시간(분)을 실험으로 찾아내고,
-// 정확히 맞추면 '완벽한 ~'(완벽효과), 크게 벗어나면 '약한 ~'이 붙는다.
+// 가마 탭: 요리처럼 재료를 칸에 넣고 시간을 정해 실험 (조합의 수수께끼가 아니라 '시간'의 수수께끼).
+// 레시피 탭: 완벽 제조로 최적 시간을 익힌 포션을 그 시간으로 바로 가마에 올린다.
 
 import { useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
@@ -35,8 +35,13 @@ export type AlchemyRecipeView = {
   skillExp: number;
   tags: string | null;
   mastered: boolean; // 완벽 제조 경험 — 최적시간·완벽효과 공개
+  masteryExp: number;
+  masteryRank: "기본" | "숙련" | "장인";
+  nextMastery: number | null;
   bestMinutes: number | null; // mastered 일 때만 값이 있음
   perfectEffect: string | null; // mastered 일 때만 값이 있음
+  adeptPerfectEffect: string | null;
+  masterPerfectEffect: string | null;
 };
 
 export type AlchemyBrewingView = {
@@ -63,14 +68,17 @@ export type AlchemyView = {
   ap: number;
   gold: number;
   level: number;
-  exp: number;
-  expToNext: number;
+  masterCount: number;
+  recipeCount: number;
   recipes: AlchemyRecipeView[];
   brewing: AlchemyBrewingView | null;
   potions: AlchemyPotionView[];
 };
 
 type LifeItemLike = { name: string; qty: number };
+type PotEntry = { name: string; qty: number };
+
+const POT_TYPE_MAX = 5; // 재료 종류 칸 수 — 모든 레시피가 5종 이하
 
 const RANK_STYLE: Record<string, { chip: string; ring: string; label: string }> = {
   R1: { chip: "bg-emerald-50 text-emerald-600", ring: "border-emerald-200", label: "★☆☆" },
@@ -102,11 +110,20 @@ function formatClock(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// 서버 ingredientKey 와 동일한 정규화 — 조합 일치 미리보기용
+function potKey(entries: PotEntry[]): string {
+  return entries
+    .filter((entry) => entry.qty > 0)
+    .map((entry) => ({ name: entry.name.trim(), qty: entry.qty }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"))
+    .map((entry) => `${entry.name}x${entry.qty}`)
+    .join("|");
+}
+
 // 끓는 가마 — CSS 애니메이션 연출
 function Cauldron({ boiling }: { boiling: boolean }) {
   return (
     <div className="relative mx-auto h-36 w-40">
-      {/* 김 */}
       {boiling && (
         <>
           <span className="alch-steam absolute left-10 top-2 text-lg opacity-0">💨</span>
@@ -124,7 +141,6 @@ function Cauldron({ boiling }: { boiling: boolean }) {
           </span>
         </>
       )}
-      {/* 거품 */}
       {boiling && (
         <div className="absolute left-1/2 top-10 -translate-x-1/2">
           {[0, 1, 2, 3, 4].map((i) => (
@@ -136,7 +152,6 @@ function Cauldron({ boiling }: { boiling: boolean }) {
           ))}
         </div>
       )}
-      {/* 가마 */}
       <div className={`absolute inset-x-2 bottom-4 top-12 ${boiling ? "alch-shake" : ""}`}>
         <div className="relative h-full w-full rounded-b-[3rem] rounded-t-xl bg-gradient-to-b from-slate-600 to-slate-800 shadow-inner">
           <div
@@ -148,7 +163,6 @@ function Cauldron({ boiling }: { boiling: boolean }) {
           />
         </div>
       </div>
-      {/* 불 */}
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-2xl">
         {boiling ? <span className="alch-glow inline-block">🔥</span> : <span className="opacity-40">🪵</span>}
       </div>
@@ -168,7 +182,7 @@ export default function AlchemyLab({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"brew" | "book" | "sell">("brew");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pot, setPot] = useState<PotEntry[]>([]);
   const [minutes, setMinutes] = useState(7);
   const [now, setNow] = useState(() => Date.now());
 
@@ -213,9 +227,54 @@ export default function AlchemyLab({
     return (name: string) => counts.get(name.trim()) ?? 0;
   }, [inventoryItems, lifeItems]);
 
-  const selected = alchemy.recipes.find((recipe) => recipe.id === selectedId) ?? null;
+  // 재료 서랍 — 레시피에 등장하는 재료만 후보로
+  const drawerNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const recipe of alchemy.recipes) {
+      for (const ingredient of recipe.ingredientList) names.add(ingredient.name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, "ko"));
+  }, [alchemy.recipes]);
+
+  const potQtyOf = (name: string) => pot.find((entry) => entry.name === name)?.qty ?? 0;
+  const addToPot = (name: string) => {
+    setPot((prev) => {
+      const existing = prev.find((entry) => entry.name === name);
+      if (existing) {
+        if (existing.qty >= haveOf(name)) return prev;
+        return prev.map((entry) =>
+          entry.name === name ? { ...entry, qty: entry.qty + 1 } : entry,
+        );
+      }
+      if (prev.length >= POT_TYPE_MAX || haveOf(name) <= 0) return prev;
+      return [...prev, { name, qty: 1 }];
+    });
+  };
+  const takeFromPot = (name: string) => {
+    setPot((prev) =>
+      prev
+        .map((entry) => (entry.name === name ? { ...entry, qty: entry.qty - 1 } : entry))
+        .filter((entry) => entry.qty > 0),
+    );
+  };
+
+  // 현재 조합과 일치하는 레시피 미리보기
+  const matched = useMemo(() => {
+    if (pot.length === 0) return null;
+    const key = potKey(pot);
+    return alchemy.recipes.find((recipe) => potKey(recipe.ingredientList) === key) ?? null;
+  }, [pot, alchemy.recipes]);
+
   const canAfford = (recipe: AlchemyRecipeView) =>
     recipe.ingredientList.every((ingredient) => haveOf(ingredient.name) >= ingredient.qty);
+
+  const masteredRecipes = useMemo(
+    () => alchemy.recipes.filter((recipe) => recipe.mastered && recipe.bestMinutes != null),
+    [alchemy.recipes],
+  );
+
+  const potUnits = pot.flatMap((entry) => Array.from({ length: entry.qty }, () => entry.name));
+  const potSlots = Array.from({ length: POT_TYPE_MAX }, (_, i) => pot[i] ?? null);
 
   const brewing = alchemy.brewing;
   const remainMs = brewing ? brewing.readyAt - now : 0;
@@ -224,8 +283,8 @@ export default function AlchemyLab({
   const progress = brewing ? Math.min(100, Math.max(0, ((totalMs - remainMs) / totalMs) * 100)) : 0;
 
   const TABS = [
-    { key: "brew" as const, label: "🔥 가마" },
-    { key: "book" as const, label: `📖 레시피 (${alchemy.recipes.length})` },
+    { key: "brew" as const, label: "🔥 실험 가마" },
+    { key: "book" as const, label: `📖 확정 레시피 (${masteredRecipes.length})` },
     { key: "sell" as const, label: `💰 판매 (${alchemy.potions.length})` },
   ];
 
@@ -261,7 +320,7 @@ export default function AlchemyLab({
           </h3>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold">
             <span className="rounded-full bg-white/15 px-2.5 py-1">
-              🧫 연금술 Lv.{alchemy.level} ({alchemy.exp}/{alchemy.expToNext})
+              🧫 연금술 Lv.{alchemy.level} · 장인 {alchemy.masterCount}/{alchemy.recipeCount}
             </span>
             <span className="rounded-full bg-white/15 px-2.5 py-1">
               🎯 완벽 판정 ±{alchemy.tolerance}분
@@ -288,22 +347,20 @@ export default function AlchemyLab({
           </div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <div className="flex-1 space-y-2.5 overflow-y-auto px-5 py-3">
           <StateLine state={startState} />
           <StateLine state={collectState} />
           <StateLine state={cancelState} />
           <StateLine state={sellState} />
 
-          {/* ── 가마 ── */}
+          {/* ── 가마: 끓는 중 ── */}
           {tab === "brew" && brewing && (
             <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50 to-fuchsia-50 p-5 text-center dark:from-violet-950/40 dark:to-fuchsia-950/30">
               <Cauldron boiling={!ready} />
               <p className="mt-2 text-lg font-extrabold text-content">
                 {ready ? "✨ 완성! 가마를 열어보세요" : `${brewing.recipeName} 끓는 중…`}
               </p>
-              <p className="mt-1 text-xs font-bold text-muted">
-                설정한 시간 {brewing.minutes}분
-              </p>
+              <p className="mt-1 text-xs font-bold text-muted">설정한 시간 {brewing.minutes}분</p>
               <p
                 className={`mt-3 font-mono text-4xl font-black tabular-nums ${
                   ready ? "text-emerald-500" : "text-violet-600 dark:text-violet-300"
@@ -352,175 +409,160 @@ export default function AlchemyLab({
             </section>
           )}
 
+          {/* ── 가마: 조합 + 시간 (한 화면) ── */}
           {tab === "brew" && !brewing && (
             <>
-              {/* 레시피 선택 */}
+              <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-extrabold text-faint">
+                    🫧 가마 ({pot.length}/{POT_TYPE_MAX}종)
+                  </p>
+                  {pot.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPot([])}
+                      className="text-[11px] font-bold text-faint transition hover:text-red-500"
+                    >
+                      전부 빼기
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {potSlots.map((entry, i) =>
+                    entry ? (
+                      <button
+                        key={entry.name}
+                        type="button"
+                        onClick={() => takeFromPot(entry.name)}
+                        title="누르면 1개 빼기"
+                        className="rounded-xl border border-violet-300 bg-surface px-1.5 py-2 text-center transition hover:border-red-300"
+                      >
+                        <span className="block truncate text-[11px] font-extrabold text-content">
+                          {entry.name}
+                        </span>
+                        <span className="text-xs font-black text-violet-500">x{entry.qty}</span>
+                      </button>
+                    ) : (
+                      <div
+                        key={`empty-${i}`}
+                        className="grid place-items-center rounded-xl border border-dashed border-line py-2 text-lg text-faint2"
+                      >
+                        +
+                      </div>
+                    ),
+                  )}
+                </div>
+                <p
+                  className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${
+                    matched
+                      ? "bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300"
+                      : "bg-subtle text-faint"
+                  }`}
+                >
+                  {matched
+                    ? `🧪 이 조합: ${matched.name} (판매가 ${matched.sellPrice.toLocaleString()}G)`
+                    : pot.length > 0
+                      ? "아직 아무것도 떠오르지 않는 조합…"
+                      : "아래 서랍에서 재료를 눌러 가마에 넣어보세요."}
+                </p>
+              </section>
+
               <section>
-                <p className="mb-2 text-xs font-extrabold text-faint">1. 무엇을 만들까?</p>
-                <div className="grid gap-1.5 sm:grid-cols-2">
-                  {alchemy.recipes.map((recipe) => {
-                    const style = rankStyle(recipe.rank);
-                    const ok = canAfford(recipe);
-                    const active = selectedId === recipe.id;
+                <p className="mb-1.5 text-xs font-extrabold text-faint">🗄️ 재료 서랍</p>
+                <div className="flex max-h-24 flex-wrap content-start gap-1.5 overflow-y-auto rounded-2xl border border-line bg-subtle p-2">
+                  {drawerNames.map((name) => {
+                    const have = haveOf(name);
+                    const used = potQtyOf(name);
+                    const disabled =
+                      have <= used || (used === 0 && pot.length >= POT_TYPE_MAX);
                     return (
                       <button
-                        key={recipe.id}
+                        key={name}
                         type="button"
-                        onClick={() => setSelectedId(active ? null : recipe.id)}
-                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${
-                          active
-                            ? "border-violet-400 bg-violet-50 shadow-sm dark:bg-violet-950/40"
-                            : `${style.ring} bg-subtle hover:bg-surface`
-                        }`}
+                        onClick={() => addToPot(name)}
+                        disabled={disabled}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+                          have <= 0
+                            ? "bg-surface text-faint2"
+                            : used > 0
+                              ? "bg-violet-100 text-violet-600 hover:bg-violet-200 dark:bg-violet-950/50 dark:text-violet-300"
+                              : "bg-surface text-content hover:bg-violet-50"
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
                       >
-                        <span className="text-lg">🧪</span>
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={`block truncate text-sm font-extrabold ${
-                              ok ? "text-content" : "text-faint"
-                            }`}
-                          >
-                            {recipe.name}
-                          </span>
-                          <span className="block truncate text-[10px] text-faint">
-                            {recipe.ingredients}
-                          </span>
-                        </span>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${style.chip}`}
-                        >
-                          {recipe.rank}
-                        </span>
+                        {name} {used > 0 ? `${used}/` : ""}
+                        {have}
                       </button>
                     );
                   })}
-                  {alchemy.recipes.length === 0 && (
-                    <p className="rounded-xl bg-subtle px-3 py-4 text-center text-xs font-bold text-faint sm:col-span-2">
-                      포션 레시피가 아직 동기화되지 않았어요. (GM 시트 동기화 필요)
+                  {drawerNames.length === 0 && (
+                    <p className="px-1 py-2 text-[11px] font-bold text-faint">
+                      포션 레시피가 아직 동기화되지 않았어요.
                     </p>
                   )}
                 </div>
               </section>
 
-              {/* 선택한 레시피 + 타이머 */}
-              {selected && (
-                <section className="animate-fadeup space-y-4 rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-4 dark:from-violet-950/30">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-extrabold text-content">🧪 {selected.name}</p>
-                      {selected.effect && (
-                        <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-muted">
-                          {selected.effect}
-                        </p>
-                      )}
-                    </div>
-                    <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-600">
-                      판매가 {selected.sellPrice.toLocaleString()}G
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {selected.ingredientList.map((ingredient) => {
-                      const have = haveOf(ingredient.name);
-                      const ok = have >= ingredient.qty;
-                      return (
-                        <span
-                          key={ingredient.name}
-                          className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                            ok
-                              ? "bg-emerald-50 text-emerald-600"
-                              : "bg-red-50 text-red-500"
-                          }`}
-                        >
-                          {ingredient.name} {Math.min(have, 999)}/{ingredient.qty}
-                        </span>
-                      );
-                    })}
-                  </div>
-
-                  <div className="rounded-2xl border border-line bg-surface p-4">
-                    <p className="mb-1 text-xs font-extrabold text-faint">
-                      2. 몇 분 동안 달일까?
-                    </p>
-                    <p className="mb-3 text-[11px] text-faint">
-                      재료마다 <b>최적의 시간</b>이 있어요. 정확히 맞추면{" "}
-                      <b className="text-violet-500">완벽한</b> 포션이, 크게 벗어나면{" "}
-                      <b className="text-red-400">약한</b> 포션이 됩니다.
-                      {selected.mastered && selected.bestMinutes != null && (
-                        <>
-                          {" "}
-                          <span className="font-black text-emerald-500">
-                            ⏱ 익힌 최적 시간: {selected.bestMinutes}분
-                          </span>
-                        </>
-                      )}
-                    </p>
-                    <div className="flex items-center gap-4">
-                      <button
-                        type="button"
-                        onClick={() => setMinutes((m) => Math.max(BREW_MIN_MINUTES, m - 1))}
-                        className="h-10 w-10 rounded-full border border-line bg-subtle text-lg font-black text-content transition hover:bg-surface"
-                      >
-                        −
-                      </button>
-                      <div className="flex-1 text-center">
-                        <p className="font-mono text-4xl font-black tabular-nums text-violet-600 dark:text-violet-300">
-                          {minutes}
-                          <span className="ml-1 text-base text-faint">분</span>
-                        </p>
-                        <input
-                          type="range"
-                          min={BREW_MIN_MINUTES}
-                          max={BREW_MAX_MINUTES}
-                          value={minutes}
-                          onChange={(e) => setMinutes(Number(e.target.value))}
-                          className="mt-2 w-full accent-violet-500"
-                        />
-                        <div className="flex justify-between text-[10px] font-bold text-faint">
-                          <span>{BREW_MIN_MINUTES}분</span>
-                          <span>{BREW_MAX_MINUTES}분</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setMinutes((m) => Math.min(BREW_MAX_MINUTES, m + 1))}
-                        className="h-10 w-10 rounded-full border border-line bg-subtle text-lg font-black text-content transition hover:bg-surface"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  <form action={startAction}>
-                    <input type="hidden" name="recipeId" value={selected.id} />
-                    <input type="hidden" name="minutes" value={minutes} />
-                    <button
-                      type="submit"
-                      disabled={
-                        startPending || !canAfford(selected) || alchemy.ap < BREW_AP_COST
-                      }
-                      className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-3 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
-                    >
-                      {startPending
-                        ? "가마에 올리는 중…"
-                        : `🔥 ${minutes}분 동안 달이기 (피로도 -${BREW_AP_COST})`}
-                    </button>
-                  </form>
-                </section>
-              )}
+              <section className="rounded-2xl border border-line bg-surface p-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMinutes((m) => Math.max(BREW_MIN_MINUTES, m - 1))}
+                    className="h-9 w-9 shrink-0 rounded-full border border-line bg-subtle text-lg font-black text-content transition hover:bg-surface"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    min={BREW_MIN_MINUTES}
+                    max={BREW_MAX_MINUTES}
+                    value={minutes}
+                    onChange={(e) => setMinutes(Number(e.target.value))}
+                    className="min-w-0 flex-1 accent-violet-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMinutes((m) => Math.min(BREW_MAX_MINUTES, m + 1))}
+                    className="h-9 w-9 shrink-0 rounded-full border border-line bg-subtle text-lg font-black text-content transition hover:bg-surface"
+                  >
+                    +
+                  </button>
+                  <p className="w-16 shrink-0 text-right font-mono text-2xl font-black tabular-nums text-violet-600 dark:text-violet-300">
+                    {minutes}
+                    <span className="text-sm text-faint">분</span>
+                  </p>
+                </div>
+                <form action={startAction} className="mt-2.5">
+                  {potUnits.map((name, i) => (
+                    <input key={`${name}-${i}`} type="hidden" name="ingredient" value={name} />
+                  ))}
+                  <input type="hidden" name="minutes" value={minutes} />
+                  <button
+                    type="submit"
+                    disabled={startPending || pot.length === 0 || alchemy.ap < BREW_AP_COST}
+                    className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
+                  >
+                    {startPending
+                      ? "가마에 올리는 중…"
+                      : `🔥 ${minutes}분 동안 달이기 (피로도 -${BREW_AP_COST})`}
+                  </button>
+                </form>
+                <p className="mt-1.5 text-center text-[10px] text-faint">
+                  재료마다 <b>최적의 시간</b>이 있어요 — 정확히 맞추면{" "}
+                  <b className="text-violet-500">완벽한</b>, 크게 벗어나면{" "}
+                  <b className="text-red-400">약한</b> 포션이 됩니다.
+                </p>
+              </section>
             </>
           )}
 
-          {/* ── 레시피북 ── */}
+          {/* ── 레시피 — 익힌 최적 시간으로 바로 달이기 ── */}
           {tab === "book" && (
             <div className="space-y-2">
-              {alchemy.recipes.map((recipe) => {
+              {masteredRecipes.map((recipe) => {
                 const style = rankStyle(recipe.rank);
+                const affordable = canAfford(recipe);
                 return (
-                  <div
-                    key={recipe.id}
-                    className={`rounded-2xl border ${style.ring} bg-subtle p-3.5`}
-                  >
+                  <div key={recipe.id} className={`rounded-2xl border ${style.ring} bg-subtle p-3.5`}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-extrabold text-content">
                         🧪 {recipe.name}
@@ -537,37 +579,53 @@ export default function AlchemyLab({
                     <p className="mt-1.5 text-[11px] font-bold text-muted">
                       재료: {recipe.ingredients}
                     </p>
+                    <p className="mt-1 text-[11px] font-bold text-faint">
+                      숙련: {recipe.masteryRank} · {recipe.masteryExp}
+                      {recipe.nextMastery ? `/${recipe.nextMastery}` : ""}
+                    </p>
                     {recipe.effect && (
                       <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-faint">
                         {recipe.effect}
                       </p>
                     )}
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-                      {recipe.mastered && recipe.bestMinutes != null ? (
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-600">
-                          ⏱ 최적 {recipe.bestMinutes}분 — 완전히 익혔다!
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-surface px-2.5 py-1 text-faint">
-                          ⏱ 최적 시간 ??? — 실험으로 찾아보자
-                        </span>
-                      )}
-                      {recipe.mastered && recipe.perfectEffect ? (
-                        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {recipe.perfectEffect && (
+                        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
                           ✨완벽 — {recipe.perfectEffect}
                         </span>
-                      ) : (
-                        <span className="rounded-full bg-surface px-2.5 py-1 text-faint">
-                          ✨완벽 효과 🔒 (완벽 제조 시 해금)
+                      )}
+                      {recipe.masteryRank !== "기본" && recipe.adeptPerfectEffect && (
+                        <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-600 dark:bg-sky-950/40 dark:text-sky-300">
+                          고급 — {recipe.adeptPerfectEffect}
                         </span>
                       )}
+                      {recipe.masteryRank === "장인" && recipe.masterPerfectEffect && (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-300">
+                          명품 — {recipe.masterPerfectEffect}
+                        </span>
+                      )}
+                      <form action={startAction} className="ml-auto">
+                        <input type="hidden" name="recipeId" value={recipe.id} />
+                        <button
+                          type="submit"
+                          disabled={
+                            startPending ||
+                            !affordable ||
+                            !!alchemy.brewing ||
+                            alchemy.ap < BREW_AP_COST
+                          }
+                          className="rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:opacity-40"
+                        >
+                          ⏱ {recipe.bestMinutes}분 · 바로 달이기
+                        </button>
+                      </form>
                     </div>
                   </div>
                 );
               })}
-              {alchemy.recipes.length === 0 && (
+              {masteredRecipes.length === 0 && (
                 <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
-                  포션 레시피가 아직 동기화되지 않았어요.
+                  아직 최적 시간을 익힌 포션이 없어요. 실험 가마에서 완벽 제조를 해보세요.
                 </p>
               )}
             </div>
