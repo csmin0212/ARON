@@ -68,7 +68,13 @@ import {
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
 import { gradeInfo, parseCookedName } from "@/lib/auction";
-import { WEAK_PRICE_MULT, alchemyGradeInfo, parsePendingBrew, parsePotionName } from "@/lib/alchemy";
+import {
+  WEAK_PRICE_MULT,
+  alchemyAcceleratorMinutes,
+  alchemyGradeInfo,
+  parsePendingBrew,
+  parsePotionName,
+} from "@/lib/alchemy";
 import type { AlchemyRecipeView, AlchemyView } from "@/components/AlchemyLab";
 import {
   getAlchemyRecipes,
@@ -918,14 +924,27 @@ export default async function WorldPage() {
           const raw = item.name.trim();
           const { base, modifier, grade } = parsePotionName(raw);
           if (!potionPrice.has(base)) return null;
-          const unit = Math.round(
-            (potionPrice.get(base) ?? 1) *
-              (alchemyGradeInfo(grade)?.priceMult ?? 1) *
-              (modifier === "약한" ? WEAK_PRICE_MULT : 1),
-          );
+          const acceleratorMinutes = alchemyAcceleratorMinutes(raw, item.effect);
+          const unit =
+            acceleratorMinutes != null
+              ? Math.round(((potionPrice.get(base) ?? 1) * acceleratorMinutes) / 10)
+              : Math.round(
+                  (potionPrice.get(base) ?? 1) *
+                    (alchemyGradeInfo(grade)?.priceMult ?? 1) *
+                    (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+                );
           return { name: raw, qty: item.qty, unitPrice: unit, effect: item.effect };
         })
         .filter((potion): potion is NonNullable<typeof potion> => potion != null && potion.qty > 0)
+    : [];
+  const alchemyAccelerators = alchemyEnabled
+    ? bagItems
+        .map((item) => {
+          const raw = item.name.trim();
+          const minutes = alchemyAcceleratorMinutes(raw, item.effect);
+          return minutes ? { name: raw, qty: item.qty, minutes } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null && item.qty > 0)
     : [];
   let brewing: AlchemyView["brewing"] = null;
   if (alchemyEnabled && sheet.pendingBrewJson) {
@@ -955,6 +974,7 @@ export default async function WorldPage() {
     recipes: alchemyRecipeViews,
     brewing,
     potions: potionsForSale,
+    accelerators: alchemyAccelerators,
   };
   let gatherPending: PendingGatherView | null = null;
   if (sheet.pendingGatherJson) {

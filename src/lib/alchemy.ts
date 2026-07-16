@@ -66,6 +66,7 @@ export function parsePotionName(raw: string): {
     const label = m[1];
     if (GRADE_KEYS.includes(label)) grade = label;
     else if (label === "고품질") grade = "고급"; // 구버전 연금술 포션 호환
+    else if (label === "명장" || label === "장인") grade = "명품"; // 구버전/별칭 호환
     if (grade) s = s.slice(0, s.length - m[0].length).trim();
   }
 
@@ -75,6 +76,44 @@ export function parsePotionName(raw: string): {
 export function alchemyGradeInfo(grade: string | null): { priceMult: number } | null {
   if (!grade) return null;
   return ALCHEMY_GRADE_INFO[grade] ?? null;
+}
+
+export function alchemyAcceleratorMinutes(
+  rawName: string,
+  effectText?: string | null,
+): number | null {
+  const parsed = parsePotionName(rawName);
+  let base = parsed.base;
+  let grade = parsed.grade;
+  let legacyMaster = false;
+
+  const bracket = base.match(/^(연금 가속 포션)\s*\[([^\]]+)\]$/);
+  if (bracket) {
+    base = bracket[1];
+    const label = bracket[2];
+    if (label === "고품질" || label === "고급") grade = "고급";
+    if (label === "명장" || label === "장인") legacyMaster = true;
+    if (label === "명품") grade = "명품";
+  }
+
+  if (base === "연금 가속 포션") {
+    let minutes = 10;
+    if (grade === "고급") minutes = 15;
+    if (grade === "명품" || legacyMaster) minutes = 30;
+    if (parsed.modifier === "완벽한") minutes += 5;
+    if (parsed.modifier === "약한") minutes = Math.max(1, Math.ceil(minutes * WEAK_PRICE_MULT));
+    return Math.min(30, minutes);
+  }
+
+  const text = effectText ?? "";
+  const match = text.match(/연금\s*가속\s*(\d+)\s*분/);
+  if (!match) return null;
+  const minutes = Number(match[1]);
+  return Number.isFinite(minutes) && minutes > 0 ? Math.min(30, minutes) : null;
+}
+
+export function alchemyAcceleratorEffect(minutes: number): string {
+  return `마이너 액션. 연금술 공방에서 진행 중인 제조의 남은 시간을 ${minutes}분 감소시킨다. 남은 시간이 0분 이하가 되면 즉시 완료된다. 소모품.`;
 }
 
 function escapeRegExp(value: string): string {

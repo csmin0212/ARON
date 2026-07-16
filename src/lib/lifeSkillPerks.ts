@@ -37,7 +37,7 @@ export type LifeState = {
   smithing: SkillProgress; // 대장(장비 제작) — 레벨업 시 마이너 슬롯 확장
   alchemy: SkillProgress; // 연금술(하위호환 표시값) — 실제 레벨은 장인 달성 포션 수로 계산
   alchemyPerfect: string[]; // 완벽 제조에 성공한 포션ID — 최적시간·완벽효과 해금 표시
-  alchemyMastery: Record<string, number>; // 포션ID별 숙련도. 60=숙련, 180=장인
+  alchemyMastery: Record<string, number>; // 포션ID별 숙련도. 60=숙련([고급]), 300=장인([명품])
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
@@ -512,8 +512,8 @@ export function applyCookingExp(state: LifeState, gained: number): number[] {
   return leveled;
 }
 
-export const ALCHEMY_ADEPT_MASTERY = 60;
-export const ALCHEMY_MASTER_MASTERY = 180;
+export const ALCHEMY_ADEPT_MASTERY = 60; // 기본→숙련([고급])
+export const ALCHEMY_MASTER_MASTERY = 300; // 숙련→장인([명품]) — 완벽 제조(+3)만으로 100회
 
 export type AlchemyMasteryRank = "기본" | "숙련" | "장인";
 

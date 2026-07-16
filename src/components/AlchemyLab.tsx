@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
 import {
+  accelerateBrew,
   cancelBrew,
   collectBrew,
   sellPotion,
@@ -59,6 +60,12 @@ export type AlchemyPotionView = {
   effect: string | null;
 };
 
+export type AlchemyAcceleratorView = {
+  name: string;
+  qty: number;
+  minutes: number;
+};
+
 export type AlchemyView = {
   enabled: boolean;
   labName: string;
@@ -73,6 +80,7 @@ export type AlchemyView = {
   recipes: AlchemyRecipeView[];
   brewing: AlchemyBrewingView | null;
   potions: AlchemyPotionView[];
+  accelerators: AlchemyAcceleratorView[];
 };
 
 type LifeItemLike = { name: string; qty: number };
@@ -198,6 +206,10 @@ export default function AlchemyLab({
     cancelBrew,
     undefined,
   );
+  const [accelerateState, accelerateAction, acceleratePending] = useActionState<
+    AlchemyState,
+    FormData
+  >(accelerateBrew, undefined);
   const [sellState, sellAction, sellPending] = useActionState<AlchemyState, FormData>(
     sellPotion,
     undefined,
@@ -351,6 +363,7 @@ export default function AlchemyLab({
           <StateLine state={startState} />
           <StateLine state={collectState} />
           <StateLine state={cancelState} />
+          <StateLine state={accelerateState} />
           <StateLine state={sellState} />
 
           {/* ── 가마: 끓는 중 ── */}
@@ -402,9 +415,31 @@ export default function AlchemyLab({
                 </form>
               </div>
               {!ready && (
-                <p className="mt-3 text-[11px] text-faint">
-                  기다리는 동안 다른 일을 해도 좋아요. 시간이 되면 돌아와서 가마를 열면 됩니다.
-                </p>
+                <>
+                  {alchemy.accelerators.length > 0 && (
+                    <div className="mx-auto mt-4 max-w-md rounded-2xl border border-violet-200 bg-white/60 p-3 text-left dark:bg-black/10">
+                      <p className="mb-2 text-xs font-extrabold text-faint">연금 가속</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {alchemy.accelerators.map((item) => (
+                          <form key={item.name} action={accelerateAction}>
+                            <input type="hidden" name="itemName" value={item.name} />
+                            <button
+                              type="submit"
+                              disabled={acceleratePending}
+                              className="rounded-xl border border-violet-200 bg-surface px-3 py-1.5 text-[11px] font-extrabold text-violet-600 transition hover:bg-violet-50 disabled:opacity-40 dark:text-violet-300"
+                              title={`${item.name} x${item.qty}`}
+                            >
+                              {item.minutes}분 가속 x{item.qty}
+                            </button>
+                          </form>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-3 text-[11px] text-faint">
+                    기다리는 동안 다른 일을 해도 좋아요. 시간이 되면 돌아와서 가마를 열면 됩니다.
+                  </p>
+                </>
               )}
             </section>
           )}

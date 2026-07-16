@@ -28,6 +28,8 @@ import {
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
   WEAK_PRICE_MULT,
+  alchemyAcceleratorEffect,
+  alchemyAcceleratorMinutes,
   alchemyGradeInfo,
   brewHint,
   buildPotionName,
@@ -1513,12 +1515,20 @@ export async function collectBrew(): Promise<AlchemyState> {
   const grade = alchemyMasterySuffix(mastery.after);
   const gi = alchemyGradeInfo(grade);
 
-  const price = Math.round(
-    recipe.sellPrice * (gi?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
-  );
+  const resultName = buildPotionName(recipe.resultName, modifier, grade);
+  const acceleratorMinutes = alchemyAcceleratorMinutes(resultName);
+  const price =
+    acceleratorMinutes != null
+      ? Math.round((recipe.sellPrice * acceleratorMinutes) / 10)
+      : Math.round(
+          recipe.sellPrice * (gi?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+        );
   const label = grade ? `✨${grade} — ` : "";
   const perfectStacks = modifier === "완벽한" ? (mastery.rank === "기본" ? 1 : 2) : 0;
-  const mergedEffect = mergePotionPerfectEffect(recipe.effect, recipe.perfectEffect, perfectStacks);
+  const mergedEffect =
+    acceleratorMinutes != null
+      ? { effect: alchemyAcceleratorEffect(acceleratorMinutes), merged: true }
+      : mergePotionPerfectEffect(recipe.effect, recipe.perfectEffect, perfectStacks);
   const baseEffect = mergedEffect.effect;
   const effectLines = [
     baseEffect ? `${label}${baseEffect}` : label || "",
@@ -1532,7 +1542,6 @@ export async function collectBrew(): Promise<AlchemyState> {
     `판매가 ${price}G`,
   ].filter(Boolean);
 
-  const resultName = buildPotionName(recipe.resultName, modifier, grade);
   const inv = addInvItem(
     ctx.inv,
     { name: resultName, effect: effectLines.join("\n"), weight: recipe.weight },
@@ -1584,6 +1593,70 @@ export async function collectBrew(): Promise<AlchemyState> {
   };
 }
 
+export async function accelerateBrew(
+  _prev: AlchemyState,
+  formData: FormData,
+): Promise<AlchemyState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
+
+  const atHome =
+    isHomeLocationId(ctx.locationId) && homeOwnerFromLocationId(ctx.locationId) === ctx.userId;
+  if (!atHome) return { error: "가속은 본인 집 공방에서만 사용할 수 있어요." };
+
+  const itemName = String(formData.get("itemName") ?? "").trim();
+  if (!itemName) return { error: "사용할 가속 포션이 올바르지 않습니다." };
+
+  const item = findInvItem(ctx.inv, itemName);
+  if (!item || item.qty <= 0) return { error: `${itemName}이(가) 가방에 없어요.` };
+
+  const itemDesc = item.effect ?? (await lookupItemDesc(itemName));
+  const minutes = alchemyAcceleratorMinutes(itemName, itemDesc);
+  if (!minutes) return { error: "연금 가속 포션만 사용할 수 있어요." };
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { houseTier: true, housingJson: true, pendingBrewJson: true },
+  });
+  const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
+  const lab = ownedAlchemyLab(housing);
+  if (!lab) return { error: "연금술 공방 가구가 필요해요." };
+
+  const pending = parsePendingBrew(sheet?.pendingBrewJson);
+  if (!pending) return { error: "진행 중인 제조가 없어요." };
+
+  const now = Date.now();
+  if (now >= pending.readyAt) return { error: "이미 제조가 완료됐어요. 가마를 열어주세요." };
+
+  const nextPending = {
+    ...pending,
+    readyAt: Math.max(now, pending.readyAt - minutes * 60_000),
+  };
+  const inv = consumeInvItem(ctx.inv, itemName, 1);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: {
+        invJson: JSON.stringify(inv),
+        pendingBrewJson: JSON.stringify(nextPending),
+      },
+    }),
+    decrementDbInventory(ctx.userId, itemName, 1),
+  ]);
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  const completed = nextPending.readyAt <= now;
+  return {
+    ok: `${itemName} 사용. 남은 시간을 ${minutes}분 줄였어요.${
+      completed ? " 제조가 완료됐습니다." : ""
+    }`,
+  };
+}
+
 export async function sellPotion(_prev: AlchemyState, formData: FormData): Promise<AlchemyState> {
   const ctx = await currentSheet();
   if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
@@ -1600,9 +1673,15 @@ export async function sellPotion(_prev: AlchemyState, formData: FormData): Promi
     select: { sellPrice: true },
   });
   if (!recipe) return { error: "포션 판매가를 찾지 못했습니다." };
-  const unitPrice = Math.round(
-    recipe.sellPrice * (alchemyGradeInfo(grade)?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
-  );
+  const acceleratorMinutes = alchemyAcceleratorMinutes(itemName);
+  const unitPrice =
+    acceleratorMinutes != null
+      ? Math.round((recipe.sellPrice * acceleratorMinutes) / 10)
+      : Math.round(
+          recipe.sellPrice *
+            (alchemyGradeInfo(grade)?.priceMult ?? 1) *
+            (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+        );
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const gain = unitPrice * qty;
