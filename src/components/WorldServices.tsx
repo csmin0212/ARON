@@ -1416,6 +1416,7 @@ const FURNITURE_SECTIONS: readonly {
   { key: "bed", icon: "🛏️", title: "침구류", note: "집 휴식 회복량 상승", family: "bed" },
   { key: "aquarium", icon: "🐠", title: "어항 (낚시)", note: "물고기 보관 → 매일 어항 점수", family: "aquarium" },
   { key: "planter", icon: "🪴", title: "화분 (채집)", note: "채집물 보관 → 매일 화분 점수", family: "planter" },
+  { key: "alchemy", icon: "⚗️", title: "연금술 공방", note: "집에서 포션 제조 해금", family: "alchemy" },
   { key: "bank", icon: "🐖", title: "저금통", note: "하루 1회 흔들어 골드 획득", family: "bank" },
   { key: "func", icon: "🔥", title: "기타 기능", note: "하루 1회 상호작용", ids: ["fireplace"] },
   { key: "deco", icon: "🎀", title: "꾸미기 · 손님맞이", note: "집 이름 · 방명록", ids: ["nameplate", "guestbook_stand"] },
