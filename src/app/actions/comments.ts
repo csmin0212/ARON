@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
 import { getMaskedIp, DEFAULT_ANON_NICK } from "@/lib/anon";
+import { checkAndGrant } from "@/lib/achievements";
 
 export type CommentState = { error?: string; ok?: boolean } | undefined;
 
@@ -65,6 +66,9 @@ export async function createComment(
       },
     });
   }
+
+  // 댓글작성수 업적 — 단 즉시 판정 (다음 월드 행동까지 지연되지 않게)
+  if (asMember) void checkAndGrant(user!.id);
 
   revalidatePath(`/post/${postId}`);
   return { ok: true };

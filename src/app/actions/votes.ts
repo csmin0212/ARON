@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/anon";
+import { checkAndGrant } from "@/lib/achievements";
 
 export type VoteResult = { up: number; down: number; my: number };
 
@@ -35,6 +36,8 @@ export async function votePost(postId: number, value: 1 | -1): Promise<VoteResul
     await prisma.vote.create({
       data: { postId, voterKey, value, userId: user?.id ?? null },
     });
+    // 추천횟수 업적 — 누른 즉시 판정 (다음 월드 행동까지 지연되지 않게)
+    if (user) void checkAndGrant(user.id);
   } else if (existing.value === value) {
     await prisma.vote.delete({ where: { id: existing.id } });
     my = 0;

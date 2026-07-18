@@ -845,10 +845,16 @@ export async function expandStorage(
     }),
     prisma.characterSheet.update({
       where: { userId: ctx.userId },
-      data: { curGold: nextGold, gold: `${nextGold}G`, invJson: JSON.stringify(inv) },
+      data: {
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+        invJson: JSON.stringify(inv),
+        achStatsJson: bumpStat(ctx.achStatsJson, "창고확장횟수"),
+      },
     }),
   ]);
   void enqueueSheetGoldSync(ctx.userId);
+  void checkAndGrant(ctx.userId);
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `창고 최대 중량 +${STORAGE_UPGRADE_STEP}. (${box.maxWeight} → ${box.maxWeight + STORAGE_UPGRADE_STEP})` };

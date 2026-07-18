@@ -3,7 +3,13 @@ import "server-only";
 import { prisma } from "./prisma";
 import { getActiveItems } from "./lifeSkillData";
 import { loadLifeItems } from "./lifeSkillLoader";
-import { lifeBagWeight, parseLifeState } from "./lifeSkillPerks";
+import {
+  ALCHEMY_ADEPT_MASTERY,
+  alchemyLevel,
+  alchemyMasterCount,
+  lifeBagWeight,
+  parseLifeState,
+} from "./lifeSkillPerks";
 import { parseHousingState } from "./housing";
 
 // ── 누적 카운터 / 방문 집합 헬퍼 (호출부에서 시트 업데이트에 사용) ──
@@ -51,6 +57,13 @@ export function setStat(json: string | null | undefined, name: string, value: nu
   return JSON.stringify(stats);
 }
 
+// 카운터를 최대값 갱신 방식으로 기록한 JSON 반환 (최고 등급류)
+export function setMaxStat(json: string | null | undefined, name: string, value: number): string {
+  const stats = parseStats(json);
+  stats[name] = Math.max(stats[name] ?? 0, value);
+  return JSON.stringify(stats);
+}
+
 const RANK_ORDER: Record<string, number> = { D: 1, C: 2, B: 3, A: 4, S: 5 };
 const TIER_ORDER: Record<string, number> = { small: 1, standard: 2, luxury: 3 };
 const TOOL_TIER: Record<string, number> = {
@@ -58,6 +71,8 @@ const TOOL_TIER: Record<string, number> = {
   "고급 낚싯대": 2,
   "숙련 채집 도구": 1,
   "장인의 채집 도구": 2,
+  "철 곡괭이": 1,
+  "미스릴 곡괭이": 2,
 };
 // 도구 → 생활스킬 종류. 같은 종류의 도구끼리만 등급을 비교한다 (낚싯대로 채집 업적 방지)
 const TOOL_KIND: Record<string, "낚시" | "채집" | "채광"> = {
@@ -65,13 +80,15 @@ const TOOL_KIND: Record<string, "낚시" | "채집" | "채광"> = {
   "고급 낚싯대": "낚시",
   "숙련 채집 도구": "채집",
   "장인의 채집 도구": "채집",
+  "철 곡괭이": "채광",
+  "미스릴 곡괭이": "채광",
 };
 // 요리 제작 등급 서열 (rollCookGrade 결과)
 const COOK_GRADE_ORDER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
 
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
-// 활성 풀(시트 동기화본) 기준으로 매번 구성 — 신규 어종/약초가 도감 판정에 반영되게.
-const rankMapOf = (kind: "낚시" | "채집") =>
+// 활성 풀(시트 동기화본) 기준으로 매번 구성 — 신규 어종/약초/광물이 도감 판정에 반영되게.
+const rankMapOf = (kind: "낚시" | "채집" | "채광") =>
   new Map(getActiveItems(kind).map((item) => [item.name, item.rank]));
 const rankRequirement = (a: AchRow) => {
   const explicit = parseInt(String(a.condValue ?? "").replace(/[^\d-]/g, ""), 10);
@@ -154,17 +171,30 @@ export async function checkAndGrant(
   const tools = (life as { tools?: Record<string, string> }).tools ?? {};
   const fishingBagWeight = lifeBagWeight(life.bags.낚시);
   const plantBagWeight = lifeBagWeight(life.bags.채집);
+  const mineBagWeight = lifeBagWeight(life.bags.채광);
   const bestFishingRank = maxKnownRank(life.collection.낚시, rankMapOf("낚시"));
   const bestPlantRank = maxKnownRank(life.collection.채집, rankMapOf("채집"));
+  const bestMineRank = maxKnownRank(life.collection.채광, rankMapOf("채광"));
   // 완성률 분자는 현재 풀에 있는 종만 센다 — 풀 개편으로 빠진 옛 종 때문에 100%가 넘는 사고 방지
   const fishPoolNames = new Set(getActiveItems("낚시").map((i) => i.name));
   const plantPoolNames = new Set(getActiveItems("채집").map((i) => i.name));
+  const minePoolNames = new Set(getActiveItems("채광").map((i) => i.name));
   const fishInPool = life.collection.낚시.filter((n) => fishPoolNames.has(n)).length;
   const plantInPool = life.collection.채집.filter((n) => plantPoolNames.has(n)).length;
+  const mineInPool = life.collection.채광.filter((n) => minePoolNames.has(n)).length;
   const bestSameFishing = maxCount(life.catchCounts.낚시);
   const bestSamePlant = maxCount(life.catchCounts.채집);
+  const bestSameMine = maxCount(life.catchCounts.채광);
   const fishingAreaCount = countStatPrefix(stats, "낚시지역:");
   const plantAreaCount = countStatPrefix(stats, "채집지역:");
+  const mineAreaCount = countStatPrefix(stats, "채광지역:");
+  const craftMineralKinds = countStatPrefix(stats, "제작광물:");
+  // 연금술 — 포션별 숙련도(alchemyMastery) 파생값
+  const alchemyAdeptCount = Object.values(life.alchemyMastery).filter(
+    (exp) => exp >= ALCHEMY_ADEPT_MASTERY,
+  ).length;
+  const alchemyMasters = alchemyMasterCount(life);
+  const alchemyLv = alchemyLevel(life);
 
   // 방문 토큰 (id + 정규화 이름) — 장소방문/히든장소방문/지역그룹방문/층전체방문용
   let visitTokens: Set<string> | null = null;
@@ -256,34 +286,75 @@ export async function checkAndGrant(
       case "요리레벨":
       case "요리숙련레벨":
         return n != null && life.cooking.level >= n;
+      case "채광레벨":
+        return n != null && life.mining.level >= n;
+      case "대장레벨":
+      case "대장간레벨":
+      case "제작레벨":
+        return n != null && life.smithing.level >= n;
+      case "연금술레벨":
+      case "연금레벨":
+        return n != null && alchemyLv >= n;
+      case "연금장인수":
+      case "연금명품수":
+        return n != null && alchemyMasters >= n;
+      case "연금숙련포션수":
+      case "연금고급수":
+        return n != null && alchemyAdeptCount >= n;
+      case "제작광물종류수":
+        return n != null && craftMineralKinds >= n;
+      case "제작등급": {
+        // 숫자 조건값 = 서열(고품질1<명품2<장인3), 그 외엔 설명·이름에서 등급을 읽는다
+        const made = stats.제작최고제작등급 ?? 0;
+        if (n != null) return made >= n;
+        const src = norm(condSource(a));
+        if (src.includes(norm("장인"))) return made >= 3;
+        if (src.includes(norm("명품")) || src.includes(norm("걸작"))) return made >= 2;
+        if (src.includes(norm("고품질")) || src.includes(norm("희귀"))) return made >= 1;
+        return false;
+      }
       case "낚시도감등록수":
         return n != null && life.collection.낚시.length >= n;
       case "채집도감등록수":
         return n != null && life.collection.채집.length >= n;
+      case "채광도감등록수":
+        return n != null && life.collection.채광.length >= n;
       case "낚시도감완성률":
         return n != null && percent(fishInPool, fishPoolNames.size) >= n;
       case "채집도감완성률":
         return n != null && percent(plantInPool, plantPoolNames.size) >= n;
+      case "채광도감완성률":
+        return n != null && percent(mineInPool, minePoolNames.size) >= n;
       case "희귀도낚시":
         return rankRequirement(a) != null && bestFishingRank >= rankRequirement(a)!;
       case "희귀도채집":
         return rankRequirement(a) != null && bestPlantRank >= rankRequirement(a)!;
+      case "희귀도채광":
+        return rankRequirement(a) != null && bestMineRank >= rankRequirement(a)!;
       case "동일낚시획득":
         return n != null && bestSameFishing >= n;
       case "동일채집획득":
         return n != null && bestSamePlant >= n;
+      case "동일채광획득":
+        return n != null && bestSameMine >= n;
       case "낚시지역성공수":
         return n != null && fishingAreaCount >= n;
       case "채집지역성공수":
         return n != null && plantAreaCount >= n;
+      case "채광지역성공수":
+        return n != null && mineAreaCount >= n;
       case "낚시가방중량":
         return n != null && fishingBagWeight >= n;
       case "채집가방중량":
         return n != null && plantBagWeight >= n;
+      case "채광가방중량":
+        return n != null && mineBagWeight >= n;
       case "낚시가방최대중량":
         return n != null && (life.bags.낚시?.maxWeight ?? 0) >= n;
       case "채집가방최대중량":
         return n != null && (life.bags.채집?.maxWeight ?? 0) >= n;
+      case "채광가방최대중량":
+        return n != null && (life.bags.채광?.maxWeight ?? 0) >= n;
       case "창고사용중량":
         return n != null && storageUsedWeight >= n;
       case "창고최대중량":
@@ -387,7 +458,10 @@ export async function checkAndGrant(
         // 층 구분이 아직 없어 "공개 장소 방문 수"로 판정. 2층 업적은 2층이 생길 때까지 잠금.
         const src = condSource(a);
         if (/2\s*층/.test(src)) return false;
-        const goal = n ?? (src.match(/(\d+)\s*곳/) ? Number(src.match(/(\d+)\s*곳/)![1]) : null);
+        // 조건값 "1층:10" 형식이 우선 — 통짜 num()은 "1층:10"을 110으로 읽는 사고가 난다
+        const colon = String(v ?? "").match(/[:：]\s*(\d+)/);
+        const spots = src.match(/(\d+)\s*곳/);
+        const goal = colon ? Number(colon[1]) : spots ? Number(spots[1]) : n;
         return goal != null && publicVisitedCount >= goal;
       }
       case "층전체방문":

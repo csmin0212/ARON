@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { checkAndGrant, markStat } from "@/lib/achievements";
+import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
+import { parseHousingState } from "@/lib/housing";
 
 // 달성한 업적의 칭호·배지를 대표로 장착
 export async function equipAchievement(formData: FormData): Promise<void> {
@@ -26,16 +27,23 @@ export async function equipAchievement(formData: FormData): Promise<void> {
     where: { id: user.id },
     data: { equippedTitle: ach.rewardTitle ?? null, equippedBadge: ach.badge ?? null },
   });
-  // '대표 배지 n개' 업적용 — 장착해 본 배지를 업적 단위로 누적 기록
-  if (ach.badge) {
-    const sheet = await prisma.characterSheet.findUnique({
-      where: { userId: user.id },
-      select: { achStatsJson: true },
-    });
-    if (sheet) {
+  // '대표 배지 n개' 업적용 — 장착해 본 배지를 업적 단위로 누적 기록.
+  // 집 보유자라면 '전시횟수'도 함께 — 배지·칭호를 내걸어 집에 전시한 것으로 인정.
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { achStatsJson: true, housingJson: true, houseTier: true },
+  });
+  if (sheet) {
+    let achStats = sheet.achStatsJson;
+    if (ach.badge) achStats = markStat(achStats, `배지장착:${achId}`);
+    const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
+    if (housing.owned.length > 0 && (ach.badge || ach.rewardTitle)) {
+      achStats = bumpStat(achStats, "전시횟수");
+    }
+    if (achStats !== sheet.achStatsJson) {
       await prisma.characterSheet.update({
         where: { userId: user.id },
-        data: { achStatsJson: markStat(sheet.achStatsJson, `배지장착:${achId}`) },
+        data: { achStatsJson: achStats },
       });
     }
   }

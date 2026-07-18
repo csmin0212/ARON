@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
-import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
+import { bumpStat, checkAndGrant, markStat, setMaxStat } from "@/lib/achievements";
+
+// rollCraftGrade 결과 → 서열 숫자 ('제작등급' 업적 판정과 짝)
+const CRAFT_GRADE_NUMBER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { getActiveItems, type LifeSkillItem } from "@/lib/lifeSkillData";
 import { applySmithingExp, parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
@@ -287,6 +290,8 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   // 사용한 광물 기록 — 제작 UI에서 효과가 공개되는 '발견' 트리거
   let achStats = bumpStat(sheet.achStatsJson, "제작횟수");
   for (const mineralName of needs.keys()) achStats = markStat(achStats, `제작광물:${mineralName}`);
+  // 제작 등급(고품질1·명품2·장인3) — '제작등급' 업적 판정용
+  if (grade) achStats = setMaxStat(achStats, "제작최고제작등급", CRAFT_GRADE_NUMBER[grade] ?? 0);
 
   // 대장 숙련 — 기준가 비례, 레벨업 시 마이너 슬롯 확장
   const smithExp = craftSmithExp(preview.basePrice);

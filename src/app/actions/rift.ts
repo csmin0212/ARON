@@ -52,10 +52,27 @@ export async function closeRift(_prev: RiftActionState, formData: FormData): Pro
   const rift = await prisma.rift.findUnique({ where: { id: riftId } });
   if (!rift) return { error: "균열을 찾지 못했습니다." };
 
+  // 닫히는 순간 내부에 있던 인원은 '균열 클리어'로 인정 — 균열클리어 업적 카운터
+  const members = await prisma.riftMember.findMany({
+    where: { riftId },
+    select: { userId: true },
+  });
   await prisma.rift.update({ where: { id: riftId }, data: { status: "closed" } });
+  for (const member of members) {
+    const memberSheet = await prisma.characterSheet.findUnique({
+      where: { userId: member.userId },
+      select: { achStatsJson: true },
+    });
+    if (!memberSheet) continue;
+    await prisma.characterSheet.update({
+      where: { userId: member.userId },
+      data: { achStatsJson: bumpStat(memberSheet.achStatsJson, "균열클리어") },
+    });
+    void checkAndGrant(member.userId);
+  }
   await postSystem(rift.originId, `${RIFT_EMOJI[rift.type] ?? "⚡"} '${rift.type}' 균열이 닫혔다.`);
   revalidatePath("/world");
-  return { ok: "균열을 닫았어요." };
+  return { ok: `균열을 닫았어요.${members.length > 0 ? ` (내부 ${members.length}명 클리어 인정)` : ""}` };
 }
 
 // ── 진입 (선착순 정원) ──

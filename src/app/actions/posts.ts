@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
 import { getMaskedIp, DEFAULT_ANON_NICK } from "@/lib/anon";
 import { isValidCategory } from "@/lib/categories";
+import { checkAndGrant } from "@/lib/achievements";
 
 export type FormState = { error?: string } | undefined;
 
@@ -78,6 +79,9 @@ export async function createPost(_prev: FormState, formData: FormData): Promise<
       data: { postId: newId },
     });
   }
+
+  // 게시글작성수 업적 — 글 쓴 즉시 판정 (다음 월드 행동까지 지연되지 않게)
+  if (writeAsMember) await checkAndGrant(user!.id);
 
   revalidatePath("/");
   redirect(`/post/${newId}`);
