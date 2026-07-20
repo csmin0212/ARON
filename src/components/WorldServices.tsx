@@ -42,6 +42,7 @@ import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from 
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
 import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
+import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
 import { detectForgeSlot } from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
@@ -1477,9 +1478,7 @@ function FurnitureTab({
       case "guestbook":
         return "방문객 방명록 해금";
       case "alchemy":
-        return e.tolerance > 0
-          ? `연금술 제조 해금 · 완벽 판정 ±${e.tolerance}분`
-          : "연금술 제조 해금 (완벽 판정: 정확히)";
+        return "연금술 제조 해금";
     }
   }
 
@@ -2225,6 +2224,7 @@ function CookingKitchen({
   // 냄비 — 재료 1개 단위의 이름 배열 (서버 폼 계약: ingredient 히든 인풋 1개 = 1단위)
   const [pot, setPot] = useState<string[]>([]);
   const [bookFilter, setBookFilter] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const ingredientOptions = useMemo(
     () => mergeItems([...inventoryItems, ...lifeStorageItems]).filter((item) => item.qty > 0),
@@ -2240,11 +2240,25 @@ function CookingKitchen({
     return counts;
   }, [pot]);
 
-  function addToPot(name: string) {
-    if (pot.length >= cooking.maxIngredients) return;
-    if ((potCounts.get(name) ?? 0) >= (haveMap.get(name) ?? 0)) return;
-    setPot([...pot, name]);
-  }
+  // 재료 팝업 소스 — 가방별 탭 (휴대품 / 채집 / 낚시 / 채광)
+  const pickerSources = useMemo<PickerSource[]>(() => {
+    const byKind = (kind: "채집" | "낚시" | "채광") =>
+      mergeItems(lifeStorageItems.filter((item) => item.sourceKind === kind))
+        .filter((item) => item.qty > 0)
+        .map((item) => ({ name: item.name, qty: item.qty, note: item.effect }))
+        .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const bagItems = mergeItems(inventoryItems)
+      .filter((item) => item.qty > 0)
+      .map((item) => ({ name: item.name, qty: item.qty }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    return [
+      { key: "inv", label: "휴대품", emoji: "🎒", items: bagItems },
+      { key: "gather", label: "채집", emoji: "🌿", items: byKind("채집") },
+      { key: "fish", label: "낚시", emoji: "🎣", items: byKind("낚시") },
+      { key: "mine", label: "채광", emoji: "⛏️", items: byKind("채광") },
+    ];
+  }, [inventoryItems, lifeStorageItems]);
+
   function removeFromPot(index: number) {
     setPot(pot.filter((_, i) => i !== index));
   }
@@ -2382,15 +2396,25 @@ function CookingKitchen({
                         </span>
                       </button>
                     ) : (
-                      <div
+                      <button
                         key={`empty-${index}`}
-                        className="grid min-h-20 place-items-center rounded-2xl border border-dashed border-line bg-surface/60 text-xs font-bold text-faint2"
+                        type="button"
+                        onClick={() => setPickerOpen(true)}
+                        title="재료 넣기"
+                        className="grid min-h-20 place-items-center rounded-2xl border border-dashed border-line bg-surface/60 text-xs font-bold text-faint2 transition hover:border-brand-300 hover:text-brand-500"
                       >
-                        빈 칸
-                      </div>
+                        + 재료 넣기
+                      </button>
                     ),
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="mt-3 w-full rounded-xl border border-brand-200 bg-surface px-3 py-2 text-sm font-extrabold text-brand-600 transition hover:bg-brand-50"
+                >
+                  🎒 재료 넣기 — 가방에서 골라 담기
+                </button>
 
                 {/* 예상 결과 미리보기 — 잘못 조리로 재료 날리는 사고 방지 */}
                 {pot.length > 0 && (
@@ -2426,37 +2450,6 @@ function CookingKitchen({
                 </form>
               </section>
 
-              {/* 내 재료 — 눌러서 냄비에 추가 */}
-              <section>
-                <div className="mb-2 flex items-center justify-between px-1">
-                  <h4 className="text-sm font-extrabold text-content">🎒 내 재료</h4>
-                  <span className="text-[11px] font-bold text-faint">눌러서 냄비에 넣기</span>
-                </div>
-                {ingredientOptions.length === 0 ? (
-                  <p className="rounded-2xl bg-subtle px-4 py-6 text-center text-sm text-faint">
-                    가진 재료가 없어요.
-                  </p>
-                ) : (
-                  <div className="flex max-h-48 flex-wrap content-start gap-1.5 overflow-y-auto pr-1">
-                    {ingredientOptions.map((item) => {
-                      const used = potCounts.get(item.name) ?? 0;
-                      const left = item.qty - used;
-                      const disabled = left <= 0 || pot.length >= cooking.maxIngredients;
-                      return (
-                        <button
-                          key={item.name}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => addToPot(item.name)}
-                          className="rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-bold text-content transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-40"
-                        >
-                          {item.name} <span className="text-faint">×{left}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
             </>
           )}
 
@@ -2610,6 +2603,25 @@ function CookingKitchen({
           </button>
         </div>
       </div>
+
+      {pickerOpen && (
+        <IngredientPicker
+          title="🍲 냄비에 재료 담기"
+          accent="brand"
+          sources={pickerSources}
+          initial={Object.fromEntries(potCounts)}
+          maxUnits={cooking.maxIngredients}
+          onConfirm={(draft) =>
+            setPot(
+              Object.entries(draft)
+                .filter(([, qty]) => qty > 0)
+                .flatMap(([name, qty]) => Array.from({ length: qty }, () => name))
+                .slice(0, cooking.maxIngredients),
+            )
+          }
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2868,7 +2880,7 @@ export default function WorldServices({
                     ? alchemyReady
                       ? `${alchemy.brewing.recipeName} 완성!`
                       : `${alchemy.brewing.recipeName} 끓는 중…`
-                    : `연금술 Lv.${alchemy.level} · 장인 ${alchemy.masterCount}/${alchemy.recipeCount} · 완벽 판정 ±${alchemy.tolerance}분`}
+                    : `연금술 Lv.${alchemy.level}`}
                 </span>
               </span>
               {alchemyReady && (

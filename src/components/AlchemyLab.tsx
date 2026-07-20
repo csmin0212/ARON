@@ -21,6 +21,7 @@ import {
   parsePotionName,
 } from "@/lib/alchemy";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
+import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 
 export type AlchemyRecipeView = {
   id: string;
@@ -83,7 +84,7 @@ export type AlchemyView = {
   accelerators: AlchemyAcceleratorView[];
 };
 
-type LifeItemLike = { name: string; qty: number };
+type LifeItemLike = { name: string; qty: number; sourceKind?: "낚시" | "채집" | "채광" };
 type PotEntry = { name: string; qty: number };
 
 const POT_TYPE_MAX = 5; // 재료 종류 칸 수 — 모든 레시피가 5종 이하
@@ -193,6 +194,7 @@ export default function AlchemyLab({
   const [pot, setPot] = useState<PotEntry[]>([]);
   const [minutes, setMinutes] = useState(7);
   const [now, setNow] = useState(() => Date.now());
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [startState, startAction, startPending] = useActionState<AlchemyState, FormData>(
     startBrew,
@@ -239,29 +241,50 @@ export default function AlchemyLab({
     return (name: string) => counts.get(name.trim()) ?? 0;
   }, [inventoryItems, lifeItems]);
 
-  // 재료 서랍 — 레시피에 등장하는 재료만 후보로
+  // 재료 후보 — 레시피에 등장하는 재료만
   const drawerNames = useMemo(() => {
     const names = new Set<string>();
     for (const recipe of alchemy.recipes) {
       for (const ingredient of recipe.ingredientList) names.add(ingredient.name);
     }
-    return [...names].sort((a, b) => a.localeCompare(b, "ko"));
+    return names;
   }, [alchemy.recipes]);
 
-  const potQtyOf = (name: string) => pot.find((entry) => entry.name === name)?.qty ?? 0;
-  const addToPot = (name: string) => {
-    setPot((prev) => {
-      const existing = prev.find((entry) => entry.name === name);
-      if (existing) {
-        if (existing.qty >= haveOf(name)) return prev;
-        return prev.map((entry) =>
-          entry.name === name ? { ...entry, qty: entry.qty + 1 } : entry,
-        );
+  // 재료 팝업 소스 — 가방별 탭 (휴대품은 등급 붙은 포션도 기본 이름으로 합산)
+  const pickerSources = useMemo<PickerSource[]>(() => {
+    const bag = new Map<string, number>();
+    for (const item of inventoryItems) {
+      if (item.qty <= 0) continue;
+      const raw = item.name.trim();
+      const base = parsePotionName(raw).base;
+      const key = drawerNames.has(raw) ? raw : drawerNames.has(base) ? base : null;
+      if (key) bag.set(key, (bag.get(key) ?? 0) + item.qty);
+    }
+    const bagItems = [...bag.entries()]
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+    const byKind = (kind: "채집" | "낚시" | "채광") => {
+      const merged = new Map<string, number>();
+      for (const item of lifeItems) {
+        if (item.sourceKind !== kind || item.qty <= 0) continue;
+        const name = item.name.trim();
+        if (!drawerNames.has(name)) continue;
+        merged.set(name, (merged.get(name) ?? 0) + item.qty);
       }
-      if (prev.length >= POT_TYPE_MAX || haveOf(name) <= 0) return prev;
-      return [...prev, { name, qty: 1 }];
-    });
-  };
+      return [...merged.entries()]
+        .map(([name, qty]) => ({ name, qty }))
+        .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    };
+
+    return [
+      { key: "inv", label: "휴대품", emoji: "🎒", items: bagItems },
+      { key: "gather", label: "채집", emoji: "🌿", items: byKind("채집") },
+      { key: "fish", label: "낚시", emoji: "🎣", items: byKind("낚시") },
+      { key: "mine", label: "채광", emoji: "⛏️", items: byKind("채광") },
+    ];
+  }, [inventoryItems, lifeItems, drawerNames]);
+
   const takeFromPot = (name: string) => {
     setPot((prev) =>
       prev
@@ -332,10 +355,7 @@ export default function AlchemyLab({
           </h3>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold">
             <span className="rounded-full bg-white/15 px-2.5 py-1">
-              🧫 연금술 Lv.{alchemy.level} · 장인 {alchemy.masterCount}/{alchemy.recipeCount}
-            </span>
-            <span className="rounded-full bg-white/15 px-2.5 py-1">
-              🎯 완벽 판정 ±{alchemy.tolerance}분
+              🧫 연금술 Lv.{alchemy.level}
             </span>
             <span className="rounded-full bg-white/15 px-2.5 py-1">
               ⚡ {alchemy.ap} · 제조 -{BREW_AP_COST}
@@ -478,12 +498,15 @@ export default function AlchemyLab({
                         <span className="text-xs font-black text-violet-500">x{entry.qty}</span>
                       </button>
                     ) : (
-                      <div
+                      <button
                         key={`empty-${i}`}
-                        className="grid place-items-center rounded-xl border border-dashed border-line py-2 text-lg text-faint2"
+                        type="button"
+                        onClick={() => setPickerOpen(true)}
+                        title="재료 넣기"
+                        className="grid place-items-center rounded-xl border border-dashed border-line py-2 text-lg text-faint2 transition hover:border-violet-300 hover:text-violet-400"
                       >
                         +
-                      </div>
+                      </button>
                     ),
                   )}
                 </div>
@@ -498,43 +521,15 @@ export default function AlchemyLab({
                     ? `🧪 이 조합: ${matched.name} (판매가 ${matched.sellPrice.toLocaleString()}G)`
                     : pot.length > 0
                       ? "아직 아무것도 떠오르지 않는 조합…"
-                      : "아래 서랍에서 재료를 눌러 가마에 넣어보세요."}
+                      : "재료를 넣고 시간을 정해 실험해보세요."}
                 </p>
-              </section>
-
-              <section>
-                <p className="mb-1.5 text-xs font-extrabold text-faint">🗄️ 재료 서랍</p>
-                <div className="flex max-h-24 flex-wrap content-start gap-1.5 overflow-y-auto rounded-2xl border border-line bg-subtle p-2">
-                  {drawerNames.map((name) => {
-                    const have = haveOf(name);
-                    const used = potQtyOf(name);
-                    const disabled =
-                      have <= used || (used === 0 && pot.length >= POT_TYPE_MAX);
-                    return (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => addToPot(name)}
-                        disabled={disabled}
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
-                          have <= 0
-                            ? "bg-surface text-faint2"
-                            : used > 0
-                              ? "bg-violet-100 text-violet-600 hover:bg-violet-200 dark:bg-violet-950/50 dark:text-violet-300"
-                              : "bg-surface text-content hover:bg-violet-50"
-                        } disabled:cursor-not-allowed disabled:opacity-50`}
-                      >
-                        {name} {used > 0 ? `${used}/` : ""}
-                        {have}
-                      </button>
-                    );
-                  })}
-                  {drawerNames.length === 0 && (
-                    <p className="px-1 py-2 text-[11px] font-bold text-faint">
-                      포션 레시피가 아직 동기화되지 않았어요.
-                    </p>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="mt-2 w-full rounded-xl border border-violet-200 bg-surface px-3 py-2 text-sm font-extrabold text-violet-600 transition hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40"
+                >
+                  🗄️ 재료 넣기 — 가방에서 골라 담기
+                </button>
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-3">
@@ -729,6 +724,24 @@ export default function AlchemyLab({
           </button>
         </div>
       </div>
+
+      {pickerOpen && (
+        <IngredientPicker
+          title="🫧 가마에 재료 담기"
+          accent="violet"
+          sources={pickerSources}
+          initial={Object.fromEntries(pot.map((entry) => [entry.name, entry.qty]))}
+          maxTypes={POT_TYPE_MAX}
+          onConfirm={(draft) =>
+            setPot(
+              Object.entries(draft)
+                .filter(([, qty]) => qty > 0)
+                .map(([name, qty]) => ({ name, qty })),
+            )
+          }
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
