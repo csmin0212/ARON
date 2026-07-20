@@ -28,6 +28,7 @@ import WorldChat from "@/components/WorldChat";
 import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
 import WorldServices, {
   type CookingView,
+  type BlackMarketView,
   type HousingView,
   type InnView,
   type LifeShopView,
@@ -117,6 +118,11 @@ export const metadata = { title: "월드 · 아리안로드 온라인 갤러리"
 
 const STORAGE_UPGRADE_STEP = 10;
 const storageUpgradeCost = (maxWeight: number) => Math.max(1000, Math.max(0, maxWeight) * 100);
+const ALCHEMY_BOOKS = [
+  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 2000, rank: "R1", level: 1 },
+  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 5000, rank: "R2", level: 2 },
+  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 10000, rank: "R3", level: 3 },
+] as const;
 
 function ApBar({ ap, nextRegenMin }: { ap: number; nextRegenMin: number | null }) {
   return (
@@ -646,8 +652,13 @@ export default async function WorldPage() {
     "smith",
     "blacksmith",
   ]);
-  // 암시장(뒷골목)은 추후 프리미엄 매입처로 확장 여지를 둔 자리.
-  // const canBlackMarket = hasServiceKeyword(here, locActions, ["암시장", "뒷골목"]);
+  const canBlackMarket = hasServiceKeyword(here, locActions, [
+    "암시장",
+    "뒷골목",
+    "연금술 책",
+    "black market",
+    "back alley",
+  ]);
   const canStorage =
     atMyHome || canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
   const canInn = hasServiceKeyword(here, locActions, ["여관", "숙소", "inn"]);
@@ -878,7 +889,7 @@ export default async function WorldPage() {
   // ── 연금술 — 본인 집 + 연금술 공방 가구가 있을 때만 ──
   const alchemyLab = ownedAlchemyLab(housingState);
   const alchemyEnabled = atMyHome && alchemyLab != null;
-  const alchemyRecipes = alchemyEnabled ? await getAlchemyRecipes() : [];
+  const alchemyRecipes = alchemyEnabled || canBlackMarket ? await getAlchemyRecipes() : [];
   const alchemyRecipeViews: AlchemyRecipeView[] = alchemyRecipes.map((recipe) => {
     const ingredientList = parseRecipeIngredients(recipe.ingredientsJson).map((ingredient) => ({
       name: ingredient.name,
@@ -975,6 +986,18 @@ export default async function WorldPage() {
     brewing,
     potions: potionsForSale,
     accelerators: alchemyAccelerators,
+  };
+  const unlockedAlchemyRecipeIds = new Set(life.alchemyPerfect);
+  const blackMarket: BlackMarketView = {
+    gold: housing.gold,
+    books: ALCHEMY_BOOKS.map((book) => {
+      const recipes = alchemyRecipes.filter((recipe) => recipe.rank === book.rank);
+      return {
+        ...book,
+        total: recipes.length,
+        unlocked: recipes.filter((recipe) => unlockedAlchemyRecipeIds.has(recipe.id)).length,
+      };
+    }),
   };
   let gatherPending: PendingGatherView | null = null;
   if (sheet.pendingGatherJson) {
@@ -1310,8 +1333,10 @@ export default async function WorldPage() {
             canInn={canInn}
             canHousing={canHousing}
             canGacha={here.id === "대상야영지"}
+            canBlackMarket={canBlackMarket}
             cooking={cooking}
             alchemy={alchemy}
+            blackMarket={blackMarket}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}

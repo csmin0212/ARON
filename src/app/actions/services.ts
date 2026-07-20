@@ -130,6 +130,12 @@ const FOOD_ITEMS = [
   { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25, weight: 1, desc: "요리용 식재료" },
 ] as const;
 
+const ALCHEMY_BOOK_ITEMS = [
+  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 2000, rank: "R1", level: 1 },
+  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 5000, rank: "R2", level: 2 },
+  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 10000, rank: "R3", level: 3 },
+] as const;
+
 type LifeShopProduct =
   | {
       id: string;
@@ -392,6 +398,10 @@ function foodProduct(productId: string) {
   return FOOD_ITEMS.find((item) => item.id === productId) ?? null;
 }
 
+function alchemyBookProduct(productId: string) {
+  return ALCHEMY_BOOK_ITEMS.find((item) => item.id === productId) ?? null;
+}
+
 export async function promoteAdventurerRank(
   _prev: GuildState,
   _formData: FormData,
@@ -474,6 +484,23 @@ async function canUsePublicKitchen(locationId: string | null): Promise<boolean> 
     .join(" ")
     .toLowerCase();
   return ["상점", "시장", "주방", "요리", "식료품", "market", "kitchen"].some((keyword) =>
+    source.includes(keyword.toLowerCase()),
+  );
+}
+
+async function canUseAlchemyBookShop(locationId: string | null): Promise<boolean> {
+  if (!locationId) return false;
+  const [location, actions] = await Promise.all([
+    prisma.location.findUnique({ where: { id: locationId }, select: { id: true, name: true } }),
+    prisma.locationAction.findMany({
+      where: { locationId },
+      select: { kind: true, label: true },
+    }),
+  ]);
+  const source = [location?.id ?? "", location?.name ?? "", ...actions.flatMap((a) => [a.kind, a.label ?? ""])]
+    .join(" ")
+    .toLowerCase();
+  return ["암시장", "뒷골목", "연금술 책", "black market", "back alley"].some((keyword) =>
     source.includes(keyword.toLowerCase()),
   );
 }
@@ -1111,6 +1138,74 @@ export async function sellFood(_prev: MarketState, formData: FormData): Promise<
   revalidatePath("/world");
   revalidatePath("/profile");
   return { ok: `${product.name} x${qty} 판매 완료. +${(product.sellPrice * qty).toLocaleString()}G` };
+}
+
+export async function buyAlchemyBook(
+  _prev: MarketState,
+  formData: FormData,
+): Promise<MarketState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!(await canUseAlchemyBookShop(ctx.locationId))) {
+    return { error: "연금술 책은 뒷골목에서만 구입할 수 있습니다." };
+  }
+
+  const product = alchemyBookProduct(String(formData.get("productId") ?? ""));
+  if (!product) return { error: "판매 목록에 없는 연금술 책입니다." };
+
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  if (currentGold < product.price) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${product.price.toLocaleString()}G)` };
+  }
+
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: ctx.userId },
+    select: { lifeJson: true },
+  });
+  const life = parseLifeState(sheet?.lifeJson);
+  const recipes = await prisma.alchemyRecipe.findMany({
+    where: { rank: product.rank },
+    select: { id: true },
+    orderBy: { order: "asc" },
+  });
+  if (recipes.length === 0) {
+    return { error: `${product.level}레벨 연금술 레시피가 아직 동기화되지 않았습니다.` };
+  }
+
+  const known = new Set(life.alchemyPerfect);
+  const newRecipeIds = recipes.map((recipe) => recipe.id).filter((id) => !known.has(id));
+  if (newRecipeIds.length === 0) {
+    return { error: `${product.level}레벨 연금술 레시피는 이미 전부 열려 있습니다.` };
+  }
+
+  life.alchemyPerfect = [...life.alchemyPerfect, ...newRecipeIds];
+  const nextGold = currentGold - product.price;
+  const inv = ctx.inv;
+  inv.gold = `${nextGold}G`;
+
+  await prisma.characterSheet.update({
+    where: { userId: ctx.userId },
+    data: {
+      curGold: nextGold,
+      gold: `${nextGold}G`,
+      invJson: JSON.stringify(inv),
+      lifeJson: JSON.stringify(life),
+    },
+  });
+  void enqueueSheetGoldSync(ctx.userId);
+
+  if (ctx.locationId) {
+    await postSystem(
+      ctx.locationId,
+      `📚 ${ctx.nickname}님이 ${product.name}을 읽고 ${product.level}레벨 연금술 레시피 ${newRecipeIds.length}개를 익혔습니다.`,
+    );
+  }
+
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return {
+    ok: `${product.name} 구매 완료. ${product.level}레벨 연금술 레시피 ${newRecipeIds.length}개가 열렸습니다.`,
+  };
 }
 
 // 요리 등급 추첨 — 레벨이 높을수록 좋은 등급 확률↑.

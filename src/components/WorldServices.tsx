@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useActionState } from "react";
 import {
+  buyAlchemyBook,
   buyFurniture,
   buyHouse,
   buyFood,
@@ -55,8 +56,10 @@ type Props = {
   canInn: boolean;
   canHousing: boolean;
   canGacha: boolean;
+  canBlackMarket: boolean;
   cooking: CookingView;
   alchemy: AlchemyView;
+  blackMarket: BlackMarketView;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
@@ -197,6 +200,19 @@ export type LifeShopView = {
     채집: string;
     채광: string;
   };
+};
+
+export type BlackMarketView = {
+  gold: number;
+  books: {
+    id: string;
+    name: string;
+    price: number;
+    level: number;
+    rank: string;
+    total: number;
+    unlocked: number;
+  }[];
 };
 
 const GEM_NAMES = ["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
@@ -2101,6 +2117,85 @@ const FOOD_PRODUCTS = [
   { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25 },
 ] as const;
 
+function AlchemyBookShop({
+  blackMarket,
+  onClose,
+}: {
+  blackMarket: BlackMarketView;
+  onClose: () => void;
+}) {
+  const [state, action, pending] = useActionState<MarketState, FormData>(
+    buyAlchemyBook,
+    undefined,
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="뒷골목 연금술 책방"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-violet-950/20 bg-surface shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-line bg-gradient-to-r from-zinc-950 via-violet-950 to-zinc-950 px-5 py-4 text-white">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-200">
+            Back Alley
+          </p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold">
+            <span>📚 연금술 책</span>
+            <span className="text-sm font-bold text-amber-200">
+              {blackMarket.gold.toLocaleString()}G
+            </span>
+          </h3>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <MarketStateLine state={state} />
+          <div className="grid gap-2">
+            {blackMarket.books.map((book) => {
+              const complete = book.total > 0 && book.unlocked >= book.total;
+              return (
+                <form key={book.id} action={action}>
+                  <input type="hidden" name="productId" value={book.id} />
+                  <button
+                    type="submit"
+                    disabled={pending || complete || book.total === 0}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-55 dark:hover:bg-violet-950/40"
+                  >
+                    <span className="text-xl">📖</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-extrabold text-content">{book.name}</span>
+                      <span className="mt-0.5 block text-[11px] text-faint">
+                        {book.level}레벨 전체 레시피 해금 · {book.unlocked}/{book.total}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-black text-amber-500">
+                      {complete ? "완료" : `${book.price.toLocaleString()}G`}
+                    </span>
+                  </button>
+                </form>
+              );
+            })}
+          </div>
+        </div>
+        <div className="border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-content transition hover:bg-subtle-hover"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FoodMarket({ onClose }: { onClose: () => void }) {
   const [buyState, buyAction, buyPending] = useActionState<MarketState, FormData>(
     buyFood,
@@ -2717,8 +2812,10 @@ export default function WorldServices({
   canInn,
   canHousing,
   canGacha,
+  canBlackMarket,
   cooking,
   alchemy,
+  blackMarket,
   inventoryItems,
   lifeStorageItems,
   lifeShop,
@@ -2743,6 +2840,7 @@ export default function WorldServices({
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
   const [alchemyOpen, setAlchemyOpen] = useState(false);
+  const [blackMarketOpen, setBlackMarketOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
@@ -2798,7 +2896,7 @@ export default function WorldServices({
     return () => clearInterval(timer);
   }, [alchemy.brewing]);
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !weeklyIncome) return null;
+  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -2900,6 +2998,19 @@ export default function WorldServices({
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">레시피 가챠</span>
                 <span className="text-[11px] text-faint">대상 야영지 전용 · 랜덤 레시피 · 1회 50골드</span>
+              </span>
+            </button>
+          )}
+          {canBlackMarket && (
+            <button
+              type="button"
+              onClick={() => setBlackMarketOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-zinc-800/20 bg-gradient-to-r from-zinc-950 to-violet-950 px-3.5 py-3 text-left text-white shadow-sm transition hover:border-violet-400"
+            >
+              <span className="text-xl">📚</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-extrabold">뒷골목 연금술 책</span>
+                <span className="text-[11px] text-violet-100">초급 · 중급 · 상급 레시피 해금</span>
               </span>
             </button>
           )}
@@ -3076,6 +3187,13 @@ export default function WorldServices({
       )}
 
       {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
+
+      {blackMarketOpen && (
+        <AlchemyBookShop
+          blackMarket={blackMarket}
+          onClose={() => setBlackMarketOpen(false)}
+        />
+      )}
 
       {cookingOpen && (
         <CookingKitchen
