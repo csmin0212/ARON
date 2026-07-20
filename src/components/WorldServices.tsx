@@ -86,6 +86,27 @@ export type InnView = {
 const INN_REST_COST = 100;
 const INN_REST_AMOUNT = 60;
 
+function rankOrder(rank: string): number {
+  const value = Number(rank.replace(/[^\d]/g, ""));
+  return Number.isFinite(value) && value > 0 ? value : 99;
+}
+
+function sortedRanks(ranks: string[]): string[] {
+  return [...new Set(ranks.filter(Boolean))].sort(
+    (a, b) => rankOrder(a) - rankOrder(b) || a.localeCompare(b, "ko"),
+  );
+}
+
+const STORAGE_SOURCE_FILTERS = [
+  { key: "all", label: "전체", icon: "✨" },
+  { key: "basic", label: "휴대품", icon: "🎒" },
+  { key: "낚시", label: "낚시", icon: "🎣" },
+  { key: "채집", label: "채집", icon: "🌿" },
+  { key: "채광", label: "채광", icon: "⛏️" },
+] as const;
+
+type StorageSourceFilter = (typeof STORAGE_SOURCE_FILTERS)[number]["key"];
+
 export type HousingView = {
   gold: number;
   ap: number;
@@ -784,6 +805,8 @@ function StorageManager({
     undefined,
   );
   const [view, setView] = useState<"deposit" | "storage">("deposit");
+  const [depositSource, setDepositSource] = useState<StorageSourceFilter>("all");
+  const [storageSource, setStorageSource] = useState<StorageSourceFilter>("all");
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const lifeItems = useMemo(
     () => lifeStorageItems.filter((item) => item.qty > 0),
@@ -798,6 +821,12 @@ function StorageManager({
     ...items.map((item) => ({ ...item, sourceKind: "basic" as const })),
     ...lifeItems,
   ];
+  const filteredDepositRows = depositRows.filter(
+    (item) => depositSource === "all" || item.sourceKind === depositSource,
+  );
+  const filteredStorageItems = storageItems.filter(
+    (item) => storageSource === "all" || item.sourceKind === storageSource,
+  );
 
   return (
     <div
@@ -869,6 +898,32 @@ function StorageManager({
               </button>
             ))}
           </div>
+          <div className="mb-3 flex gap-1 overflow-x-auto rounded-2xl bg-subtle p-1">
+            {STORAGE_SOURCE_FILTERS.map((filter) => {
+              const activeSource = view === "deposit" ? depositSource : storageSource;
+              const rows = view === "deposit" ? depositRows : storageItems;
+              const count =
+                filter.key === "all"
+                  ? rows.length
+                  : rows.filter((item) => item.sourceKind === filter.key).length;
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() =>
+                    view === "deposit" ? setDepositSource(filter.key) : setStorageSource(filter.key)
+                  }
+                  className={`shrink-0 rounded-xl px-2.5 py-1.5 text-xs font-black transition ${
+                    activeSource === filter.key
+                      ? "bg-surface text-brand-600 shadow-sm"
+                      : "text-muted hover:text-content"
+                  }`}
+                >
+                  {filter.icon} {filter.label} {count}
+                </button>
+              );
+            })}
+          </div>
 
           {view === "deposit" ? (
             <>
@@ -877,9 +932,13 @@ function StorageManager({
                 <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
                   맡길 물건이 없어요.
                 </p>
+              ) : filteredDepositRows.length === 0 ? (
+                <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
+                  이 분류에 맡길 물건이 없어요.
+                </p>
               ) : (
                 <ul className="space-y-1.5">
-                  {depositRows.map((item) => (
+                  {filteredDepositRows.map((item) => (
                     <li
                       key={`${item.sourceKind}-${item.name}`}
                       className="flex items-center gap-2.5 rounded-2xl bg-subtle px-3 py-2.5"
@@ -929,9 +988,13 @@ function StorageManager({
                 <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
                   아직 맡긴 물건이 없어요.
                 </p>
+              ) : filteredStorageItems.length === 0 ? (
+                <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
+                  이 분류에 맡긴 물건이 없어요.
+                </p>
               ) : (
                 <ul className="space-y-1.5">
-                  {storageItems.map((item) => (
+                  {filteredStorageItems.map((item) => (
                     <li
                       key={item.id}
                       className="flex items-center gap-2.5 rounded-2xl bg-subtle px-3 py-2.5"
@@ -2318,6 +2381,7 @@ function CookingKitchen({
   const [tab, setTab] = useState<"pot" | "book" | "sell">("pot");
   // 냄비 — 재료 1개 단위의 이름 배열 (서버 폼 계약: ingredient 히든 인풋 1개 = 1단위)
   const [pot, setPot] = useState<string[]>([]);
+  const [bookRank, setBookRank] = useState("all");
   const [bookFilter, setBookFilter] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -2389,12 +2453,18 @@ function CookingKitchen({
     );
   }, [pot.length, potCounts, cooking.knownRecipes]);
 
+  const recipeRanks = useMemo(
+    () => sortedRanks(cooking.knownRecipes.map((recipe) => recipe.rank)),
+    [cooking.knownRecipes],
+  );
+
   const filteredRecipes = cooking.knownRecipes.filter((recipe) => {
+    if (bookRank !== "all" && recipe.rank !== bookRank) return false;
     const keyword = bookFilter.trim();
     if (!keyword) return true;
-    return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients}`.includes(
-      keyword,
-    );
+    return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients} ${
+      recipe.effect ?? ""
+    }`.includes(keyword);
   });
 
   const potSlots = Array.from({ length: cooking.maxIngredients }, (_, i) => pot[i] ?? null);
@@ -2550,6 +2620,32 @@ function CookingKitchen({
 
           {tab === "book" && (
             <section className="space-y-2">
+              {cooking.knownRecipes.length > 0 && (
+                <div className="flex gap-1 overflow-x-auto rounded-2xl bg-subtle p-1">
+                  {[
+                    { key: "all", label: `전체 ${cooking.knownRecipes.length}` },
+                    ...recipeRanks.map((rank) => ({
+                      key: rank,
+                      label: `${rank} ${
+                        cooking.knownRecipes.filter((recipe) => recipe.rank === rank).length
+                      }`,
+                    })),
+                  ].map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => setBookRank(filter.key)}
+                      className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                        bookRank === filter.key
+                          ? "bg-surface text-brand-600 shadow-sm"
+                          : "text-muted hover:text-content"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -2569,14 +2665,20 @@ function CookingKitchen({
                   조리대에서 재료를 조합해 첫 레시피를 발견해보세요!
                 </p>
               ) : (
-                <ul className="space-y-2">
-                  {filteredRecipes.map((recipe) => {
-                    const status = recipeStatus(recipe);
-                    return (
-                      <li
-                        key={recipe.id}
-                        className="rounded-2xl border border-line bg-subtle p-3.5"
-                      >
+                <>
+                  {filteredRecipes.length === 0 ? (
+                    <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
+                      조건에 맞는 레시피가 없어요.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {filteredRecipes.map((recipe) => {
+                        const status = recipeStatus(recipe);
+                        return (
+                          <li
+                            key={recipe.id}
+                            className="rounded-2xl border border-line bg-subtle p-3.5"
+                          >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-extrabold text-content">
@@ -2633,10 +2735,12 @@ function CookingKitchen({
                               ? "🍲 재료 담기"
                               : "재료가 부족해요"}
                         </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
               )}
             </section>
           )}

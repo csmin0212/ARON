@@ -99,6 +99,17 @@ function rankStyle(rank: string) {
   return RANK_STYLE[rank] ?? RANK_STYLE.R1;
 }
 
+function rankOrder(rank: string): number {
+  const value = Number(rank.replace(/[^\d]/g, ""));
+  return Number.isFinite(value) && value > 0 ? value : 99;
+}
+
+function sortedRanks(ranks: string[]): string[] {
+  return [...new Set(ranks.filter(Boolean))].sort(
+    (a, b) => rankOrder(a) - rankOrder(b) || a.localeCompare(b, "ko"),
+  );
+}
+
 function StateLine({ state }: { state: AlchemyState }) {
   if (!state?.error && !state?.ok) return null;
   return (
@@ -195,6 +206,8 @@ export default function AlchemyLab({
   const [minutes, setMinutes] = useState(7);
   const [now, setNow] = useState(() => Date.now());
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [bookRank, setBookRank] = useState("all");
+  const [bookFilter, setBookFilter] = useState("");
 
   const [startState, startAction, startPending] = useActionState<AlchemyState, FormData>(
     startBrew,
@@ -307,6 +320,22 @@ export default function AlchemyLab({
     () => alchemy.recipes.filter((recipe) => recipe.mastered && recipe.bestMinutes != null),
     [alchemy.recipes],
   );
+
+  const recipeRanks = useMemo(
+    () => sortedRanks(masteredRecipes.map((recipe) => recipe.rank)),
+    [masteredRecipes],
+  );
+
+  const filteredMasteredRecipes = useMemo(() => {
+    const keyword = bookFilter.trim();
+    return masteredRecipes.filter((recipe) => {
+      if (bookRank !== "all" && recipe.rank !== bookRank) return false;
+      if (!keyword) return true;
+      return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients} ${
+        recipe.effect ?? ""
+      } ${recipe.perfectEffect ?? ""}`.includes(keyword);
+    });
+  }, [bookFilter, bookRank, masteredRecipes]);
 
   const potUnits = pot.flatMap((entry) => Array.from({ length: entry.qty }, () => entry.name));
   const potSlots = Array.from({ length: POT_TYPE_MAX }, (_, i) => pot[i] ?? null);
@@ -588,7 +617,47 @@ export default function AlchemyLab({
           {/* ── 레시피 — 익힌 최적 시간으로 바로 달이기 ── */}
           {tab === "book" && (
             <div className="space-y-2">
-              {masteredRecipes.map((recipe) => {
+              {masteredRecipes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex gap-1 overflow-x-auto rounded-2xl bg-surface/70 p-1">
+                    {[
+                      { key: "all", label: `전체 ${masteredRecipes.length}` },
+                      ...recipeRanks.map((rank) => ({
+                        key: rank,
+                        label: `${rank} ${
+                          masteredRecipes.filter((recipe) => recipe.rank === rank).length
+                        }`,
+                      })),
+                    ].map((filter) => (
+                      <button
+                        key={filter.key}
+                        type="button"
+                        onClick={() => setBookRank(filter.key)}
+                        className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                          bookRank === filter.key
+                            ? "bg-white text-brand-600 shadow-sm"
+                            : "text-muted hover:text-content"
+                        }`}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={bookFilter}
+                      onChange={(e) => setBookFilter(e.target.value)}
+                      placeholder="레시피·재료 검색"
+                      className="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm text-content placeholder:text-faint2 focus:border-brand-300 focus:outline-none"
+                    />
+                    <span className="shrink-0 text-[11px] font-bold text-faint">
+                      {filteredMasteredRecipes.length}개
+                    </span>
+                  </div>
+                </div>
+              )}
+              {filteredMasteredRecipes.map((recipe) => {
                 const style = rankStyle(recipe.rank);
                 const affordable = canAfford(recipe);
                 return (
@@ -656,6 +725,11 @@ export default function AlchemyLab({
               {masteredRecipes.length === 0 && (
                 <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
                   아직 최적 시간을 익힌 포션이 없어요. 실험 가마에서 완벽 제조를 해보세요.
+                </p>
+              )}
+              {masteredRecipes.length > 0 && filteredMasteredRecipes.length === 0 && (
+                <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
+                  조건에 맞는 확정 레시피가 없어요.
                 </p>
               )}
             </div>
