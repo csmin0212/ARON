@@ -13,7 +13,9 @@ import { checkAndGrant } from "@/lib/achievements";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import CharacterTabs from "@/components/CharacterTabs";
 import ProfileCard from "@/components/ProfileCard";
-import { buildProfileCardData } from "@/lib/profileCardData";
+import ProfileContent, { HERO_CONTENT_STYLE } from "@/components/ProfileContent";
+import { buildProfileIdentity, computeProfileValues } from "@/lib/profileValues";
+import { parseProfileWidgets, resolveWidgets } from "@/lib/profileWidgets";
 import LifeSkillPanel from "@/components/LifeSkillPanel";
 import ProfileHero, { type ProfileAchievementBadge } from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
@@ -310,6 +312,25 @@ export default async function CharacterPage({
       : []
   ).filter(Boolean) as string[];
 
+  // ── 프로필 헤더(메인/카드) 정체성 + 내용물 위젯 ──
+  const mainForm = profile.profileMain === "card" ? "card" : "hero";
+  const headerWidgetKeys = parseProfileWidgets(profile.profileWidgetsJson);
+  const headerPostCount = await prisma.post.count({ where: { authorId: profile.id } });
+  const headerValues = await computeProfileValues({
+    userId: profile.id,
+    sheet: profile.sheet,
+    postCount: headerPostCount,
+    canViewSheet,
+    includeCollection: headerWidgetKeys.includes("collection"),
+    canViewCollection,
+  });
+  const headerIdentity = buildProfileIdentity(profile, profile.sheet, {
+    title: canViewAchievements ? profile.equippedTitle : null,
+    badge: canViewAchievements ? profile.equippedBadge : null,
+    canViewSheet,
+  });
+  const headerWidgets = resolveWidgets(headerWidgetKeys, headerValues);
+
   // ── 탭 내용 ──
   const sheetTab = (
     canViewSheet ? (
@@ -395,45 +416,45 @@ export default async function CharacterPage({
     )
   );
 
+  const editLink = isOwn ? (
+    <Link
+      href="/profile?section=edit"
+      className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
+    >
+      프로필 편집
+    </Link>
+  ) : undefined;
+
   return (
     <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
-      {/* 프로필 카드 쇼케이스 — 본인이 카드 스킨을 저장한 경우에만 노출 */}
-      {profile.profileCardStyle && (
-        <ProfileCard
-          data={buildProfileCardData(profile, profile.sheet, {
-            title: canViewAchievements ? profile.equippedTitle : null,
-            badge: canViewAchievements ? profile.equippedBadge : null,
-            canViewSheet,
-          })}
-          style={profile.profileCardStyle}
+      {/* 프로필 헤더 — profileMain 에 따라 메인 프로필(hero) 또는 프로필 카드 하나만 노출 */}
+      {mainForm === "card" ? (
+        <div className="space-y-2">
+          {editLink && <div className="flex justify-end">{editLink}</div>}
+          <ProfileCard identity={headerIdentity} widgets={headerWidgets} style={profile.profileCardStyle} />
+        </div>
+      ) : (
+        <ProfileHero
+          nickname={profile.nickname}
+          username={profile.username}
+          avatar={profile.avatar}
+          status={profile.profileStatus}
+          level={headerIdentity.level}
+          rank={headerIdentity.rank}
+          tags={tags}
+          color={profile.profileColor}
+          cover={profile.profileCover}
+          title={canViewAchievements ? profile.equippedTitle : null}
+          badge={canViewAchievements ? profile.equippedBadge : null}
+          featuredAchievements={featuredAchievements}
+          action={editLink}
+          footer={
+            headerWidgets.length > 0 ? (
+              <ProfileContent widgets={headerWidgets} style={HERO_CONTENT_STYLE} />
+            ) : undefined
+          }
         />
       )}
-
-      {/* 프로필 헤더 */}
-      <ProfileHero
-        nickname={profile.nickname}
-        username={profile.username}
-        avatar={profile.avatar}
-        status={profile.profileStatus}
-        level={canViewSheet ? profile.sheet?.level : null}
-        rank={canViewSheet ? profile.sheet?.adventurerRank : null}
-        tags={tags}
-        color={profile.profileColor}
-        cover={profile.profileCover}
-        title={canViewAchievements ? profile.equippedTitle : null}
-        badge={canViewAchievements ? profile.equippedBadge : null}
-        featuredAchievements={featuredAchievements}
-        action={
-          isOwn ? (
-            <Link
-              href="/profile?section=edit"
-              className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
-            >
-              프로필 편집
-            </Link>
-          ) : undefined
-        }
-      />
 
       <CharacterTabs
         tabs={[

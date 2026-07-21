@@ -13,6 +13,9 @@ import {
   parseFeaturedAchievementIds,
   parseProfileVisibility,
 } from "@/lib/profile";
+import { computeProfileValues, buildProfileIdentity } from "@/lib/profileValues";
+import { parseProfileWidgets } from "@/lib/profileWidgets";
+import { normalizeCardStyle, parseOwnedSkins } from "@/lib/profileCard";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
 
@@ -79,6 +82,24 @@ export default async function ProfilePage({
   const visibility = parseProfileVisibility(user.profileVisibilityJson);
   const section = sp.section === "sheet" ? "sheet" : "edit";
 
+  // 프로필 폼 미리보기용 — 위젯 값·정체성(본인이라 전부 열람)
+  const widgetValues = await computeProfileValues({
+    userId: user.id,
+    sheet,
+    postCount: counts,
+    canViewSheet: true,
+    includeCollection: true,
+  });
+  const previewIdentity = buildProfileIdentity(user, sheet, { canViewSheet: true });
+  const baseIdentity = {
+    level: previewIdentity.level,
+    rank: previewIdentity.rank,
+    rankPct: previewIdentity.rankPct,
+    charClass: previewIdentity.charClass,
+    race: previewIdentity.race,
+    attribute: previewIdentity.attribute,
+  };
+
   const rank = sheet?.adventurerRank ?? null;
   const tags = (
     sheet
@@ -119,7 +140,7 @@ export default async function ProfilePage({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3">
         <Link
           href="/profile?section=sheet"
           className={`rounded-3xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 ${
@@ -128,9 +149,6 @@ export default async function ProfilePage({
         >
           <p className="text-xs font-bold uppercase tracking-wide text-faint">Sheet Sync</p>
           <h2 className="mt-1 text-lg font-extrabold text-content">시트 연동</h2>
-          <p className="mt-1 text-sm text-muted">
-            구글 스프레드시트 캐릭터 시트를 연결하고 동기화합니다.
-          </p>
         </Link>
         <Link
           href="/profile?section=edit"
@@ -140,31 +158,6 @@ export default async function ProfilePage({
         >
           <p className="text-xs font-bold uppercase tracking-wide text-faint">Profile</p>
           <h2 className="mt-1 text-lg font-extrabold text-content">프로필 편집</h2>
-          <p className="mt-1 text-sm text-muted">
-            배너, 아바타, 공개 범위, 대표 업적을 꾸밉니다.
-          </p>
-        </Link>
-        <Link
-          href="/profile/card"
-          className="group relative overflow-hidden rounded-3xl border border-line bg-surface p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300"
-        >
-          <div
-            className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-70 blur-2xl transition group-hover:opacity-100"
-            style={{
-              background:
-                "radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%)",
-            }}
-          />
-          <p className="text-xs font-bold uppercase tracking-wide text-faint">Profile Card</p>
-          <h2 className="mt-1 flex items-center gap-1.5 text-lg font-extrabold text-content">
-            프로필 카드
-            <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
-              New
-            </span>
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            게임처럼 꾸미는 캐릭터 명함 · 6가지 디자인.
-          </p>
         </Link>
       </div>
 
@@ -207,6 +200,13 @@ export default async function ProfilePage({
             initialVisibility={visibility}
             achievementOptions={achievementOptions}
             initialFeaturedAchievementIds={featuredIds}
+            initialMain={user.profileMain === "card" ? "card" : "hero"}
+            initialCardStyle={normalizeCardStyle(user.profileCardStyle)}
+            initialWidgets={parseProfileWidgets(user.profileWidgetsJson)}
+            initialOwnedSkins={parseOwnedSkins(user.ownedCardSkinsJson)}
+            initialGold={sheet?.curGold ?? 0}
+            baseIdentity={baseIdentity}
+            values={widgetValues}
           />
         </div>
       )}

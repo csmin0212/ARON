@@ -22,7 +22,10 @@ model User {
   profileColor String? // 프로필 꾸미기 강조색 (#rrggbb) — 히어로 배너에 반영
   profileCover String? // 프로필 커버 이미지 URL (또는 /api/image/{id})
   profileVisibilityJson String? // 프로필 공개 설정 JSON { sheet, lifeProfile, collection, skills, achievements }
-  profileCardStyle String? // 프로필 카드 스킨 키 (aurora/obsidian/holo/sakura/cyber/parchment) — lib/profileCard.ts
+  profileCardStyle String? // 프로필 카드 스킨 키 (basic/aurora/.../cbt) — lib/profileCard.ts
+  profileMain      String? // 공개 프로필 헤더 형태: "hero"(메인 프로필) | "card"(프로필 카드)
+  profileWidgetsJson String? // 프로필 헤더 내용물(위젯) 순서 배열 JSON, 최대 6개 — lib/profileWidgets.ts
+  ownedCardSkinsJson String? // 보유한 카드 스킨 키 배열 JSON (구매·보상). 기본(basic)은 항상 보유 — lib/profileCard.ts
   featuredAchievementsJson String? // 프로필 대표 업적 슬롯 JSON [대표, 서브1, 서브2]
   equippedTitle String? // 장착한 대표 칭호 (업적 보상)
   equippedBadge String? // 장착한 대표 배지 (이모지)
@@ -313,6 +316,7 @@ model Mail {
   itemName    String? // 첨부 아이템 (Item.id 또는 이름)
   itemQty     Int       @default(0)
   itemMetaJson String? // 첨부 아이템 스냅샷 (효과·중량 — 경매 반송 등 카탈로그에 없는 강화품 보존)
+  cardSkin    String? // 첨부 카드 스킨 키 (CBT 보상 등) — 수령 시 소유 해금
   claimedAt   DateTime? // 첨부 수령 시각 (null = 미수령)
   readAt      DateTime?
   createdAt   DateTime  @default(now())

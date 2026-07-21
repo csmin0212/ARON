@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatFullDate } from "@/lib/format";
+import { CARD_STYLE_MAP, type ProfileCardStyle } from "@/lib/profileCard";
 import {
   claimMail,
   deleteMail,
@@ -57,8 +58,11 @@ export default async function MailPage({
       <section className="space-y-3">
         {mails.length ? (
           mails.map((m) => {
-            const hasAttach = m.gold > 0 || (!!m.itemName && m.itemQty > 0);
+            const hasAttach = m.gold > 0 || (!!m.itemName && m.itemQty > 0) || !!m.cardSkin;
             const claimable = hasAttach && !m.claimedAt;
+            const skinLabel = m.cardSkin
+              ? CARD_STYLE_MAP[m.cardSkin as ProfileCardStyle]?.label ?? m.cardSkin
+              : null;
             return (
               <div
                 key={m.id}
@@ -83,6 +87,11 @@ export default async function MailPage({
                         {m.itemName && m.itemQty > 0 && (
                           <span className="rounded-lg bg-violet-100 px-2 py-1 text-xs font-bold text-violet-700">
                             🎁 {m.itemName} x{m.itemQty}
+                          </span>
+                        )}
+                        {skinLabel && (
+                          <span className="rounded-lg bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">
+                            🎨 {skinLabel} 카드
                           </span>
                         )}
                         <span

@@ -6,34 +6,9 @@ import {
   normalizeCardStyle,
   type ProfileCardStyle,
 } from "@/lib/profileCard";
-
-export interface ProfileCardStat {
-  key: string;
-  label: string;
-  value: number | null;
-  mod?: number | null;
-}
-
-export interface ProfileCardData {
-  nickname: string;
-  username: string;
-  avatar: string | null;
-  status?: string | null;
-  level?: number | null;
-  rank?: string | null; // 모험가 등급 (A~F)
-  rankPct?: number; // 다음 등급까지 진행률 0~100
-  charClass?: string | null;
-  race?: string | null;
-  attribute?: string | null;
-  gold?: string | null; // 표시용 문자열 "12,300G"
-  hp?: string | number | null; // "cur/max" 또는 max
-  mp?: string | number | null;
-  fate?: number | null;
-  stats?: ProfileCardStat[];
-  title?: string | null; // 대표 칭호
-  badge?: string | null; // 대표 배지 이모지
-  accent?: string | null; // profileColor
-}
+import ProfileContent, { type ContentStyle } from "./ProfileContent";
+import type { ResolvedWidget } from "@/lib/profileWidgets";
+import type { ProfileIdentity } from "@/lib/profileValues";
 
 interface SkinConfig {
   rootStyle: CSSProperties;
@@ -47,7 +22,7 @@ interface SkinConfig {
   barTrack: string;
   brand: string;
   serif?: boolean;
-  decoration?: "holo" | "cyber" | "parchment" | "sakura" | null;
+  decoration?: "holo" | "cyber" | "parchment" | "sakura" | "midnight" | "cbt" | null;
   glowStyle?: CSSProperties; // 아바타 링 등 강조 링 색
 }
 
@@ -225,7 +200,6 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
       };
 
     case "aurora":
-    default:
       return {
         rootStyle: withVar({
           background:
@@ -257,6 +231,197 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         brand: "#8891ad",
         glowStyle: withVar({ boxShadow: "0 0 0 3px rgba(255,255,255,0.85)" }),
       };
+
+    case "midnight":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 100% at 80% -10%, rgba(76,91,212,0.32), transparent 55%), linear-gradient(160deg, #131a33, #0a0e1f)",
+          border: "1px solid rgba(120,140,255,0.22)",
+          boxShadow: "0 24px 60px -24px rgba(0,0,0,0.7)",
+        },
+        ink: "#e8ecff",
+        sub: "#8891bf",
+        accent: "#8aa0ff",
+        panelStyle: {
+          background: "rgba(120,140,255,0.07)",
+          border: "1px solid rgba(120,140,255,0.14)",
+        },
+        chipStyle: {
+          background: "rgba(120,140,255,0.1)",
+          color: "#c6cffb",
+          border: "1px solid rgba(120,140,255,0.16)",
+        },
+        dividerColor: "rgba(120,140,255,0.18)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #6d7cff, #3a45b0)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(109,124,255,0.6)",
+        },
+        barTrack: "rgba(120,140,255,0.14)",
+        brand: "#6b74a8",
+        decoration: "midnight",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(138,160,255,0.28)" },
+      };
+
+    case "sunset":
+      return {
+        rootStyle: {
+          background: "linear-gradient(150deg, #ffd9a8, #ff9a8b 45%, #d16ba5)",
+          border: "1px solid rgba(255,255,255,0.55)",
+          boxShadow: "0 20px 50px -26px rgba(209,71,126,0.5)",
+        },
+        ink: "#5a2340",
+        sub: "#8a4a5f",
+        accent: "#c0356a",
+        panelStyle: {
+          background: "rgba(255,255,255,0.5)",
+          border: "1px solid rgba(255,255,255,0.6)",
+          backdropFilter: "blur(6px)",
+        },
+        chipStyle: {
+          background: "rgba(255,255,255,0.55)",
+          color: "#7a3350",
+          border: "1px solid rgba(255,255,255,0.6)",
+        },
+        dividerColor: "rgba(90,35,64,0.18)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #ff8f6b, #d1477e)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(209,71,126,0.55)",
+        },
+        barTrack: "rgba(90,35,64,0.16)",
+        brand: "#9a5a6e",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.7)" },
+      };
+
+    case "emerald":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 10% 0%, #d1fae5, transparent 60%), linear-gradient(150deg, #ecfdf5, #d1fae5 60%, #a7f3d0)",
+          border: "1px solid rgba(255,255,255,0.7)",
+          boxShadow: "0 20px 50px -26px rgba(15,157,104,0.4)",
+        },
+        ink: "#0f3d2e",
+        sub: "#4a7a63",
+        accent: "#0e8f5f",
+        panelStyle: {
+          background: "rgba(255,255,255,0.55)",
+          border: "1px solid rgba(255,255,255,0.7)",
+        },
+        chipStyle: {
+          background: "rgba(255,255,255,0.62)",
+          color: "#2f6a52",
+          border: "1px solid rgba(255,255,255,0.7)",
+        },
+        dividerColor: "rgba(15,61,46,0.16)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #34d399, #059669)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(5,150,105,0.5)",
+        },
+        barTrack: "rgba(15,61,46,0.14)",
+        brand: "#6a9a86",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.8)" },
+      };
+
+    case "royal":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 100% 0%, rgba(240,201,110,0.16), transparent 55%), linear-gradient(150deg, #3b2170, #241146)",
+          border: "1px solid rgba(233,200,120,0.28)",
+          boxShadow: "0 24px 60px -24px rgba(0,0,0,0.6)",
+        },
+        ink: "#f3ecff",
+        sub: "#b6a8d8",
+        accent: "#e9c877",
+        panelStyle: {
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(233,200,120,0.14)",
+        },
+        chipStyle: {
+          background: "rgba(255,255,255,0.08)",
+          color: "#ddd0f2",
+          border: "1px solid rgba(233,200,120,0.16)",
+        },
+        dividerColor: "rgba(233,200,120,0.2)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #f2d68b, #b8912f)",
+          color: "#2a2410",
+          boxShadow: "0 6px 18px -6px rgba(233,200,120,0.5)",
+        },
+        barTrack: "rgba(255,255,255,0.1)",
+        brand: "#9a86c0",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(233,200,120,0.28)" },
+      };
+
+    case "cbt":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(130% 120% at 100% -10%, rgba(240,201,110,0.28), transparent 55%), linear-gradient(150deg, #241a44, #0e0b1e 72%)",
+          border: "1px solid rgba(244,213,138,0.32)",
+          boxShadow:
+            "0 26px 66px -24px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.06)",
+        },
+        ink: "#f6f0ff",
+        sub: "#b3a8cf",
+        accent: "#f4d58a",
+        panelStyle: {
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(244,213,138,0.18)",
+        },
+        chipStyle: {
+          background: "rgba(244,213,138,0.12)",
+          color: "#f0e0b6",
+          border: "1px solid rgba(244,213,138,0.24)",
+        },
+        dividerColor: "rgba(244,213,138,0.22)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #f7e2a0, #c99a3a)",
+          color: "#2a2208",
+          boxShadow: "0 6px 20px -6px rgba(244,213,138,0.55)",
+        },
+        barTrack: "rgba(244,213,138,0.14)",
+        brand: "#8a7fb0",
+        decoration: "cbt",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(244,213,138,0.3)" },
+      };
+
+    case "basic":
+    default:
+      return {
+        rootStyle: withVar({
+          background:
+            "radial-gradient(120% 120% at 15% -10%, color-mix(in srgb, var(--c) 10%, #fff), transparent 60%), linear-gradient(180deg, #ffffff, #f6f7fb)",
+          border: "1px solid #e9ebf2",
+          boxShadow: "0 14px 36px -24px rgba(40,50,80,0.4)",
+        }),
+        ink: "#1f2430",
+        sub: "#8a92a6",
+        accent: "color-mix(in srgb, var(--c) 78%, #000)",
+        panelStyle: {
+          background: "#f5f7fb",
+          border: "1px solid #eceef4",
+        },
+        chipStyle: {
+          background: "#f0f2f7",
+          color: "#5b6478",
+          border: "1px solid #e9ebf2",
+        },
+        dividerColor: "#eceef4",
+        rankStyle: withVar({
+          background:
+            "linear-gradient(135deg, var(--c), color-mix(in srgb, var(--c) 60%, #000))",
+          color: "#fff",
+          boxShadow: "0 6px 16px -8px color-mix(in srgb, var(--c) 55%, transparent)",
+        }),
+        barTrack: "#eceef4",
+        brand: "#aab2c2",
+        glowStyle: { boxShadow: "0 0 0 3px #ffffff" },
+      };
   }
 }
 
@@ -271,53 +436,34 @@ function Chip({ text, style }: { text: string; style: CSSProperties }) {
   );
 }
 
-function Vital({
-  icon,
-  label,
-  value,
-  sub,
-  panel,
-  ink,
-}: {
-  icon: string;
-  label: string;
-  value: string | number | null | undefined;
-  sub: string;
-  panel: CSSProperties;
-  ink: string;
-}) {
-  return (
-    <div className="flex-1 rounded-2xl px-2 py-2 text-center" style={panel}>
-      <div className="text-[10px] font-bold" style={{ color: sub }}>
-        <span className="mr-0.5">{icon}</span>
-        {label}
-      </div>
-      <div className="mt-0.5 text-sm font-extrabold" style={{ color: ink }}>
-        {value ?? "-"}
-      </div>
-    </div>
-  );
-}
-
 export default function ProfileCard({
-  data,
+  identity,
+  widgets,
   style,
   className = "",
 }: {
-  data: ProfileCardData;
+  identity: ProfileIdentity;
+  widgets: ResolvedWidget[];
   style?: ProfileCardStyle | string | null;
   className?: string;
 }) {
   const skinKey = normalizeCardStyle(style ?? DEFAULT_CARD_STYLE);
-  const s = buildSkin(skinKey, data.accent);
-  const stats = (data.stats ?? []).slice(0, 7);
+  const s = buildSkin(skinKey, identity.accent);
   const nameFont = s.serif ? { fontFamily: SERIF } : undefined;
-  const rankPct = Math.max(0, Math.min(100, Math.round(data.rankPct ?? 0)));
+  const rankPct = Math.max(0, Math.min(100, Math.round(identity.rankPct ?? 0)));
+
+  const contentStyle: ContentStyle = {
+    ink: s.ink,
+    sub: s.sub,
+    accent: s.accent,
+    panel: s.panelStyle,
+    barTrack: s.barTrack,
+  };
 
   const tags = [
-    data.charClass,
-    data.race,
-    data.attribute && `속성 ${data.attribute}`,
+    identity.charClass,
+    identity.race,
+    identity.attribute && `속성 ${identity.attribute}`,
   ].filter(Boolean) as string[];
 
   return (
@@ -355,6 +501,18 @@ export default function ProfileCard({
           style={{ border: "1px solid rgba(120,90,40,0.3)" }}
         />
       )}
+      {s.decoration === "midnight" && (
+        <div className="pointer-events-none absolute inset-0 -z-10 select-none text-[10px] opacity-70">
+          <span className="absolute left-[12%] top-[16%] text-white/70">✦</span>
+          <span className="absolute right-[14%] top-[24%] text-[8px] text-white/50">✦</span>
+          <span className="absolute left-[42%] top-[10%] text-[7px] text-white/40">✦</span>
+          <span className="absolute right-[26%] top-[54%] text-white/60">✦</span>
+          <span className="absolute left-[22%] bottom-[30%] text-[8px] text-white/40">✦</span>
+        </div>
+      )}
+      {s.decoration === "cbt" && (
+        <div className="pointer-events-none absolute inset-0 -z-10 card-sheen-sweep opacity-30 mix-blend-overlay" />
+      )}
 
       {/* ── 헤더: 아바타 · 정체성 · 등급 ── */}
       <div className="flex items-start gap-4">
@@ -362,7 +520,7 @@ export default function ProfileCard({
           className="inline-flex shrink-0 rounded-full"
           style={s.glowStyle}
         >
-          <Avatar name={data.nickname} avatar={data.avatar} size={76} />
+          <Avatar name={identity.nickname} avatar={identity.avatar} size={76} />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -371,46 +529,46 @@ export default function ProfileCard({
               className="truncate text-2xl font-black leading-none"
               style={{ color: s.ink, ...nameFont }}
             >
-              {data.nickname}
+              {identity.nickname}
             </h2>
-            {data.level != null && (
+            {identity.level != null && (
               <span
                 className="rounded-md px-1.5 py-0.5 text-[11px] font-black leading-none"
                 style={{ background: s.accent, color: "#fff" }}
               >
-                Lv.{data.level}
+                Lv.{identity.level}
               </span>
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-xs font-semibold" style={{ color: s.sub }}>
-              @{data.username}
+              @{identity.username}
             </span>
-            {data.status && (
+            {identity.status && (
               <span className="text-[11px] font-bold" style={{ color: s.accent }}>
-                ● {data.status}
+                ● {identity.status}
               </span>
             )}
           </div>
 
-          {(data.title || data.badge) && (
+          {(identity.title || identity.badge) && (
             <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1" style={s.chipStyle}>
-              {data.badge && <span className="text-xs leading-none">{data.badge}</span>}
-              {data.title && (
-                <span className="truncate text-[11px] font-bold leading-none">{data.title}</span>
+              {identity.badge && <span className="text-xs leading-none">{identity.badge}</span>}
+              {identity.title && (
+                <span className="truncate text-[11px] font-bold leading-none">{identity.title}</span>
               )}
             </div>
           )}
         </div>
 
-        {data.rank && (
+        {identity.rank && (
           <div className="flex shrink-0 flex-col items-center gap-1">
             <span
               className="grid h-14 w-14 place-items-center rounded-2xl text-2xl font-black"
               style={s.rankStyle}
               title="모험가 등급"
             >
-              {data.rank}
+              {identity.rank}
             </span>
             <span
               className="text-[9px] font-bold uppercase tracking-wide"
@@ -432,7 +590,7 @@ export default function ProfileCard({
       )}
 
       {/* 등급 진행 바 */}
-      {data.rank && (
+      {identity.rank && (
         <div className="mt-3">
           <div
             className="h-1.5 w-full overflow-hidden rounded-full"
@@ -449,42 +607,12 @@ export default function ProfileCard({
         </div>
       )}
 
-      {/* 구분선 */}
-      <div className="my-4 h-px w-full" style={{ background: s.dividerColor }} />
-
-      {/* 바이탈 */}
-      <div className="flex gap-2">
-        <Vital icon="❤️" label="HP" value={data.hp} sub={s.sub} panel={s.panelStyle} ink={s.ink} />
-        <Vital icon="💧" label="MP" value={data.mp} sub={s.sub} panel={s.panelStyle} ink={s.ink} />
-        <Vital icon="🍀" label="페이트" value={data.fate} sub={s.sub} panel={s.panelStyle} ink={s.ink} />
-        <Vital
-          icon="🪙"
-          label="소지금"
-          value={data.gold}
-          sub={s.sub}
-          panel={s.panelStyle}
-          ink={s.ink}
-        />
-      </div>
-
-      {/* 능력치 */}
-      {stats.length > 0 && (
-        <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-          {stats.map((st) => (
-            <div
-              key={st.key}
-              className="rounded-xl px-1 py-1.5 text-center"
-              style={s.panelStyle}
-            >
-              <div className="text-[9px] font-bold leading-none" style={{ color: s.sub }}>
-                {st.label}
-              </div>
-              <div className="mt-1 text-base font-black leading-none" style={{ color: s.ink }}>
-                {st.value ?? "-"}
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* 내용물(위젯) */}
+      {widgets.length > 0 && (
+        <>
+          <div className="my-4 h-px w-full" style={{ background: s.dividerColor }} />
+          <ProfileContent widgets={widgets} style={contentStyle} />
+        </>
       )}
 
       {/* 푸터 */}
@@ -499,7 +627,7 @@ export default function ProfileCard({
           className="text-[10px] font-bold uppercase tracking-[0.15em]"
           style={{ color: s.brand }}
         >
-          Character Card
+          {skinKey === "cbt" ? "✦ CBT Exclusive" : "Character Card"}
         </span>
       </div>
     </div>

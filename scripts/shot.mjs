@@ -4,12 +4,12 @@
 //
 // 사용법:
 //   node scripts/shot.mjs --path=/carddemo --out=card.png
-//   node scripts/shot.mjs --path=/profile/card --as=ironknight --out=studio.png
+//   node scripts/shot.mjs --path=/profile?section=edit --as=ironknight --out=profile-edit.png
 //   node scripts/shot.mjs --path=/u/ironknight --w=820 --scale=2
 //
 // ⚠️ Git Bash(MSYS)에서는 앞에 MSYS_NO_PATHCONV=1 을 붙여야 --path 의 앞 슬래시가
 //    Windows 경로로 변환되지 않는다. PowerShell/cmd 에서는 필요 없다.
-//      MSYS_NO_PATHCONV=1 node scripts/shot.mjs --path=/profile/card --as=ironknight
+//      MSYS_NO_PATHCONV=1 node scripts/shot.mjs --path=/profile?section=edit --as=ironknight
 //
 // 옵션:
 //   --path   찍을 경로 (기본 /)
@@ -91,7 +91,8 @@ class CDP {
       if (msg.id && this.pending.has(msg.id)) {
         const { resolve, reject } = this.pending.get(msg.id);
         this.pending.delete(msg.id);
-        msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
+        if (msg.error) reject(new Error(msg.error.message));
+        else resolve(msg.result);
       } else if (msg.method) {
         for (const fn of this.listeners) fn(msg);
       }
@@ -206,6 +207,17 @@ async function main() {
   await cdp.send("Page.navigate", { url: target }, sessionId);
   await Promise.race([loaded, sleep(15000)]);
   await sleep(700); // 폰트·레이아웃 안정화
+
+  // 무한 CSS 애니메이션은 캡처를 멈추게 하므로 정지시킨다.
+  await cdp.send(
+    "Runtime.evaluate",
+    {
+      expression:
+        "(()=>{const s=document.createElement('style');s.textContent='*,*::before,*::after{animation:none !important;transition:none !important;}';document.head.appendChild(s);})()",
+    },
+    sessionId,
+  );
+  await sleep(150);
 
   // 전체 페이지면 실제 콘텐츠 높이로 캡처
   let clip;

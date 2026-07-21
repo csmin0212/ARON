@@ -15,7 +15,8 @@ import {
   profileVisibilityFromForm,
   uniqueFeaturedAchievementIds,
 } from "@/lib/profile";
-import { normalizeCardStyle } from "@/lib/profileCard";
+import { normalizeCardStyle, ownsSkin, parseOwnedSkins } from "@/lib/profileCard";
+import { sanitizeWidgets } from "@/lib/profileWidgets";
 
 export type FormState = { error?: string } | undefined;
 
@@ -118,6 +119,13 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
       : null;
   const visibility = profileVisibilityFromForm(formData);
 
+  const profileMain = String(formData.get("profileMain") ?? "hero") === "card" ? "card" : "hero";
+  // 소유하지 않은 스킨을 저장하려 하면 기본으로 되돌림
+  const requestedCardStyle = normalizeCardStyle(String(formData.get("profileCardStyle") ?? ""));
+  const ownedSkins = parseOwnedSkins(user.ownedCardSkinsJson);
+  const profileCardStyle = ownsSkin(requestedCardStyle, ownedSkins) ? requestedCardStyle : "basic";
+  const profileWidgets = sanitizeWidgets(formData.getAll("widget").map((v) => String(v)));
+
   await prisma.user.update({
     where: { id: user.id },
     data: {
@@ -127,6 +135,9 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
       profileColor,
       profileCover,
       profileVisibilityJson: JSON.stringify(visibility),
+      profileMain,
+      profileCardStyle,
+      profileWidgetsJson: JSON.stringify(profileWidgets),
       featuredAchievementsJson: JSON.stringify(featuredAchievementIds),
       equippedTitle: mainAchievement?.rewardTitle ?? null,
       equippedBadge: mainAchievement?.badge ?? null,
@@ -135,21 +146,4 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
 
   revalidatePath("/", "layout");
   redirect("/profile?saved=1");
-}
-
-export async function updateProfileCardStyle(
-  _prev: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const user = await getCurrentUser();
-  if (!user) return { error: "로그인이 필요합니다." };
-
-  const style = normalizeCardStyle(String(formData.get("cardStyle") ?? ""));
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { profileCardStyle: style },
-  });
-
-  revalidatePath("/", "layout");
-  redirect("/profile/card?saved=1");
 }

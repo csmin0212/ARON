@@ -9,10 +9,32 @@ import {
   PROFILE_VISIBILITY_LABELS,
   type ProfileVisibility,
 } from "@/lib/profile";
+import { CARD_STYLES, ownsSkin } from "@/lib/profileCard";
+import { purchaseCardSkin } from "@/app/actions/cardSkin";
+import {
+  MAX_WIDGETS,
+  WIDGET_LIST,
+  WIDGET_META,
+  resolveWidgets,
+  type ProfileValues,
+  type WidgetKey,
+} from "@/lib/profileWidgets";
+import type { ProfileIdentity } from "@/lib/profileValues";
 import ProfileHero, { type ProfileAchievementBadge } from "@/components/ProfileHero";
+import ProfileCard from "@/components/ProfileCard";
+import ProfileContent, { HERO_CONTENT_STYLE } from "@/components/ProfileContent";
 
 const inputCls =
   "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+
+export interface ProfileBaseIdentity {
+  level: number | null;
+  rank: string | null;
+  rankPct: number;
+  charClass: string | null;
+  race: string | null;
+  attribute: string | null;
+}
 
 export default function ProfileForm({
   initialUsername,
@@ -24,6 +46,13 @@ export default function ProfileForm({
   initialVisibility,
   achievementOptions = [],
   initialFeaturedAchievementIds = [],
+  initialMain,
+  initialCardStyle,
+  initialWidgets,
+  initialOwnedSkins,
+  initialGold,
+  baseIdentity,
+  values,
 }: {
   initialUsername: string;
   initialNickname: string;
@@ -34,6 +63,13 @@ export default function ProfileForm({
   initialVisibility: ProfileVisibility;
   achievementOptions?: ProfileAchievementBadge[];
   initialFeaturedAchievementIds?: string[];
+  initialMain: "hero" | "card";
+  initialCardStyle: string;
+  initialWidgets: WidgetKey[];
+  initialOwnedSkins: string[];
+  initialGold: number;
+  baseIdentity: ProfileBaseIdentity;
+  values: ProfileValues;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateProfile,
@@ -48,6 +84,13 @@ export default function ProfileForm({
   const [featuredIds, setFeaturedIds] = useState<string[]>(
     Array.from({ length: 3 }, (_, i) => initialFeaturedAchievementIds[i] ?? ""),
   );
+  const [main, setMain] = useState<"hero" | "card">(initialMain);
+  const [cardStyle, setCardStyle] = useState<string>(initialCardStyle);
+  const [widgets, setWidgets] = useState<WidgetKey[]>(initialWidgets);
+  const [owned, setOwned] = useState<string[]>(initialOwnedSkins);
+  const [gold, setGold] = useState<number>(initialGold);
+  const [buying, setBuying] = useState<string | null>(null);
+  const [buyMsg, setBuyMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -56,6 +99,9 @@ export default function ProfileForm({
   const selectedAchievements = featuredIds
     .map((id) => achievementOptions.find((achievement) => achievement.id === id))
     .filter((achievement): achievement is ProfileAchievementBadge => Boolean(achievement));
+  const featured0 = selectedAchievements[0];
+
+  const swatchAccent = isHexColor(color) ? color : "#6b6ff0";
 
   function setFeaturedId(index: number, value: string) {
     setFeaturedIds((prev) => {
@@ -63,6 +109,30 @@ export default function ProfileForm({
       next[index] = value;
       return next;
     });
+  }
+
+  async function buySkin(key: string) {
+    setBuying(key);
+    setBuyMsg(null);
+    const res = await purchaseCardSkin(key);
+    setBuying(null);
+    if (res && "ok" in res && res.ok) {
+      setOwned(res.owned);
+      setGold(res.gold);
+      setCardStyle(res.skin);
+    } else if (res && "error" in res) {
+      setBuyMsg(res.error);
+    }
+  }
+
+  function toggleWidget(key: WidgetKey) {
+    setWidgets((prev) =>
+      prev.includes(key)
+        ? prev.filter((k) => k !== key)
+        : prev.length >= MAX_WIDGETS
+          ? prev
+          : [...prev, key],
+    );
   }
 
   async function uploadCover(file: File) {
@@ -82,6 +152,30 @@ export default function ProfileForm({
     }
   }
 
+  // ── 미리보기 ──
+  const tags = [
+    baseIdentity.charClass,
+    baseIdentity.race,
+    baseIdentity.attribute && `속성 ${baseIdentity.attribute}`,
+  ].filter(Boolean) as string[];
+
+  const identity: ProfileIdentity = {
+    nickname: nickname || "닉네임",
+    username: initialUsername,
+    avatar: avatar || null,
+    status: statusText || null,
+    accent: isHexColor(color) ? color : null,
+    level: baseIdentity.level,
+    rank: baseIdentity.rank,
+    rankPct: baseIdentity.rankPct,
+    charClass: baseIdentity.charClass,
+    race: baseIdentity.race,
+    attribute: baseIdentity.attribute,
+    title: featured0 ? featured0.rewardTitle ?? featured0.name : null,
+    badge: featured0?.badge ?? null,
+  };
+  const resolved = resolveWidgets(widgets, values);
+
   return (
     <form action={formAction} className="space-y-6">
       <div className="space-y-2">
@@ -91,20 +185,199 @@ export default function ProfileForm({
             공개 화면 기준
           </span>
         </div>
-        <ProfileHero
-          nickname={nickname || "닉네임"}
-          username={initialUsername}
-          avatar={avatar || null}
-          status={statusText || null}
-          color={color}
-          cover={cover}
-          featuredAchievements={selectedAchievements}
-          action={
-            <span className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-muted shadow-sm">
-              프로필 편집
-            </span>
-          }
-        />
+        {main === "card" ? (
+          <ProfileCard identity={identity} widgets={resolved} style={cardStyle} />
+        ) : (
+          <ProfileHero
+            nickname={identity.nickname}
+            username={identity.username}
+            avatar={identity.avatar}
+            status={identity.status}
+            level={identity.level}
+            rank={identity.rank}
+            tags={tags}
+            color={color}
+            cover={cover}
+            featuredAchievements={selectedAchievements}
+            footer={
+              resolved.length > 0 ? (
+                <ProfileContent widgets={resolved} style={HERO_CONTENT_STYLE} />
+              ) : undefined
+            }
+          />
+        )}
+      </div>
+
+      {/* 프로필 형태 */}
+      <div className="space-y-4 rounded-2xl border border-line bg-subtle p-4">
+        <p className="text-sm font-extrabold text-content">🖼️ 프로필 형태</p>
+        <p className="-mt-2 text-[11px] leading-relaxed text-faint">
+          공개 프로필 상단에 무엇을 보여줄지 골라요. 하나만 보여야 깔끔해요.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              { key: "hero", label: "메인 프로필", desc: "배너 · 아바타" },
+              { key: "card", label: "프로필 카드", desc: "게임형 명함" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setMain(opt.key)}
+              className={`rounded-xl border px-3 py-3 text-left transition ${
+                main === opt.key
+                  ? "border-brand-400 bg-brand-50/70 ring-2 ring-brand-200"
+                  : "border-line bg-surface hover:border-brand-300"
+              }`}
+            >
+              <p className="text-sm font-extrabold text-content">{opt.label}</p>
+              <p className="text-[11px] font-medium text-faint">{opt.desc}</p>
+            </button>
+          ))}
+        </div>
+
+        {main === "card" && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-muted">카드 디자인</label>
+              <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-faint">
+                🪙 {gold.toLocaleString()}G
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {CARD_STYLES.map((meta) => {
+                const isOwned = ownsSkin(meta.key, owned);
+                const selected = cardStyle === meta.key;
+                const swatchStyle = {
+                  background: meta.swatch,
+                  ["--c" as string]: swatchAccent,
+                } as React.CSSProperties;
+
+                if (isOwned) {
+                  return (
+                    <button
+                      key={meta.key}
+                      type="button"
+                      onClick={() => setCardStyle(meta.key)}
+                      className={`overflow-hidden rounded-xl border p-1 text-left transition ${
+                        selected ? "border-brand-400 ring-2 ring-brand-300" : "border-line hover:border-brand-300"
+                      }`}
+                    >
+                      <div className="relative flex h-14 items-end rounded-lg p-1.5" style={swatchStyle}>
+                        <span
+                          className="rounded bg-black/15 px-1 py-0.5 text-[10px] font-black backdrop-blur-sm"
+                          style={{ color: meta.swatchInk }}
+                        >
+                          {meta.label}
+                        </span>
+                        {selected && (
+                          <span className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-white/90 text-[10px] font-black text-brand-600">
+                            ✓
+                          </span>
+                        )}
+                        {meta.acquire === "reward" && (
+                          <span className="absolute left-1 top-1 rounded bg-black/30 px-1 py-0.5 text-[8px] font-black text-amber-200">
+                            CBT
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                }
+
+                return (
+                  <div key={meta.key} className="overflow-hidden rounded-xl border border-line p-1">
+                    <div className="relative flex h-14 items-end rounded-lg p-1.5" style={swatchStyle}>
+                      <div className="absolute inset-0 rounded-lg bg-black/45" />
+                      <span className="relative rounded bg-black/25 px-1 py-0.5 text-[10px] font-black text-white/90">
+                        {meta.label}
+                      </span>
+                      {meta.acquire === "reward" ? (
+                        <span className="absolute inset-x-0 top-1.5 mx-auto w-fit rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-black text-amber-200">
+                          🔒 CBT 보상
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={buying === meta.key}
+                          onClick={() => void buySkin(meta.key)}
+                          className="absolute inset-x-1 top-1 rounded-md bg-white/90 py-1 text-[10px] font-black text-brand-600 shadow transition hover:bg-white disabled:opacity-60"
+                        >
+                          {buying === meta.key ? "구매 중…" : `${meta.price.toLocaleString()}G 구매`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {buyMsg && <p className="text-[11px] font-medium text-rose-500">{buyMsg}</p>}
+            <p className="text-[11px] leading-relaxed text-faint">
+              기본은 무료 · CBT는 보상 전용 · 나머지는 8,000G에 구매해요.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 내용물 (위젯) */}
+      <div className="space-y-3 rounded-2xl border border-line bg-subtle p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-extrabold text-content">🧩 내용물</p>
+          <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-faint">
+            {widgets.length} / {MAX_WIDGETS}
+          </span>
+        </div>
+        <p className="-mt-1 text-[11px] leading-relaxed text-faint">
+          추가한 순서대로 표시돼요. 최대 {MAX_WIDGETS}개 (능력치·도감은 넓게 차지해요).
+        </p>
+
+        {widgets.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {widgets.map((k, i) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => toggleWidget(k)}
+                className="inline-flex items-center gap-1 rounded-full bg-brand-500 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-brand-600"
+                title="빼기"
+              >
+                <span className="opacity-60">{i + 1}</span>
+                <span>
+                  {WIDGET_META[k].emoji} {WIDGET_META[k].label}
+                </span>
+                <span className="ml-0.5 opacity-80">✕</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-1.5">
+          {WIDGET_LIST.filter((w) => !widgets.includes(w.key)).map((w) => {
+            const locked = w.needsSheet && !values.hasSheet;
+            const full = widgets.length >= MAX_WIDGETS;
+            const disabled = locked || full;
+            return (
+              <button
+                key={w.key}
+                type="button"
+                disabled={disabled}
+                onClick={() => toggleWidget(w.key)}
+                className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] font-bold text-muted transition hover:border-brand-300 hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
+                title={locked ? "시트 연동 필요" : full ? "최대치 도달" : "추가"}
+              >
+                <span className="opacity-60">＋</span>
+                {w.emoji} {w.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {!values.hasSheet && (
+          <p className="rounded-xl bg-surface px-3 py-2 text-[11px] text-faint">
+            시트를 연동하면 레벨·소지금·능력치·도감 완성률도 넣을 수 있어요.
+          </p>
+        )}
       </div>
 
       {/* 닉네임 */}
@@ -156,7 +429,6 @@ export default function ProfileForm({
           })}
         </div>
 
-        {/* 또는 이미지 URL */}
         <div className="mt-3">
           <label className="mb-1 block text-xs font-medium text-faint">
             또는 이미지 URL 직접 입력
@@ -175,7 +447,6 @@ export default function ProfileForm({
       <div className="space-y-4 rounded-2xl border border-line bg-subtle p-4">
         <p className="text-sm font-extrabold text-content">🎨 프로필 꾸미기</p>
 
-        {/* 테마 색 */}
         <div>
           <label className="mb-1.5 block text-xs font-semibold text-muted">테마 색</label>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -215,9 +486,10 @@ export default function ProfileForm({
           </div>
         </div>
 
-        {/* 커버 이미지 */}
         <div>
-          <label className="mb-1.5 block text-xs font-semibold text-muted">커버 이미지 (선택)</label>
+          <label className="mb-1.5 block text-xs font-semibold text-muted">
+            커버 이미지 (선택 · 메인 프로필 배너)
+          </label>
           <input
             type="url"
             value={cover}
@@ -255,11 +527,9 @@ export default function ProfileForm({
               </button>
             )}
           </div>
-          {coverError && (
-            <p className="mt-1 text-xs font-medium text-rose-500">{coverError}</p>
-          )}
+          {coverError && <p className="mt-1 text-xs font-medium text-rose-500">{coverError}</p>}
           <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
-            커버를 비우면 위 테마 색 그라데이션이 배너로 쓰여요. 이미지는 4MB 이하 (PNG·JPG·GIF·WEBP).
+            커버를 비우면 테마 색 그라데이션이 배너로 쓰여요. 이미지는 4MB 이하 (PNG·JPG·GIF·WEBP).
           </p>
         </div>
       </div>
@@ -339,6 +609,11 @@ export default function ProfileForm({
       <input type="hidden" name="avatar" value={avatar} />
       <input type="hidden" name="profileColor" value={color} />
       <input type="hidden" name="profileCover" value={cover} />
+      <input type="hidden" name="profileMain" value={main} />
+      <input type="hidden" name="profileCardStyle" value={cardStyle} />
+      {widgets.map((k) => (
+        <input key={k} type="hidden" name="widget" value={k} />
+      ))}
 
       {state?.error && (
         <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">

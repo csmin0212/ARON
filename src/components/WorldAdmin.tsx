@@ -12,6 +12,7 @@ import {
 import { openRift, closeRift, type RiftActionState } from "@/app/actions/rift";
 import { sendMail, type MailState } from "@/app/actions/mail";
 import { RIFT_TYPES } from "@/lib/rift";
+import { CARD_STYLES } from "@/lib/profileCard";
 
 export type AdminRift = { id: string; type: string; originName: string; count: number };
 export type AdminPlayer = { userId: string; label: string };
@@ -255,6 +256,19 @@ export default function WorldAdmin({
               className="rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs text-content outline-none"
             />
           </div>
+          <select
+            name="cardSkin"
+            defaultValue=""
+            className="w-full rounded-xl border border-brand-200 bg-surface px-3 py-2 text-xs font-semibold text-content outline-none"
+          >
+            <option value="">— 카드 스킨 첨부 없음 —</option>
+            {CARD_STYLES.filter((s) => s.acquire !== "free").map((s) => (
+              <option key={s.key} value={s.key}>
+                🎨 {s.label}
+                {s.acquire === "reward" ? " (보상)" : ""}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             disabled={mailPending}

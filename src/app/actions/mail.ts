@@ -22,6 +22,7 @@ import {
 import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
+import { CARD_STYLE_MAP, parseOwnedSkins, type ProfileCardStyle } from "@/lib/profileCard";
 
 export type MailState = { ok?: string; error?: string } | undefined;
 
@@ -123,6 +124,9 @@ export async function sendMail(_prev: MailState, formData: FormData): Promise<Ma
   const itemQty = itemName
     ? Math.max(1, parseInt(String(formData.get("itemQty") ?? "1"), 10) || 1)
     : 0;
+  const cardSkinRaw = String(formData.get("cardSkin") ?? "").trim();
+  const cardSkin =
+    cardSkinRaw && CARD_STYLE_MAP[cardSkinRaw as ProfileCardStyle] ? cardSkinRaw : null;
 
   if (!subject) return { error: "제목을 입력해주세요." };
 
@@ -140,6 +144,7 @@ export async function sendMail(_prev: MailState, formData: FormData): Promise<Ma
       gold,
       itemName,
       itemQty,
+      cardSkin,
     })),
   });
 
@@ -171,6 +176,19 @@ export async function claimMail(formData: FormData): Promise<void> {
 
   const hasAttach = mail.gold > 0 || (!!mail.itemName && mail.itemQty > 0);
   try {
+    // 카드 스킨 첨부 — 시트 없이도 소유 해금
+    if (mail.cardSkin) {
+      const meta = CARD_STYLE_MAP[mail.cardSkin as ProfileCardStyle];
+      if (meta && meta.acquire !== "free") {
+        const current = parseOwnedSkins(user.ownedCardSkinsJson);
+        if (!current.includes(meta.key)) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { ownedCardSkinsJson: JSON.stringify([...current, meta.key]) },
+          });
+        }
+      }
+    }
     if (hasAttach) {
     const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
     if (!sheet?.sheetTab) await releaseClaimAndError(id, user.id, "캐릭터 시트 연동 후 첨부를 수령할 수 있어요.");
