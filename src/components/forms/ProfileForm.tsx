@@ -1,26 +1,39 @@
 "use client";
 
-import { useActionState, useRef, useState, type CSSProperties } from "react";
+import { useActionState, useRef, useState } from "react";
 import { updateProfile, type FormState } from "@/app/actions/auth";
 import { AVATAR_PRESETS } from "@/lib/avatars";
 import { ACCENT_PRESETS, isHexColor } from "@/lib/theme";
-import Avatar from "@/components/Avatar";
+import {
+  PROFILE_VISIBILITY_KEYS,
+  PROFILE_VISIBILITY_LABELS,
+  type ProfileVisibility,
+} from "@/lib/profile";
+import ProfileHero, { type ProfileAchievementBadge } from "@/components/ProfileHero";
 
 const inputCls =
   "w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
 
 export default function ProfileForm({
+  initialUsername,
   initialNickname,
   initialAvatar,
   initialStatus,
   initialColor,
   initialCover,
+  initialVisibility,
+  achievementOptions = [],
+  initialFeaturedAchievementIds = [],
 }: {
+  initialUsername: string;
   initialNickname: string;
   initialAvatar: string | null;
   initialStatus?: string | null;
   initialColor?: string | null;
   initialCover?: string | null;
+  initialVisibility: ProfileVisibility;
+  achievementOptions?: ProfileAchievementBadge[];
+  initialFeaturedAchievementIds?: string[];
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateProfile,
@@ -31,18 +44,26 @@ export default function ProfileForm({
   const [statusText, setStatusText] = useState<string>(initialStatus ?? "");
   const [color, setColor] = useState<string>(initialColor ?? "");
   const [cover, setCover] = useState<string>(initialCover ?? "");
+  const [visibility, setVisibility] = useState<ProfileVisibility>(initialVisibility);
+  const [featuredIds, setFeaturedIds] = useState<string[]>(
+    Array.from({ length: 3 }, (_, i) => initialFeaturedAchievementIds[i] ?? ""),
+  );
   const [uploading, setUploading] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const isUrl = avatar !== "" && !avatar.startsWith("preset:");
 
-  const hasColor = isHexColor(color);
-  const accentStyle = hasColor ? ({ "--accent": color } as CSSProperties) : undefined;
-  const coverStyle: CSSProperties | undefined = cover
-    ? { backgroundImage: `url("${cover}")`, backgroundSize: "cover", backgroundPosition: "center" }
-    : hasColor
-      ? { backgroundImage: `linear-gradient(120deg, ${color}, color-mix(in srgb, ${color} 55%, #000))` }
-      : undefined;
+  const selectedAchievements = featuredIds
+    .map((id) => achievementOptions.find((achievement) => achievement.id === id))
+    .filter((achievement): achievement is ProfileAchievementBadge => Boolean(achievement));
+
+  function setFeaturedId(index: number, value: string) {
+    setFeaturedIds((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  }
 
   async function uploadCover(file: File) {
     setUploading(true);
@@ -63,34 +84,27 @@ export default function ProfileForm({
 
   return (
     <form action={formAction} className="space-y-6">
-      {/* 미리보기 — 실제 프로필 배너(ProfileHero)와 같은 비율의 미니 버전 */}
-      <div
-        className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm"
-        style={accentStyle}
-      >
-        <div
-          className="relative h-24 bg-gradient-to-r from-brand-400 via-brand-500 to-brand-700"
-          style={coverStyle}
-        >
-          <span className="absolute right-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
-            미리보기
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-extrabold text-content">미리보기</p>
+          <span className="rounded-full bg-subtle px-2.5 py-1 text-[11px] font-bold text-faint">
+            공개 화면 기준
           </span>
         </div>
-        <div className="px-5 pb-4">
-          <div className="-mt-9 flex items-end gap-3">
-            <span className="inline-flex shrink-0 rounded-full ring-4 ring-surface">
-              <Avatar name={nickname || "?"} avatar={avatar || null} size={72} />
+        <ProfileHero
+          nickname={nickname || "닉네임"}
+          username={initialUsername}
+          avatar={avatar || null}
+          status={statusText || null}
+          color={color}
+          cover={cover}
+          featuredAchievements={selectedAchievements}
+          action={
+            <span className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-muted shadow-sm">
+              프로필 편집
             </span>
-            <p className="mb-1 min-w-0 truncate text-lg font-extrabold text-content">
-              {nickname || "닉네임"}
-            </p>
-            {statusText && (
-              <span className="mb-2 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
-                {statusText}
-              </span>
-            )}
-          </div>
-        </div>
+          }
+        />
       </div>
 
       {/* 닉네임 */}
@@ -247,6 +261,78 @@ export default function ProfileForm({
           <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
             커버를 비우면 위 테마 색 그라데이션이 배너로 쓰여요. 이미지는 4MB 이하 (PNG·JPG·GIF·WEBP).
           </p>
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-2xl border border-line bg-subtle p-4">
+        <p className="text-sm font-extrabold text-content">🏅 대표 업적</p>
+        {["대표 업적", "서브 업적 1", "서브 업적 2"].map((label, index) => (
+          <div key={label}>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">{label}</label>
+            <select
+              name="featuredAchievementId"
+              value={featuredIds[index] ?? ""}
+              onChange={(e) => setFeaturedId(index, e.target.value)}
+              className={inputCls}
+            >
+              <option value="">비우기</option>
+              {achievementOptions.map((achievement) => (
+                <option key={achievement.id} value={achievement.id}>
+                  {achievement.badge ? `${achievement.badge} ` : ""}
+                  {achievement.rewardTitle ?? achievement.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+        {achievementOptions.length === 0 && (
+          <p className="rounded-xl bg-surface px-3 py-2 text-xs text-faint">
+            아직 장착할 수 있는 달성 업적이 없어요.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-3 rounded-2xl border border-line bg-subtle p-4">
+        <p className="text-sm font-extrabold text-content">공개 설정</p>
+        <div className="space-y-2">
+          {PROFILE_VISIBILITY_KEYS.map((key) => {
+            const isPublic = visibility[key];
+            return (
+              <div
+                key={key}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2"
+              >
+                <span className="text-sm font-bold text-content">
+                  {PROFILE_VISIBILITY_LABELS[key]}
+                </span>
+                <div className="grid grid-cols-2 rounded-lg bg-subtle p-1 text-xs font-extrabold">
+                  <button
+                    type="button"
+                    onClick={() => setVisibility((prev) => ({ ...prev, [key]: true }))}
+                    className={`rounded-md px-3 py-1.5 transition ${
+                      isPublic ? "bg-brand-500 text-white shadow-sm" : "text-muted hover:text-content"
+                    }`}
+                  >
+                    공개
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibility((prev) => ({ ...prev, [key]: false }))}
+                    className={`rounded-md px-3 py-1.5 transition ${
+                      !isPublic ? "bg-content text-surface shadow-sm" : "text-muted hover:text-content"
+                    }`}
+                  >
+                    비공개
+                  </button>
+                </div>
+                <input
+                  type="hidden"
+                  name={`visibility.${key}`}
+                  value={isPublic ? "public" : "private"}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 

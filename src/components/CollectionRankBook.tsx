@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
 
-export type CollectionKind = LifeSkillKind | "요리";
+export type CollectionKind = LifeSkillKind | "요리" | "포션";
 
 export type CollectionBookEntry = {
   id?: string;
@@ -27,13 +27,14 @@ export type CollectionBookEntry = {
   ingredients?: string;
 };
 
-const KIND_ORDER: CollectionKind[] = ["낚시", "채집", "채광", "요리"];
+const KIND_ORDER: CollectionKind[] = ["낚시", "채집", "채광", "요리", "포션"];
 
 const KIND_META: Record<CollectionKind, { title: string; emoji: string }> = {
   낚시: { title: "낚시 도감", emoji: "🎣" },
   채집: { title: "채집 도감", emoji: "🌿" },
   채광: { title: "채광 도감", emoji: "⛏️" },
   요리: { title: "요리 도감", emoji: "🍳" },
+  포션: { title: "포션 도감", emoji: "⚗️" },
 };
 
 const RANK_TONE = [
@@ -56,6 +57,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
     채집: 1,
     채광: 1,
     요리: 1,
+    포션: 1,
   });
 
   const byKind = useMemo(
@@ -69,7 +71,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
   return (
     <div className="space-y-4">
       {/* 낚시 / 채집 / 채광 / 요리 토글 */}
-      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-subtle p-1.5 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-subtle p-1.5 sm:grid-cols-5">
         {KIND_ORDER.map((kind) => {
           const group = byKind[kind];
           const found = group.filter((e) => e.discovered).length;
@@ -111,6 +113,7 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
               : kind === "채광"
                 ? "채광 횟수"
                 : "레시피";
+        const discoveredLabel = kind === "포션" ? "제조 성공" : "발견";
 
         return (
           <section key={kind} className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
@@ -180,8 +183,8 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                         </div>
                         <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-black text-brand-600">
                           {entry.discovered
-                            ? kind === "요리"
-                              ? `${countLabel} 발견`
+                            ? kind === "요리" || kind === "포션"
+                              ? `${countLabel} ${discoveredLabel}`
                               : entry.count > 0
                                 ? `${countLabel} ${entry.count}회`
                                 : "획득 기록"
@@ -194,11 +197,14 @@ export default function CollectionRankBook({ entries }: { entries: CollectionBoo
                         {kind === "요리" && entry.discovered && entry.resultName && (
                           <span className="rounded bg-surface px-2 py-0.5">{entry.resultName}</span>
                         )}
+                        {kind === "포션" && entry.discovered && entry.resultName && (
+                          <span className="rounded bg-surface px-2 py-0.5">{entry.resultName}</span>
+                        )}
                       </div>
                       <p className="mt-2 line-clamp-3 min-h-[3.75rem] whitespace-pre-line text-xs leading-relaxed text-muted">
                         {entry.discovered
                           ? entry.text
-                          : kind === "요리"
+                          : kind === "요리" || kind === "포션"
                             ? "아직 발견하지 못한 레시피입니다."
                             : "아직 발견하지 못한 항목입니다."}
                       </p>

@@ -14,29 +14,9 @@ import {
   type PerkRarity,
 } from "@/lib/lifeSkillPerks";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
-import CollectionRankBook, { type CollectionBookEntry } from "@/components/CollectionRankBook";
 import { formatTime } from "@/lib/format";
 
 const KIND_EMOJI: Record<LifeSkillKind, string> = { 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
-
-function CollectionBook({
-  lifeEntries,
-  cookingRecipes,
-}: {
-  lifeEntries: CollectionBookEntry[];
-  cookingRecipes: CollectionBookEntry[];
-}) {
-  // 어획물/채집물 카탈로그는 서버에서 계산해 전달(시트 동기화본 반영). 클라는 합치기만.
-  const entries: CollectionBookEntry[] = [...lifeEntries, ...cookingRecipes];
-
-  return (
-    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-      <h2 className="mb-1 text-lg font-extrabold text-content">📖 도감</h2>
-      <p className="mb-4 text-xs text-faint">한 번이라도 획득하면 등록돼요.</p>
-      <CollectionRankBook entries={entries} />
-    </div>
-  );
-}
 
 const KIND_META: { kind: LifeSkillKind; emoji: string; key: "fishing" | "plant" | "mining" }[] = [
   { kind: "낚시", emoji: "🎣", key: "fishing" },
@@ -286,13 +266,13 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
 export default function LifeSkillPanel({
   life,
   isOwn,
-  cookingRecipes = [],
-  lifeEntries = [],
+  canViewProfile = true,
+  canViewSkills = true,
 }: {
   life: LifeState;
   isOwn: boolean;
-  cookingRecipes?: CollectionBookEntry[];
-  lifeEntries?: CollectionBookEntry[];
+  canViewProfile?: boolean;
+  canViewSkills?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<LifeActionState, FormData>(
     chooseLifePerk,
@@ -300,7 +280,7 @@ export default function LifeSkillPanel({
   );
 
   const choice = life.pending[0];
-  const [view, setView] = useState<"profile" | "book" | "skill">("profile");
+  const [view, setView] = useState<"profile" | "skill">("profile");
   const [perkKind, setPerkKind] = useState<LifeSkillKind>("낚시");
   const kindPerks = life.perks.filter((p) => p.kind === perkKind);
 
@@ -441,11 +421,16 @@ export default function LifeSkillPanel({
     </div>
   );
 
-  const TABS: { key: "profile" | "book" | "skill"; label: string; badge?: number }[] = [
+  const TABS: { key: "profile" | "skill"; label: string; badge?: number }[] = [
     { key: "profile", label: "🧺 프로필" },
-    { key: "book", label: "📖 도감" },
     { key: "skill", label: "✨ 스킬", badge: isOwn ? life.pending.length : 0 },
   ];
+
+  const privateNotice = (
+    <div className="rounded-3xl border border-line bg-surface p-8 text-center shadow-sm">
+      <p className="text-sm font-bold text-muted">비공개 상태입니다.</p>
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -475,17 +460,16 @@ export default function LifeSkillPanel({
         })}
       </div>
 
-      {view === "profile" && (
+      {view === "profile" && canViewProfile && (
         <div className="space-y-5">
           {levelCard}
           <CookingBuffPanel life={life} />
           <LifeGearPanel life={life} />
         </div>
       )}
-      {view === "book" && (
-        <CollectionBook lifeEntries={lifeEntries} cookingRecipes={cookingRecipes} />
-      )}
-      {view === "skill" && skillSection}
+      {view === "profile" && !canViewProfile && privateNotice}
+      {view === "skill" && canViewSkills && skillSection}
+      {view === "skill" && !canViewSkills && privateNotice}
     </div>
   );
 }

@@ -21,6 +21,8 @@ model User {
   profileStatus String? // 프로필 상태 문구 (온라인/오프라인 등 자유 표기)
   profileColor String? // 프로필 꾸미기 강조색 (#rrggbb) — 히어로 배너에 반영
   profileCover String? // 프로필 커버 이미지 URL (또는 /api/image/{id})
+  profileVisibilityJson String? // 프로필 공개 설정 JSON { sheet, lifeProfile, collection, skills, achievements }
+  featuredAchievementsJson String? // 프로필 대표 업적 슬롯 JSON [대표, 서브1, 서브2]
   equippedTitle String? // 장착한 대표 칭호 (업적 보상)
   equippedBadge String? // 장착한 대표 배지 (이모지)
   createdAt    DateTime  @default(now())

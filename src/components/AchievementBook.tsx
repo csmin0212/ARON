@@ -16,11 +16,13 @@ export default function AchievementBook({
   isOwn,
   equippedTitle,
   equippedBadge,
+  selectedAchievementIds = [],
 }: {
   achievements: AchView[];
   isOwn: boolean;
   equippedTitle: string | null;
   equippedBadge: string | null;
+  selectedAchievementIds?: string[];
 }) {
   // 대표로 장착한 항목 식별 — 칭호·배지 둘 다 일치해야 함.
   // (칭호 없이 배지만 있는 업적도 정상 인식되도록 양쪽을 본다.)
@@ -68,9 +70,11 @@ export default function AchievementBook({
                   const hidden = a.secret && !a.earned;
                   const equipped =
                     a.earned &&
-                    hasEquipped &&
-                    (a.rewardTitle ?? null) === equippedTitle &&
-                    (a.badge ?? null) === equippedBadge;
+                    (selectedAchievementIds.includes(a.id) ||
+                      (hasEquipped &&
+                        (a.rewardTitle ?? null) === equippedTitle &&
+                        (a.badge ?? null) === equippedBadge));
+                  const equippedSlot = selectedAchievementIds.findIndex((id) => id === a.id);
                   return (
                     <div
                       key={a.id}
@@ -92,7 +96,7 @@ export default function AchievementBook({
                           {hidden ? "숨겨진 업적입니다!" : a.name}
                           {equipped && (
                             <span className="rounded bg-brand-500 px-1.5 text-[10px] font-bold text-white">
-                              대표
+                              {equippedSlot <= 0 ? "대표" : `서브${equippedSlot}`}
                             </span>
                           )}
                         </p>
@@ -105,16 +109,22 @@ export default function AchievementBook({
                           </p>
                         )}
                       </div>
-                      {isOwn && a.earned && (a.rewardTitle || a.badge) && !equipped && (
-                        <form action={equipAchievement} className="shrink-0 self-center">
-                          <input type="hidden" name="achId" value={a.id} />
-                          <button
-                            type="submit"
-                            className="rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-semibold text-muted transition hover:bg-subtle"
-                          >
-                            대표로
-                          </button>
-                        </form>
+                      {isOwn && a.earned && (a.rewardTitle || a.badge) && (
+                        <div className="grid shrink-0 gap-1 self-center">
+                          {["대표", "서브1", "서브2"].map((label, slot) => (
+                            <form key={label} action={equipAchievement}>
+                              <input type="hidden" name="achId" value={a.id} />
+                              <input type="hidden" name="slot" value={slot} />
+                              <button
+                                type="submit"
+                                disabled={equippedSlot === slot}
+                                className="rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-semibold text-muted transition hover:bg-subtle disabled:bg-brand-50 disabled:text-brand-600"
+                              >
+                                {label}
+                              </button>
+                            </form>
+                          ))}
+                        </div>
                       )}
                     </div>
                   );

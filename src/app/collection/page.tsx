@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getCookingRecipes } from "@/lib/gameCatalog";
+import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
 import { collectionItems, isSeaLifeItem, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
@@ -54,12 +54,13 @@ export default async function CollectionPage() {
       Object.values(life.locationRecords).flatMap((records) => Object.values(records).flat()),
     ),
   ];
-  const [entries, recipes, discoveredRecipes, locations] = await Promise.all([
+  const [entries, recipes, alchemyRecipes, discoveredRecipes, locations] = await Promise.all([
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, itemId: { in: itemNames } },
       select: { itemId: true, qty: true },
     }),
     getCookingRecipes(),
+    getAlchemyRecipes(),
     prisma.userRecipe.findMany({ where: { userId: user.id }, select: { recipeId: true } }),
     prisma.location.findMany({
       where: { id: { in: locationIds } },
@@ -113,7 +114,24 @@ export default async function CollectionPage() {
       .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
       .join(", "),
   }));
-  const bookEntries = [...lifeEntries, ...cookingEntries];
+  const potionEntries: CollectionBookEntry[] = alchemyRecipes.map((recipe) => ({
+    id: recipe.id,
+    kind: "포션",
+    name: recipe.name,
+    category: recipe.category,
+    rank: recipeRankNumber(recipe.rank),
+    rarity: recipe.rank,
+    price: recipe.sellPrice,
+    weight: 1,
+    text: recipe.effect || "특별한 효과는 없습니다.",
+    discovered: life.alchemyPerfect.includes(recipe.id),
+    count: life.alchemyMastery[recipe.id] ?? 0,
+    resultName: recipe.resultName,
+    ingredients: parseRecipeIngredients(recipe.ingredientsJson)
+      .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
+      .join(", "),
+  }));
+  const bookEntries = [...lifeEntries, ...cookingEntries, ...potionEntries];
   const found = bookEntries.filter((entry) => entry.discovered).length;
   const pct = bookEntries.length > 0 ? Math.round((found / bookEntries.length) * 1000) / 10 : 0;
 
@@ -125,7 +143,7 @@ export default async function CollectionPage() {
           <div>
             <h1 className="text-2xl font-black text-content">생활 도감</h1>
             <p className="mt-1 text-sm text-muted">
-              현재 층에서 발견 가능한 채집물, 민물 어종, 요리 레시피 기준입니다.
+              현재 층에서 발견 가능한 채집물, 민물 어종, 요리와 포션 레시피 기준입니다.
             </p>
           </div>
           <div className="rounded-2xl bg-brand-50 px-4 py-2 text-right">

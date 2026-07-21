@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { getCookingRecipes } from "@/lib/gameCatalog";
+import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
 import { getCurrentUser } from "@/lib/auth";
 import { formatFullDate } from "@/lib/format";
 import type { SheetInventory } from "@/lib/googleSheets";
@@ -13,10 +13,14 @@ import { checkAndGrant } from "@/lib/achievements";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import CharacterTabs from "@/components/CharacterTabs";
 import LifeSkillPanel from "@/components/LifeSkillPanel";
-import ProfileHero from "@/components/ProfileHero";
+import ProfileHero, { type ProfileAchievementBadge } from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
 import ProfileTradePanel, { type TradeOfferView } from "@/components/ProfileTradePanel";
 import type { CollectionBookEntry } from "@/components/CollectionRankBook";
+import {
+  parseFeaturedAchievementIds,
+  parseProfileVisibility,
+} from "@/lib/profile";
 
 export async function generateMetadata({
   params,
@@ -61,6 +65,62 @@ function parseRecipeIngredients(value: string): { name: string; qty: number }[] 
 function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
   return match ? Number.parseInt(match[1], 10) || 0 : 0;
+}
+
+function pct(found: number, total: number): number {
+  return total > 0 ? Math.round((found / total) * 100) : 0;
+}
+
+function PrivateProfileBlock() {
+  return (
+    <div className="rounded-3xl border border-line bg-surface p-8 text-center shadow-sm">
+      <p className="text-sm font-bold text-muted">비공개 상태입니다.</p>
+    </div>
+  );
+}
+
+function CollectionProgressPanel({
+  rows,
+}: {
+  rows: { label: string; emoji: string; found: number; total: number; isPrivate?: boolean }[];
+}) {
+  return (
+    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+      <h2 className="text-lg font-extrabold text-content">도감 완성률</h2>
+      <div className="mt-4 space-y-3">
+        {rows.map((row) => {
+          const value = pct(row.found, row.total);
+          return (
+            <div key={row.label} className="rounded-2xl bg-subtle/60 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-extrabold text-content">
+                  {row.emoji} {row.label}
+                </p>
+                <p className="text-sm font-black text-brand-600">
+                  {row.isPrivate ? "비공개" : `${value}%`}
+                </p>
+              </div>
+              {row.isPrivate ? (
+                <p className="mt-2 text-xs font-medium text-faint">비공개 상태입니다.</p>
+              ) : (
+                <>
+                  <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-surface">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-brand-400 to-emerald-400"
+                      style={{ width: `${value}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-right text-[11px] font-bold text-faint">
+                    {row.found} / {row.total}
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function tradeView(offer: {
@@ -109,7 +169,7 @@ export default async function CharacterPage({
   // 본인 프로필 열람 시 임계값 업적(명성·골드·레벨 등) 지연 판정
   if (isOwn) await checkAndGrant(profile.id);
 
-  const [achs, earnedRows, mySheet, incomingRows, outgoingRows, recipes, discoveredRecipes] = await Promise.all([
+  const [achs, earnedRows, mySheet, incomingRows, outgoingRows, recipes, alchemyRecipes, discoveredRecipes] = await Promise.all([
     prisma.achievement.findMany({ orderBy: { order: "asc" } }),
     prisma.userAchievement.findMany({ where: { userId: profile.id }, select: { achId: true } }),
     me
@@ -142,6 +202,7 @@ export default async function CharacterPage({
         })
       : Promise.resolve([]),
     getCookingRecipes(),
+    getAlchemyRecipes(),
     prisma.userRecipe.findMany({ where: { userId: profile.id }, select: { recipeId: true } }),
   ]);
   const earnedSet = new Set(earnedRows.map((r) => r.achId));
@@ -188,10 +249,57 @@ export default async function CharacterPage({
     count: discoveredRecipeIds.has(recipe.id) ? 1 : 0,
     discovered: recipe.isPublic || discoveredRecipeIds.has(recipe.id),
   }));
+  const potionEntries: CollectionBookEntry[] = alchemyRecipes.map((recipe) => ({
+    kind: "포션",
+    id: recipe.id,
+    name: recipe.name,
+    rank: recipeRankNumber(recipe.rank),
+    rarity: recipe.rank,
+    category: recipe.category,
+    ingredients: parseRecipeIngredients(recipe.ingredientsJson)
+      .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
+      .join(", "),
+    resultName: recipe.resultName,
+    price: recipe.sellPrice,
+    weight: 1,
+    text: recipe.effect || "특별한 효과는 없습니다.",
+    count: life.alchemyMastery[recipe.id] ?? 0,
+    discovered: life.alchemyPerfect.includes(recipe.id),
+  }));
   const pendingCount = isOwn ? life.pending.length : 0;
+  const visibility = parseProfileVisibility(profile.profileVisibilityJson);
+  const canViewSheet = isOwn || visibility.sheet;
+  const canViewLifeProfile = isOwn || visibility.lifeProfile;
+  const canViewCollection = isOwn || visibility.collection;
+  const canViewSkills = isOwn || visibility.skills;
+  const canViewAchievements = isOwn || visibility.achievements;
+
+  const achievementOptions: ProfileAchievementBadge[] = achs
+    .filter((achievement) => earnedSet.has(achievement.id))
+    .map((achievement) => ({
+      id: achievement.id,
+      name: achievement.name,
+      badge: achievement.badge,
+      rewardTitle: achievement.rewardTitle,
+    }));
+  const savedFeaturedIds = parseFeaturedAchievementIds(profile.featuredAchievementsJson);
+  const legacyFeaturedId =
+    savedFeaturedIds.length === 0
+      ? achievementOptions.find(
+          (achievement) =>
+            (achievement.rewardTitle ?? null) === profile.equippedTitle &&
+            (achievement.badge ?? null) === profile.equippedBadge,
+        )?.id
+      : undefined;
+  const featuredIds = savedFeaturedIds.length > 0 ? savedFeaturedIds : legacyFeaturedId ? [legacyFeaturedId] : [];
+  const featuredAchievements = canViewAchievements
+    ? featuredIds
+        .map((id) => achievementOptions.find((achievement) => achievement.id === id))
+        .filter((achievement): achievement is ProfileAchievementBadge => Boolean(achievement))
+    : [];
 
   const tags = (
-    profile.sheet
+    profile.sheet && canViewSheet
       ? [
           profile.sheet.charClass,
           profile.sheet.race,
@@ -202,37 +310,87 @@ export default async function CharacterPage({
 
   // ── 탭 내용 ──
   const sheetTab = (
-    <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-extrabold text-content">캐릭터 시트</h2>
-      {profile.sheet ? (
-        <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.nickname }} />
-      ) : (
-        <p className="py-6 text-center text-sm text-faint">
-          아직 캐릭터 시트를 연동하지 않았어요.
-          {isOwn && (
-            <>
-              {" "}
-              <Link href="/profile" className="font-semibold text-brand-600 hover:underline">
-                지금 연동하기
-              </Link>
-            </>
-          )}
-        </p>
-      )}
-    </div>
+    canViewSheet ? (
+      <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
+        <h2 className="mb-4 text-lg font-extrabold text-content">캐릭터 시트</h2>
+        {profile.sheet ? (
+          <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.nickname }} />
+        ) : (
+          <p className="py-6 text-center text-sm text-faint">
+            아직 캐릭터 시트를 연동하지 않았어요.
+            {isOwn && (
+              <>
+                {" "}
+                <Link href="/profile?section=sheet" className="font-semibold text-brand-600 hover:underline">
+                  지금 연동하기
+                </Link>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+    ) : (
+      <PrivateProfileBlock />
+    )
   );
 
   const lifeTab = (
-    <LifeSkillPanel life={life} isOwn={isOwn} cookingRecipes={cookingRecipes} lifeEntries={lifeEntries} />
+    <LifeSkillPanel
+      life={life}
+      isOwn={isOwn}
+      canViewProfile={canViewLifeProfile}
+      canViewSkills={canViewSkills}
+    />
+  );
+
+  const collectionRows = [
+    {
+      label: "업적",
+      emoji: "🏅",
+      found: achView.filter((achievement) => achievement.earned).length,
+      total: achView.length,
+      isPrivate: !canViewAchievements,
+    },
+    ...(["낚시", "채집", "채광"] as const).map((kind) => {
+      const group = lifeEntries.filter((entry) => entry.kind === kind);
+      return {
+        label: `${kind} 도감`,
+        emoji: kind === "낚시" ? "🎣" : kind === "채집" ? "🌿" : "⛏️",
+        found: group.filter((entry) => entry.discovered).length,
+        total: group.length,
+      };
+    }),
+    {
+      label: "요리 도감",
+      emoji: "🍳",
+      found: cookingRecipes.filter((entry) => entry.discovered).length,
+      total: cookingRecipes.length,
+    },
+    {
+      label: "포션 도감",
+      emoji: "⚗️",
+      found: potionEntries.filter((entry) => entry.discovered).length,
+      total: potionEntries.length,
+    },
+  ];
+  const collectionTab = canViewCollection ? (
+    <CollectionProgressPanel rows={collectionRows} />
+  ) : (
+    <PrivateProfileBlock />
   );
 
   const achTab = (
-    <AchievementBook
-      achievements={achView}
-      isOwn={isOwn}
-      equippedTitle={profile.equippedTitle}
-      equippedBadge={profile.equippedBadge}
-    />
+    canViewAchievements ? (
+      <AchievementBook
+        achievements={achView}
+        isOwn={isOwn}
+        equippedTitle={profile.equippedTitle}
+        equippedBadge={profile.equippedBadge}
+        selectedAchievementIds={featuredIds}
+      />
+    ) : (
+      <PrivateProfileBlock />
+    )
   );
 
   return (
@@ -243,17 +401,18 @@ export default async function CharacterPage({
         username={profile.username}
         avatar={profile.avatar}
         status={profile.profileStatus}
-        level={profile.sheet?.level}
-        rank={profile.sheet?.adventurerRank}
+        level={canViewSheet ? profile.sheet?.level : null}
+        rank={canViewSheet ? profile.sheet?.adventurerRank : null}
         tags={tags}
         color={profile.profileColor}
         cover={profile.profileCover}
-        title={profile.equippedTitle}
-        badge={profile.equippedBadge}
+        title={canViewAchievements ? profile.equippedTitle : null}
+        badge={canViewAchievements ? profile.equippedBadge : null}
+        featuredAchievements={featuredAchievements}
         action={
           isOwn ? (
             <Link
-              href="/profile"
+              href="/profile?section=edit"
               className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-muted transition hover:bg-subtle"
             >
               프로필 편집
@@ -266,6 +425,7 @@ export default async function CharacterPage({
         tabs={[
           { key: "sheet", label: "📜 캐릭터 시트", content: sheetTab },
           { key: "life", label: "🌿 생활 데이터", content: lifeTab },
+          { key: "collection", label: "📖 도감", content: collectionTab },
           { key: "ach", label: "🏅 업적", content: achTab },
         ]}
         badges={{ life: pendingCount }}

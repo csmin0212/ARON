@@ -11,6 +11,10 @@ import {
   getCurrentUser,
 } from "@/lib/auth";
 import { isHexColor } from "@/lib/theme";
+import {
+  profileVisibilityFromForm,
+  uniqueFeaturedAchievementIds,
+} from "@/lib/profile";
 
 export type FormState = { error?: string } | undefined;
 
@@ -92,6 +96,27 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
   if (profileCover === undefined)
     return { error: "커버 이미지 주소가 올바르지 않아요. (http(s) 링크 또는 업로드 이미지)" };
 
+  const requestedAchievementIds = uniqueFeaturedAchievementIds(
+    formData.getAll("featuredAchievementId").map((value) => String(value)),
+  );
+  const earnedRows =
+    requestedAchievementIds.length > 0
+      ? await prisma.userAchievement.findMany({
+          where: { userId: user.id, achId: { in: requestedAchievementIds } },
+          select: { achId: true },
+        })
+      : [];
+  const earnedIds = new Set(earnedRows.map((row) => row.achId));
+  const featuredAchievementIds = requestedAchievementIds.filter((id) => earnedIds.has(id));
+  const mainAchievement =
+    featuredAchievementIds.length > 0
+      ? await prisma.achievement.findUnique({
+          where: { id: featuredAchievementIds[0] },
+          select: { rewardTitle: true, badge: true },
+        })
+      : null;
+  const visibility = profileVisibilityFromForm(formData);
+
   await prisma.user.update({
     where: { id: user.id },
     data: {
@@ -100,6 +125,10 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
       profileStatus: statusRaw || null,
       profileColor,
       profileCover,
+      profileVisibilityJson: JSON.stringify(visibility),
+      featuredAchievementsJson: JSON.stringify(featuredAchievementIds),
+      equippedTitle: mainAchievement?.rewardTitle ?? null,
+      equippedBadge: mainAchievement?.badge ?? null,
     },
   });
 

@@ -53,6 +53,8 @@ export type SessionUser = {
   profileStatus: string | null;
   profileColor: string | null;
   profileCover: string | null;
+  profileVisibilityJson: string | null;
+  featuredAchievementsJson: string | null;
   equippedTitle: string | null;
   equippedBadge: string | null;
 };
@@ -77,6 +79,8 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
         profileStatus: true,
         profileColor: true,
         profileCover: true,
+        profileVisibilityJson: true,
+        featuredAchievementsJson: true,
         equippedTitle: true,
         equippedBadge: true,
       },
