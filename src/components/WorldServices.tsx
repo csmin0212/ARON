@@ -2363,11 +2363,13 @@ function CookingKitchen({
   cooking,
   inventoryItems,
   lifeStorageItems,
+  storageItems,
   onClose,
 }: {
   cooking: CookingView;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
+  storageItems: StorageItemView[];
   onClose: () => void;
 }) {
   const [cookState, cookAction, cookPending] = useActionState<CookingState, FormData>(
@@ -2386,8 +2388,11 @@ function CookingKitchen({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const ingredientOptions = useMemo(
-    () => mergeItems([...inventoryItems, ...lifeStorageItems]).filter((item) => item.qty > 0),
-    [inventoryItems, lifeStorageItems],
+    () =>
+      mergeItems([...inventoryItems, ...lifeStorageItems, ...storageItems]).filter(
+        (item) => item.qty > 0,
+      ),
+    [inventoryItems, lifeStorageItems, storageItems],
   );
   const haveMap = useMemo(
     () => new Map(ingredientOptions.map((item) => [item.name, item.qty])),
@@ -2410,13 +2415,18 @@ function CookingKitchen({
       .filter((item) => item.qty > 0)
       .map((item) => ({ name: item.name, qty: item.qty }))
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const storedItems = mergeItems(storageItems)
+      .filter((item) => item.qty > 0)
+      .map((item) => ({ name: item.name, qty: item.qty, note: item.effect }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
     return [
       { key: "inv", label: "휴대품", emoji: "🎒", items: bagItems },
+      { key: "storage", label: "창고", emoji: "📦", items: storedItems },
       { key: "gather", label: "채집", emoji: "🌿", items: byKind("채집") },
       { key: "fish", label: "낚시", emoji: "🎣", items: byKind("낚시") },
       { key: "mine", label: "채광", emoji: "⛏️", items: byKind("채광") },
     ];
-  }, [inventoryItems, lifeStorageItems]);
+  }, [inventoryItems, lifeStorageItems, storageItems]);
 
   function removeFromPot(index: number) {
     setPot(pot.filter((_, i) => i !== index));
@@ -3304,6 +3314,7 @@ export default function WorldServices({
           cooking={cooking}
           inventoryItems={inventoryItems}
           lifeStorageItems={lifeStorageItems}
+          storageItems={storage.items}
           onClose={() => setCookingOpen(false)}
         />
       )}
@@ -3313,6 +3324,7 @@ export default function WorldServices({
           alchemy={alchemy}
           inventoryItems={inventoryItems}
           lifeItems={lifeStorageItems}
+          storageItems={storage.items}
           onClose={() => setAlchemyOpen(false)}
         />
       )}

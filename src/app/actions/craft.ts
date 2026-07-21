@@ -56,8 +56,48 @@ function parseInv(value: string | null): SheetInventory {
   return { gold: null, curWeight: null, maxWeight: null, items: [] };
 }
 
-// 채광 가방 + 기본 인벤에서 광물 보유량 합산
-function mineralQty(life: LifeState, inv: SheetInventory, name: string): number {
+type StorageMineralEntry = { id: string; name: string; qty: number };
+
+async function loadStorageMinerals(userId: string): Promise<StorageMineralEntry[]> {
+  return prisma.storageEntry.findMany({
+    where: { box: { userId }, qty: { gt: 0 } },
+    select: { id: true, name: true, qty: true },
+    orderBy: { updatedAt: "asc" },
+  });
+}
+
+function storageMineralQty(storage: StorageMineralEntry[], name: string): number {
+  const target = name.trim();
+  return storage
+    .filter((item) => item.name.trim() === target)
+    .reduce((sum, item) => sum + Math.max(0, item.qty), 0);
+}
+
+async function consumeStorageMineral(userId: string, name: string, qty: number): Promise<void> {
+  const target = name.trim();
+  let remaining = qty;
+  const entries = await prisma.storageEntry.findMany({
+    where: { box: { userId }, qty: { gt: 0 } },
+    select: { id: true, name: true, qty: true },
+    orderBy: { updatedAt: "asc" },
+  });
+  for (const entry of entries) {
+    if (entry.name.trim() !== target || remaining <= 0) continue;
+    const take = Math.min(Math.max(0, entry.qty), remaining);
+    remaining -= take;
+    const nextQty = entry.qty - take;
+    if (nextQty <= 0) await prisma.storageEntry.delete({ where: { id: entry.id } });
+    else await prisma.storageEntry.update({ where: { id: entry.id }, data: { qty: nextQty } });
+  }
+}
+
+// 채광 가방 + 기본 인벤 + 창고에서 광물 보유량 합산
+function mineralQty(
+  life: LifeState,
+  inv: SheetInventory,
+  storage: StorageMineralEntry[],
+  name: string,
+): number {
   const target = name.trim();
   const bag = life.bags.채광.items
     .filter((item) => item.name.trim() === target)
@@ -65,11 +105,16 @@ function mineralQty(life: LifeState, inv: SheetInventory, name: string): number 
   const basic = inv.items
     .filter((item) => item.name.trim() === target)
     .reduce((sum, item) => sum + Math.max(0, item.qty), 0);
-  return bag + basic;
+  return bag + basic + storageMineralQty(storage, name);
 }
 
-// 채광 가방 우선 소모, 부족분은 기본 인벤에서. 인벤 건드리면 true.
-function consumeMineral(life: LifeState, inv: SheetInventory, name: string, qty: number): boolean {
+// 채광 가방 우선 소모, 부족분은 기본 인벤에서. 나머지는 호출부가 창고에서 차감한다.
+function consumeMineral(
+  life: LifeState,
+  inv: SheetInventory,
+  name: string,
+  qty: number,
+): { invTouched: boolean; invUsed: number; remaining: number } {
   const target = name.trim();
   let remaining = qty;
   for (const item of life.bags.채광.items) {
@@ -80,18 +125,21 @@ function consumeMineral(life: LifeState, inv: SheetInventory, name: string, qty:
   }
   life.bags.채광.items = life.bags.채광.items.filter((item) => item.qty > 0);
   let invTouched = false;
+  let invUsed = 0;
   for (const item of inv.items) {
     if (item.name.trim() !== target || remaining <= 0) continue;
     const take = Math.min(Math.max(0, item.qty), remaining);
+    if (take <= 0) continue;
     item.qty -= take;
     remaining -= take;
+    invUsed += take;
     invTouched = true;
   }
   if (invTouched) {
     inv.items = inv.items.filter((item) => item.qty > 0);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   }
-  return invTouched;
+  return { invTouched, invUsed, remaining };
 }
 
 async function decrementDbInventoryByName(userId: string, itemName: string, qty: number): Promise<void> {
@@ -208,11 +256,12 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
 
   // 보유량 검증 + 소모
   const inv = parseInv(sheet.invJson);
+  const storageMinerals = await loadStorageMinerals(user.id);
   const needs = new Map<string, number>();
   for (const m of majors) needs.set(m.item.name, (needs.get(m.item.name) ?? 0) + m.qty);
   for (const m of minors) needs.set(m.name, (needs.get(m.name) ?? 0) + 1);
   for (const [name, qty] of needs) {
-    const have = mineralQty(life, inv, name);
+    const have = mineralQty(life, inv, storageMinerals, name);
     if (have < qty) return { error: `${name}이(가) 부족해요. (보유 ${have} / 필요 ${qty})` };
   }
 
@@ -230,10 +279,14 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
 
   let invTouched = false;
   for (const [name, qty] of needs) {
-    if (consumeMineral(life, inv, name, qty)) {
+    const consumed = consumeMineral(life, inv, name, qty);
+    if (consumed.invTouched) {
       invTouched = true;
       // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다 (스냅샷 invJson이 진실원)
-      void decrementDbInventoryByName(user.id, name, qty).catch(() => {});
+      void decrementDbInventoryByName(user.id, name, consumed.invUsed).catch(() => {});
+    }
+    if (consumed.remaining > 0) {
+      await consumeStorageMineral(user.id, name, consumed.remaining);
     }
   }
 

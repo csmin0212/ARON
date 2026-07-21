@@ -612,7 +612,10 @@ export default async function WorldPage() {
           .reduce((sum, item) => sum + Math.max(0, item.qty), 0) +
         rawBagItems
           .filter((item) => item.name.trim() === def.name)
-          .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+          .reduce((sum, item) => sum + Math.max(0, item.qty), 0) +
+        (storageBox?.entries
+          .filter((item) => item.name.trim() === def.name)
+          .reduce((sum, item) => sum + Math.max(0, item.qty), 0) ?? 0),
       used: usedCraftMinerals.has(def.name),
     }))
     .filter((entry) => entry.have > 0);
@@ -623,9 +626,13 @@ export default async function WorldPage() {
     .filter((it) => !mineralNames.has(it.name.trim()))
     .map((it) => ({
       def: itemAsCraftMinor(it),
-      have: rawBagItems
-        .filter((item) => item.name.trim() === it.name.trim())
-        .reduce((sum, item) => sum + Math.max(0, item.qty), 0),
+      have:
+        rawBagItems
+          .filter((item) => item.name.trim() === it.name.trim())
+          .reduce((sum, item) => sum + Math.max(0, item.qty), 0) +
+        (storageBox?.entries
+          .filter((item) => item.name.trim() === it.name.trim())
+          .reduce((sum, item) => sum + Math.max(0, item.qty), 0) ?? 0),
       used: usedCraftMinerals.has(it.name.trim()),
     }))
     .filter((entry) => entry.have > 0);

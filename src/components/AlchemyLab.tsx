@@ -194,11 +194,13 @@ export default function AlchemyLab({
   alchemy,
   inventoryItems,
   lifeItems,
+  storageItems,
   onClose,
 }: {
   alchemy: AlchemyView;
   inventoryItems: SheetInventoryItem[];
   lifeItems: LifeItemLike[];
+  storageItems?: SheetInventoryItem[];
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"brew" | "book" | "sell">("brew");
@@ -237,7 +239,7 @@ export default function AlchemyLab({
     return () => clearInterval(timer);
   }, [alchemy.brewing]);
 
-  // 재료 보유량 — 시트 가방(등급 붙은 포션도 기본 이름으로 인정) + 생활 가방
+  // 재료 보유량 — 시트 가방(등급 붙은 포션도 기본 이름으로 인정) + 생활 가방 + 창고
   const haveOf = useMemo(() => {
     const counts = new Map<string, number>();
     const add = (name: string, qty: number) => {
@@ -251,8 +253,14 @@ export default function AlchemyLab({
       if (base !== raw) add(base, item.qty);
     }
     for (const item of lifeItems) add(item.name.trim(), item.qty);
+    for (const item of storageItems ?? []) {
+      const raw = item.name.trim();
+      add(raw, item.qty);
+      const { base } = parsePotionName(raw);
+      if (base !== raw) add(base, item.qty);
+    }
     return (name: string) => counts.get(name.trim()) ?? 0;
-  }, [inventoryItems, lifeItems]);
+  }, [inventoryItems, lifeItems, storageItems]);
 
   // 재료 후보 — 레시피에 등장하는 재료만
   const drawerNames = useMemo(() => {
@@ -276,6 +284,17 @@ export default function AlchemyLab({
     const bagItems = [...bag.entries()]
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    const stored = new Map<string, number>();
+    for (const item of storageItems ?? []) {
+      if (item.qty <= 0) continue;
+      const raw = item.name.trim();
+      const base = parsePotionName(raw).base;
+      const key = drawerNames.has(raw) ? raw : drawerNames.has(base) ? base : null;
+      if (key) stored.set(key, (stored.get(key) ?? 0) + item.qty);
+    }
+    const storedItems = [...stored.entries()]
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
     const byKind = (kind: "채집" | "낚시" | "채광") => {
       const merged = new Map<string, number>();
@@ -292,11 +311,12 @@ export default function AlchemyLab({
 
     return [
       { key: "inv", label: "휴대품", emoji: "🎒", items: bagItems },
+      { key: "storage", label: "창고", emoji: "📦", items: storedItems },
       { key: "gather", label: "채집", emoji: "🌿", items: byKind("채집") },
       { key: "fish", label: "낚시", emoji: "🎣", items: byKind("낚시") },
       { key: "mine", label: "채광", emoji: "⛏️", items: byKind("채광") },
     ];
-  }, [inventoryItems, lifeItems, drawerNames]);
+  }, [inventoryItems, lifeItems, storageItems, drawerNames]);
 
   const takeFromPot = (name: string) => {
     setPot((prev) =>

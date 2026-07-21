@@ -532,8 +532,61 @@ function consumeLifeItem(life: ReturnType<typeof parseLifeState>, name: string, 
   return qty - remaining;
 }
 
-function availableIngredientQty(inv: SheetInventory, life: ReturnType<typeof parseLifeState>, name: string): number {
-  return itemQty(inv, name) + lifeItemQty(life, name);
+type StorageIngredientEntry = { id: string; name: string; qty: number };
+
+async function loadStorageIngredients(userId: string): Promise<StorageIngredientEntry[]> {
+  return prisma.storageEntry.findMany({
+    where: { box: { userId }, qty: { gt: 0 } },
+    select: { id: true, name: true, qty: true },
+    orderBy: { updatedAt: "asc" },
+  });
+}
+
+function storageItemQty(entries: StorageIngredientEntry[], name: string): number {
+  const target = name.trim();
+  return entries
+    .filter((entry) => entry.name.trim() === target)
+    .reduce((sum, entry) => sum + Math.max(0, entry.qty), 0);
+}
+
+function storageBrewItemQty(entries: StorageIngredientEntry[], name: string): number {
+  const target = name.trim();
+  return entries
+    .filter((entry) => {
+      const raw = entry.name.trim();
+      return raw === target || parsePotionName(raw).base === target;
+    })
+    .reduce((sum, entry) => sum + Math.max(0, entry.qty), 0);
+}
+
+async function consumeStorageItems(userId: string, names: string[], qty: number): Promise<number> {
+  const targets = new Set(names.map((name) => name.trim()).filter(Boolean));
+  if (targets.size === 0 || qty <= 0) return 0;
+
+  const entries = await prisma.storageEntry.findMany({
+    where: { box: { userId }, qty: { gt: 0 } },
+    select: { id: true, name: true, qty: true },
+    orderBy: { updatedAt: "asc" },
+  });
+  let remaining = qty;
+  for (const entry of entries) {
+    if (!targets.has(entry.name.trim()) || remaining <= 0) continue;
+    const used = Math.min(Math.max(0, entry.qty), remaining);
+    remaining -= used;
+    const nextQty = entry.qty - used;
+    if (nextQty <= 0) await prisma.storageEntry.delete({ where: { id: entry.id } });
+    else await prisma.storageEntry.update({ where: { id: entry.id }, data: { qty: nextQty } });
+  }
+  return qty - remaining;
+}
+
+function availableIngredientQty(
+  inv: SheetInventory,
+  life: ReturnType<typeof parseLifeState>,
+  storage: StorageIngredientEntry[],
+  name: string,
+): number {
+  return itemQty(inv, name) + lifeItemQty(life, name) + storageItemQty(storage, name);
 }
 
 async function consumeIngredient(
@@ -547,8 +600,15 @@ async function consumeIngredient(
   const fromLife = consumeLifeItem(life, name, remaining);
   remaining -= fromLife;
   if (remaining > 0) {
-    consumeInvItem(inv, name, remaining);
-    await decrementDbInventory(userId, name, remaining);
+    const fromInv = Math.min(itemQty(inv, name), remaining);
+    if (fromInv > 0) {
+      consumeInvItem(inv, name, fromInv);
+      await decrementDbInventory(userId, name, fromInv);
+      remaining -= fromInv;
+    }
+  }
+  if (remaining > 0) {
+    await consumeStorageItems(userId, [name], remaining);
   }
   return inv;
 }
@@ -1263,8 +1323,9 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     select: { lifeJson: true, achStatsJson: true },
   });
   const life = parseLifeState(sheet?.lifeJson);
+  const storageIngredients = await loadStorageIngredients(ctx.userId);
   for (const ingredient of ingredients) {
-    const have = availableIngredientQty(ctx.inv, life, ingredient.name);
+    const have = availableIngredientQty(ctx.inv, life, storageIngredients, ingredient.name);
     if (have < ingredient.qty) {
       return { error: `${ingredient.name} 수량이 부족합니다. (${have}/${ingredient.qty})` };
     }
@@ -1434,16 +1495,18 @@ function matchingPotionNames(inv: SheetInventory, name: string): string[] {
 function availableBrewQty(
   inv: SheetInventory,
   life: ReturnType<typeof parseLifeState>,
+  storage: StorageIngredientEntry[],
   name: string,
 ): number {
   const invQty = matchingPotionNames(inv, name).reduce((sum, n) => sum + itemQty(inv, n), 0);
-  return invQty + lifeItemQty(life, name);
+  return invQty + lifeItemQty(life, name) + storageBrewItemQty(storage, name);
 }
 
 async function consumeBrewIngredient(
   userId: string,
   inv: SheetInventory,
   life: ReturnType<typeof parseLifeState>,
+  storage: StorageIngredientEntry[],
   name: string,
   qty: number,
 ): Promise<void> {
@@ -1455,6 +1518,17 @@ async function consumeBrewIngredient(
     consumeInvItem(inv, variant, used);
     await decrementDbInventory(userId, variant, used);
     remaining -= used;
+  }
+  if (remaining > 0) {
+    const target = name.trim();
+    const storageNames = [
+      ...new Set(
+        storage
+          .map((entry) => entry.name.trim())
+          .filter((raw) => raw === target || parsePotionName(raw).base === target),
+      ),
+    ];
+    await consumeStorageItems(userId, storageNames, remaining);
   }
 }
 
@@ -1480,6 +1554,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   }
 
   const life = parseLifeState(sheet?.lifeJson);
+  const storageIngredients = await loadStorageIngredients(ctx.userId);
 
   // 두 가지 진입로 — ① 레시피 탭(recipeId): 완벽 제조로 최적 시간을 익힌 포션만,
   // 최적 시간으로 바로 가마에 올린다. ② 가마(재료 조합 + 시간): 요리처럼 조합을 맞춰 실험.
@@ -1518,7 +1593,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
   const ingredients = parseRecipeIngredients(recipe.ingredientsJson);
   for (const ingredient of ingredients) {
-    const have = availableBrewQty(ctx.inv, life, ingredient.name);
+    const have = availableBrewQty(ctx.inv, life, storageIngredients, ingredient.name);
     if (have < ingredient.qty) {
       return { error: `${ingredient.name} 수량이 부족합니다. (${have}/${ingredient.qty})` };
     }
@@ -1526,7 +1601,14 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
   const inv = ctx.inv;
   for (const ingredient of ingredients) {
-    await consumeBrewIngredient(ctx.userId, inv, life, ingredient.name, ingredient.qty);
+    await consumeBrewIngredient(
+      ctx.userId,
+      inv,
+      life,
+      storageIngredients,
+      ingredient.name,
+      ingredient.qty,
+    );
   }
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
 
