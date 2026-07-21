@@ -86,6 +86,7 @@ export default function ProfileForm({
   );
   const [main, setMain] = useState<"hero" | "card">(initialMain);
   const [cardStyle, setCardStyle] = useState<string>(initialCardStyle);
+  const [previewStyle, setPreviewStyle] = useState<string>(initialCardStyle);
   const [widgets, setWidgets] = useState<WidgetKey[]>(initialWidgets);
   const [owned, setOwned] = useState<string[]>(initialOwnedSkins);
   const [gold, setGold] = useState<number>(initialGold);
@@ -120,6 +121,7 @@ export default function ProfileForm({
       setOwned(res.owned);
       setGold(res.gold);
       setCardStyle(res.skin);
+      setPreviewStyle(res.skin);
     } else if (res && "error" in res) {
       setBuyMsg(res.error);
     }
@@ -186,7 +188,7 @@ export default function ProfileForm({
           </span>
         </div>
         {main === "card" ? (
-          <ProfileCard identity={identity} widgets={resolved} style={cardStyle} />
+          <ProfileCard identity={identity} widgets={resolved} style={previewStyle} />
         ) : (
           <ProfileHero
             nickname={identity.nickname}
@@ -249,6 +251,7 @@ export default function ProfileForm({
               {CARD_STYLES.map((meta) => {
                 const isOwned = ownsSkin(meta.key, owned);
                 const selected = cardStyle === meta.key;
+                const previewing = previewStyle === meta.key;
                 const swatchStyle = {
                   background: meta.swatch,
                   ["--c" as string]: swatchAccent,
@@ -259,9 +262,12 @@ export default function ProfileForm({
                     <button
                       key={meta.key}
                       type="button"
-                      onClick={() => setCardStyle(meta.key)}
+                      onClick={() => {
+                        setCardStyle(meta.key);
+                        setPreviewStyle(meta.key);
+                      }}
                       className={`overflow-hidden rounded-xl border p-1 text-left transition ${
-                        selected ? "border-brand-400 ring-2 ring-brand-300" : "border-line hover:border-brand-300"
+                        previewing ? "border-brand-400 ring-2 ring-brand-300" : "border-line hover:border-brand-300"
                       }`}
                     >
                       <div className="relative flex h-14 items-end rounded-lg p-1.5" style={swatchStyle}>
@@ -276,6 +282,11 @@ export default function ProfileForm({
                             ✓
                           </span>
                         )}
+                        {previewing && !selected && (
+                          <span className="absolute right-1 top-1 rounded bg-white/90 px-1 py-0.5 text-[9px] font-black text-brand-600">
+                            미리보기
+                          </span>
+                        )}
                         {meta.acquire === "reward" && (
                           <span className="absolute left-1 top-1 rounded bg-black/30 px-1 py-0.5 text-[8px] font-black text-amber-200">
                             CBT
@@ -287,14 +298,30 @@ export default function ProfileForm({
                 }
 
                 return (
-                  <div key={meta.key} className="overflow-hidden rounded-xl border border-line p-1">
+                  <div
+                    key={meta.key}
+                    className={`overflow-hidden rounded-xl border p-1 transition ${
+                      previewing ? "border-brand-400 ring-2 ring-brand-300" : "border-line hover:border-brand-300"
+                    }`}
+                  >
                     <div className="relative flex h-14 items-end rounded-lg p-1.5" style={swatchStyle}>
-                      <div className="absolute inset-0 rounded-lg bg-black/45" />
-                      <span className="relative rounded bg-black/25 px-1 py-0.5 text-[10px] font-black text-white/90">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewStyle(meta.key)}
+                        className="absolute inset-0 rounded-lg"
+                        aria-label={`${meta.label} 카드 미리보기`}
+                      />
+                      <div className="pointer-events-none absolute inset-0 rounded-lg bg-black/45" />
+                      <span className="pointer-events-none relative rounded bg-black/25 px-1 py-0.5 text-[10px] font-black text-white/90">
                         {meta.label}
                       </span>
+                      {previewing && (
+                        <span className="pointer-events-none absolute right-1 bottom-1 rounded bg-white/90 px-1 py-0.5 text-[9px] font-black text-brand-600">
+                          미리보기
+                        </span>
+                      )}
                       {meta.acquire === "reward" ? (
-                        <span className="absolute inset-x-0 top-1.5 mx-auto w-fit rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-black text-amber-200">
+                        <span className="pointer-events-none absolute inset-x-0 top-1.5 mx-auto w-fit rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-black text-amber-200">
                           🔒 CBT 보상
                         </span>
                       ) : (
@@ -302,7 +329,7 @@ export default function ProfileForm({
                           type="button"
                           disabled={buying === meta.key}
                           onClick={() => void buySkin(meta.key)}
-                          className="absolute inset-x-1 top-1 rounded-md bg-white/90 py-1 text-[10px] font-black text-brand-600 shadow transition hover:bg-white disabled:opacity-60"
+                          className="absolute inset-x-1 top-1 z-10 rounded-md bg-white/90 py-1 text-[10px] font-black text-brand-600 shadow transition hover:bg-white disabled:opacity-60"
                         >
                           {buying === meta.key ? "구매 중…" : `${meta.price.toLocaleString()}G 구매`}
                         </button>
@@ -314,7 +341,7 @@ export default function ProfileForm({
             </div>
             {buyMsg && <p className="text-[11px] font-medium text-rose-500">{buyMsg}</p>}
             <p className="text-[11px] leading-relaxed text-faint">
-              기본은 무료 · CBT는 보상 전용 · 나머지는 8,000G에 구매해요.
+              카드를 누르면 바로 미리보기돼요. 기본은 무료 · CBT는 보상 전용 · 나머지는 8,000G에 구매해요.
             </p>
           </div>
         )}
