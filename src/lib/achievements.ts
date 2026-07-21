@@ -83,9 +83,6 @@ const TOOL_KIND: Record<string, "낚시" | "채집" | "채광"> = {
   "철 곡괭이": "채광",
   "미스릴 곡괭이": "채광",
 };
-// 요리 제작 등급 서열 (rollCookGrade 결과)
-const COOK_GRADE_ORDER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
-
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 // 활성 풀(시트 동기화본) 기준으로 매번 구성 — 신규 어종/약초/광물이 도감 판정에 반영되게.
 const rankMapOf = (kind: "낚시" | "채집" | "채광") =>
@@ -100,6 +97,39 @@ const rankRequirement = (a: AchRow) => {
 };
 function countStatPrefix(stats: Record<string, number>, prefix: string): number {
   return Object.entries(stats).filter(([key, value]) => key.startsWith(prefix) && value > 0).length;
+}
+
+function parseRecipeIngredients(value: string | null | undefined): { name: string; qty: number }[] {
+  try {
+    const parsed = JSON.parse(value ?? "[]") as { name?: string; qty?: number }[];
+    return parsed
+      .filter((item) => item.name && item.qty && item.qty > 0)
+      .map((item) => ({ name: item.name!, qty: item.qty! }));
+  } catch {
+    return [];
+  }
+}
+
+function cookingTagTokens(recipe: {
+  category: string;
+  tags: string | null;
+  ingredientsJson?: string | null;
+}): string[] {
+  const tokens = new Set<string>();
+  if (/생선|물고기|어획|낚시/.test(recipe.category)) tokens.add("생선");
+  if (/채집|약초|나물/.test(recipe.category)) tokens.add("채집");
+  for (const tag of (recipe.tags ?? "").split(/[,，]/)) {
+    const t = tag.trim();
+    if (t) tokens.add(t);
+  }
+  const fishNames = new Set(getActiveItems("낚시").map((item) => item.name.trim()));
+  const gatherNames = new Set(getActiveItems("채집").map((item) => item.name.trim()));
+  for (const ingredient of parseRecipeIngredients(recipe.ingredientsJson)) {
+    const name = ingredient.name.trim();
+    if (fishNames.has(name)) tokens.add("생선");
+    if (gatherNames.has(name)) tokens.add("채집");
+  }
+  return [...tokens];
 }
 
 function maxCount(counts: Record<string, number> | undefined): number {
@@ -249,6 +279,23 @@ export async function checkAndGrant(
   let recipeCount = 0;
   if (types.has("요리레시피수"))
     recipeCount = await prisma.userRecipe.count({ where: { userId } });
+  const cookedRecipeTags = new Set<string>();
+  if (types.has("요리태그") || types.has("요리재료") || types.has("요리분류")) {
+    const userRecipes = await prisma.userRecipe.findMany({
+      where: { userId },
+      select: { recipeId: true },
+    });
+    const recipeIds = [...new Set(userRecipes.map((recipe) => recipe.recipeId))];
+    if (recipeIds.length > 0) {
+      const recipes = await prisma.cookingRecipe.findMany({
+        where: { id: { in: recipeIds } },
+        select: { category: true, tags: true, ingredientsJson: true },
+      });
+      for (const recipe of recipes) {
+        for (const tag of cookingTagTokens(recipe)) cookedRecipeTags.add(tag);
+      }
+    }
+  }
 
   let storageUsedWeight = 0,
     storageMaxWeight = 0;
@@ -406,17 +453,23 @@ export async function checkAndGrant(
         const owned = tools[TOOL_KIND[req]] ?? "";
         return (TOOL_TIER[owned] ?? 0) >= (TOOL_TIER[req] ?? 99);
       }
-      case "요리등급": {
-        // 숫자 조건값 = 레시피 랭크(레거시), 그 외엔 제작 등급(고품질<명품<장인)을 설명에서 읽는다
-        if (n != null) return (stats.요리최고등급 ?? 0) >= n;
+      case "요리등급":
+      case "요리제작등급":
+      case "요리품질": {
+        // 설명·이름에 제작 등급 의도가 있으면 조건값 숫자보다 우선한다.
+        // "희귀 요리" 업적이 조건값 1로 들어와도 레시피 R1이 아니라 고품질 이상으로 판정한다.
         const made = stats.요리최고제작등급 ?? 0;
         const src = norm(condSource(a));
         if (src.includes(norm("장인")) || src.includes(norm("서명작"))) return made >= 3;
         if (src.includes(norm("걸작")) || src.includes(norm("명품"))) return made >= 2;
         if (src.includes(norm("희귀")) || src.includes(norm("고품질"))) return made >= 1;
+        // 숫자 조건값 = 레시피 랭크(레거시)
+        if (n != null) return (stats.요리최고등급 ?? 0) >= n;
         return false;
       }
-      case "요리태그": {
+      case "요리태그":
+      case "요리재료":
+      case "요리분류": {
         // 카운터 키는 cookingTagTokens 기준("생선"/"채집" + 시트 태그) — 별칭을 흡수한다
         const explicit = v?.trim();
         const src = condSource(a);
@@ -425,7 +478,8 @@ export async function checkAndGrant(
           (/(물고기|생선|어획)/.test(src) ? "생선" : /(채집|약초|나물)/.test(src) ? "채집" : null);
         if (!raw) return false;
         const alias: Record<string, string> = { 물고기: "생선", 어획물: "생선", 채집물: "채집", 약초: "채집" };
-        return (stats[`요리태그:${alias[raw] ?? raw}`] ?? 0) > 0;
+        const tag = alias[raw] ?? raw;
+        return (stats[`요리태그:${tag}`] ?? 0) > 0 || cookedRecipeTags.has(tag);
       }
       case "칭호장착":
         return !!userDecor?.equippedTitle;

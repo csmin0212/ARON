@@ -142,9 +142,6 @@ export default async function CollectionPage() {
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-black text-content">생활 도감</h1>
-            <p className="mt-1 text-sm text-muted">
-              현재 층에서 발견 가능한 채집물, 민물 어종, 요리와 포션 레시피 기준입니다.
-            </p>
           </div>
           <div className="rounded-2xl bg-brand-50 px-4 py-2 text-right">
             <p className="text-xs font-bold text-brand-600">총 진행률</p>

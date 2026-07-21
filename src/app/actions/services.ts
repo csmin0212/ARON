@@ -38,7 +38,12 @@ import {
   parsePendingBrew,
   parsePotionName,
 } from "@/lib/alchemy";
-import { findLifeSkillItem, lifeSkillSellPrice, type LifeSkillKind } from "@/lib/lifeSkillData";
+import {
+  findLifeSkillItem,
+  getActiveItems,
+  lifeSkillSellPrice,
+  type LifeSkillKind,
+} from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
@@ -1395,6 +1400,7 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     achStats = setMaxStat(achStats, "요리최고등급", recipeRankNumber(recipe.rank));
     // 제작 등급(고품질1·명품2·장인3) — '희귀/걸작 요리' 업적 판정용
     if (grade) achStats = setMaxStat(achStats, "요리최고제작등급", COOK_GRADE_NUMBER[grade] ?? 0);
+    await loadLifeItems();
     for (const tag of cookingTagTokens(recipe)) {
       achStats = bumpStat(achStats, `요리태그:${tag}`);
     }
@@ -1984,13 +1990,24 @@ function recipeRankNumber(rank: string | null | undefined): number {
 // rollCookGrade 결과 → 서열 숫자 (업적 '요리등급' 판정과 짝)
 const COOK_GRADE_NUMBER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
 
-function cookingTagTokens(recipe: { category: string; tags: string | null }): string[] {
+function cookingTagTokens(recipe: {
+  category: string;
+  tags: string | null;
+  ingredientsJson?: string | null;
+}): string[] {
   const tokens = new Set<string>();
-  if (recipe.category.includes("생선")) tokens.add("생선");
-  if (recipe.category.includes("채집")) tokens.add("채집");
+  if (/생선|물고기|어획|낚시/.test(recipe.category)) tokens.add("생선");
+  if (/채집|약초|나물/.test(recipe.category)) tokens.add("채집");
   for (const tag of (recipe.tags ?? "").split(/[,，]/)) {
     const t = tag.trim();
     if (t) tokens.add(t);
+  }
+  const fishNames = new Set(getActiveItems("낚시").map((item) => item.name.trim()));
+  const gatherNames = new Set(getActiveItems("채집").map((item) => item.name.trim()));
+  for (const ingredient of parseRecipeIngredients(recipe.ingredientsJson ?? "[]")) {
+    const name = ingredient.name.trim();
+    if (fishNames.has(name)) tokens.add("생선");
+    if (gatherNames.has(name)) tokens.add("채집");
   }
   return [...tokens];
 }
