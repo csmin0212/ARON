@@ -7,6 +7,7 @@ import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
 import { collectionItems } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { isGmUsername } from "@/lib/gm";
+import { getCurrentUser } from "@/lib/auth";
 import HallOfFame, { type HallCategory, type HallEntry } from "@/components/HallOfFame";
 
 export const metadata = { title: "명예의 전당 · 아리안로드 온라인 갤러리" };
@@ -40,20 +41,63 @@ type Row = {
   gold: number;
 };
 
-// 상위 N명을 정렬·매핑. score 로 내림차순 정렬, 0 이하(미달)는 제외.
-function rankBy(rows: Row[], score: (r: Row) => number, value: (r: Row) => string): HallEntry[] {
-  return rows
+// 전체 순위를 먼저 계산한 뒤 TOP N과 내 순위(있으면)를 함께 넘긴다.
+function rankCategory(
+  rows: Row[],
+  score: (r: Row) => number,
+  value: (r: Row) => string,
+  meUsername: string | null,
+): Pick<HallCategory, "entries" | "myEntry"> {
+  const ranked = rows
     .map((r) => ({ r, s: score(r) }))
     .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
-    .slice(0, TOP_N)
-    .map(({ r }) => ({
-      username: r.username,
-      nickname: r.nickname,
-      avatar: r.avatar,
-      badge: r.badge,
-      value: value(r),
-    }));
+    .sort((a, b) => b.s - a.s);
+  const entries: HallEntry[] = ranked.slice(0, TOP_N).map(({ r }, i) => ({
+    rank: i + 1,
+    username: r.username,
+    nickname: r.nickname,
+    avatar: r.avatar,
+    badge: r.badge,
+    value: value(r),
+    isMe: r.username === meUsername,
+  }));
+  const myIndex = meUsername
+    ? ranked.findIndex(({ r }) => r.username === meUsername)
+    : -1;
+  const myEntry =
+    myIndex >= TOP_N
+      ? (() => {
+          const r = ranked[myIndex].r;
+          return {
+            rank: myIndex + 1,
+            username: r.username,
+            nickname: r.nickname,
+            avatar: r.avatar,
+            badge: r.badge,
+            value: value(r),
+            isMe: true,
+          };
+        })()
+      : undefined;
+
+  return { entries, myEntry };
+}
+
+function category(
+  rows: Row[],
+  meUsername: string | null,
+  data: Omit<HallCategory, "entries" | "myEntry"> & {
+    score: (r: Row) => number;
+    value: (r: Row) => string;
+  },
+): HallCategory {
+  const ranked = rankCategory(rows, data.score, data.value, meUsername);
+  return {
+    key: data.key,
+    label: data.label,
+    icon: data.icon,
+    ...ranked,
+  };
 }
 
 function pct(found: number, total: number): number {
@@ -61,6 +105,9 @@ function pct(found: number, total: number): number {
 }
 
 export default async function HallPage() {
+  const user = await getCurrentUser();
+  const meUsername = user && !isGmUsername(user.username) ? user.username : null;
+
   await loadLifeItems();
   const [recipes, alchemyRecipes] = await Promise.all([
     getCookingRecipes(),
@@ -134,72 +181,69 @@ export default async function HallPage() {
 
   // 레벨 동률은 경험치로 미세 가산해 타이브레이크
   const categories: HallCategory[] = [
-    {
+    category(rows, meUsername, {
       key: "fishing",
       label: "낚시",
       icon: "🎣",
-      entries: rankBy(rows, (r) => r.fishingLv * 1e9 + r.fishingExp, (r) => `Lv.${r.fishingLv}`),
-    },
-    {
+      score: (r) => r.fishingLv * 1e9 + r.fishingExp,
+      value: (r) => `Lv.${r.fishingLv}`,
+    }),
+    category(rows, meUsername, {
       key: "plant",
       label: "채집",
       icon: "🌿",
-      entries: rankBy(rows, (r) => r.plantLv * 1e9 + r.plantExp, (r) => `Lv.${r.plantLv}`),
-    },
-    {
+      score: (r) => r.plantLv * 1e9 + r.plantExp,
+      value: (r) => `Lv.${r.plantLv}`,
+    }),
+    category(rows, meUsername, {
       key: "mining",
       label: "채광",
       icon: "⛏️",
-      entries: rankBy(rows, (r) => r.miningLv * 1e9 + r.miningExp, (r) => `Lv.${r.miningLv}`),
-    },
-    {
+      score: (r) => r.miningLv * 1e9 + r.miningExp,
+      value: (r) => `Lv.${r.miningLv}`,
+    }),
+    category(rows, meUsername, {
       key: "cooking",
       label: "요리",
       icon: "🍳",
-      entries: rankBy(rows, (r) => r.cookingLv * 1e9 + r.cookingExp, (r) => `Lv.${r.cookingLv}`),
-    },
-    {
+      score: (r) => r.cookingLv * 1e9 + r.cookingExp,
+      value: (r) => `Lv.${r.cookingLv}`,
+    }),
+    category(rows, meUsername, {
       key: "smithing",
       label: "제작",
       icon: "⚒️",
-      entries: rankBy(rows, (r) => r.smithingLv * 1e9 + r.smithingExp, (r) => `Lv.${r.smithingLv}`),
-    },
-    {
+      score: (r) => r.smithingLv * 1e9 + r.smithingExp,
+      value: (r) => `Lv.${r.smithingLv}`,
+    }),
+    category(rows, meUsername, {
       key: "alchemy",
       label: "연금술",
       icon: "⚗️",
-      entries: rankBy(
-        rows,
-        (r) => r.alchemyLv * 1e9 + r.alchemyScore,
-        (r) => `Lv.${r.alchemyLv} · 장인 ${r.alchemyMasters}개`,
-      ),
-    },
-    {
+      score: (r) => r.alchemyLv * 1e9 + r.alchemyScore,
+      value: (r) => `Lv.${r.alchemyLv} · 장인 ${r.alchemyMasters}개`,
+    }),
+    category(rows, meUsername, {
       key: "fame",
       label: "명성",
       icon: "🏅",
-      entries: rankBy(
-        rows,
-        (r) => (RANK_ORDER[r.rank] ?? 0) * 1e9 + r.fame,
-        (r) => `${r.rank} · ${r.fame.toLocaleString("ko-KR")}`,
-      ),
-    },
-    {
+      score: (r) => (RANK_ORDER[r.rank] ?? 0) * 1e9 + r.fame,
+      value: (r) => `${r.rank} · ${r.fame.toLocaleString("ko-KR")}`,
+    }),
+    category(rows, meUsername, {
       key: "collection",
       label: "도감",
       icon: "📖",
-      entries: rankBy(
-        rows,
-        (r) => r.collectionPct * 1e9 + r.collectionFound,
-        (r) => `${r.collectionPct}% (${r.collectionFound}/${r.collectionTotal})`,
-      ),
-    },
-    {
+      score: (r) => r.collectionPct * 1e9 + r.collectionFound,
+      value: (r) => `${r.collectionPct}% (${r.collectionFound}/${r.collectionTotal})`,
+    }),
+    category(rows, meUsername, {
       key: "gold",
       label: "재산",
       icon: "💰",
-      entries: rankBy(rows, (r) => r.gold, (r) => `${r.gold.toLocaleString("ko-KR")}G`),
-    },
+      score: (r) => r.gold,
+      value: (r) => `${r.gold.toLocaleString("ko-KR")}G`,
+    }),
   ];
 
   return (
