@@ -1874,6 +1874,11 @@ function parseApRecovery(effect: string): number {
   return Number(m[3] ?? 0);
 }
 
+function parseDungeonRunRecovery(effect: string): number {
+  const m = effect.match(/던전\s*(?:클리어|도전)?\s*횟수[^\d]*(\d+)\s*회\s*(?:회복|초기화)/i);
+  return m ? Math.max(0, Number.parseInt(m[1], 10) || 0) : 0;
+}
+
 function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
   return match ? Number.parseInt(match[1], 10) || 0 : 0;
@@ -1931,7 +1936,18 @@ export async function useCookingItem(
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: ctx.userId },
-    select: { ap: true, apResetAt: true, lifeJson: true, achStatsJson: true, curHp: true, curMp: true, hp: true, mp: true },
+    select: {
+      ap: true,
+      apResetAt: true,
+      lifeJson: true,
+      achStatsJson: true,
+      curHp: true,
+      curMp: true,
+      hp: true,
+      mp: true,
+      dungeonWeek: true,
+      dungeonRuns: true,
+    },
   });
   if (!sheet) return { error: "캐릭터 시트를 찾지 못했습니다." };
 
@@ -1948,6 +1964,7 @@ export async function useCookingItem(
   const sessionBuff = parseSessionBuff(rawEffect);
   const statBuff = parseStatBuff(rawEffect);
   const recovery = parseRecovery(rawEffect);
+  const dungeonRunRecovery = parseDungeonRunRecovery(rawEffect);
 
   if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
@@ -2119,6 +2136,28 @@ export async function useCookingItem(
           ap: newAp,
           apResetAt: fresh.at,
           achStatsJson: bumpStat(sheet.achStatsJson, "피로도회복제사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else if (!recipe && dungeonRunRecovery > 0) {
+    const week = dungeonWeekKey(now);
+    const currentRuns = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
+    if (currentRuns <= 0) return { error: "회복할 던전 횟수가 없어요." };
+
+    const nextRuns = Math.max(0, currentRuns - dungeonRunRecovery);
+    ok = `${itemName}을 사용했습니다. 이번 주 던전 횟수 ${currentRuns} → ${nextRuns}`;
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          dungeonWeek: week,
+          dungeonRuns: nextRuns,
+          achStatsJson: bumpStat(sheet.achStatsJson, "던전초기화권사용"),
         },
       }),
       decrementDbInventory(ctx.userId, itemName, 1),
