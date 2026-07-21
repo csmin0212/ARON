@@ -213,9 +213,6 @@ export default function ProfileForm({
       {/* 프로필 형태 */}
       <div className="space-y-4 rounded-2xl border border-line bg-subtle p-4">
         <p className="text-sm font-extrabold text-content">🖼️ 프로필 형태</p>
-        <p className="-mt-2 text-[11px] leading-relaxed text-faint">
-          공개 프로필 상단에 무엇을 보여줄지 골라요. 하나만 보여야 깔끔해요.
-        </p>
         <div className="grid grid-cols-2 gap-2">
           {(
             [
@@ -355,9 +352,6 @@ export default function ProfileForm({
             {widgets.length} / {MAX_WIDGETS}
           </span>
         </div>
-        <p className="-mt-1 text-[11px] leading-relaxed text-faint">
-          추가한 순서대로 표시돼요. 최대 {MAX_WIDGETS}개 (능력치·도감은 넓게 차지해요).
-        </p>
 
         {widgets.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
