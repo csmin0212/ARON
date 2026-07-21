@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { parseLifeState } from "@/lib/lifeSkillPerks";
+import {
+  alchemyMasterCount,
+  parseLifeState,
+} from "@/lib/lifeSkillPerks";
+import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
+import { collectionItems } from "@/lib/lifeSkillData";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import HallOfFame, { type HallCategory, type HallEntry } from "@/components/HallOfFame";
 
 export const metadata = { title: "명예의 전당 · 아리안로드 온라인 갤러리" };
@@ -16,11 +22,20 @@ type Row = {
   fishingExp: number;
   plantLv: number;
   plantExp: number;
+  miningLv: number;
+  miningExp: number;
   cookingLv: number;
   cookingExp: number;
+  smithingLv: number;
+  smithingExp: number;
+  alchemyLv: number;
+  alchemyScore: number;
+  alchemyMasters: number;
   fame: number;
   rank: string;
-  collection: number;
+  collectionFound: number;
+  collectionTotal: number;
+  collectionPct: number;
   gold: number;
 };
 
@@ -40,7 +55,19 @@ function rankBy(rows: Row[], score: (r: Row) => number, value: (r: Row) => strin
     }));
 }
 
+function pct(found: number, total: number): number {
+  return total > 0 ? Math.round((found / total) * 1000) / 10 : 0;
+}
+
 export default async function HallPage() {
+  await loadLifeItems();
+  const [recipes, alchemyRecipes] = await Promise.all([
+    getCookingRecipes(),
+    getAlchemyRecipes(),
+  ]);
+  const lifeCatalog = collectionItems(false);
+  const collectionTotal = lifeCatalog.length + recipes.length + alchemyRecipes.length;
+
   const sheets = await prisma.characterSheet.findMany({
     select: {
       lifeJson: true,
@@ -48,13 +75,35 @@ export default async function HallPage() {
       adventurerRank: true,
       curGold: true,
       user: {
-        select: { username: true, nickname: true, avatar: true, equippedBadge: true },
+        select: {
+          username: true,
+          nickname: true,
+          avatar: true,
+          equippedBadge: true,
+          recipes: { select: { recipeId: true } },
+        },
       },
     },
   });
 
   const rows: Row[] = sheets.map((s) => {
     const life = parseLifeState(s.lifeJson);
+    const discoveredRecipes = new Set(s.user.recipes.map((recipe) => recipe.recipeId));
+    const lifeCollectionFound = lifeCatalog.filter(({ kind, item }) =>
+      life.collection[kind].includes(item.name),
+    ).length;
+    const cookingFound = recipes.filter(
+      (recipe) => recipe.isPublic || discoveredRecipes.has(recipe.id),
+    ).length;
+    const potionFound = alchemyRecipes.filter((recipe) =>
+      life.alchemyPerfect.includes(recipe.id),
+    ).length;
+    const collectionFound = lifeCollectionFound + cookingFound + potionFound;
+    const alchemyScore = Object.values(life.alchemyMastery).reduce(
+      (sum, exp) => sum + Math.max(0, exp),
+      0,
+    );
+    const alchemyMasters = alchemyMasterCount(life);
     return {
       username: s.user.username,
       nickname: s.user.nickname,
@@ -64,11 +113,20 @@ export default async function HallPage() {
       fishingExp: life.fishing.exp,
       plantLv: life.plant.level,
       plantExp: life.plant.exp,
+      miningLv: life.mining.level,
+      miningExp: life.mining.exp,
       cookingLv: life.cooking.level,
       cookingExp: life.cooking.exp,
+      smithingLv: life.smithing.level,
+      smithingExp: life.smithing.exp,
+      alchemyLv: life.alchemy.level,
+      alchemyScore,
+      alchemyMasters,
       fame: s.fame,
       rank: s.adventurerRank,
-      collection: life.collection.낚시.length + life.collection.채집.length + life.collection.채광.length,
+      collectionFound,
+      collectionTotal,
+      collectionPct: pct(collectionFound, collectionTotal),
       gold: s.curGold ?? 0,
     };
   });
@@ -88,10 +146,32 @@ export default async function HallPage() {
       entries: rankBy(rows, (r) => r.plantLv * 1e9 + r.plantExp, (r) => `Lv.${r.plantLv}`),
     },
     {
+      key: "mining",
+      label: "채광",
+      icon: "⛏️",
+      entries: rankBy(rows, (r) => r.miningLv * 1e9 + r.miningExp, (r) => `Lv.${r.miningLv}`),
+    },
+    {
       key: "cooking",
       label: "요리",
       icon: "🍳",
       entries: rankBy(rows, (r) => r.cookingLv * 1e9 + r.cookingExp, (r) => `Lv.${r.cookingLv}`),
+    },
+    {
+      key: "smithing",
+      label: "제작",
+      icon: "⚒️",
+      entries: rankBy(rows, (r) => r.smithingLv * 1e9 + r.smithingExp, (r) => `Lv.${r.smithingLv}`),
+    },
+    {
+      key: "alchemy",
+      label: "연금술",
+      icon: "⚗️",
+      entries: rankBy(
+        rows,
+        (r) => r.alchemyLv * 1e9 + r.alchemyScore,
+        (r) => `Lv.${r.alchemyLv} · 장인 ${r.alchemyMasters}개`,
+      ),
     },
     {
       key: "fame",
@@ -107,7 +187,11 @@ export default async function HallPage() {
       key: "collection",
       label: "도감",
       icon: "📖",
-      entries: rankBy(rows, (r) => r.collection, (r) => `${r.collection}종`),
+      entries: rankBy(
+        rows,
+        (r) => r.collectionPct * 1e9 + r.collectionFound,
+        (r) => `${r.collectionPct}% (${r.collectionFound}/${r.collectionTotal})`,
+      ),
     },
     {
       key: "gold",
