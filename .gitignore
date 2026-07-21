@@ -29,6 +29,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+dev-server.*.log
+
+# scripts/shot.mjs 출력 스크린샷
+/shot*.png
 
 # env files (can opt-in for committing if needed)
 .env*
