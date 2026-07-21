@@ -1135,7 +1135,7 @@ export default async function WorldPage() {
   }
 
   // 적용 중인 이벤트·요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 생활 행운은 한 칩으로 합침)
-  const buffRows: WorldBuff[] = [...dailyEventBuffs()];
+  const buffRows: WorldBuff[] = dailyEventBuffs().map((buff) => ({ ...buff, source: "event" }));
   for (const buff of life.cookingBuffs.lifeLuck) {
     const kinds =
       buff.kind === "all"
@@ -1151,7 +1151,7 @@ export default async function WorldPage() {
       const merged = [...new Set([...head.split("·"), ...kinds])];
       found.label = `${merged.join("·")} 행운 +${buff.amount}`;
     } else {
-      buffRows.push({ icon: "🍀", label: `${kinds.join("·")} 행운 +${buff.amount}`, until: buff.until });
+      buffRows.push({ icon: "🍀", label: `${kinds.join("·")} 행운 +${buff.amount}`, until: buff.until, source: "food" });
     }
   }
   for (const buff of life.cookingBuffs.stat) {
@@ -1159,6 +1159,7 @@ export default async function WorldPage() {
       icon: "🎲",
       label: `${buff.label === "모든" ? "모든 능력" : buff.label} 판정 +${buff.amount}`,
       until: buff.until,
+      source: "food",
     });
   }
   const displayActionApCost = (action: (typeof locActions)[number]): number => {
