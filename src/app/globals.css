@@ -186,3 +186,54 @@ body {
 .alch-shake {
   animation: alch-shake 1.6s ease-in-out infinite;
 }
+
+/* ── 프로필 카드 — 스킨 연출 ── */
+@keyframes card-holo-pan {
+  0% {
+    transform: translate(-12%, -12%) rotate(0deg);
+  }
+  50% {
+    transform: translate(12%, 8%) rotate(180deg);
+  }
+  100% {
+    transform: translate(-12%, -12%) rotate(360deg);
+  }
+}
+@keyframes card-sheen {
+  0% {
+    background-position: -150% 0;
+  }
+  60%,
+  100% {
+    background-position: 250% 0;
+  }
+}
+.card-holo-sheen {
+  background: conic-gradient(
+    from 0deg,
+    #f9a8d4,
+    #a5b4fc,
+    #67e8f9,
+    #86efac,
+    #fde68a,
+    #f9a8d4
+  );
+  filter: blur(26px);
+  animation: card-holo-pan 14s linear infinite;
+}
+.card-sheen-sweep {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.45) 48%,
+    transparent 66%
+  );
+  background-size: 250% 100%;
+  animation: card-sheen 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-holo-sheen,
+  .card-sheen-sweep {
+    animation: none;
+  }
+}

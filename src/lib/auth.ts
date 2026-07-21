@@ -54,6 +54,7 @@ export type SessionUser = {
   profileColor: string | null;
   profileCover: string | null;
   profileVisibilityJson: string | null;
+  profileCardStyle: string | null;
   featuredAchievementsJson: string | null;
   equippedTitle: string | null;
   equippedBadge: string | null;
@@ -80,6 +81,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
         profileColor: true,
         profileCover: true,
         profileVisibilityJson: true,
+        profileCardStyle: true,
         featuredAchievementsJson: true,
         equippedTitle: true,
         equippedBadge: true,

@@ -12,6 +12,8 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { checkAndGrant } from "@/lib/achievements";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import CharacterTabs from "@/components/CharacterTabs";
+import ProfileCard from "@/components/ProfileCard";
+import { buildProfileCardData } from "@/lib/profileCardData";
 import LifeSkillPanel from "@/components/LifeSkillPanel";
 import ProfileHero, { type ProfileAchievementBadge } from "@/components/ProfileHero";
 import AchievementBook, { type AchView } from "@/components/AchievementBook";
@@ -395,6 +397,18 @@ export default async function CharacterPage({
 
   return (
     <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
+      {/* 프로필 카드 쇼케이스 — 본인이 카드 스킨을 저장한 경우에만 노출 */}
+      {profile.profileCardStyle && (
+        <ProfileCard
+          data={buildProfileCardData(profile, profile.sheet, {
+            title: canViewAchievements ? profile.equippedTitle : null,
+            badge: canViewAchievements ? profile.equippedBadge : null,
+            canViewSheet,
+          })}
+          style={profile.profileCardStyle}
+        />
+      )}
+
       {/* 프로필 헤더 */}
       <ProfileHero
         nickname={profile.nickname}

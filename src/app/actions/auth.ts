@@ -15,6 +15,7 @@ import {
   profileVisibilityFromForm,
   uniqueFeaturedAchievementIds,
 } from "@/lib/profile";
+import { normalizeCardStyle } from "@/lib/profileCard";
 
 export type FormState = { error?: string } | undefined;
 
@@ -134,4 +135,21 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
 
   revalidatePath("/", "layout");
   redirect("/profile?saved=1");
+}
+
+export async function updateProfileCardStyle(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const style = normalizeCardStyle(String(formData.get("cardStyle") ?? ""));
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { profileCardStyle: style },
+  });
+
+  revalidatePath("/", "layout");
+  redirect("/profile/card?saved=1");
 }

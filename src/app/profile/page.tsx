@@ -119,7 +119,7 @@ export default async function ProfilePage({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Link
           href="/profile?section=sheet"
           className={`rounded-3xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 ${
@@ -142,6 +142,28 @@ export default async function ProfilePage({
           <h2 className="mt-1 text-lg font-extrabold text-content">프로필 편집</h2>
           <p className="mt-1 text-sm text-muted">
             배너, 아바타, 공개 범위, 대표 업적을 꾸밉니다.
+          </p>
+        </Link>
+        <Link
+          href="/profile/card"
+          className="group relative overflow-hidden rounded-3xl border border-line bg-surface p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300"
+        >
+          <div
+            className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-70 blur-2xl transition group-hover:opacity-100"
+            style={{
+              background:
+                "radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%)",
+            }}
+          />
+          <p className="text-xs font-bold uppercase tracking-wide text-faint">Profile Card</p>
+          <h2 className="mt-1 flex items-center gap-1.5 text-lg font-extrabold text-content">
+            프로필 카드
+            <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
+              New
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            게임처럼 꾸미는 캐릭터 명함 · 6가지 디자인.
           </p>
         </Link>
       </div>
