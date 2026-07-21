@@ -48,6 +48,10 @@ import { buildWeeklyIncomeEntries, parseWeeklyIncomeState } from "@/lib/weeklyIn
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import {
+  dailyGradeEventMultiplier,
+  rollDailyAlchemyDouble,
+} from "@/lib/dailyEvents";
+import {
   adventurerRankGoal,
   nextAdventurerRank,
   normalizeAdventurerRank,
@@ -1283,12 +1287,14 @@ function cookGradeRates(levelRaw: number, isChushi: boolean): { signature: numbe
   };
 }
 
-function rollCookGrade(level: number, isChushi: boolean): string | null {
+function rollCookGrade(level: number, isChushi: boolean, highGradeMultiplier = 1): string | null {
   const r = Math.random() * 100;
   const { signature, master, hq } = cookGradeRates(level, isChushi);
+  const boostedMaster = master * highGradeMultiplier;
+  const boostedHq = hq * highGradeMultiplier;
   if (r < signature) return "장인";
-  if (r < signature + master) return "명품";
-  if (r < signature + master + hq) return "고품질";
+  if (r < signature + boostedMaster) return "명품";
+  if (r < signature + boostedMaster + boostedHq) return "고품질";
   return null;
 }
 
@@ -1343,7 +1349,13 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   }
 
   // 등급 추첨 — 요리레벨 비례. 장인작이면 요리사 닉네임이 새겨진다("{닉네임}의 {이름}").
-  const grade = recipe ? rollCookGrade(life.cooking.level, isChushiClass(ctx.charClass)) : null;
+  const grade = recipe
+    ? rollCookGrade(
+        life.cooking.level,
+        isChushiClass(ctx.charClass),
+        dailyGradeEventMultiplier("cooking"),
+      )
+    : null;
   const gi = gradeInfo(grade);
   const result = recipe
     ? (() => {
@@ -1724,11 +1736,13 @@ export async function collectBrew(): Promise<AlchemyState> {
     modifier === "약한" ? "⚠️약한 — 수치 효과 절반(끝수 올림)." : "",
     `판매가 ${price}G`,
   ].filter(Boolean);
+  const eventDoubled = rollDailyAlchemyDouble();
+  const resultQty = eventDoubled ? recipe.resultQty * 2 : recipe.resultQty;
 
   const inv = addInvItem(
     ctx.inv,
     { name: resultName, effect: effectLines.join("\n"), weight: recipe.weight },
-    recipe.resultQty,
+    resultQty,
   );
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
 
@@ -1750,9 +1764,9 @@ export async function collectBrew(): Promise<AlchemyState> {
         achStatsJson: achStats,
       },
     }),
-    incrementDbInventory(ctx.userId, resultName, recipe.resultQty),
+    incrementDbInventory(ctx.userId, resultName, resultQty),
   ]);
-  void appendSheetItem(ctx.tab, resultName, recipe.resultQty, {
+  void appendSheetItem(ctx.tab, resultName, resultQty, {
     effect: effectLines.join("\n"),
     weight: recipe.weight,
   });
@@ -1764,7 +1778,8 @@ export async function collectBrew(): Promise<AlchemyState> {
     ok: [
       modifier === "완벽한" ? "✨완벽한 제조!" : "",
       grade ? `✨${grade}!` : "",
-      `⚗️ ${resultName} x${recipe.resultQty} 완성.`,
+      eventDoubled ? "🎉 요일 이벤트로 포션이 2배 생성!" : "",
+      `⚗️ ${resultName} x${resultQty} 완성.`,
       brewHint(pending.minutes, recipe.bestMinutes, modifier),
       firstPerfect ? `📖 ${recipe.name}의 최적 시간을 완전히 익혔어요!` : "",
       `${recipe.name} 숙련도 +${mastery.gained} (${mastery.after}/${ALCHEMY_MASTER_MASTERY})`,

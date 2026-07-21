@@ -26,6 +26,7 @@ import type { PendingMineView } from "@/app/actions/mining";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
+import { dailyEventBuffs } from "@/lib/dailyEvents";
 import WorldServices, {
   type CookingView,
   type BlackMarketView,
@@ -1132,8 +1133,8 @@ export default async function WorldPage() {
     );
   }
 
-  // 적용 중인 요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 생활 행운은 한 칩으로 합침)
-  const buffRows: WorldBuff[] = [];
+  // 적용 중인 이벤트·요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 생활 행운은 한 칩으로 합침)
+  const buffRows: WorldBuff[] = [...dailyEventBuffs()];
   for (const buff of life.cookingBuffs.lifeLuck) {
     const kinds =
       buff.kind === "all"

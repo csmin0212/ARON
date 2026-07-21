@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant, markStat } from "@/lib/achievements";
+import { dailyLifeEventBonus } from "@/lib/dailyEvents";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
@@ -180,6 +181,9 @@ export async function startMining(): Promise<MineStart> {
 
   const life = parseLifeState(sheet.lifeJson);
   const mods = computeMods(life, MINE, lifeLuckModFromStats(sheet.statsJson));
+  const eventBonus = dailyLifeEventBonus(MINE);
+  mods.apCostDown += eventBonus.apCostDown;
+  mods.luck += eventBonus.luck;
 
   // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
   const apCost = Math.max(1, action.apCost - mods.apCostDown);

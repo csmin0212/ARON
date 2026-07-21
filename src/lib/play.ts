@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "./prisma";
+import { dailyLifeEventBonus } from "./dailyEvents";
 import { rollDice } from "./dice";
 import { KEYWORD_SEARCH_COST, regenFatigue } from "./world";
 import { pickDrop, type DropEntry } from "./gamedata";
@@ -205,9 +206,20 @@ export async function runActionCommand(
     };
   }
 
+  const lifeSkillKind = lifeSkillKindOf(target.kind, target.label);
+  const life = lifeSkillKind ? parseLifeState(sheet.lifeJson) : null;
+  const lifeMods = lifeSkillKind && life
+    ? computeMods(life, lifeSkillKind, lifeLuckModFromStats(sheet.statsJson))
+    : null;
+  if (lifeSkillKind && lifeMods) {
+    const eventBonus = dailyLifeEventBonus(lifeSkillKind);
+    lifeMods.apCostDown += eventBonus.apCostDown;
+    lifeMods.luck += eventBonus.luck;
+  }
+  const actionApCost = lifeMods ? Math.max(1, target.apCost - lifeMods.apCostDown) : target.apCost;
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
-  if (ap < target.apCost)
-    return { error: `피로도가 부족해요. (필요 ${target.apCost}, 보유 ${ap}) — 6분마다 1씩 회복돼요.` };
+  if (ap < actionApCost)
+    return { error: `피로도가 부족해요. (필요 ${actionApCost}, 보유 ${ap}) — 6분마다 1씩 회복돼요.` };
 
   const label = target.label ?? target.kind;
   const emoji = KIND_EMOJI[target.kind] ?? "✨";
@@ -247,8 +259,6 @@ export async function runActionCommand(
   if (!success) {
     resultLine = ` 실패... ${target.failText ?? ""}`.trimEnd();
   } else {
-    const lifeSkillKind = lifeSkillKindOf(target.kind, target.label);
-
     if (lifeSkillKind) {
       // 특성 보정 적용한 등급 추첨 + 숙련도 누적/레벨업
       const locationLife = parseLocationLifeConfig(here?.lifeJson ?? null);
@@ -256,9 +266,9 @@ export async function runActionCommand(
       if (!locationPool?.enabled) {
         return { error: `이 장소에서는 ${lifeSkillKind}을 할 수 없어요.` };
       }
-      const life = parseLifeState(sheet.lifeJson);
-      const mods = computeMods(life, lifeSkillKind, lifeLuckModFromStats(sheet.statsJson));
-      const level = progressOf(life, lifeSkillKind).level;
+      const mods = lifeMods!;
+      const activeLife = life!;
+      const level = progressOf(activeLife, lifeSkillKind).level;
       const levelBase = baseWeightsFor(level);
       const regionBase = locationPool.weights
         ? locationPool.weights.map((weight, rank) => (levelBase[rank] > 0 ? weight : 0))
@@ -275,9 +285,9 @@ export async function runActionCommand(
       }
       const item = caught.item;
 
-      const bag = life.bags[lifeSkillKind];
+      const bag = activeLife.bags[lifeSkillKind];
       const bagWeight = lifeBagWeight(bag);
-      const bagMax = lifeBagLimit(life, lifeSkillKind);
+      const bagMax = lifeBagLimit(activeLife, lifeSkillKind);
       if (bagWeight + item.weight > bagMax) {
         return {
           error: `${bag.name}이 가득 찼어요. (${bagWeight} + ${item.weight} / ${bagMax})`,
@@ -285,11 +295,11 @@ export async function runActionCommand(
       }
 
       const expGained = Math.max(1, Math.round(lifeSkillExpGain(lifeSkillKind, item.exp) * mods.expMult));
-      const leveled = applyExp(life, lifeSkillKind, expGained, await fetchLifeSkillCatalog());
-      const firstCatch = recordCollection(life, lifeSkillKind, item.name);
-      const caughtCount = recordLifeCatch(life, lifeSkillKind, item.name);
-      recordLifeItemLocation(life, lifeSkillKind, item.name, locationId);
-      addLifeBagItem(life, lifeSkillKind, {
+      const leveled = applyExp(activeLife, lifeSkillKind, expGained, await fetchLifeSkillCatalog());
+      const firstCatch = recordCollection(activeLife, lifeSkillKind, item.name);
+      const caughtCount = recordLifeCatch(activeLife, lifeSkillKind, item.name);
+      recordLifeItemLocation(activeLife, lifeSkillKind, item.name, locationId);
+      addLifeBagItem(activeLife, lifeSkillKind, {
         name: item.name,
         weight: item.weight,
         rank: item.rank,
@@ -299,7 +309,7 @@ export async function runActionCommand(
       await ensureLifeSkillItem(item, lifeSkillKind);
       await prisma.characterSheet.update({
         where: { userId },
-        data: { lifeJson: JSON.stringify(life) },
+        data: { lifeJson: JSON.stringify(activeLife) },
       });
 
       resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})${
@@ -367,7 +377,7 @@ export async function runActionCommand(
 
   await prisma.characterSheet.update({
     where: { userId },
-    data: { ap: ap - target.apCost, apResetAt },
+    data: { ap: ap - actionApCost, apResetAt },
   });
 
   await postSystem(locationId, `${emoji} ${nickname}님의 ${label}${rollLine}${resultLine}`);

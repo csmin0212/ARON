@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant, markStat, setMaxStat } from "@/lib/achievements";
+import { dailyGradeEventMultiplier } from "@/lib/dailyEvents";
 
 // rollCraftGrade 결과 → 서열 숫자 ('제작등급' 업적 판정과 짝)
 const CRAFT_GRADE_NUMBER: Record<string, number> = { 고품질: 1, 명품: 2, 장인: 3 };
@@ -273,7 +274,11 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     return { error: `제작 수수료가 부족해요. (최대 ${feeRange.max.toLocaleString()}G 필요)` };
   }
 
-  const grade = rollCraftGrade(life.smithing.level, blacksmith);
+  const grade = rollCraftGrade(
+    life.smithing.level,
+    blacksmith,
+    dailyGradeEventMultiplier("crafting"),
+  );
   const sellPrice = craftSellPrice(preview.basePrice, grade);
   const fee = craftFee(preview.fee, sellPrice, blacksmith);
 

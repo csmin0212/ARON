@@ -296,13 +296,16 @@ export function craftGradeRates(smithLevel: number, isBlacksmith: boolean): Craf
 export function rollCraftGrade(
   smithLevel: number,
   isBlacksmith: boolean,
+  highGradeMultiplier = 1,
   rand: () => number = Math.random,
 ): CraftGradeKey | null {
   const r = rand() * 100;
   const { signature, master, hq } = craftGradeRates(smithLevel, isBlacksmith);
+  const boostedMaster = master * highGradeMultiplier;
+  const boostedHq = hq * highGradeMultiplier;
   if (r < signature) return "장인";
-  if (r < signature + master) return "명품";
-  if (r < signature + master + hq) return "고품질";
+  if (r < signature + boostedMaster) return "명품";
+  if (r < signature + boostedMaster + boostedHq) return "고품질";
   return null;
 }
 
