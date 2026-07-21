@@ -6,6 +6,7 @@ import {
 import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
 import { collectionItems } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
+import { isGmUsername } from "@/lib/gm";
 import HallOfFame, { type HallCategory, type HallEntry } from "@/components/HallOfFame";
 
 export const metadata = { title: "명예의 전당 · 아리안로드 온라인 갤러리" };
@@ -86,7 +87,7 @@ export default async function HallPage() {
     },
   });
 
-  const rows: Row[] = sheets.map((s) => {
+  const rows: Row[] = sheets.filter((s) => !isGmUsername(s.user.username)).map((s) => {
     const life = parseLifeState(s.lifeJson);
     const discoveredRecipes = new Set(s.user.recipes.map((recipe) => recipe.recipeId));
     const lifeCollectionFound = lifeCatalog.filter(({ kind, item }) =>
