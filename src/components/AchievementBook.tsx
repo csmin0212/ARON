@@ -1,3 +1,6 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import { equipAchievement, unequipAchievement } from "@/app/actions/achievements";
 
 export type AchView = {
@@ -31,15 +34,22 @@ export default function AchievementBook({
   const total = achievements.length;
 
   // 분류별로 묶기 (정의 순서 유지)
-  const groups: { category: string; items: AchView[] }[] = [];
-  for (const a of achievements) {
-    let g = groups.find((x) => x.category === a.category);
-    if (!g) {
-      g = { category: a.category, items: [] };
-      groups.push(g);
+  const groups = useMemo(() => {
+    const out: { category: string; items: AchView[] }[] = [];
+    for (const a of achievements) {
+      let g = out.find((x) => x.category === a.category);
+      if (!g) {
+        g = { category: a.category, items: [] };
+        out.push(g);
+      }
+      g.items.push(a);
     }
-    g.items.push(a);
-  }
+    return out;
+  }, [achievements]);
+  const [activeCategory, setActiveCategory] = useState<string>(() => groups[0]?.category ?? "all");
+  const activeGroup =
+    activeCategory === "all" ? null : groups.find((g) => g.category === activeCategory) ?? null;
+  const visibleGroups = activeGroup ? [activeGroup] : groups;
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
@@ -56,7 +66,38 @@ export default function AchievementBook({
         </p>
       ) : (
         <div className="space-y-5">
-          {groups.map((g) => (
+          <div className="flex gap-1.5 overflow-x-auto rounded-2xl bg-subtle p-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveCategory("all")}
+              className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                activeCategory === "all"
+                  ? "bg-surface text-brand-600 shadow-sm"
+                  : "text-muted hover:text-content"
+              }`}
+            >
+              전체 {earnedCount}/{total}
+            </button>
+            {groups.map((g) => {
+              const groupEarned = g.items.filter((i) => i.earned).length;
+              return (
+                <button
+                  key={g.category}
+                  type="button"
+                  onClick={() => setActiveCategory(g.category)}
+                  className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                    activeCategory === g.category
+                      ? "bg-surface text-brand-600 shadow-sm"
+                      : "text-muted hover:text-content"
+                  }`}
+                >
+                  {g.category} {groupEarned}/{g.items.length}
+                </button>
+              );
+            })}
+          </div>
+
+          {visibleGroups.map((g) => (
             <div key={g.category}>
               <p className="mb-2 px-1 text-xs font-bold text-faint">
                 {g.category}{" "}
