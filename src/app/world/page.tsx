@@ -26,7 +26,7 @@ import type { PendingMineView } from "@/app/actions/mining";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
 import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
-import { dailyEventBuffs } from "@/lib/dailyEvents";
+import { dailyEventBuffs, dailyLifeEventBonus } from "@/lib/dailyEvents";
 import WorldServices, {
   type CookingView,
   type BlackMarketView,
@@ -43,6 +43,7 @@ import {
   findLifeSkillItem,
   getActiveItems,
   lifeSkillItemKind,
+  lifeSkillKindOf,
   type LocationLifeConfig,
 } from "@/lib/lifeSkillData";
 import { isBlacksmithClass, itemAsCraftMinor } from "@/lib/weaponCraft";
@@ -1160,6 +1161,11 @@ export default async function WorldPage() {
       until: buff.until,
     });
   }
+  const displayActionApCost = (action: (typeof locActions)[number]): number => {
+    const kind = lifeSkillKindOf(action.kind, action.label);
+    if (!kind) return action.apCost;
+    return Math.max(1, action.apCost - dailyLifeEventBonus(kind).apCostDown);
+  };
 
   return (
     <div className="animate-fadeup space-y-4 py-1">
@@ -1231,7 +1237,7 @@ export default async function WorldPage() {
             actions={locActions.map((a) => ({
               kind: a.kind,
               label: a.label,
-              apCost: a.apCost,
+              apCost: displayActionApCost(a),
               statLabel: a.statLabel,
             }))}
           />
