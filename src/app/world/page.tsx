@@ -107,7 +107,7 @@ import {
 } from "@/lib/housing";
 import FriendsDock from "@/components/FriendsDock";
 import GuestbookCard from "@/components/GuestbookCard";
-import { WORLD_GM_ONLY } from "@/lib/worldAccess";
+import { isWorldGmOnly } from "@/lib/worldAccess";
 import {
   buildWeeklyIncomeEntries,
   parseWeeklyIncomeState,
@@ -215,7 +215,7 @@ export default async function WorldPage() {
   const isGm = isGmUsername(user?.username);
 
   // 본편 개시 전 — 월드는 GM만 입장 가능
-  if (WORLD_GM_ONLY && !isGm) {
+  if (isWorldGmOnly() && !isGm) {
     return (
       <Gate emoji="🚧" title="월드는 본편 개시 후에 열려요">
         <p className="text-sm text-faint">
