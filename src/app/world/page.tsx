@@ -128,9 +128,9 @@ export const metadata = { title: "월드 · 아리안로드 온라인 갤러리"
 const STORAGE_UPGRADE_STEP = 10;
 const storageUpgradeCost = (maxWeight: number) => Math.max(1000, Math.max(0, maxWeight) * 100);
 const ALCHEMY_BOOKS = [
-  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 2000, rank: "R1", level: 1 },
-  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 5000, rank: "R2", level: 2 },
-  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 10000, rank: "R3", level: 3 },
+  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 3000, rank: "R1", level: 1 },
+  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 10000, rank: "R2", level: 2 },
+  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 30000, rank: "R3", level: 3 },
 ] as const;
 
 function ApBar({ ap, nextRegenMin }: { ap: number; nextRegenMin: number | null }) {

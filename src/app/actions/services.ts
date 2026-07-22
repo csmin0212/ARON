@@ -145,9 +145,9 @@ const FOOD_ITEMS = [
 ] as const;
 
 const ALCHEMY_BOOK_ITEMS = [
-  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 2000, rank: "R1", level: 1 },
-  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 5000, rank: "R2", level: 2 },
-  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 10000, rank: "R3", level: 3 },
+  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 3000, rank: "R1", level: 1 },
+  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 10000, rank: "R2", level: 2 },
+  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 30000, rank: "R3", level: 3 },
 ] as const;
 
 type LifeShopProduct =
