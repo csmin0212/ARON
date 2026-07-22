@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import {
   appendSheetItem,
   inventoryWeightTotal,
+  inventoryWeightOverflowMessage,
   pushInventoryToSheet,
   setSheetLevel,
   type SheetInventory,
@@ -65,6 +66,7 @@ import {
   adventurerRankGoal,
   nextAdventurerRank,
   normalizeAdventurerRank,
+  rankAtLeast,
   storageWeightBonus,
 } from "@/lib/adventurerRank";
 import {
@@ -1388,6 +1390,8 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
     : { ...FAILED_DISH, qty: 1 };
   inv = addInvItem(inv, { name: result.name, effect: result.effect, weight: result.weight }, result.qty);
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  const overflow = inventoryWeightOverflowMessage(inv);
+  if (overflow) return { error: overflow };
 
   const discovered = recipe
     ? await prisma.userRecipe
@@ -1756,6 +1760,8 @@ export async function collectBrew(): Promise<AlchemyState> {
     resultQty,
   );
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  const overflow = inventoryWeightOverflowMessage(inv);
+  if (overflow) return { error: overflow };
 
   const firstPerfect = modifier === "완벽한" && !life.alchemyPerfect.includes(recipe.id);
   if (firstPerfect) life.alchemyPerfect.push(recipe.id);
@@ -2144,6 +2150,7 @@ export async function useCookingItem(
     select: {
       ap: true,
       apResetAt: true,
+      adventurerRank: true,
       lifeJson: true,
       achStatsJson: true,
       curHp: true,
@@ -2352,7 +2359,11 @@ export async function useCookingItem(
     if (currentRuns <= 0) return { error: "회복할 던전 횟수가 없어요." };
 
     const nextRuns = Math.max(0, currentRuns - dungeonRunRecovery);
-    ok = `${itemName}을 사용했습니다. 이번 주 던전 횟수 ${currentRuns} → ${nextRuns}`;
+    const weeklyLimit =
+      3 + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "B") ? 1 : 0);
+    const beforeLeft = Math.max(0, weeklyLimit - currentRuns);
+    const afterLeft = Math.max(0, weeklyLimit - nextRuns);
+    ok = `${itemName}을 사용했습니다. 이번 주 남은 던전 횟수 ${beforeLeft} → ${afterLeft}`;
     const inv = consumeInvItem(ctx.inv, itemName, 1);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
     await Promise.all([

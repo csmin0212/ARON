@@ -11,6 +11,7 @@ import {
   appendSheetItem,
   pushInventoryToSheet,
   inventoryWeightTotal,
+  inventoryWeightOverflowMessage,
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
@@ -343,6 +344,8 @@ async function drawSkillbookInner(fragKindRaw: string): Promise<DrawResult> {
   if (existing) existing.qty += 1;
   else inv.items.push({ name: itemName, qty: 1, effect, weight: item?.weight ?? null });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  const overflow = inventoryWeightOverflowMessage(inv);
+  if (overflow) return { error: overflow };
 
   await prisma.characterSheet.update({
     where: { userId: user.id },

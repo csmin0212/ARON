@@ -56,7 +56,7 @@ import { isBlacksmithClass, itemAsCraftMinor } from "@/lib/weaponCraft";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SKILLBOOK_META } from "@/lib/skillbook";
-import { normalizeAdventurerRank, storageWeightBonus } from "@/lib/adventurerRank";
+import { normalizeAdventurerRank, rankAtLeast, storageWeightBonus } from "@/lib/adventurerRank";
 import { loadGuildQuestState } from "@/lib/guildQuestsServer";
 import {
   isUniqueSkillbook,
@@ -1126,6 +1126,7 @@ export default async function WorldPage() {
   let dungeonView: DungeonView[] = [];
   let dungeonAbilities: DungeonAbility[] = [];
   let dungeonRunsLeft = 0;
+  let dungeonWeeklyLimit = 3;
   if (dungeonsHere.length > 0) {
     dungeonView = dungeonsHere.map((d) => {
       let drops: DropEntry[] = [];
@@ -1165,7 +1166,9 @@ export default async function WorldPage() {
     }));
     const week = dungeonWeekKey();
     const used = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
-    dungeonRunsLeft = Math.max(0, 3 - used);
+    dungeonWeeklyLimit =
+      3 + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "B") ? 1 : 0);
+    dungeonRunsLeft = Math.max(0, dungeonWeeklyLimit - used);
   }
 
   let adminLocations: { id: string; name: string }[] = [];
@@ -1397,7 +1400,12 @@ export default async function WorldPage() {
 
           <RiftView />
 
-          <DungeonPanel dungeons={dungeonView} runsLeft={dungeonRunsLeft} abilities={dungeonAbilities} />
+          <DungeonPanel
+            dungeons={dungeonView}
+            runsLeft={dungeonRunsLeft}
+            weeklyLimit={dungeonWeeklyLimit}
+            abilities={dungeonAbilities}
+          />
 
           <FishingStatus pending={fishPending} />
 

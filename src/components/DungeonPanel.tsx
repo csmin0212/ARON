@@ -97,10 +97,12 @@ function DungeonCard({
 export default function DungeonPanel({
   dungeons,
   runsLeft,
+  weeklyLimit,
   abilities,
 }: {
   dungeons: DungeonView[];
   runsLeft: number;
+  weeklyLimit: number;
   abilities: DungeonAbility[];
 }) {
   const router = useRouter();
@@ -111,7 +113,7 @@ export default function DungeonPanel({
       <div className="flex items-center justify-between px-1">
         <h2 className="text-sm font-extrabold text-rose-800">⚔️ 던전</h2>
         <span className="text-[11px] font-bold text-rose-600">
-          이번 주 {runsLeft}/3 남음 · AP 60
+          이번 주 {runsLeft}/{weeklyLimit} 남음 · AP 60
         </span>
       </div>
       {runsLeft <= 0 && (

@@ -15,6 +15,8 @@ import { parseLifeState, statBuffBonus } from "@/lib/lifeSkillPerks";
 import {
   appendSheetFormula,
   inventoryWeightTotal,
+  inventoryWeightOverflowMessage,
+  pushInventoryToSheet,
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
@@ -22,6 +24,8 @@ import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 const DUNGEON_AP = 60;
 const WEEKLY_LIMIT = 3;
 const EXP_CELL = "N9"; // 시트 경험점 칸 (수식 보존하고 +N)
+
+type ItemAward = { itemId: string; qty: number };
 
 export type DungeonResult =
   | {
@@ -86,8 +90,10 @@ async function giveItemById(
   itemId: string,
   qty: number,
   rewards: string[],
+  awards: ItemAward[],
   note?: string,
 ): Promise<void> {
+  void userId;
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: itemId }, { name: itemId }] },
     select: { id: true, name: true, desc: true, weight: true },
@@ -102,10 +108,7 @@ async function giveItemById(
   } else {
     inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight, qty });
   }
-  await incDbItem(userId, itemId, qty);
-  // 스킬북이면 서버 전용 토큰도 지급 — 시트 위조로는 못 얻게 (악용 방지)
-  const bookItemId = catalog?.id ?? itemId;
-  if (await isSkillBookItem(bookItemId)) await grantSkillBookToken(userId, bookItemId, qty);
+  awards.push({ itemId: catalog?.id ?? itemId, qty });
   rewards.push(`${itemName}${note ? ` ${note}` : ""} x${qty}`);
 }
 
@@ -115,6 +118,7 @@ async function giveDrop(
   inv: SheetInventory,
   d: DropEntry,
   rewards: string[],
+  awards: ItemAward[],
 ): Promise<number> {
   if (d.item === "꽝") return 0;
   if (d.item === "골드") {
@@ -131,11 +135,11 @@ async function giveDrop(
         rewards.push(`${d.item}(추첨 실패 — 해당 계열 스킬북 없음)`);
         continue;
       }
-      await giveItemById(userId, inv, picked.itemId, 1, rewards, `《${picked.skillName}》`);
+      await giveItemById(userId, inv, picked.itemId, 1, rewards, awards, `《${picked.skillName}》`);
     }
     return 0;
   }
-  await giveItemById(userId, inv, d.item, d.qty, rewards);
+  await giveItemById(userId, inv, d.item, d.qty, rewards, awards);
   return 0;
 }
 
@@ -181,20 +185,17 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     achStats = bumpStat(achStats, "던전클리어");
     achStats = bumpStat(achStats, "주간던전클리어");
   }
-  await prisma.characterSheet.update({
-    where: { userId: user.id },
-    data: { ap: ap - DUNGEON_AP, apResetAt, dungeonWeek: week, dungeonRuns: runs + 1, achStatsJson: achStats },
-  });
-
   // 경험점은 성공·실패 동일 지급 (범위면 랜덤). 시트 수식 끝에 +N
   const expGain =
     dungeon.expMax > dungeon.exp
       ? dungeon.exp + Math.floor(Math.random() * (dungeon.expMax - dungeon.exp + 1))
       : dungeon.exp;
-  if (expGain > 0) await appendSheetFormula(sheet.sheetTab, EXP_CELL, expGain);
 
   // 성공 시 보상 지급 — 확정 보상은 전부, 확률 보상은 가중치로 하나 추첨.
   const rewards: string[] = [];
+  const awards: ItemAward[] = [];
+  let nextInv: SheetInventory | null = null;
+  let goldGain = 0;
   if (success) {
     const guaranteed = parseDropList(dungeon.dropsJson);
     const rollPool = parseDropList(dungeon.rollDropsJson);
@@ -202,26 +203,43 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     if (rollPool.length > 0) picks.push(pickDrop(rollPool));
 
     const inv = parseInv(sheet.invJson);
-    let goldGain = 0;
     for (const d of picks) {
-      goldGain += await giveDrop(user.id, inv, d, rewards);
+      goldGain += await giveDrop(user.id, inv, d, rewards, awards);
     }
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
-
-    if (goldGain > 0) {
-      const nextGold = (sheet.curGold ?? 0) + goldGain;
-      inv.gold = `${nextGold}G`;
-      await prisma.characterSheet.update({
-        where: { userId: user.id },
-        data: { invJson: JSON.stringify(inv), curGold: nextGold, gold: `${nextGold}G` },
-      });
-      void enqueueSheetGoldSync(user.id);
-    } else {
-      await prisma.characterSheet.update({
-        where: { userId: user.id },
-        data: { invJson: JSON.stringify(inv) },
-      });
+    const overflow = inventoryWeightOverflowMessage(inv);
+    if (overflow) {
+      return { error: `보상 수령 시 ${overflow}` };
     }
+    nextInv = inv;
+  }
+
+  const nextGold = (sheet.curGold ?? 0) + goldGain;
+  if (nextInv && goldGain > 0) nextInv.gold = `${nextGold}G`;
+  await prisma.characterSheet.update({
+    where: { userId: user.id },
+    data: {
+      ap: ap - DUNGEON_AP,
+      apResetAt,
+      dungeonWeek: week,
+      dungeonRuns: runs + 1,
+      achStatsJson: achStats,
+      ...(nextInv ? { invJson: JSON.stringify(nextInv) } : {}),
+      ...(goldGain > 0 ? { curGold: nextGold, gold: `${nextGold}G` } : {}),
+    },
+  });
+  if (expGain > 0) await appendSheetFormula(sheet.sheetTab, EXP_CELL, expGain);
+  if (nextInv) {
+    await Promise.all(
+      awards.map(async (award) => {
+        await incDbItem(user.id, award.itemId, award.qty);
+        if (await isSkillBookItem(award.itemId)) await grantSkillBookToken(user.id, award.itemId, award.qty);
+      }),
+    );
+    void pushInventoryToSheet(sheet.sheetTab, nextInv);
+  }
+  if (goldGain > 0) {
+    void enqueueSheetGoldSync(user.id);
   }
 
   if (sheet.locationId) {
@@ -246,6 +264,6 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     dc: dungeon.dc,
     exp: expGain,
     rewards,
-    runsLeft: WEEKLY_LIMIT - (runs + 1),
+    runsLeft: Math.max(0, weeklyLimit - (runs + 1)),
   };
 }

@@ -15,6 +15,7 @@ import { applySmithingExp, parseLifeState, type LifeState } from "@/lib/lifeSkil
 import {
   appendSheetItem,
   inventoryWeightTotal,
+  inventoryWeightOverflowMessage,
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
@@ -55,6 +56,10 @@ function parseInv(value: string | null): SheetInventory {
     // fallthrough
   }
   return { gold: null, curWeight: null, maxWeight: null, items: [] };
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 type StorageMineralEntry = { id: string; name: string; qty: number };
@@ -282,19 +287,6 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   const sellPrice = craftSellPrice(preview.basePrice, grade);
   const fee = craftFee(preview.fee, sellPrice, blacksmith);
 
-  let invTouched = false;
-  for (const [name, qty] of needs) {
-    const consumed = consumeMineral(life, inv, name, qty);
-    if (consumed.invTouched) {
-      invTouched = true;
-      // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다 (스냅샷 invJson이 진실원)
-      void decrementDbInventoryByName(user.id, name, consumed.invUsed).catch(() => {});
-    }
-    if (consumed.remaining > 0) {
-      await consumeStorageMineral(user.id, name, consumed.remaining);
-    }
-  }
-
   const stats = applyGradeBonus(preview.stats, preview.group, grade);
   const name = craftResultName(preview, grade, user.nickname, customName);
 
@@ -313,6 +305,33 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     `Lv${preview.level} ${preview.category} · ${preview.part}${grade ? ` · ${grade === "장인" ? "장인작" : grade}` : ""}`,
     `제작: ${user.nickname}`,
   ].join("\n");
+
+  const projectedLife = cloneJson(life);
+  const projectedInv = cloneJson(inv);
+  for (const [mineralName, qty] of needs) {
+    consumeMineral(projectedLife, projectedInv, mineralName, qty);
+  }
+  const projectedExisting = projectedInv.items.find(
+    (entry) => entry.name.trim() === name && (entry.effect ?? null) === effectText,
+  );
+  if (projectedExisting) projectedExisting.qty += 1;
+  else projectedInv.items.push({ name, qty: 1, effect: effectText, weight: preview.weight });
+  projectedInv.curWeight = inventoryWeightTotal(projectedInv.items) ?? projectedInv.curWeight;
+  const overflow = inventoryWeightOverflowMessage(projectedInv);
+  if (overflow) return { error: overflow };
+
+  let invTouched = false;
+  for (const [mineralName, qty] of needs) {
+    const consumed = consumeMineral(life, inv, mineralName, qty);
+    if (consumed.invTouched) {
+      invTouched = true;
+      // void 비동기는 reject 시 프로세스를 죽이므로 반드시 삼킨다 (스냅샷 invJson이 진실원)
+      void decrementDbInventoryByName(user.id, mineralName, consumed.invUsed).catch(() => {});
+    }
+    if (consumed.remaining > 0) {
+      await consumeStorageMineral(user.id, mineralName, consumed.remaining);
+    }
+  }
 
   // 결과 지급 — 아이템 도감 + 인벤 스냅샷 + 구글 시트
   const nextGold = curGold - fee;

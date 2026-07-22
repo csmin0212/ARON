@@ -10,6 +10,7 @@ import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   appendSheetItem,
   inventoryWeightTotal,
+  inventoryWeightOverflowMessage,
   pushInventoryToSheet,
   type SheetInventory,
 } from "@/lib/googleSheets";
@@ -395,6 +396,8 @@ export async function buyBlackMarketPotion(
   const effect = item?.desc ?? null;
   const weight = item?.weight ?? 1;
   const inv = addInvItem(parseInv(sheet.invJson), { name: itemName, effect, weight }, 1);
+  const overflow = inventoryWeightOverflowMessage(inv);
+  if (overflow) return { error: overflow };
 
   try {
     await prisma.$transaction(async (tx) => {

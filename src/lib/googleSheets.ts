@@ -312,6 +312,17 @@ export function inventoryWeightTotal(items: SheetInventoryItem[]): number | null
   return hasKnownWeight ? total : null;
 }
 
+export function inventoryWeightOverflowMessage(
+  inv: Pick<SheetInventory, "items" | "curWeight" | "maxWeight">,
+  label = "가방",
+): string | null {
+  const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
+  if (inv.maxWeight != null && curWeight > inv.maxWeight) {
+    return `${label} 중량이 부족합니다. (${curWeight}/${inv.maxWeight})`;
+  }
+  return null;
+}
+
 function parseWeightPair(raw: string): { curWeight: number | null; maxWeight: number | null } {
   const m = raw.match(/(\d+)\s*\/\s*(\d+)/);
   if (!m) return { curWeight: null, maxWeight: null };
