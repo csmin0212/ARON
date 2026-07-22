@@ -21,8 +21,10 @@ import {
   adjustedRankWeights,
   applyExp,
   baseWeightsFor,
+  boostedLifeExp,
   computeMods,
   isPerkChoiceLevel,
+  lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
   lifeLuckModFromStats,
@@ -41,11 +43,11 @@ export type FishingStart =
   | { error: string };
 
 export type FishingResolve =
-  | { ok: true; landed: true; name: string; rarity: string; sell: number; size: number; exp: number }
+  | { ok: true; landed: true; name: string; rarity: string; sell: number; size: number; exp: number; expBase: number }
   | { ok: true; landed: false; readyAt: number } // 놓쳤지만 2분 뒤 수확 가능
   | { error: string };
 export type FishingCollect =
-  | { ok: true; name: string; rarity: string; sell: number; size: number; exp: number }
+  | { ok: true; name: string; rarity: string; sell: number; size: number; exp: number; expBase: number }
   | { error: string };
 
 // 놓친 물고기를 다시 낚을 수 있게 되기까지 대기 (채집·채광 사이드존과 동일)
@@ -112,7 +114,7 @@ function parsePendingCatch(value: string | null): PendingCatch | null {
 // 물고기 실지급 — 가방/숙련도/도감 반영 + 시스템 메시지. 즉시 성공·2분 뒤 수확 공용.
 type FishSheet = { userId: string; lifeJson: string | null; achStatsJson: string | null; locationId: string | null };
 type FishGrantResult =
-  | { ok: true; landed: true; name: string; rarity: string; sell: number; size: number; exp: number }
+  | { ok: true; landed: true; name: string; rarity: string; sell: number; size: number; exp: number; expBase: number }
   | { error: string };
 async function grantFish(
   nickname: string,
@@ -129,7 +131,9 @@ async function grantFish(
     return { error: `${bag.name}이 가득 차서 놓쳐버렸어요.` };
   }
 
-  const expGained = Math.max(1, Math.round(lifeSkillExpGain(FISH, pending.exp) * mods.expMult));
+  const expBase = lifeSkillExpGain(FISH, pending.exp);
+  const expGained = boostedLifeExp(expBase, mods.expMult);
+  const expText = lifeExpGainText(expBase, expGained);
   const leveled = applyExp(life, FISH, expGained, await fetchLifeSkillCatalog());
   const firstCatch = recordCollection(life, FISH, pending.name);
   const caughtCount = recordLifeCatch(life, FISH, pending.name);
@@ -152,7 +156,7 @@ async function grantFish(
   if (locationId) {
     await postSystem(
       locationId,
-      `🎣 ${nickname}님 — ${verb} ✨ [${pending.rarity}] ${pending.name} x1 (크기 ${pending.size}, 판매가 ${sell}G) +숙련도 ${expGained}${
+      `🎣 ${nickname}님 — ${verb} ✨ [${pending.rarity}] ${pending.name} x1 (크기 ${pending.size}, 판매가 ${sell}G) +숙련도 ${expText}${
         firstCatch ? " 📖 도감 신규 등록!" : ` 누적 ${caughtCount}회`
       }`,
     );
@@ -169,7 +173,7 @@ async function grantFish(
 
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: true, landed: true, name: pending.name, rarity: pending.rarity, sell, size: pending.size, exp: expGained };
+  return { ok: true, landed: true, name: pending.name, rarity: pending.rarity, sell, size: pending.size, exp: expGained, expBase };
 }
 
 // 1단계: 낚기 시작 — AP 차감 + 어종 추첨(서버 보관). 무엇을 걸었는지는 숨김(희귀도만 노출).
@@ -310,5 +314,5 @@ export async function collectFishing(): Promise<FishingCollect> {
 
   const res = await grantFish(user.nickname, sheet, pending, "다시 낚았다!");
   if ("error" in res) return { error: res.error };
-  return { ok: true, name: res.name, rarity: res.rarity, sell: res.sell, size: res.size, exp: res.exp };
+  return { ok: true, name: res.name, rarity: res.rarity, sell: res.sell, size: res.size, exp: res.exp, expBase: res.expBase };
 }

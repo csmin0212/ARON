@@ -436,6 +436,14 @@ export function progressOf(state: LifeState, kind: LifeSkillKind): SkillProgress
   return kind === "낚시" ? state.fishing : kind === "채광" ? state.mining : state.plant;
 }
 
+export function boostedLifeExp(baseExp: number, expMult: number): number {
+  return Math.max(1, Math.round(baseExp * expMult));
+}
+
+export function lifeExpGainText(baseExp: number, gained: number): string {
+  return baseExp === gained ? String(gained) : `${baseExp}→${gained}`;
+}
+
 // 신화 특성은 중복 취득 불가
 function isMyth(p: { rarity: PerkRarity }): boolean {
   return p.rarity === "신화";

@@ -33,8 +33,10 @@ import {
   addLifeBagItem,
   applyExp,
   baseWeightsFor,
+  boostedLifeExp,
   computeMods,
   isPerkChoiceLevel,
+  lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
   lifeLuckModFromStats,
@@ -294,7 +296,9 @@ export async function runActionCommand(
         };
       }
 
-      const expGained = Math.max(1, Math.round(lifeSkillExpGain(lifeSkillKind, item.exp) * mods.expMult));
+      const expBase = lifeSkillExpGain(lifeSkillKind, item.exp);
+      const expGained = boostedLifeExp(expBase, mods.expMult);
+      const expText = lifeExpGainText(expBase, expGained);
       const leveled = applyExp(activeLife, lifeSkillKind, expGained, await fetchLifeSkillCatalog());
       const firstCatch = recordCollection(activeLife, lifeSkillKind, item.name);
       const caughtCount = recordLifeCatch(activeLife, lifeSkillKind, item.name);
@@ -312,7 +316,7 @@ export async function runActionCommand(
         data: { lifeJson: JSON.stringify(activeLife) },
       });
 
-      resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expGained})${
+      resultLine = `${lifeSkillResultText(caught)} (+숙련도 ${expText})${
         firstCatch ? " 📖 도감에 새로 등록!" : ` 누적 ${caughtCount}회`
       }`;
       for (const lv of leveled) {

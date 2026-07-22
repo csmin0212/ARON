@@ -5,6 +5,12 @@ import { resolveMining, type MineResolve } from "@/app/actions/mining";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
+function expText(result: { exp: number; expBase?: number }): string {
+  return result.expBase != null && result.expBase !== result.exp
+    ? `${result.expBase}→${result.exp}`
+    : String(result.exp);
+}
+
 // 연타(곡괭이질) — 시작을 누르면 제한 시간이 흐르고, 빠르게 두드려 균열 게이지를 채운다.
 // 100% 도달 → 즉시 파괴(center). 시간 종료 시 50%+ → 부분(side), 미만 → 실패(miss).
 const TIME_LIMIT = 4.5; // 초
@@ -186,7 +192,7 @@ export default function MiningGame({
                 <div className="mb-2 text-5xl">⛏️</div>
                 <p className="text-lg font-black text-rose-300">광맥 파괴!</p>
                 <p className="mt-1 text-sm font-bold">[{result.rarity}] {result.name}</p>
-                <p className="mt-1 text-xs text-amber-200/80">판매가 {result.sell}G · +숙련도 {result.exp}</p>
+                <p className="mt-1 text-xs text-amber-200/80">판매가 {result.sell}G · +숙련도 {expText(result)}</p>
               </>
             ) : result && "mode" in result ? (
               <>

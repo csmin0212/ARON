@@ -21,8 +21,10 @@ import {
   adjustedRankWeights,
   applyExp,
   baseWeightsFor,
+  boostedLifeExp,
   computeMods,
   isPerkChoiceLevel,
+  lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
   lifeLuckModFromStats,
@@ -51,11 +53,11 @@ export type GatherStart =
   | { ok: true; rarity: string; rank: number; difficulty: number; drainSlow: number }
   | { error: string };
 export type GatherResolve =
-  | { ok: true; mode: "instant"; name: string; rarity: string; sell: number; exp: number }
+  | { ok: true; mode: "instant"; name: string; rarity: string; sell: number; exp: number; expBase: number }
   | { ok: true; mode: "searching"; readyAt: number; waitSec: number }
   | { error: string };
 export type GatherCollect =
-  | { ok: true; name: string; rarity: string; sell: number; exp: number }
+  | { ok: true; name: string; rarity: string; sell: number; exp: number; expBase: number }
   | { error: string };
 
 type Pending = {
@@ -115,7 +117,9 @@ async function grant(userId: string, nickname: string, locationId: string | null
   if (lifeBagWeight(bag) + p.weight > lifeBagLimit(life, GATHER)) {
     return { full: true as const };
   }
-  const expGained = Math.max(1, Math.round(lifeSkillExpGain(GATHER, p.exp) * mods.expMult));
+  const expBase = lifeSkillExpGain(GATHER, p.exp);
+  const expGained = boostedLifeExp(expBase, mods.expMult);
+  const expText = lifeExpGainText(expBase, expGained);
   const leveled = applyExp(life, GATHER, expGained, await fetchLifeSkillCatalog());
   const first = recordCollection(life, GATHER, p.name);
   const count = recordLifeCatch(life, GATHER, p.name);
@@ -139,7 +143,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
   if (originLocationId) {
     await postSystem(
       originLocationId,
-      `🌿 ${nickname}님 ${how} — [${p.rarity}] ${p.name} x1 (판매가 ${sell}G) +숙련도 ${expGained}${
+      `🌿 ${nickname}님 ${how} — [${p.rarity}] ${p.name} x1 (판매가 ${sell}G) +숙련도 ${expText}${
         first ? " 📖 도감 신규!" : ` 누적 ${count}회`
       }`,
     );
@@ -148,7 +152,7 @@ async function grant(userId: string, nickname: string, locationId: string | null
       await postSystem(originLocationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다!${perkPrompt}`);
     }
   }
-  return { full: false as const, sell, exp: expGained };
+  return { full: false as const, sell, exp: expGained, expBase };
 }
 
 // 1단계: 채집 시작 — AP 차감 + 채집물 추첨
@@ -234,7 +238,7 @@ export async function resolveGathering(zone: "center" | "side" | "miss"): Promis
     }
     revalidatePath("/world");
     revalidatePath("/profile");
-    return { ok: true, mode: "instant", name: p.name, rarity: p.rarity, sell: res.sell, exp: res.exp };
+    return { ok: true, mode: "instant", name: p.name, rarity: p.rarity, sell: res.sell, exp: res.exp, expBase: res.expBase };
   }
 
   const waitMs = zone === "side" ? SIDE_WAIT_MS : MISS_WAIT_MS;
@@ -261,5 +265,5 @@ export async function collectGathering(): Promise<GatherCollect> {
   if (res.full) return { error: "가방이 가득 찼어요. 비우고 다시 수확하세요." };
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: true, name: p.name, rarity: p.rarity, sell: res.sell, exp: res.exp };
+  return { ok: true, name: p.name, rarity: p.rarity, sell: res.sell, exp: res.exp, expBase: res.expBase };
 }

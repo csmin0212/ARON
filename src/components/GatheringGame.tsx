@@ -5,6 +5,12 @@ import { resolveGathering, type GatherResolve } from "@/app/actions/gathering";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
+function expText(result: { exp: number; expBase?: number }): string {
+  return result.expBase != null && result.expBase !== result.exp
+    ? `${result.expBase}→${result.exp}`
+    : String(result.exp);
+}
+
 export default function GatheringGame({
   rarity,
   difficulty,
@@ -119,7 +125,7 @@ export default function GatheringGame({
                 <div className="mb-2 text-5xl">🌿</div>
                 <p className="text-lg font-black text-rose-300">정확히 채집!</p>
                 <p className="mt-1 text-sm font-bold">[{result.rarity}] {result.name}</p>
-                <p className="mt-1 text-xs text-emerald-200/80">판매가 {result.sell}G · +숙련도 {result.exp}</p>
+                <p className="mt-1 text-xs text-emerald-200/80">판매가 {result.sell}G · +숙련도 {expText(result)}</p>
               </>
             ) : result && "mode" in result ? (
               <>

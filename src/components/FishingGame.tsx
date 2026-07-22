@@ -5,6 +5,12 @@ import { resolveFishing, type FishingResolve } from "@/app/actions/fishing";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
+function expText(result: { exp: number; expBase?: number }): string {
+  return result.expBase != null && result.expBase !== result.exp
+    ? `${result.expBase}→${result.exp}`
+    : String(result.exp);
+}
+
 // 시작 위치 — 낚싯대(캐치존)와 물고기 모두 중간에서. 시작 직후 억까 방지.
 const START_BAR = 0.5;
 const START_FISH = 0.5;
@@ -228,7 +234,7 @@ export default function FishingGame({
                 <p className="text-lg font-black text-emerald-300">잡았다!</p>
                 <p className="mt-1 text-sm font-bold">[{result.rarity}] {result.name}</p>
                 <p className="mt-1 text-xs text-sky-200/80">
-                  크기 {result.size} · 판매가 {result.sell}G · +숙련도 {result.exp}
+                  크기 {result.size} · 판매가 {result.sell}G · +숙련도 {expText(result)}
                 </p>
               </>
             ) : (
