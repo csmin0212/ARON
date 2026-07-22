@@ -11,6 +11,7 @@ import {
   parseLifeState,
 } from "./lifeSkillPerks";
 import { parseHousingState } from "./housing";
+import { totalFameForRank } from "./adventurerRank";
 
 // ── 누적 카운터 / 방문 집합 헬퍼 (호출부에서 시트 업데이트에 사용) ──
 function parseStrArr(json: string | null | undefined): string[] {
@@ -187,8 +188,8 @@ export async function checkAndGrant(
   const housing = parseHousingState(sheet?.housingJson, sheet?.houseTier);
   const stats = parseStats(sheet?.achStatsJson);
   const gold = sheet?.curGold ?? 0;
-  let fame = sheet?.fame ?? 0;
   const rank = sheet?.adventurerRank ?? "D";
+  let fame = totalFameForRank(rank, sheet?.fame);
   const discoveredCount = parseStrArr(sheet?.discoveredJson).length;
   let ownedTitles = all.filter((a) => earned.has(a.id) && a.rewardTitle).length;
   const furnitureCount =

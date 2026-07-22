@@ -29,7 +29,7 @@ import {
 } from "@/lib/guildQuests";
 import { fetchRecipePool, fetchSkillbookPool, loadGuildQuestState } from "@/lib/guildQuestsServer";
 import { consumeSkillBookToken, grantSkillBookToken } from "@/lib/skillbook";
-import { normalizeAdventurerRank } from "@/lib/adventurerRank";
+import { normalizeAdventurerRank, totalFameForRank } from "@/lib/adventurerRank";
 
 export type GuildQuestActionState = { error?: string; ok?: string } | undefined;
 export type DrawResult =
@@ -274,7 +274,7 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
       invJson: JSON.stringify(inv),
       curGold: nextGold,
       gold: `${nextGold}G`,
-      ...(fameDelta > 0 ? { fame: (sheet.fame ?? 0) + fameDelta } : {}),
+      ...(fameDelta > 0 ? { fame: totalFameForRank(sheet.adventurerRank, sheet.fame) + fameDelta } : {}),
       // 과거 카운터명(길드의뢰완료횟수)도 같이 올려 기존 누적치와 이어지게 한다
       achStatsJson: bumpStat(bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"), "의뢰완료횟수"),
     },

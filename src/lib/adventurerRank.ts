@@ -1,16 +1,42 @@
-export const ADVENTURER_RANK_GOALS: Record<string, number> = {
-  D: 10,
-  C: 25,
-  B: 60,
-  A: 100,
-  S: 0,
+export const ADVENTURER_RANKS = ["D", "C", "B", "A", "S"] as const;
+
+export const ADVENTURER_RANK_THRESHOLDS: Record<(typeof ADVENTURER_RANKS)[number], number> = {
+  D: 0,
+  C: 10,
+  B: 25,
+  A: 60,
+  S: 100,
 };
 
-export const ADVENTURER_RANKS = ["D", "C", "B", "A", "S"] as const;
+export const ADVENTURER_RANK_GOALS: Record<string, number> = {
+  D: ADVENTURER_RANK_THRESHOLDS.C,
+  C: ADVENTURER_RANK_THRESHOLDS.B,
+  B: ADVENTURER_RANK_THRESHOLDS.A,
+  A: ADVENTURER_RANK_THRESHOLDS.S,
+  S: 0,
+};
 
 export function normalizeAdventurerRank(rank: string | null | undefined): string {
   const upper = String(rank ?? "D").trim().toUpperCase();
   return upper in ADVENTURER_RANK_GOALS ? upper : "D";
+}
+
+export function adventurerRankFloor(rank: string | null | undefined): number {
+  const normalized = normalizeAdventurerRank(rank) as (typeof ADVENTURER_RANKS)[number];
+  return ADVENTURER_RANK_THRESHOLDS[normalized] ?? 0;
+}
+
+export function adventurerRankFromFame(fame: number | null | undefined): string {
+  const total = Math.max(0, fame ?? 0);
+  if (total >= ADVENTURER_RANK_THRESHOLDS.S) return "S";
+  if (total >= ADVENTURER_RANK_THRESHOLDS.A) return "A";
+  if (total >= ADVENTURER_RANK_THRESHOLDS.B) return "B";
+  if (total >= ADVENTURER_RANK_THRESHOLDS.C) return "C";
+  return "D";
+}
+
+export function totalFameForRank(rank: string | null | undefined, fame: number | null | undefined): number {
+  return Math.max(0, fame ?? 0, adventurerRankFloor(rank));
 }
 
 export function nextAdventurerRank(rank: string | null | undefined): string | null {

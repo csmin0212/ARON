@@ -1,5 +1,8 @@
+import { adventurerRankFloor, adventurerRankFromFame, normalizeAdventurerRank } from "@/lib/adventurerRank";
+
 export const MASTER_SHEET_ID =
   process.env.MASTER_SHEET_ID || "1fHofIK9o4eeA2HZ_OQP4h4rOt87dzZ7jDCibmrBROug";
+
 export const NPC_SHEET_ID =
   process.env.NPC_SHEET_ID || "1JmeqtVXbQr3A4z0VwLUDKFU5bjJ8tsQCfhZQ-fn_Dys";
 
@@ -183,7 +186,7 @@ function toNum(v: string): number | null {
 }
 
 function toFirstNum(v: string): number | null {
-  const m = v.match(/-?\d+/);
+  const m = v.match(/\d+/);
   if (!m) return null;
   const n = parseInt(m[0], 10);
   return Number.isNaN(n) ? null : n;
@@ -192,15 +195,6 @@ function toFirstNum(v: string): number | null {
 function parseRank(v: string): string | null {
   const m = v.toUpperCase().match(/\b([DCBAS])\b/);
   return m ? m[1] : null;
-}
-
-function rankFromFame(fame: number | null): string | null {
-  if (fame == null) return null;
-  if (fame >= 100) return "S";
-  if (fame >= 60) return "A";
-  if (fame >= 25) return "B";
-  if (fame >= 10) return "C";
-  return "D";
 }
 
 function fameCells(g: string[][]): string[] {
@@ -279,9 +273,14 @@ export function parseSheetGrid(g: string[][], tabName: string, sourceSheetId = M
 
   const hp = find(g, "HP");
   const fameValues = fameCells(g); // O9:O10 only
-  const fame = fameValues.map(toFirstNum).find((value) => value != null) ?? 0;
-  const adventurerRank =
-    fameValues.map(parseRank).find((value) => value != null) ?? rankFromFame(fame);
+  const parsedFame = fameValues.map(toFirstNum).find((value) => value != null) ?? 0;
+  const parsedRank = fameValues.map(parseRank).find((value) => value != null);
+  const fame = Math.max(
+    0,
+    parsedFame,
+    parsedRank ? adventurerRankFloor(normalizeAdventurerRank(parsedRank)) : 0,
+  );
+  const adventurerRank = adventurerRankFromFame(fame);
   return {
     sourceSheetId,
     charName: tabName,

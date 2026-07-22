@@ -63,6 +63,8 @@ import {
   rollDailyAlchemyDouble,
 } from "@/lib/dailyEvents";
 import {
+  adventurerRankFloor,
+  adventurerRankFromFame,
   adventurerRankGoal,
   nextAdventurerRank,
   normalizeAdventurerRank,
@@ -434,20 +436,20 @@ export async function promoteAdventurerRank(
   if (!sheet) return { error: "캐릭터 시트 연동이 필요합니다." };
 
   const current = normalizeAdventurerRank(sheet.adventurerRank);
+  const totalFame = Math.max(sheet.fame ?? 0, adventurerRankFloor(current));
+  const earnedRank = adventurerRankFromFame(totalFame);
   const next = nextAdventurerRank(current);
-  if (!next) return { error: "이미 최고 등급입니다." };
-
-  const goal = adventurerRankGoal(current);
-  const fame = sheet.fame ?? 0;
-  if (fame < goal) {
-    return { error: `명성이 부족합니다. (${fame.toLocaleString()} / ${goal.toLocaleString()})` };
+  if (earnedRank === current) {
+    if (!next) return { error: "이미 최고 등급입니다." };
+    const goal = adventurerRankGoal(current);
+    return { error: `명성이 부족합니다. (${totalFame.toLocaleString()} / ${goal.toLocaleString()})` };
   }
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: {
-      adventurerRank: next,
-      fame: fame - goal,
+      adventurerRank: earnedRank,
+      fame: totalFame,
     },
   });
   await checkAndGrant(user.id);
@@ -455,7 +457,7 @@ export async function promoteAdventurerRank(
   revalidatePath("/world");
   revalidatePath("/profile");
   revalidatePath(`/u/${user.username}`);
-  return { ok: `길드 등급이 ${current}에서 ${next}로 상승했습니다.` };
+  return { ok: `길드 등급이 ${current}에서 ${earnedRank}로 상승했습니다.` };
 }
 
 function parseRecipeIngredients(value: string): { name: string; qty: number }[] {

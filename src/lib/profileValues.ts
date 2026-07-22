@@ -1,5 +1,5 @@
 import type { StatEntry } from "@/lib/charsheet";
-import { adventurerRankGoal, normalizeAdventurerRank } from "@/lib/adventurerRank";
+import { adventurerRankGoal, normalizeAdventurerRank, totalFameForRank } from "@/lib/adventurerRank";
 import { computeCollectionProgress } from "@/lib/collectionProgress";
 import type { ProfileValues } from "@/lib/profileWidgets";
 
@@ -84,7 +84,7 @@ export async function computeProfileValues(opts: {
     level: sheet.level,
     gold,
     rank,
-    fame: sheet.fame ?? null,
+    fame: sheet ? totalFameForRank(rank, sheet.fame) : null,
     hp: currentMax(sheet.curHp, sheet.hp),
     mp: currentMax(sheet.curMp, sheet.mp),
     fate: sheet.fate,
@@ -147,5 +147,5 @@ export function rankProgress(
 ): number {
   const goal = adventurerRankGoal(rank);
   if (goal <= 0) return 100;
-  return Math.min(100, Math.round(((fame ?? 0) / goal) * 100));
+  return Math.min(100, Math.round((totalFameForRank(rank, fame) / goal) * 100));
 }

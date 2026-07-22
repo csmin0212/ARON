@@ -56,7 +56,12 @@ import { isBlacksmithClass, itemAsCraftMinor } from "@/lib/weaponCraft";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SKILLBOOK_META } from "@/lib/skillbook";
-import { normalizeAdventurerRank, rankAtLeast, storageWeightBonus } from "@/lib/adventurerRank";
+import {
+  normalizeAdventurerRank,
+  rankAtLeast,
+  storageWeightBonus,
+  totalFameForRank,
+} from "@/lib/adventurerRank";
 import { loadGuildQuestState } from "@/lib/guildQuestsServer";
 import {
   isUniqueSkillbook,
@@ -624,7 +629,7 @@ export default async function WorldPage() {
   })();
   const guild: GuildView = {
     rank: sheet.adventurerRank,
-    fame: sheet.fame ?? 0,
+    fame: totalFameForRank(sheet.adventurerRank, sheet.fame),
     training: {
       count: trainingCount,
       pendingPicks: trainingPending,

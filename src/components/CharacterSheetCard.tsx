@@ -1,6 +1,6 @@
 import type { StatEntry } from "@/lib/charsheet";
 import type { SheetEquipment } from "@/lib/googleSheets";
-import { adventurerRankGoal, normalizeAdventurerRank } from "@/lib/adventurerRank";
+import { adventurerRankGoal, normalizeAdventurerRank, totalFameForRank } from "@/lib/adventurerRank";
 import EquipmentPanel from "./EquipmentPanel";
 
 export type SheetData = {
@@ -87,7 +87,7 @@ export default function CharacterSheetCard({
     Boolean,
   ) as string[];
   const rank = normalizeAdventurerRank(sheet.adventurerRank);
-  const fame = sheet.fame ?? 0;
+  const fame = totalFameForRank(rank, sheet.fame);
   const rankGoal = adventurerRankGoal(rank);
   const rankPct = rankGoal > 0 ? Math.min(100, Math.round((fame / rankGoal) * 100)) : 100;
 

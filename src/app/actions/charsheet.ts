@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { MASTER_SHEET_ID, fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
+import { adventurerRankFromFame, totalFameForRank } from "@/lib/adventurerRank";
 import {
   pushInventoryToSheet,
   readSheetEquipment,
@@ -139,6 +140,14 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     items: [],
   };
   const catalogFilled = inventory ? await fillItemCatalogDetails(inventory) : false;
+  const existing = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { adventurerRank: true, fame: true },
+  });
+  const fame = Math.max(
+    parsed.fame ?? 0,
+    existing ? totalFameForRank(existing.adventurerRank, existing.fame) : 0,
+  );
   const data = {
     sheetTab: tab,
     charClass: parsed.charClass,
@@ -149,8 +158,8 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     mp: parsed.mp,
     fate: parsed.fate,
     gold: inventory?.gold ?? parsed.gold,
-    adventurerRank: parsed.adventurerRank ?? undefined,
-    fame: parsed.fame ?? 0,
+    adventurerRank: adventurerRankFromFame(fame),
+    fame,
     curHp: parsed.hp,
     curMp: parsed.mp,
     curGold: parseGoldToInt(inventory?.gold ?? parsed.gold),

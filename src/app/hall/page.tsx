@@ -8,6 +8,7 @@ import { collectionItems } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { isGmUsername } from "@/lib/gm";
 import { getCurrentUser } from "@/lib/auth";
+import { totalFameForRank } from "@/lib/adventurerRank";
 import HallOfFame, { type HallCategory, type HallEntry } from "@/components/HallOfFame";
 
 export const metadata = { title: "명예의 전당 · 아리안로드 온라인 갤러리" };
@@ -170,7 +171,7 @@ export default async function HallPage() {
       alchemyLv: life.alchemy.level,
       alchemyScore,
       alchemyMasters,
-      fame: s.fame,
+      fame: totalFameForRank(s.adventurerRank, s.fame),
       rank: s.adventurerRank,
       collectionFound,
       collectionTotal,
