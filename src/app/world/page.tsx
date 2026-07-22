@@ -88,6 +88,8 @@ import {
 import type { AlchemyRecipeView, AlchemyView } from "@/components/AlchemyLab";
 import {
   getAlchemyRecipes,
+  getAllLocations,
+  getBlackMarketPotionRows,
   getCookingRecipes,
   getCraftEffectItems,
   getCraftTagRows,
@@ -251,7 +253,11 @@ export default async function WorldPage() {
     );
   }
 
-  const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
+  // visitedJson·probeJson 은 월드 화면에서 안 쓰는데 계속 자라는 컬럼 — 렌더마다 나가지 않게 제외.
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    omit: { visitedJson: true, probeJson: true },
+  });
 
   if (!sheet) {
     return (
@@ -339,7 +345,7 @@ export default async function WorldPage() {
       : dbHere;
 
   if (!here) {
-    const start = await prisma.location.findFirst({ where: { isStart: true } });
+    const start = (await getAllLocations()).find((l) => l.isStart) ?? null;
     return (
       <div className="mx-auto max-w-xl animate-fadeup space-y-4 py-6">
         <div className="rounded-3xl border border-line bg-surface p-8 text-center shadow-sm">
@@ -372,15 +378,9 @@ export default async function WorldPage() {
   const destinations = (
     atHome
       ? []
-      : await prisma.location.findMany({
-          where: {
-            OR: [
-              { id: { in: connIds } },
-              ...(discovered.length ? [{ hidden: true, id: { in: discovered } }] : []),
-            ],
-          },
-          orderBy: { order: "asc" },
-        })
+      : (await getAllLocations()).filter(
+          (l) => connIds.includes(l.id) || (l.hidden && discovered.includes(l.id)),
+        )
   ).filter((d) => {
     if (d.hidden && !discovered.includes(d.id)) return false;
     return connIds.includes(d.id) || (d.hidden && parseJsonArray(d.connJson).includes(here.id));
@@ -1005,14 +1005,7 @@ export default async function WorldPage() {
   const blackMarketQuest = await loadBlackMarketQuestState(user.id, sheet);
   const blackMarketExchange = await loadBlackMarketExchangeState(user.id, sheet);
   const blackMarketStock = await ensureBlackMarketStock();
-  const blackMarketPotionRows = await prisma.item.findMany({
-    where: {
-      OR: BLACK_MARKET_POTIONS.flatMap((item) => [
-        { id: item.id },
-        { name: item.itemName },
-      ]),
-    },
-  });
+  const blackMarketPotionRows = await getBlackMarketPotionRows();
   const blackMarketPotionByKey = new Map(
     blackMarketPotionRows.flatMap((item) => [
       [item.id, item],

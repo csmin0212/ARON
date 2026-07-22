@@ -1,5 +1,6 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/auth";
+import { getSessionUid } from "@/lib/auth";
 
 export type RiftPerson = { username: string; nickname: string; avatar: string | null };
 export type RiftContext =
@@ -26,19 +27,28 @@ async function membersOf(riftId: string): Promise<{ list: RiftPerson[]; ids: str
   return { list, ids };
 }
 
+// 열린 균열 목록 — 전역 공용이라 10초 캐시로 폴링 인원 전체가 공유.
+// 평상시(균열 없음)엔 이 캐시 덕에 폴링이 DB를 거의 안 친다.
+const getOpenRifts = unstable_cache(
+  () =>
+    prisma.rift.findMany({
+      where: { status: "open" },
+      select: { id: true, originId: true, type: true, capacity: true },
+      orderBy: { createdAt: "desc" },
+    }),
+  ["open-rifts"],
+  { revalidate: 10 },
+);
+
 export async function GET(): Promise<Response> {
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ mode: "none" } satisfies RiftContext);
+  // 폴링 핫패스 — JWT 검증만으로 인증 (유저 행 DB 조회 없음)
+  const uid = await getSessionUid();
+  if (!uid) return Response.json({ mode: "none" } satisfies RiftContext);
 
-  const sheet = await prisma.characterSheet.findUnique({
-    where: { userId: user.id },
-    select: { locationId: true },
-  });
-
-  // 내부에 있는지 먼저 확인
+  // 내부에 있는지 먼저 확인 (보통 0행)
   const membership = await prisma.riftMember.findFirst({
-    where: { userId: user.id },
-    include: { rift: true },
+    where: { userId: uid },
+    select: { riftId: true, rift: { select: { type: true } } },
   });
   if (membership) {
     const { list } = await membersOf(membership.riftId);
@@ -50,25 +60,27 @@ export async function GET(): Promise<Response> {
     } satisfies RiftContext);
   }
 
-  // 현재 장소에 열린 균열이 있는지
-  if (sheet?.locationId) {
-    const rift = await prisma.rift.findFirst({
-      where: { originId: sheet.locationId, status: "open" },
-      orderBy: { createdAt: "desc" },
-    });
-    if (rift) {
-      const { list, ids } = await membersOf(rift.id);
-      return Response.json({
-        mode: "entry",
-        riftId: rift.id,
-        type: rift.type,
-        capacity: rift.capacity,
-        members: list,
-        joined: ids.includes(user.id),
-        full: ids.length >= rift.capacity,
-      } satisfies RiftContext);
-    }
-  }
+  // 열린 균열이 하나도 없으면(평상시) 위치 조회조차 불필요
+  const openRifts = await getOpenRifts();
+  if (openRifts.length === 0) return Response.json({ mode: "none" } satisfies RiftContext);
 
-  return Response.json({ mode: "none" } satisfies RiftContext);
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId: uid },
+    select: { locationId: true },
+  });
+  const rift = sheet?.locationId
+    ? openRifts.find((r) => r.originId === sheet.locationId)
+    : undefined;
+  if (!rift) return Response.json({ mode: "none" } satisfies RiftContext);
+
+  const { list, ids } = await membersOf(rift.id);
+  return Response.json({
+    mode: "entry",
+    riftId: rift.id,
+    type: rift.type,
+    capacity: rift.capacity,
+    members: list,
+    joined: ids.includes(uid),
+    full: ids.length >= rift.capacity,
+  } satisfies RiftContext);
 }

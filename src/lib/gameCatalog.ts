@@ -2,6 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
+import { BLACK_MARKET_POTIONS } from "./blackMarket";
 
 // 정적 참조 데이터(요리 레시피·제작특성·제작효과 아이템)는 GM 시트 동기화 때만 바뀐다.
 // 매 페이지 로드마다 DB에서 다시 읽으면 전송량(egress)이 크게 늘어나므로 캐시한다.
@@ -63,6 +64,25 @@ export const getLocationsBrief = unstable_cache(
       orderBy: { order: "asc" },
     }),
   ["catalog:locations-brief"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
+// 암시장 포션 아이템 행 — 상수 목록 기반이라 유저 무관. updatedAt(Date)은 캐시 직렬화 안전을 위해 제외.
+export const getBlackMarketPotionRows = unstable_cache(
+  () =>
+    prisma.item.findMany({
+      where: {
+        OR: BLACK_MARKET_POTIONS.flatMap((item) => [{ id: item.id }, { name: item.itemName }]),
+      },
+      omit: { updatedAt: true },
+    }),
+  ["catalog:black-market-potions"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
+export const getAllLocations = unstable_cache(
+  () => prisma.location.findMany({ orderBy: { order: "asc" } }),
+  ["catalog:locations-all"],
   { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
 );
 

@@ -63,6 +63,20 @@ export type SessionUser = {
   equippedBadge: string | null;
 };
 
+// 세션 uid만 — JWT 검증만으로 얻으므로 DB를 전혀 안 친다.
+// 초당 수십 번 도는 폴링 라우트(chat/presence/rift GET)에서 유저 행 재조회 egress를 없앤다.
+export const getSessionUid = cache(async (): Promise<string | null> => {
+  const store = await cookies();
+  const token = store.get(COOKIE_NAME)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    return (payload.uid as string) || null;
+  } catch {
+    return null;
+  }
+});
+
 // 현재 로그인 유저 (요청 단위 캐시)
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const store = await cookies();

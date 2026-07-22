@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getSessionUid } from "@/lib/auth";
 import { runActionCommand } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 
@@ -46,11 +46,12 @@ function serialize(m: RawMsg): ChatMessage {
 }
 
 export async function GET(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
+  // 폴링 핫패스 — JWT 검증만으로 인증해 유저 행 DB 조회를 생략한다 (egress 절감).
+  const uid = await getSessionUid();
+  if (!uid) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const sheet = await prisma.characterSheet.findUnique({
-    where: { userId: user.id },
+    where: { userId: uid },
     select: { locationId: true, enteredAt: true },
   });
   if (!sheet?.locationId) return Response.json({ messages: [] });
