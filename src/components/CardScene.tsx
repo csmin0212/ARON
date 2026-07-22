@@ -23,13 +23,17 @@ function Layer({ children }: { children: React.ReactNode }) {
 function Angler() {
   return (
     <Layer>
-      {/* 낚싯대 + 낚싯줄 + 미끼 */}
-      <svg className="absolute right-3 top-2 h-28 w-28 opacity-70" viewBox="0 0 120 120" fill="none">
-        <path d="M18 96 L96 20" stroke="#0e5a86" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M96 20 q7 3 8 10" stroke="#0e5a86" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-        <circle cx="30" cy="84" r="5.5" fill="none" stroke="#0e5a86" strokeWidth="2.5" />
-        <path d="M104 30 L100 62" stroke="#38bdf8" strokeWidth="1.5" />
-        <path d="M100 62 q-5 6 2 9 q7 -3 2 -9" fill="#0284c7" />
+      {/* 랭크 장식 물고기 */}
+      <svg className="absolute right-3 top-12 h-12 w-20 opacity-55" viewBox="0 0 96 56" fill="none">
+        <path
+          d="M12 28 C25 10 54 8 75 28 C54 48 25 46 12 28 Z"
+          fill="#0284c7"
+          opacity="0.82"
+        />
+        <path d="M75 28 L92 14 V42 Z" fill="#0369a1" opacity="0.78" />
+        <circle cx="24" cy="24" r="3" fill="#e0f2fe" />
+        <path d="M42 15 C36 22 36 34 42 41" stroke="#e0f2fe" strokeWidth="2" strokeLinecap="round" opacity="0.45" />
+        <path d="M54 14 C48 22 48 34 54 42" stroke="#e0f2fe" strokeWidth="2" strokeLinecap="round" opacity="0.35" />
       </svg>
       {/* 물고기들 */}
       <svg className="absolute left-[16%] top-[38%] h-6 w-10 opacity-40" viewBox="0 0 40 20" fill="#0369a1">
