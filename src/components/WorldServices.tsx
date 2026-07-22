@@ -36,6 +36,7 @@ import {
   type StorageState,
 } from "@/app/actions/services";
 import {
+  buyBlackMarketPotion,
   buyBlackMarketItem,
   deliverBlackMarketQuest,
   resetBlackMarketStockForGm,
@@ -253,6 +254,13 @@ export type BlackMarketView = {
     initialStock: number;
     meta: string | null;
     skillName: string | null;
+  }[];
+  potions: {
+    id: string;
+    itemName: string;
+    desc: string | null;
+    weight: number | null;
+    coinPrice: number;
   }[];
   books: {
     id: string;
@@ -2230,7 +2238,7 @@ function AlchemyBookShop({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="뒷골목 연금술 책방"
+        aria-label="연금술 서적상"
         className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-violet-950/20 bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -2239,7 +2247,7 @@ function AlchemyBookShop({
             Back Alley
           </p>
           <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold">
-            <span>📚 연금술 책</span>
+            <span>📚 연금술 서적상</span>
             <span className="text-sm font-bold text-amber-200">
               {blackMarket.gold.toLocaleString()}G
             </span>
@@ -2299,7 +2307,12 @@ function BlackMarketDealer({
     buyBlackMarketItem,
     undefined,
   );
+  const [potionState, potionAction, potionPending] = useActionState<BlackMarketState, FormData>(
+    buyBlackMarketPotion,
+    undefined,
+  );
   const [actionState, setActionState] = useState<BlackMarketState>(undefined);
+  const [tab, setTab] = useState<"goods" | "potions">("goods");
   const [pending, startTransition] = useTransition();
 
   function run(action: () => Promise<BlackMarketState>) {
@@ -2308,7 +2321,7 @@ function BlackMarketDealer({
     });
   }
 
-  const state = buyState ?? actionState;
+  const state = potionState ?? buyState ?? actionState;
   const quest = blackMarket.quest;
 
   const iconOf = (kind: string) => {
@@ -2379,53 +2392,107 @@ function BlackMarketDealer({
             )}
           </section>
 
-          <section>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <h4 className="text-sm font-extrabold text-white">🧿 오늘의 물품</h4>
-              {blackMarket.isGm && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => run(resetBlackMarketStockForGm)}
-                  className="rounded-lg border border-violet-300/30 px-3 py-1.5 text-xs font-black text-violet-100 transition hover:bg-violet-400/10 disabled:opacity-50"
-                >
-                  재고 리셋
-                </button>
-              )}
-            </div>
-            <div className="grid gap-2">
-              {blackMarket.stock.map((item) => {
-                const soldOut = item.stock <= 0;
-                const label = item.skillName ?? item.itemName;
-                return (
-                  <form key={item.id} action={buyAction}>
-                    <input type="hidden" name="listingId" value={item.id} />
+          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/[0.04] p-1">
+            {[
+              { id: "goods" as const, label: "오늘의 물품" },
+              { id: "potions" as const, label: "포션" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`rounded-xl px-3 py-2 text-sm font-black transition ${
+                  tab === item.id
+                    ? "bg-violet-500 text-white"
+                    : "text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "goods" ? (
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h4 className="text-sm font-extrabold text-white">🧿 오늘의 물품</h4>
+                {blackMarket.isGm && (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => run(resetBlackMarketStockForGm)}
+                    className="rounded-lg border border-violet-300/30 px-3 py-1.5 text-xs font-black text-violet-100 transition hover:bg-violet-400/10 disabled:opacity-50"
+                  >
+                    재고 리셋
+                  </button>
+                )}
+              </div>
+              <div className="grid gap-2">
+                {blackMarket.stock.map((item) => {
+                  const soldOut = item.stock <= 0;
+                  const label = item.skillName ?? item.itemName;
+                  return (
+                    <form key={item.id} action={buyAction}>
+                      <input type="hidden" name="listingId" value={item.id} />
+                      <button
+                        type="submit"
+                        disabled={buyPending || soldOut || blackMarket.coins < item.price}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-violet-300/50 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <span className="text-xl">{iconOf(item.kind)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-extrabold text-white">{label}</span>
+                          <span className="mt-0.5 block text-[11px] font-semibold text-zinc-400">
+                            {item.kind === "스킬북" ? item.itemName : `${labelOf(item.kind)} · ${item.rank}성`} · 재고 {item.stock}/{item.initialStock}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-black text-violet-100">
+                          {soldOut ? "매진" : `${item.price}코인`}
+                        </span>
+                      </button>
+                    </form>
+                  );
+                })}
+                {blackMarket.stock.length === 0 && (
+                  <p className="rounded-2xl bg-white/[0.04] px-4 py-8 text-center text-sm text-zinc-400">
+                    오늘 들어온 물품이 없습니다.
+                  </p>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section>
+              <h4 className="mb-2 text-sm font-extrabold text-white">🧪 포션</h4>
+              <div className="grid gap-2">
+                {blackMarket.potions.map((item) => (
+                  <form key={item.id} action={potionAction}>
+                    <input type="hidden" name="productId" value={item.id} />
                     <button
                       type="submit"
-                      disabled={buyPending || soldOut || blackMarket.coins < item.price}
+                      disabled={potionPending || blackMarket.coins < item.coinPrice}
                       className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-violet-300/50 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      <span className="text-xl">{iconOf(item.kind)}</span>
+                      <span className="text-xl">🧪</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-extrabold text-white">{label}</span>
+                        <span className="block truncate text-sm font-extrabold text-white">{item.itemName}</span>
                         <span className="mt-0.5 block text-[11px] font-semibold text-zinc-400">
-                          {item.kind === "스킬북" ? item.itemName : `${labelOf(item.kind)} · ${item.rank}성`} · 재고 {item.stock}/{item.initialStock}
+                          소모품 · 중량 {item.weight ?? 1}
                         </span>
+                        {item.desc && (
+                          <span className="mt-1 block line-clamp-2 text-[11px] leading-snug text-zinc-500">
+                            {item.desc}
+                          </span>
+                        )}
                       </span>
                       <span className="shrink-0 text-xs font-black text-violet-100">
-                        {soldOut ? "매진" : `${item.price}코인`}
+                        {item.coinPrice}코인
                       </span>
                     </button>
                   </form>
-                );
-              })}
-              {blackMarket.stock.length === 0 && (
-                <p className="rounded-2xl bg-white/[0.04] px-4 py-8 text-center text-sm text-zinc-400">
-                  오늘 들어온 물품이 없습니다.
-                </p>
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
         <div className="border-t border-white/10 px-5 py-3">
@@ -3321,7 +3388,7 @@ export default function WorldServices({
               >
                 <span className="text-xl">📚</span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-extrabold">뒷골목 연금술 책</span>
+                  <span className="block text-sm font-extrabold">연금술 서적상</span>
                   <span className="text-[11px] text-violet-100">초급 · 중급 · 상급 레시피 해금</span>
                 </span>
               </button>

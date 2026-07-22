@@ -38,6 +38,7 @@ import WorldServices, {
   type StorageView,
 } from "@/components/WorldServices";
 import { ensureBlackMarketStock, loadBlackMarketQuestState } from "@/lib/blackMarketServer";
+import { BLACK_MARKET_POTIONS } from "@/lib/blackMarket";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
@@ -1001,6 +1002,20 @@ export default async function WorldPage() {
   const unlockedAlchemyRecipeIds = new Set(life.alchemyPerfect);
   const blackMarketQuest = await loadBlackMarketQuestState(user.id, sheet);
   const blackMarketStock = await ensureBlackMarketStock();
+  const blackMarketPotionRows = await prisma.item.findMany({
+    where: {
+      OR: BLACK_MARKET_POTIONS.flatMap((item) => [
+        { id: item.id },
+        { name: item.itemName },
+      ]),
+    },
+  });
+  const blackMarketPotionByKey = new Map(
+    blackMarketPotionRows.flatMap((item) => [
+      [item.id, item],
+      [item.name, item],
+    ]),
+  );
   const blackQuestHave = (offer: BlackMarketQuestOffer | null): number => {
     if (!offer) return 0;
     const target = offer.itemName.trim();
@@ -1034,6 +1049,16 @@ export default async function WorldPage() {
         }
       }
       return { ...item, skillName };
+    }),
+    potions: BLACK_MARKET_POTIONS.map((potion) => {
+      const item = blackMarketPotionByKey.get(potion.id) ?? blackMarketPotionByKey.get(potion.itemName);
+      return {
+        id: potion.id,
+        itemName: item?.name ?? potion.itemName,
+        desc: item?.desc ?? null,
+        weight: item?.weight ?? 1,
+        coinPrice: potion.coinPrice,
+      };
     }),
     books: ALCHEMY_BOOKS.map((book) => {
       const recipes = alchemyRecipes.filter((recipe) => recipe.rank === book.rank);

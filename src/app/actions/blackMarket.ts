@@ -6,7 +6,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
-import { inventoryWeightTotal, pushInventoryToSheet, type SheetInventory } from "@/lib/googleSheets";
+import {
+  appendSheetItem,
+  inventoryWeightTotal,
+  pushInventoryToSheet,
+  type SheetInventory,
+} from "@/lib/googleSheets";
 import {
   addLifeBagItem,
   lifeBagLimit,
@@ -17,6 +22,7 @@ import {
 import { findLifeSkillItem, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { kstDayKey } from "@/lib/world";
 import { SKILLBOOK_META } from "@/lib/skillbook";
+import { blackMarketPotionProduct } from "@/lib/blackMarket";
 import {
   ensureBlackMarketStock,
   forceResetBlackMarketStock,
@@ -51,6 +57,24 @@ function consumeInvItem(inv: SheetInventory, name: string, qty: number): SheetIn
     remaining -= take;
   }
   inv.items = inv.items.filter((item) => item.qty > 0);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  return inv;
+}
+
+function addInvItem(
+  inv: SheetInventory,
+  item: { name: string; effect: string | null; weight: number | null },
+  qty: number,
+): SheetInventory {
+  const target = item.name.trim();
+  const existing = inv.items.find(
+    (entry) =>
+      entry.name.trim() === target &&
+      (entry.effect ?? null) === (item.effect ?? null) &&
+      (entry.weight ?? null) === (item.weight ?? null),
+  );
+  if (existing) existing.qty += qty;
+  else inv.items.push({ ...item, name: target, qty });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   return inv;
 }
@@ -265,6 +289,75 @@ export async function buyBlackMarketItem(
   return {
     ok: `${meta.skillName ?? listing.itemName} 구매 완료. 암상인 코인 -${listing.price}`,
   };
+}
+
+export async function buyBlackMarketPotion(
+  _prev: BlackMarketState,
+  formData: FormData,
+): Promise<BlackMarketState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  const productId = String(formData.get("productId") ?? "").trim();
+  const product = blackMarketPotionProduct(productId);
+  if (!product) return { error: "판매 목록에 없는 포션입니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
+  if (!sheet?.sheetTab) return { error: "캐릭터 시트 연동이 필요합니다." };
+  if (!(await canUseBlackMarket(sheet.locationId))) {
+    return { error: "암상인 상점은 뒷골목에서만 이용할 수 있습니다." };
+  }
+  if ((sheet.blackMarketCoins ?? 0) < product.coinPrice) {
+    return {
+      error: `암상인 코인이 부족합니다. (${sheet.blackMarketCoins ?? 0}/${product.coinPrice})`,
+    };
+  }
+
+  const item = await prisma.item.findFirst({
+    where: { OR: [{ id: product.id }, { name: product.itemName }] },
+  });
+  const itemId = item?.id ?? product.id;
+  const itemName = item?.name ?? product.itemName;
+  const effect = item?.desc ?? null;
+  const weight = item?.weight ?? 1;
+  const inv = addInvItem(parseInv(sheet.invJson), { name: itemName, effect, weight }, 1);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const paid = await tx.characterSheet.updateMany({
+        where: { userId: user.id, blackMarketCoins: { gte: product.coinPrice } },
+        data: {
+          blackMarketCoins: { decrement: product.coinPrice },
+          invJson: JSON.stringify(inv),
+          achStatsJson: bumpStat(sheet.achStatsJson, "암상인포션구매"),
+        },
+      });
+      if (paid.count !== 1) throw new Error("coin-shortage");
+
+      const existing = await tx.inventoryEntry.findFirst({
+        where: { userId: user.id, itemId, meta: null },
+      });
+      if (existing) {
+        await tx.inventoryEntry.update({
+          where: { id: existing.id },
+          data: { qty: existing.qty + 1 },
+        });
+      } else {
+        await tx.inventoryEntry.create({
+          data: { userId: user.id, itemId, qty: 1, meta: null },
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "coin-shortage") {
+      return { error: "암상인 코인이 부족합니다." };
+    }
+    throw error;
+  }
+
+  void appendSheetItem(sheet.sheetTab, itemName, 1, { effect, weight });
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${itemName} 구매 완료. 암상인 코인 -${product.coinPrice}` };
 }
 
 export async function resetBlackMarketStockForGm(): Promise<BlackMarketState> {

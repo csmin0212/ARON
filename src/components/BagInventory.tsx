@@ -45,12 +45,21 @@ function weightText(item: SheetInventoryItem): string {
 }
 
 function canUseItem(item: SheetInventoryItem): boolean {
+  const name = item.name.trim();
+  const compactName = name.replace(/\s+/g, "");
+  if (compactName === "망각의물약" || compactName === "변화의물약" || compactName === "망각의축복") {
+    return true;
+  }
   const effect = item.effect ?? "";
   // 행운·판정(월드 30분 버프)·세션 버프·HP/MP 회복·피로도 회복·던전 횟수 회복
   // useCookingItem이 처리하는 효과들.
   return /행운\s*\+\d+|판정\s*\+\d+|세션\s*버프|(HP|MP)[^가-힣]*회복|피로도\s*(?:\[\d+\s*D\]|\d+)[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(
     effect,
   );
+}
+
+function isLifeResetBlessing(item: SheetInventoryItem): boolean {
+  return item.name.replace(/\s+/g, "").trim() === "망각의축복";
 }
 
 function CookingStateLine({ state }: { state: CookingState }) {
@@ -215,8 +224,27 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
                 })()}
               </div>
               {canUseItem(selected) && (
-                <form action={useAction}>
+                <form action={useAction} className="space-y-2">
                   <input type="hidden" name="itemName" value={selected.name} />
+                  {isLifeResetBlessing(selected) && (
+                    <div className="grid grid-cols-3 gap-1 rounded-2xl bg-subtle p-1">
+                      {(["낚시", "채집", "채광"] as const).map((kind, index) => (
+                        <label
+                          key={kind}
+                          className="flex cursor-pointer items-center justify-center rounded-xl px-2 py-2 text-xs font-extrabold text-muted has-[:checked]:bg-surface has-[:checked]:text-brand-600 has-[:checked]:shadow-sm"
+                        >
+                          <input
+                            type="radio"
+                            name="lifeKind"
+                            value={kind}
+                            defaultChecked={index === 0}
+                            className="sr-only"
+                          />
+                          {kind}
+                        </label>
+                      ))}
+                    </div>
+                  )}
                   <button
                     type="submit"
                     disabled={usePending}

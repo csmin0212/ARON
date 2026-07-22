@@ -7,6 +7,7 @@ import {
   appendSheetItem,
   inventoryWeightTotal,
   pushInventoryToSheet,
+  setSheetLevel,
   type SheetInventory,
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
@@ -18,10 +19,13 @@ import {
   applyCookingExp,
   alchemyMasterySuffix,
   recordAlchemyCraft,
+  isPerkChoiceLevel,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
+  progressOf,
   recordCollection,
+  rollPerkOptions,
 } from "@/lib/lifeSkillPerks";
 import {
   BREW_AP_COST,
@@ -44,6 +48,7 @@ import {
   lifeSkillSellPrice,
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
+import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
@@ -2023,6 +2028,19 @@ function setMaxStat(json: string | null | undefined, name: string, value: number
   return JSON.stringify(stats);
 }
 
+function normalizedConsumableName(name: string): string {
+  return name.replace(/\s+/g, "").trim();
+}
+
+function isRebuildPotion(name: string): boolean {
+  const normalized = normalizedConsumableName(name);
+  return normalized === "망각의물약" || normalized === "변화의물약";
+}
+
+function isLifeResetBlessing(name: string): boolean {
+  return normalizedConsumableName(name) === "망각의축복";
+}
+
 export async function useCookingItem(
   _prev: CookingState,
   formData: FormData,
@@ -2034,6 +2052,79 @@ export async function useCookingItem(
   const itemName = String(formData.get("itemName") ?? "").trim();
   if (!itemName) return { error: "사용할 요리가 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < 1) return { error: `${itemName}을 보유하고 있지 않습니다.` };
+
+  if (isRebuildPotion(itemName)) {
+    const sheet = await prisma.characterSheet.findUnique({
+      where: { userId: ctx.userId },
+      select: { achStatsJson: true },
+    });
+    if (!sheet) return { error: "캐릭터 시트를 찾지 못했습니다." };
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          level: 1,
+          invJson: JSON.stringify(inv),
+          achStatsJson: bumpStat(sheet.achStatsJson, "리빌드물약사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void Promise.all([pushInventoryToSheet(ctx.tab, inv), setSheetLevel(ctx.tab, 1)]);
+    await checkAndGrant(ctx.userId);
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return { ok: `${itemName}을 사용했습니다. 캐릭터 레벨을 1로 초기화했습니다.` };
+  }
+
+  if (isLifeResetBlessing(itemName)) {
+    const kindRaw = String(formData.get("lifeKind") ?? "").trim();
+    const kind: LifeSkillKind | null =
+      kindRaw === "낚시" || kindRaw === "채집" || kindRaw === "채광" ? kindRaw : null;
+    if (!kind) return { error: "초기화할 생활 스킬을 선택해주세요." };
+
+    const sheet = await prisma.characterSheet.findUnique({
+      where: { userId: ctx.userId },
+      select: { lifeJson: true, achStatsJson: true },
+    });
+    if (!sheet) return { error: "캐릭터 시트를 찾지 못했습니다." };
+    const life = parseLifeState(sheet.lifeJson);
+    const progress = progressOf(life, kind);
+    const previousLevel = Math.max(1, progress.level || 1);
+    progress.level = 1;
+    progress.exp = 0;
+    life.perks = life.perks.filter((perk) => perk.kind !== kind);
+    life.pending = life.pending.filter((choice) => choice.kind !== kind);
+    const catalog = await fetchLifeSkillCatalog();
+    for (let level = 2; level <= previousLevel; level += 1) {
+      if (isPerkChoiceLevel(level)) {
+        life.pending.push({ kind, level, options: rollPerkOptions(life, kind, catalog) });
+      }
+    }
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "망각의축복사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+    await checkAndGrant(ctx.userId);
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return {
+      ok: `${itemName}을 사용했습니다. ${kind}을 Lv.${previousLevel}에서 Lv.1로 초기화하고 특성 선택지를 다시 열었습니다.`,
+    };
+  }
 
   const { base, grade } = parseCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({

@@ -4,6 +4,34 @@ import type { LifeSkillKind, LifeSkillItem } from "./lifeSkillData";
 export const BLACK_MARKET_COIN_NAME = "암상인 코인";
 export const BLACK_MARKET_QUEST_REWARD = 3;
 
+export const BLACK_MARKET_POTIONS = [
+  {
+    id: "망각의물약",
+    itemName: "망각의 물약",
+    coinPrice: 20,
+  },
+  {
+    id: "변화의물약",
+    itemName: "변화의 물약",
+    coinPrice: 40,
+  },
+  {
+    id: "망각의 축복",
+    itemName: "망각의 축복",
+    coinPrice: 200,
+  },
+] as const;
+
+export type BlackMarketPotionProduct = (typeof BLACK_MARKET_POTIONS)[number];
+
+export function blackMarketPotionProduct(productId: string): BlackMarketPotionProduct | null {
+  return (
+    BLACK_MARKET_POTIONS.find(
+      (item) => item.id === productId || item.itemName === productId,
+    ) ?? null
+  );
+}
+
 export type BlackMarketQuestOffer = {
   id: string;
   itemName: string;

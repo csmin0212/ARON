@@ -149,6 +149,37 @@ function cell(row: string[] | undefined, index: number): string {
   return String(row?.[index] ?? "").trim();
 }
 
+function columnName(index: number): string {
+  let n = index + 1;
+  let name = "";
+  while (n > 0) {
+    const mod = (n - 1) % 26;
+    name = String.fromCharCode(65 + mod) + name;
+    n = Math.floor((n - mod) / 26);
+  }
+  return name;
+}
+
+export async function setSheetLevel(tab: string | null, level: number): Promise<boolean> {
+  if (!tab) return false;
+  try {
+    const values = await getValues(`${quoteSheet(tab)}!A1:AK181`);
+    if (!values) return false;
+    for (let r = 0; r < values.length; r += 1) {
+      const row = values[r] ?? [];
+      for (let c = 0; c < row.length; c += 1) {
+        if (cell(row, c) !== "Level.") continue;
+        const targetCol = columnName(c + 1);
+        const targetRow = r + 1;
+        return updateValues(`${quoteSheet(tab)}!${targetCol}${targetRow}`, [[String(level)]]);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to set sheet level", error);
+  }
+  return false;
+}
+
 function parseNumber(raw: string): number | null {
   const n = parseInt(raw.replace(/[^\d-]/g, ""), 10);
   return Number.isNaN(n) ? null : n;
