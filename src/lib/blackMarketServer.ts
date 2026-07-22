@@ -46,10 +46,12 @@ async function generateTodayStock(day: string): Promise<BlackMarketStockItem[]> 
       .filter((item) => item.rank >= 3 && item.rank <= 5)
       .map((item) => ({ kind, item })),
   );
-  const skillbooks = (await fetchSkillbookPool()).map((book) => ({
-    itemId: book.itemId,
-    skillName: book.skillName,
-  }));
+  const skillbooks = (await fetchSkillbookPool())
+    .filter((book) => book.num % 4 === 1)
+    .map((book) => ({
+      itemId: book.itemId,
+      skillName: book.skillName,
+    }));
   return buildBlackMarketStock(day, lifeCandidates, skillbooks);
 }
 
