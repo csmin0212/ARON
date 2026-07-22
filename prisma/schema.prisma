@@ -347,6 +347,25 @@ model AuctionListing {
   @@index([sellerId, status])
 }
 
+// 암상인 일일 전역 재고 — KST 일자별 생성, stock은 전 유저 공유
+model BlackMarketListing {
+  id           String   @id
+  day          String
+  slot         String
+  kind         String // 낚시 | 채집 | 채광 | 스킬북
+  itemName     String
+  rank         Int      @default(0)
+  price        Int
+  stock        Int
+  initialStock Int
+  meta         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([day, slot])
+  @@index([day, slot])
+}
+
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)
 model CharacterSheet {
   id        String    @id @default(cuid())
@@ -381,6 +400,8 @@ model CharacterSheet {
   pendingMineJson String? // 채광 진행 상태(추첨 결과 + 탐색 완료 시각) — 백그라운드 타이머
   pendingBrewJson String? // 연금술 제조 진행 상태 { recipeId, minutes, readyAt } — 백그라운드 타이머
   guildQuestJson String? // 길드 일일 의뢰 상태 JSON { day, offers[], acceptedId, 리롤권, 주간, 파편 } — lib/guildQuests.ts
+  blackMarketCoins Int @default(0) // 암상인 코인 — 뒷골목/암상인 UI에서만 표시
+  blackMarketQuestJson String? // 암상인 일일 의뢰 상태 JSON { day, offer, deliveredAt }
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
   dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON

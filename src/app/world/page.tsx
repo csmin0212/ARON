@@ -37,6 +37,7 @@ import WorldServices, {
   type GuildView,
   type StorageView,
 } from "@/components/WorldServices";
+import { ensureBlackMarketStock, loadBlackMarketQuestState } from "@/lib/blackMarketServer";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
@@ -59,6 +60,7 @@ import {
   FRAG_COST,
   WEEK_GOAL,
 } from "@/lib/guildQuests";
+import type { BlackMarketQuestOffer } from "@/lib/blackMarket";
 import type { QuestOfferView } from "@/components/GuildQuestBoard";
 import {
   ALCHEMY_ADEPT_MASTERY,
@@ -997,8 +999,42 @@ export default async function WorldPage() {
     accelerators: alchemyAccelerators,
   };
   const unlockedAlchemyRecipeIds = new Set(life.alchemyPerfect);
+  const blackMarketQuest = await loadBlackMarketQuestState(user.id, sheet);
+  const blackMarketStock = await ensureBlackMarketStock();
+  const blackQuestHave = (offer: BlackMarketQuestOffer | null): number => {
+    if (!offer) return 0;
+    const target = offer.itemName.trim();
+    return (
+      rawBagItems
+        .filter((item) => item.name.trim() === target)
+        .reduce((sum, item) => sum + Math.max(0, item.qty), 0) +
+      (storageBox?.entries
+        .filter((item) => item.name.trim() === target)
+        .reduce((sum, item) => sum + Math.max(0, item.qty), 0) ?? 0)
+    );
+  };
   const blackMarket: BlackMarketView = {
     gold: housing.gold,
+    coins: sheet.blackMarketCoins ?? 0,
+    isGm,
+    quest: blackMarketQuest.offer
+      ? {
+          ...blackMarketQuest.offer,
+          have: blackQuestHave(blackMarketQuest.offer),
+          delivered: !!blackMarketQuest.deliveredAt,
+        }
+      : null,
+    stock: blackMarketStock.map((item) => {
+      let skillName: string | null = null;
+      if (item.meta) {
+        try {
+          skillName = (JSON.parse(item.meta) as { skillName?: string }).skillName ?? null;
+        } catch {
+          skillName = null;
+        }
+      }
+      return { ...item, skillName };
+    }),
     books: ALCHEMY_BOOKS.map((book) => {
       const recipes = alchemyRecipes.filter((recipe) => recipe.rank === book.rank);
       return {
