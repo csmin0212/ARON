@@ -100,20 +100,23 @@ function Miner() {
   return (
     <Layer>
       {/* 곡괭이 */}
-      <svg className="absolute right-[22%] top-2 h-16 w-16 opacity-50" viewBox="0 0 60 60" fill="none">
-        <path d="M8 8 C24 10 40 18 52 34" stroke="#cbd5e1" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        <path d="M10 6 C24 6 40 14 54 30" stroke="#94a3b8" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        <rect x="26" y="18" width="4.5" height="40" rx="2" transform="rotate(-32 28 38)" fill="#8a5a2e" />
+      <svg className="absolute right-[17%] top-[8%] h-20 w-24 opacity-75" viewBox="0 0 96 80" fill="none">
+        <path d="M8 26 Q48 2 88 26" stroke="#cbd5e1" strokeWidth="7" fill="none" strokeLinecap="round" />
+        <path d="M8 26 Q48 2 88 26" stroke="#f1f5f9" strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.7" />
+        <rect x="44" y="20" width="7" height="52" rx="3.5" fill="#8a5a2e" />
+        <rect x="45.5" y="20" width="2" height="52" rx="1" fill="#c08a4a" opacity="0.6" />
       </svg>
-      {/* 보석들 */}
-      <div className="absolute left-[18%] top-[30%] h-7 w-7 opacity-70"><Gem c="#f59e0b" /></div>
-      <div className="absolute right-[30%] top-[24%] h-4 w-4 opacity-55"><Gem c="#fbbf24" /></div>
-      <div className="absolute left-[30%] top-[20%] h-3 w-3 opacity-45"><Gem c="#38bdf8" /></div>
-      {/* 반짝임 */}
-      <div className="absolute right-[40%] top-[36%] text-amber-300/60 text-xs">✦</div>
+      {/* 보석 */}
+      <div className="absolute right-[41%] top-[28%] h-8 w-8 opacity-80">
+        <Gem c="#f59e0b" />
+      </div>
+      <div className="absolute left-[22%] top-[34%] h-5 w-5 opacity-55">
+        <Gem c="#fbbf24" />
+      </div>
+      <div className="absolute right-[47%] top-[20%] text-xs text-amber-300/60">✦</div>
       {/* 바닥 광맥(들쭉날쭉 바위) */}
       <svg className="absolute inset-x-0 bottom-0 h-12 w-full" viewBox="0 0 400 40" preserveAspectRatio="none">
-        <path d="M0 40 L0 24 L40 30 L80 16 L130 28 L180 14 L240 26 L300 16 L360 28 L400 20 L400 40 Z" fill="#f59e0b" opacity="0.22" />
+        <path d="M0 40 L0 24 L40 30 L80 16 L130 28 L180 14 L240 26 L300 16 L360 28 L400 20 L400 40 Z" fill="#f59e0b" opacity="0.2" />
         <path d="M0 40 L0 32 L50 34 L100 26 L160 34 L220 24 L290 34 L360 28 L400 34 L400 40 Z" fill="#0f1218" opacity="0.5" />
       </svg>
     </Layer>
@@ -124,24 +127,25 @@ function Miner() {
 function Chef() {
   return (
     <Layer>
-      {/* 김 */}
-      <svg className="absolute right-[26%] top-[10%] h-14 w-10 opacity-45" viewBox="0 0 40 60" fill="none" stroke="#c2410c" strokeWidth="2.5" strokeLinecap="round">
-        <path d="M12 56 C4 44 20 40 12 28 C6 18 18 14 12 4" />
-        <path d="M28 56 C20 44 36 40 28 28 C22 18 34 14 28 4" opacity="0.7" />
+      <svg className="absolute right-[18%] top-[7%] h-24 w-24 opacity-75" viewBox="0 0 88 84" fill="none">
+        {/* 김 */}
+        <g stroke="#c2410c" strokeWidth="2.5" strokeLinecap="round" opacity="0.5" fill="none">
+          <path d="M32 20 C26 14 36 12 32 6" />
+          <path d="M46 20 C40 14 50 12 46 6" />
+        </g>
+        {/* 수저 */}
+        <g fill="#b07a4a">
+          <rect x="60" y="30" width="4" height="34" rx="2" transform="rotate(24 62 47)" />
+          <ellipse cx="72" cy="30" rx="5.5" ry="8" transform="rotate(24 72 30)" />
+        </g>
+        {/* 냄비 */}
+        <path d="M16 38 H58 L54 64 C53 68 49 70 45 70 H29 C25 70 21 68 20 64 Z" fill="#c2410c" />
+        <rect x="11" y="32" width="52" height="7" rx="3.5" fill="#9a3412" />
+        <ellipse cx="37" cy="28" rx="11" ry="4" fill="#9a3412" />
+        <circle cx="37" cy="23" r="2.5" fill="#7c2d12" />
+        <path d="M11 36 q-7 1 -6 8" stroke="#9a3412" strokeWidth="3.5" fill="none" />
+        <path d="M63 36 q7 1 6 8" stroke="#9a3412" strokeWidth="3.5" fill="none" />
       </svg>
-      {/* 냄비 */}
-      <svg className="absolute right-4 top-[34%] h-14 w-16 opacity-55" viewBox="0 0 64 48" fill="none">
-        <path d="M6 16 H58 L54 40 C52 44 48 46 44 46 H20 C16 46 12 44 10 40 Z" fill="#9a4a24" />
-        <rect x="2" y="12" width="60" height="6" rx="3" fill="#7c2d12" />
-        <circle cx="4" cy="15" r="4" fill="none" stroke="#7c2d12" strokeWidth="3" />
-        <circle cx="60" cy="15" r="4" fill="none" stroke="#7c2d12" strokeWidth="3" />
-      </svg>
-      {/* 조리도구(주걱) */}
-      <svg className="absolute left-[18%] top-[26%] h-12 w-6 opacity-35" viewBox="0 0 24 60" fill="#a86a4a">
-        <rect x="10" y="18" width="4" height="40" rx="2" />
-        <path d="M12 4 C4 6 4 18 12 20 C20 18 20 6 12 4 Z" />
-      </svg>
-      <div className="absolute left-[14%] top-[20%] text-base opacity-40">🍅</div>
       {/* 바닥 따뜻한 글로우 */}
       <div className="absolute inset-x-0 bottom-0 h-16" style={{ background: "linear-gradient(0deg, rgba(251,146,60,0.28), transparent)" }} />
     </Layer>
@@ -152,20 +156,26 @@ function Chef() {
 function Smith() {
   return (
     <Layer>
-      {/* 망치 */}
-      <svg className="absolute right-[24%] top-[12%] h-14 w-14 opacity-45" viewBox="0 0 60 60" fill="none">
-        <rect x="26" y="20" width="5" height="36" rx="2.5" transform="rotate(28 28 38)" fill="#8a5a2e" />
-        <rect x="18" y="10" width="28" height="12" rx="3" transform="rotate(28 32 16)" fill="#9aa1ad" />
+      <svg className="absolute right-[15%] top-[6%] h-24 w-28 opacity-80" viewBox="0 0 112 96" fill="none">
+        {/* 모루 */}
+        <g fill="#b8c2d0">
+          <path d="M24 44 H86 V54 H24 Z" />
+          <path d="M24 44 V54 L8 49 Z" />
+          <rect x="46" y="53" width="18" height="15" />
+          <rect x="32" y="67" width="46" height="10" rx="2" />
+        </g>
+        <path d="M24 45 H86" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+        {/* 망치 */}
+        <g transform="rotate(-30 64 30)">
+          <rect x="44" y="18" width="30" height="12" rx="2.5" fill="#7c8598" />
+          <rect x="56" y="9" width="9" height="11" rx="2" fill="#98a3b5" />
+          <rect x="59" y="28" width="6" height="44" rx="3" fill="#8a5a2e" />
+        </g>
       </svg>
-      {/* 모루 */}
-      <svg className="absolute right-5 top-[40%] h-12 w-16 opacity-55" viewBox="0 0 64 40" fill="#cbd5e1">
-        <path d="M4 6 H52 L48 14 H30 C34 18 40 20 44 22 L44 26 H14 V22 C22 20 24 16 24 14 H10 Z" />
-        <rect x="20" y="30" width="20" height="8" rx="2" />
-      </svg>
-      {/* 불꽃/불티 */}
-      <div className="absolute left-[22%] top-[30%] h-2 w-2 rounded-full bg-orange-400/70" />
-      <div className="absolute left-[28%] top-[22%] h-1.5 w-1.5 rounded-full bg-amber-300/70" />
-      <div className="absolute left-[18%] top-[36%] h-1 w-1 rounded-full bg-orange-300/60" />
+      {/* 불티 */}
+      <div className="absolute right-[38%] top-[26%] h-2 w-2 rounded-full bg-orange-400/70" />
+      <div className="absolute right-[31%] top-[18%] h-1.5 w-1.5 rounded-full bg-amber-300/70" />
+      <div className="absolute right-[43%] top-[34%] h-1 w-1 rounded-full bg-orange-300/60" />
       {/* 바닥 잉걸불 글로우 */}
       <div className="absolute inset-x-0 bottom-0 h-16" style={{ background: "linear-gradient(0deg, rgba(249,115,22,0.3), transparent)" }} />
     </Layer>
