@@ -596,23 +596,25 @@ export default async function WorldPage() {
       return [];
     }
   })();
-  const { trainingPending, trainingConsumed } = (() => {
+  const { trainingCount, trainingPending, trainingConsumed } = (() => {
     try {
       const stats = JSON.parse(sheet.achStatsJson ?? "{}") as Record<string, number>;
       const count = stats["단련횟수"] ?? 0;
       const consumed = stats["단련성장선택"] ?? 0;
       return {
+        trainingCount: count,
         trainingConsumed: consumed,
         trainingPending: Math.max(0, Math.min(9, Math.floor(count / 100)) - consumed),
       };
     } catch {
-      return { trainingConsumed: 0, trainingPending: 0 };
+      return { trainingCount: 0, trainingConsumed: 0, trainingPending: 0 };
     }
   })();
   const guild: GuildView = {
     rank: sheet.adventurerRank,
     fame: sheet.fame ?? 0,
     training: {
+      count: trainingCount,
       pendingPicks: trainingPending,
       // 지금 고를 선택은 (이미 소비한 선택 + 1) 번째 마일스톤 = ×100회
       currentMilestone: trainingPending > 0 ? (trainingConsumed + 1) * 100 : null,

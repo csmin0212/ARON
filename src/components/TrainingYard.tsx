@@ -6,6 +6,7 @@ import { trainOnce, pickTrainingStat } from "@/app/actions/training";
 
 export type TrainingStat = { key: string; label: string; value: number | null };
 export type TrainingView = {
+  count: number;
   pendingPicks: number;
   currentMilestone: number | null; // 지금 고를 선택이 몇 회째 마일스톤인지(100~900)
   stats: TrainingStat[];
@@ -162,11 +163,12 @@ export default function TrainingYard({
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4">
-                <p className="text-xs font-black text-muted">단련의 결실</p>
-                <ul className="mt-2 space-y-1 text-[12px] text-faint">
-                  <li>· 꾸준히 단련하면 이따금 능력치를 성장시킬 기회가 찾아온다.</li>
-                  <li>· 더 깊이 정진하면 스킬 포인트를 얻기도 한다.</li>
-                </ul>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-muted">현재 단련 횟수</span>
+                  <span className="text-lg font-black text-content">
+                    {training.count.toLocaleString()}회
+                  </span>
+                </div>
               </section>
             </>
           )}
