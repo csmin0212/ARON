@@ -52,8 +52,7 @@ function emptyEquipment(): SheetEquipment {
       { id: "head", label: "머리", group: "armor", itemType: "머리", name: null, effect: null, weight: null, stats: {} },
       { id: "body", label: "몸통", group: "armor", itemType: "몸통", name: null, effect: null, weight: null, stats: {} },
       { id: "sub", label: "보조", group: "armor", itemType: "보조", name: null, effect: null, weight: null, stats: {} },
-      { id: "accessory1", label: "장신구 1", group: "accessory", itemType: "장신구", name: null, effect: null, weight: null, stats: {} },
-      { id: "accessory2", label: "장신구 2", group: "accessory", itemType: "장신구", name: null, effect: null, weight: null, stats: {} },
+      { id: "accessory1", label: "장신구", group: "accessory", itemType: "장신구", name: null, effect: null, weight: null, stats: {} },
     ],
     weaponWeightText: null,
     armorWeightText: null,
@@ -64,7 +63,14 @@ function parseEquipment(value: string | null): SheetEquipment {
   try {
     if (value) {
       const parsed = JSON.parse(value) as SheetEquipment;
-      return { ...emptyEquipment(), ...parsed, slots: parsed.slots ?? emptyEquipment().slots };
+      const allowedIds = new Set(emptyEquipment().slots.map((slot) => slot.id));
+      const parsedSlots = (parsed.slots ?? []).filter((slot) => allowedIds.has(slot.id));
+      const byId = new Map(parsedSlots.map((slot) => [slot.id, slot]));
+      return {
+        ...emptyEquipment(),
+        ...parsed,
+        slots: emptyEquipment().slots.map((slot) => byId.get(slot.id) ?? slot),
+      };
     }
   } catch {
     /* ignore */
@@ -173,8 +179,7 @@ function chooseSlot(equipment: SheetEquipment, itemType: string): EquipmentSlotI
   }
   if (ARMOR_SLOT_BY_TYPE[itemType]) return ARMOR_SLOT_BY_TYPE[itemType];
   if (itemType === "장신구") {
-    const emptyAccessory = equipment.slots.find((slot) => slot.group === "accessory" && !slot.name);
-    return (emptyAccessory?.id as EquipmentSlotId | undefined) ?? "accessory1";
+    return "accessory1";
   }
   return null;
 }
