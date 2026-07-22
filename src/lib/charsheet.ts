@@ -220,6 +220,15 @@ function beside(g: string[][], label: string, dc = 1): string | null {
   return below(g, label, 0, dc);
 }
 
+function classNames(g: string[][]): string | null {
+  const classes = [
+    below(g, "메인 클래스", 1, 0) ?? clean(at(g, 35, 1)), // B36
+    clean(at(g, 35, 5)), // F36
+    clean(at(g, 36, 5)), // F37
+  ].filter((v): v is string => Boolean(v));
+  return classes.length > 0 ? Array.from(new Set(classes)).join(" / ") : null;
+}
+
 export function isValidTabName(name: string): boolean {
   const t = name.trim();
   return t.length >= 1 && t.length <= 40;
@@ -276,7 +285,7 @@ export function parseSheetGrid(g: string[][], tabName: string, sourceSheetId = M
   return {
     sourceSheetId,
     charName: tabName,
-    charClass: below(g, "메인 클래스", 1, 0),
+    charClass: classNames(g),
     race: below(g, "종족", 1, 0),
     attribute: below(g, "속성", 1, 0),
     level: (() => {

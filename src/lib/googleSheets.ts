@@ -412,7 +412,7 @@ export async function readSheetClasses(tab: string | null): Promise<string[]> {
   if (!tab) return [];
   try {
     let v: string[][] | null = null;
-    const range = `${quoteSheet(tab)}!B36:I36`;
+    const range = `${quoteSheet(tab)}!B36:I37`;
     for (const sheetId of CHARACTER_SHEET_IDS) {
       v = await getValuesFromSheet(sheetId, range);
       if (v) break;
@@ -420,8 +420,9 @@ export async function readSheetClasses(tab: string | null): Promise<string[]> {
     if (!v) return [];
     const row = v[0] ?? [];
     const main = cell(row, 0); // B36
-    const sub = cell(row, 4); // F36
-    return [main, sub].filter((c) => c.length > 0);
+    const sub1 = cell(row, 4); // F36
+    const sub2 = cell(v[1], 4); // F37
+    return [main, sub1, sub2].filter((c) => c.length > 0);
   } catch (error) {
     console.warn("Failed to read sheet classes", error);
     return [];

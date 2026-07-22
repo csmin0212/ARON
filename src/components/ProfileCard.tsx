@@ -737,6 +737,13 @@ function Chip({ text, style }: { text: string; style: CSSProperties }) {
   );
 }
 
+function classTags(charClass: string | null | undefined): string[] {
+  return (charClass ?? "")
+    .split(/\s*\/\s*/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 export default function ProfileCard({
   identity,
   widgets,
@@ -762,7 +769,7 @@ export default function ProfileCard({
   };
 
   const tags = [
-    identity.charClass,
+    ...classTags(identity.charClass),
     identity.race,
     identity.attribute && `속성 ${identity.attribute}`,
   ].filter(Boolean) as string[];
