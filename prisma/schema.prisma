@@ -386,6 +386,7 @@ model CharacterSheet {
   curMp     Int?
   curGold   Int?
   invJson   String? // 인벤토리 JSON [{ name, qty }]
+  equipmentJson String? // 장비 JSON — 시트 Z8:AK22 캐시
   // 월드(오픈월드) 상태
   locationId     String? // 현재 위치 (Location.id, FK 아님 — 맵 교체에 안전)
   enteredAt      DateTime? // 현재 장소 진입 시각 (이후 채팅만 보임)

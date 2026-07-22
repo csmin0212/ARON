@@ -1,5 +1,7 @@
 import type { StatEntry } from "@/lib/charsheet";
+import type { SheetEquipment } from "@/lib/googleSheets";
 import { adventurerRankGoal, normalizeAdventurerRank } from "@/lib/adventurerRank";
+import EquipmentPanel from "./EquipmentPanel";
 
 export type SheetData = {
   charName: string | null;
@@ -12,6 +14,7 @@ export type SheetData = {
   fate: number | null;
   gold: string | null;
   statsJson: string | null;
+  equipmentJson?: string | null;
   // 라이브 상태 (있으면 현재값으로 표시)
   curHp?: number | null;
   curMp?: number | null;
@@ -62,12 +65,24 @@ function currentMaxValue(current: number | null | undefined, max: number | null)
   return current === max ? max : `${current}/${max}`;
 }
 
-export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
+export default function CharacterSheetCard({
+  sheet,
+  editable = false,
+}: {
+  sheet: SheetData;
+  editable?: boolean;
+}) {
   let stats: StatEntry[] = [];
   try {
     stats = sheet.statsJson ? (JSON.parse(sheet.statsJson) as StatEntry[]) : [];
   } catch {
     stats = [];
+  }
+  let equipment: SheetEquipment | null = null;
+  try {
+    equipment = sheet.equipmentJson ? (JSON.parse(sheet.equipmentJson) as SheetEquipment) : null;
+  } catch {
+    equipment = null;
   }
 
   const tags = [sheet.charClass, sheet.race, sheet.attribute && `속성 ${sheet.attribute}`].filter(
@@ -175,6 +190,8 @@ export default function CharacterSheetCard({ sheet }: { sheet: SheetData }) {
           </div>
         </div>
       )}
+
+      <EquipmentPanel equipment={equipment} editable={editable} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { MASTER_SHEET_ID, fetchSheetByTab, isValidTabName } from "@/lib/charshee
 import { parseGoldToInt } from "@/lib/dice";
 import {
   pushInventoryToSheet,
+  readSheetEquipment,
   readSheetInventory,
   type SheetInventory,
   type SheetInventoryItem,
@@ -126,7 +127,10 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     return { error: e instanceof Error ? e.message : "시트를 불러오지 못했어요." };
   }
 
-  const sheetInventory = await readSheetInventory(tab);
+  const [sheetInventory, sheetEquipment] = await Promise.all([
+    readSheetInventory(tab),
+    readSheetEquipment(tab),
+  ]);
   const inventory = sheetInventory ?? {
     sourceSheetId: parsed.sourceSheetId,
     gold: null,
@@ -153,6 +157,7 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     statsJson: JSON.stringify(parsed.stats),
     sheetSkillsJson: JSON.stringify(parsed.skills), // SL 1+ 스킬 — 주간 수입 판정용
     invJson: inventory ? JSON.stringify(inventory) : undefined,
+    equipmentJson: sheetEquipment ? JSON.stringify(sheetEquipment) : undefined,
     syncedAt: new Date(),
   };
 
@@ -182,7 +187,10 @@ export async function syncSheetInventory(): Promise<void> {
   });
   if (!sheet?.sheetTab) return;
 
-  const inventory = await readSheetInventory(sheet.sheetTab);
+  const [inventory, equipment] = await Promise.all([
+    readSheetInventory(sheet.sheetTab),
+    readSheetEquipment(sheet.sheetTab),
+  ]);
   if (!inventory) return;
   const catalogFilled = await fillItemCatalogDetails(inventory);
 
@@ -190,6 +198,7 @@ export async function syncSheetInventory(): Promise<void> {
     where: { userId: user.id },
     data: {
       invJson: JSON.stringify(inventory),
+      ...(equipment ? { equipmentJson: JSON.stringify(equipment) } : {}),
       syncedAt: new Date(),
     },
   });

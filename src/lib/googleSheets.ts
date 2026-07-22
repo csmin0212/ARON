@@ -27,6 +27,26 @@ export type SheetInventory = {
   items: SheetInventoryItem[];
 };
 
+export type EquipmentSlotGroup = "weapon" | "armor" | "accessory";
+
+export type SheetEquipmentSlot = {
+  id: string;
+  label: string;
+  group: EquipmentSlotGroup;
+  itemType: string | null;
+  name: string | null;
+  effect: string | null;
+  weight: number | null;
+  stats: Record<string, string>;
+};
+
+export type SheetEquipment = {
+  sourceSheetId?: string;
+  slots: SheetEquipmentSlot[];
+  weaponWeightText: string | null;
+  armorWeightText: string | null;
+};
+
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
 function credentials(): ServiceAccount | null {
@@ -166,6 +186,167 @@ function parseNumber(raw: string): number | null {
 
 function parseQty(raw: string): number {
   return parseNumber(raw) ?? 1;
+}
+
+const EQUIPMENT_SLOT_DEFS = [
+  {
+    id: "weapon1",
+    label: "무기 1",
+    group: "weapon",
+    defaultType: "무기",
+    row: 10,
+    effectIndex: 9,
+    statIndexes: { 명중: 5, 공격력: 6, 행동: 7, 사거리: 8 },
+  },
+  {
+    id: "weapon2",
+    label: "무기 2",
+    group: "weapon",
+    defaultType: "무기",
+    row: 11,
+    effectIndex: 9,
+    statIndexes: { 명중: 5, 공격력: 6, 행동: 7, 사거리: 8 },
+  },
+  {
+    id: "head",
+    label: "머리",
+    group: "armor",
+    defaultType: "머리",
+    row: 16,
+    effectIndex: 9,
+    statIndexes: { 회피: 5, 물방: 6, 마방: 7, 이동: 8 },
+  },
+  {
+    id: "body",
+    label: "몸통",
+    group: "armor",
+    defaultType: "몸통",
+    row: 17,
+    effectIndex: 9,
+    statIndexes: { 회피: 5, 물방: 6, 마방: 7, 이동: 8 },
+  },
+  {
+    id: "sub",
+    label: "보조",
+    group: "armor",
+    defaultType: "보조",
+    row: 18,
+    effectIndex: 9,
+    statIndexes: { 회피: 5, 물방: 6, 마방: 7, 이동: 8 },
+  },
+  {
+    id: "accessory1",
+    label: "장신구 1",
+    group: "accessory",
+    defaultType: "장신구",
+    row: 20,
+    effectIndex: 5,
+    statIndexes: {},
+  },
+  {
+    id: "accessory2",
+    label: "장신구 2",
+    group: "accessory",
+    defaultType: "장신구",
+    row: 21,
+    effectIndex: 5,
+    statIndexes: {},
+  },
+] as const;
+
+export type EquipmentSlotId = (typeof EQUIPMENT_SLOT_DEFS)[number]["id"];
+
+function equipmentSlotDef(slotId: string) {
+  return EQUIPMENT_SLOT_DEFS.find((slot) => slot.id === slotId) ?? null;
+}
+
+function parseEquipmentStats(
+  row: string[],
+  statIndexes: Record<string, number>,
+): Record<string, string> {
+  const stats: Record<string, string> = {};
+  for (const [label, index] of Object.entries(statIndexes)) {
+    const value = cell(row, index);
+    if (value) stats[label] = value;
+  }
+  return stats;
+}
+
+function parseEquipmentSlot(
+  values: string[][],
+  sourceSheetId: string,
+  def: (typeof EQUIPMENT_SLOT_DEFS)[number],
+): SheetEquipmentSlot {
+  const row = values[def.row - 8] ?? [];
+  const name = cell(row, 1);
+  const itemType = cell(row, 0);
+  return {
+    id: def.id,
+    label: def.label,
+    group: def.group,
+    itemType: itemType || null,
+    name: name || null,
+    effect: cell(row, def.effectIndex) || null,
+    weight: parseNumber(cell(row, 4)),
+    stats: parseEquipmentStats(row, def.statIndexes),
+  };
+}
+
+function parseSheetEquipmentValues(values: string[][], sourceSheetId: string): SheetEquipment {
+  return {
+    sourceSheetId,
+    slots: EQUIPMENT_SLOT_DEFS.map((def) => parseEquipmentSlot(values, sourceSheetId, def)),
+    weaponWeightText: cell(values[4], 4) || null,
+    armorWeightText: cell(values[14], 4) || null,
+  };
+}
+
+export async function readSheetEquipment(tab: string | null): Promise<SheetEquipment | null> {
+  if (!tab) return null;
+
+  try {
+    const range = `${quoteSheet(tab)}!Z8:AK22`;
+    for (const sheetId of CHARACTER_SHEET_IDS) {
+      const values = await getValuesFromSheet(sheetId, range);
+      if (!values) continue;
+      return parseSheetEquipmentValues(values, sheetId);
+    }
+  } catch (error) {
+    console.warn("Failed to read sheet equipment", error);
+  }
+  return null;
+}
+
+function equipmentRow(
+  slot: Pick<SheetEquipmentSlot, "id" | "itemType" | "name" | "effect" | "weight" | "stats">,
+): string[] | null {
+  const def = equipmentSlotDef(slot.id);
+  if (!def) return null;
+  const row = new Array<string>(12).fill("");
+  row[0] = slot.itemType ?? def.defaultType;
+  row[1] = slot.name ?? "";
+  row[4] = slot.weight != null ? String(slot.weight) : "";
+  for (const [label, index] of Object.entries(def.statIndexes)) {
+    row[index] = slot.stats[label] ?? "";
+  }
+  row[def.effectIndex] = slot.effect ?? "";
+  return row;
+}
+
+export async function writeSheetEquipmentSlot(
+  tab: string | null,
+  slot: Pick<SheetEquipmentSlot, "id" | "itemType" | "name" | "effect" | "weight" | "stats">,
+): Promise<boolean> {
+  if (!tab) return false;
+  const def = equipmentSlotDef(slot.id);
+  const row = equipmentRow(slot);
+  if (!def || !row) return false;
+  try {
+    return updateValues(`${quoteSheet(tab)}!Z${def.row}:AK${def.row}`, [row]);
+  } catch (error) {
+    console.warn("Failed to write sheet equipment", error);
+    return false;
+  }
 }
 
 export function inventoryWeightTotal(items: SheetInventoryItem[]): number | null {
