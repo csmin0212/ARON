@@ -331,7 +331,7 @@ model AuctionListing {
   id        String    @id @default(cuid())
   sellerId  String
   seller    User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  category  String // 어획물 | 채집품 | 요리 | 재료 | 소비 | 스킬북 | 기타
+  category  String // 어획물 | 채집물 | 광석 | 요리 | 무기 | 방어구 | 포션 | 재료 | 스킬북 | 기타
   itemName  String
   itemMeta  String // JSON 스냅샷 { effect, weight, rank, text, sourceKind }
   quantity  Int       @default(1) // 남은 수량 (부분 구매 시 차감)

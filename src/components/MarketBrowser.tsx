@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { AUCTION_CATEGORIES, type AuctionCategory } from "@/lib/auction";
+import { AUCTION_CATEGORIES, normalizeAuctionCategory, type AuctionCategory } from "@/lib/auction";
 import type { ListingView, SellableItem } from "@/lib/auctionServer";
 import {
   buyAuctionListing,
@@ -16,10 +16,13 @@ type Tab = "buy" | "sell" | "mine";
 const CATEGORY_EMOJI: Record<string, string> = {
   전체: "🗂️",
   어획물: "🐟",
-  채집품: "🌿",
+  채집물: "🌿",
+  광석: "⛏️",
   요리: "🍳",
+  무기: "⚔️",
+  방어구: "🛡️",
+  포션: "⚗️",
   재료: "💎",
-  소비: "🧪",
   스킬북: "📘",
   기타: "📦",
 };
@@ -67,7 +70,8 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const total = listing.unitPrice * qty;
   const tooPoor = total > myGold;
-  const categoryEmoji = CATEGORY_EMOJI[listing.category] ?? "📦";
+  const categoryLabel = normalizeAuctionCategory(listing.category);
+  const categoryEmoji = CATEGORY_EMOJI[categoryLabel] ?? "📦";
   const qtyInputClass =
     "w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400";
   const buyButtonClass =
@@ -98,7 +102,7 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
             <span className="font-extrabold text-content">{listing.itemName}</span>
             <RankStars rank={listing.rank} />
             <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[10px] font-bold text-faint">
-              {categoryEmoji} {listing.category}
+              {categoryEmoji} {categoryLabel}
             </span>
           </div>
           {listing.effect && (
@@ -158,7 +162,7 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <RankStars rank={listing.rank} />
                     <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-bold text-faint">
-                      {categoryEmoji} {listing.category}
+                      {categoryEmoji} {categoryLabel}
                     </span>
                   </div>
                 </div>
@@ -229,6 +233,7 @@ function SellRow({ item }: { item: SellableItem }) {
   const [qty, setQty] = useState(1);
   const below = price < item.floor;
   const canInstant = item.floor >= 0;
+  const categoryLabel = normalizeAuctionCategory(item.category);
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">
@@ -237,7 +242,7 @@ function SellRow({ item }: { item: SellableItem }) {
           <span className="font-extrabold text-content">{item.name}</span>
           <RankStars rank={item.rank} />
           <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[10px] font-bold text-faint">
-            {CATEGORY_EMOJI[item.category] ?? "📦"} {item.category}
+            {CATEGORY_EMOJI[categoryLabel] ?? "📦"} {categoryLabel}
           </span>
         </div>
         <span className="shrink-0 text-[11px] font-bold text-faint">보유 {item.qty}</span>
@@ -362,7 +367,7 @@ export default function MarketBrowser({
     const q = search.trim();
     return listings.filter((l) => {
       if (l.sellerId === meId) return false;
-      if (category !== "전체" && l.category !== category) return false;
+      if (category !== "전체" && normalizeAuctionCategory(l.category) !== category) return false;
       if (q && !l.itemName.includes(q)) return false;
       return true;
     });
@@ -371,7 +376,7 @@ export default function MarketBrowser({
   const sellList = useMemo(() => {
     const q = sellSearch.trim();
     return sellable.filter((item) => {
-      if (sellCategory !== "전체" && item.category !== sellCategory) return false;
+      if (sellCategory !== "전체" && normalizeAuctionCategory(item.category) !== sellCategory) return false;
       if (q && !item.name.includes(q)) return false;
       return true;
     });

@@ -13,14 +13,34 @@ export const LISTING_FEE_RATE = 0.02;
 export const AUCTION_CATEGORIES = [
   "전체",
   "어획물",
-  "채집품",
+  "채집물",
+  "광석",
   "요리",
+  "무기",
+  "방어구",
+  "포션",
   "재료",
-  "소비",
   "스킬북",
   "기타",
 ] as const;
 export type AuctionCategory = (typeof AUCTION_CATEGORIES)[number];
+
+const AUCTION_CATEGORY_SET = new Set<string>(AUCTION_CATEGORIES);
+
+export function normalizeAuctionCategory(category: string | null | undefined): AuctionCategory {
+  const value = category?.trim() ?? "";
+  if (value === "채집품") return "채집물";
+  if (value === "채광") return "광석";
+  if (value === "소비" || value === "소모품") return "포션";
+  if (value === "갑옷" || value === "방패") return "방어구";
+  if (AUCTION_CATEGORY_SET.has(value)) return value as AuctionCategory;
+  return "기타";
+}
+
+export function auctionCategoryOrder(category: string | null | undefined): number {
+  const order = AUCTION_CATEGORIES.indexOf(normalizeAuctionCategory(category));
+  return order >= 0 ? order : AUCTION_CATEGORIES.length;
+}
 
 // 판매 가능 출처: 휴대품(basic) / 낚시 가방 / 채집 가방
 export type AuctionSource = "basic" | LifeSkillKind;

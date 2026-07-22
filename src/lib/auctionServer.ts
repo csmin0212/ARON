@@ -25,10 +25,12 @@ import { isNonSellable } from "@/lib/shop";
 import { isSkillBookItem } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
+  auctionCategoryOrder,
   gradeInfo,
   listingExpiry,
   listingFee,
   netProceeds,
+  normalizeAuctionCategory,
   parseAuctionMeta,
   parseCookedName,
   type AuctionCategory,
@@ -36,6 +38,7 @@ import {
   type AuctionSource,
 } from "@/lib/auction";
 import { auctionSlots, normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
+import { detectForgeSlot } from "@/lib/forge";
 
 export type AuctionResult = { ok?: string; error?: string };
 
@@ -176,8 +179,10 @@ function destinationLifeBag(meta: AuctionMailMeta, itemName: string): LifeSkillK
   if (meta.source === "낚시" || meta.source === "채집" || meta.source === "채광") return meta.source;
   const kindByName = lifeSkillItemKind(itemName.trim());
   if (kindByName) return kindByName;
-  if (meta.category === "어획물") return "낚시";
-  if (meta.category === "채집품") return "채집";
+  const category = normalizeAuctionCategory(meta.category);
+  if (category === "어획물") return "낚시";
+  if (category === "채집물") return "채집";
+  if (category === "광석") return "채광";
   return null;
 }
 
@@ -250,17 +255,21 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
   return 0;
 }
 
-export async function resolveCategory(name: string, source: AuctionSource): Promise<AuctionCategory> {
+export async function resolveCategory(
+  name: string,
+  source: AuctionSource,
+  effect?: string | null,
+): Promise<AuctionCategory> {
   await loadLifeItems();
   const raw = name.trim();
   if (source === "낚시") return "어획물";
-  if (source === "채집") return "채집품";
-  if (source === "채광") return "재료";
+  if (source === "채집") return "채집물";
+  if (source === "채광") return "광석";
 
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind === "낚시") return "어획물";
-  if (lifeKind === "채집") return "채집품";
-  if (lifeKind === "채광") return "재료";
+  if (lifeKind === "채집") return "채집물";
+  if (lifeKind === "채광") return "광석";
 
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: parseCookedName(name).base },
@@ -275,8 +284,14 @@ export async function resolveCategory(name: string, source: AuctionSource): Prom
     select: { category: true },
   });
   const cat = item?.category ?? "";
+  if (cat === "무기") return "무기";
+  if (["방어구", "갑옷", "방패"].includes(cat)) return "방어구";
+  if (cat === "음식") return "요리";
+  if (["소모품", "포션"].includes(cat)) return "포션";
   if (["재료", "보석"].includes(cat)) return "재료";
-  if (["소모품", "포션", "음식"].includes(cat)) return "소비";
+  const forgeSlot = detectForgeSlot(`${raw}\n${effect ?? ""}`);
+  if (forgeSlot === "weapon") return "무기";
+  if (forgeSlot === "armor") return "방어구";
   return "기타";
 }
 
@@ -327,7 +342,7 @@ function toListingView(
   const meta = parseAuctionMeta(row.itemMeta);
   return {
     id: row.id,
-    category: row.category,
+    category: normalizeAuctionCategory(row.category),
     itemName: row.itemName,
     effect: meta.effect,
     rank: meta.rank,
@@ -446,11 +461,15 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
   for (const r of raw) {
     const [floor, category] = await Promise.all([
       resolveFloor(r.name, r.source),
-      resolveCategory(r.name, r.source),
+      resolveCategory(r.name, r.source, r.effect),
     ]);
     out.push({ ...r, floor, category });
   }
-  return out.sort((a, b) => a.category.localeCompare(b.category, "ko") || a.name.localeCompare(b.name, "ko"));
+  return out.sort(
+    (a, b) =>
+      auctionCategoryOrder(a.category) - auctionCategoryOrder(b.category) ||
+      a.name.localeCompare(b.name, "ko"),
+  );
 }
 
 // ── 만료 정리 (조회 시 lazy 실행) — 우편함으로 반송 ──
@@ -637,7 +656,7 @@ export async function createListingCore(
   const fee = rankAtLeast(actor.rank, "S") ? 0 : listingFee(unitPrice, qty);
   if (actor.curGold < fee) return { error: `등록 수수료가 부족합니다. (${fee.toLocaleString()}G 필요)` };
   const nextGold = actor.curGold - fee;
-  const category = await resolveCategory(name, source);
+  const category = await resolveCategory(name, source, meta.effect);
 
   await prisma.characterSheet.update({
     where: { userId },
