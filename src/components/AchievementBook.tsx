@@ -32,6 +32,7 @@ export default function AchievementBook({
   const hasEquipped = equippedTitle != null || equippedBadge != null;
   const earnedCount = achievements.filter((a) => a.earned).length;
   const total = achievements.length;
+  const earnedPercent = total > 0 ? Math.round((earnedCount / total) * 100) : 0;
 
   // 분류별로 묶기 (정의 순서 유지)
   const groups = useMemo(() => {
@@ -56,7 +57,7 @@ export default function AchievementBook({
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-extrabold text-content">🏅 업적</h2>
         <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-bold text-brand-600">
-          {earnedCount} / {total}
+          {earnedCount} / {total} · {earnedPercent}%
         </span>
       </div>
 
