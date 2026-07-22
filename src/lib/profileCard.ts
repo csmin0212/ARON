@@ -225,15 +225,15 @@ export const CARD_STYLES: CardStyleMeta[] = [
   },
   {
     key: "sovereign",
-    label: "제왕",
-    tagline: "모험가 S 한정 · 프리즘 프레스티지",
+    label: "전설의 모험가",
+    tagline: "모험가 S 한정 · 크림슨 프레스티지",
     acquire: "unlock",
     price: 0,
     unlock: { kind: "rank", rankMin: "S", label: "모험가 S" },
     usesAccent: false,
     swatch:
-      "radial-gradient(120% 120% at 0% 0%, rgba(167,139,250,0.4), transparent 55%), radial-gradient(120% 120% at 100% 100%, rgba(103,232,249,0.35), transparent 55%), linear-gradient(150deg, #1a1730, #0c0a1a)",
-    swatchInk: "#ece8ff",
+      "radial-gradient(130% 120% at 100% 0%, rgba(244,63,94,0.42), transparent 55%), radial-gradient(120% 120% at 0% 100%, rgba(120,20,40,0.5), transparent 55%), linear-gradient(150deg, #2a0f18, #14060b)",
+    swatchInk: "#fdd9de",
   },
   // ── 생활스킬 레벨 해금 ──
   {

@@ -1,0 +1,284 @@
+// 카드 스킨별 테마 일러스트(인라인 SVG). 콘텐츠 뒤(-z-10)에 깔리는 장식 레이어.
+// 외부 에셋 없이 벡터로 그려 CSP·자체완결성을 지킨다. game-icons 계열 모티프를 참고해 새로 그림.
+
+export type SceneKey =
+  | "angler"
+  | "botanist"
+  | "miner"
+  | "chef"
+  | "smith"
+  | "alchemist"
+  | "crest"
+  | "legend";
+
+function Layer({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[26px]">
+      {children}
+    </div>
+  );
+}
+
+// ── 낚시: 파도 · 물고기 · 낚싯대 · 물방울 ──
+function Angler() {
+  return (
+    <Layer>
+      {/* 낚싯대 + 낚싯줄 + 미끼 */}
+      <svg className="absolute right-3 top-2 h-28 w-28 opacity-70" viewBox="0 0 120 120" fill="none">
+        <path d="M18 96 L96 20" stroke="#0e5a86" strokeWidth="3.5" strokeLinecap="round" />
+        <path d="M96 20 q7 3 8 10" stroke="#0e5a86" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+        <circle cx="30" cy="84" r="5.5" fill="none" stroke="#0e5a86" strokeWidth="2.5" />
+        <path d="M104 30 L100 62" stroke="#38bdf8" strokeWidth="1.5" />
+        <path d="M100 62 q-5 6 2 9 q7 -3 2 -9" fill="#0284c7" />
+      </svg>
+      {/* 물고기들 */}
+      <svg className="absolute left-[16%] top-[38%] h-6 w-10 opacity-40" viewBox="0 0 40 20" fill="#0369a1">
+        <path d="M4 10 C10 3 26 3 34 10 C26 17 10 17 4 10 Z" />
+        <path d="M4 10 L-2 5 L-2 15 Z" />
+        <circle cx="28" cy="9" r="1.6" fill="#e0f2fe" />
+      </svg>
+      <svg className="absolute right-[30%] top-[30%] h-4 w-7 opacity-30" viewBox="0 0 40 20" fill="#0c4a6e">
+        <path d="M4 10 C10 3 26 3 34 10 C26 17 10 17 4 10 Z" />
+        <path d="M4 10 L-2 5 L-2 15 Z" />
+      </svg>
+      {/* 물방울 */}
+      <div className="absolute left-[10%] top-[26%] h-2 w-2 rounded-full bg-white/50" />
+      <div className="absolute left-[13%] top-[20%] h-1.5 w-1.5 rounded-full bg-white/40" />
+      <div className="absolute right-[42%] top-[22%] h-1.5 w-1.5 rounded-full bg-white/40" />
+      {/* 불가사리(레퍼런스 느낌) */}
+      <div className="absolute bottom-3 left-4 text-lg opacity-40">⭐</div>
+      {/* 바닥 파도 2겹 */}
+      <svg className="absolute inset-x-0 bottom-0 h-16 w-full" viewBox="0 0 400 60" preserveAspectRatio="none">
+        <path d="M0 26 Q50 6 100 26 T200 26 T300 26 T400 26 V60 H0 Z" fill="#7dd3fc" opacity="0.45" />
+        <path d="M0 38 Q50 18 100 38 T200 38 T300 38 T400 38 V60 H0 Z" fill="#38bdf8" opacity="0.5" />
+      </svg>
+    </Layer>
+  );
+}
+
+// ── 채집: 언덕 · 잎 · 새싹 · 포자 ──
+function Botanist() {
+  return (
+    <Layer>
+      {/* 잎사귀 */}
+      <svg className="absolute right-4 top-3 h-16 w-16 opacity-50" viewBox="0 0 60 60" fill="none">
+        <path d="M52 8 C22 10 12 30 10 52 C34 50 52 34 52 8 Z" fill="#22c55e" opacity="0.85" />
+        <path d="M46 16 C30 22 20 34 14 48" stroke="#15803d" strokeWidth="2" fill="none" />
+      </svg>
+      <svg className="absolute left-[20%] top-[26%] h-9 w-9 opacity-40" viewBox="0 0 60 60" fill="none">
+        <path d="M8 52 C10 22 30 12 52 10 C50 40 34 50 8 52 Z" fill="#4ade80" />
+      </svg>
+      {/* 새싹 */}
+      <svg className="absolute right-[34%] top-[34%] h-7 w-7 opacity-45" viewBox="0 0 40 40" fill="none">
+        <path d="M20 38 V18" stroke="#15803d" strokeWidth="2.5" strokeLinecap="round" />
+        <path d="M20 22 C10 20 6 12 8 6 C16 6 22 12 20 22 Z" fill="#4ade80" />
+        <path d="M20 26 C30 24 34 16 32 10 C24 10 18 16 20 26 Z" fill="#22c55e" />
+      </svg>
+      {/* 포자 */}
+      <div className="absolute left-[14%] top-[20%] h-1.5 w-1.5 rounded-full bg-lime-300/60" />
+      <div className="absolute right-[24%] top-[16%] h-1 w-1 rounded-full bg-lime-300/50" />
+      {/* 바닥 언덕 */}
+      <svg className="absolute inset-x-0 bottom-0 h-14 w-full" viewBox="0 0 400 50" preserveAspectRatio="none">
+        <path d="M0 30 Q80 12 160 26 T320 24 T400 28 V50 H0 Z" fill="#86efac" opacity="0.5" />
+        <path d="M0 40 Q100 26 200 38 T400 36 V50 H0 Z" fill="#4ade80" opacity="0.5" />
+      </svg>
+    </Layer>
+  );
+}
+
+// ── 채광: 광맥 · 보석 · 곡괭이 ──
+function Gem({ c }: { c: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-full w-full">
+      <path d="M12 2 L20 9 L12 22 L4 9 Z" fill={c} />
+      <path d="M4 9 H20 M12 2 L12 22 M8 9 L12 22 L16 9" stroke="#fff" strokeOpacity="0.35" strokeWidth="1" />
+    </svg>
+  );
+}
+
+function Miner() {
+  return (
+    <Layer>
+      {/* 곡괭이 */}
+      <svg className="absolute right-[22%] top-2 h-16 w-16 opacity-50" viewBox="0 0 60 60" fill="none">
+        <path d="M8 8 C24 10 40 18 52 34" stroke="#cbd5e1" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+        <path d="M10 6 C24 6 40 14 54 30" stroke="#94a3b8" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+        <rect x="26" y="18" width="4.5" height="40" rx="2" transform="rotate(-32 28 38)" fill="#8a5a2e" />
+      </svg>
+      {/* 보석들 */}
+      <div className="absolute left-[18%] top-[30%] h-7 w-7 opacity-70"><Gem c="#f59e0b" /></div>
+      <div className="absolute right-[30%] top-[24%] h-4 w-4 opacity-55"><Gem c="#fbbf24" /></div>
+      <div className="absolute left-[30%] top-[20%] h-3 w-3 opacity-45"><Gem c="#38bdf8" /></div>
+      {/* 반짝임 */}
+      <div className="absolute right-[40%] top-[36%] text-amber-300/60 text-xs">✦</div>
+      {/* 바닥 광맥(들쭉날쭉 바위) */}
+      <svg className="absolute inset-x-0 bottom-0 h-12 w-full" viewBox="0 0 400 40" preserveAspectRatio="none">
+        <path d="M0 40 L0 24 L40 30 L80 16 L130 28 L180 14 L240 26 L300 16 L360 28 L400 20 L400 40 Z" fill="#f59e0b" opacity="0.22" />
+        <path d="M0 40 L0 32 L50 34 L100 26 L160 34 L220 24 L290 34 L360 28 L400 34 L400 40 Z" fill="#0f1218" opacity="0.5" />
+      </svg>
+    </Layer>
+  );
+}
+
+// ── 요리: 냄비 · 김 · 조리도구 ──
+function Chef() {
+  return (
+    <Layer>
+      {/* 김 */}
+      <svg className="absolute right-[26%] top-[10%] h-14 w-10 opacity-45" viewBox="0 0 40 60" fill="none" stroke="#c2410c" strokeWidth="2.5" strokeLinecap="round">
+        <path d="M12 56 C4 44 20 40 12 28 C6 18 18 14 12 4" />
+        <path d="M28 56 C20 44 36 40 28 28 C22 18 34 14 28 4" opacity="0.7" />
+      </svg>
+      {/* 냄비 */}
+      <svg className="absolute right-4 top-[34%] h-14 w-16 opacity-55" viewBox="0 0 64 48" fill="none">
+        <path d="M6 16 H58 L54 40 C52 44 48 46 44 46 H20 C16 46 12 44 10 40 Z" fill="#9a4a24" />
+        <rect x="2" y="12" width="60" height="6" rx="3" fill="#7c2d12" />
+        <circle cx="4" cy="15" r="4" fill="none" stroke="#7c2d12" strokeWidth="3" />
+        <circle cx="60" cy="15" r="4" fill="none" stroke="#7c2d12" strokeWidth="3" />
+      </svg>
+      {/* 조리도구(주걱) */}
+      <svg className="absolute left-[18%] top-[26%] h-12 w-6 opacity-35" viewBox="0 0 24 60" fill="#a86a4a">
+        <rect x="10" y="18" width="4" height="40" rx="2" />
+        <path d="M12 4 C4 6 4 18 12 20 C20 18 20 6 12 4 Z" />
+      </svg>
+      <div className="absolute left-[14%] top-[20%] text-base opacity-40">🍅</div>
+      {/* 바닥 따뜻한 글로우 */}
+      <div className="absolute inset-x-0 bottom-0 h-16" style={{ background: "linear-gradient(0deg, rgba(251,146,60,0.28), transparent)" }} />
+    </Layer>
+  );
+}
+
+// ── 제작: 모루 · 망치 · 불꽃 ──
+function Smith() {
+  return (
+    <Layer>
+      {/* 망치 */}
+      <svg className="absolute right-[24%] top-[12%] h-14 w-14 opacity-45" viewBox="0 0 60 60" fill="none">
+        <rect x="26" y="20" width="5" height="36" rx="2.5" transform="rotate(28 28 38)" fill="#8a5a2e" />
+        <rect x="18" y="10" width="28" height="12" rx="3" transform="rotate(28 32 16)" fill="#9aa1ad" />
+      </svg>
+      {/* 모루 */}
+      <svg className="absolute right-5 top-[40%] h-12 w-16 opacity-55" viewBox="0 0 64 40" fill="#cbd5e1">
+        <path d="M4 6 H52 L48 14 H30 C34 18 40 20 44 22 L44 26 H14 V22 C22 20 24 16 24 14 H10 Z" />
+        <rect x="20" y="30" width="20" height="8" rx="2" />
+      </svg>
+      {/* 불꽃/불티 */}
+      <div className="absolute left-[22%] top-[30%] h-2 w-2 rounded-full bg-orange-400/70" />
+      <div className="absolute left-[28%] top-[22%] h-1.5 w-1.5 rounded-full bg-amber-300/70" />
+      <div className="absolute left-[18%] top-[36%] h-1 w-1 rounded-full bg-orange-300/60" />
+      {/* 바닥 잉걸불 글로우 */}
+      <div className="absolute inset-x-0 bottom-0 h-16" style={{ background: "linear-gradient(0deg, rgba(249,115,22,0.3), transparent)" }} />
+    </Layer>
+  );
+}
+
+// ── 연금술: 플라스크 · 기포 · 별 ──
+function Alchemist() {
+  return (
+    <Layer>
+      {/* 플라스크 */}
+      <svg className="absolute right-[20%] top-[14%] h-20 w-16 opacity-65" viewBox="0 0 64 80" fill="none">
+        <path d="M26 10 H38 V34 L52 64 C55 71 50 76 43 76 H21 C14 76 9 71 12 64 L26 34 Z" fill="rgba(94,234,212,0.28)" stroke="#5eead4" strokeWidth="2" />
+        <path d="M18 52 H46 L52 64 C55 71 50 76 43 76 H21 C14 76 9 71 12 64 Z" fill="rgba(168,85,247,0.4)" />
+        <rect x="24" y="6" width="16" height="5" rx="2.5" fill="#c084fc" />
+        <circle cx="28" cy="60" r="2.5" fill="#e9d5ff" opacity="0.8" />
+        <circle cx="38" cy="66" r="2" fill="#e9d5ff" opacity="0.7" />
+      </svg>
+      {/* 상승 기포 */}
+      <div className="absolute right-[16%] top-[10%] h-2 w-2 rounded-full bg-teal-200/70" />
+      <div className="absolute right-[22%] top-[4%] h-1.5 w-1.5 rounded-full bg-fuchsia-200/60" />
+      {/* 별/반짝임 */}
+      <div className="absolute left-[18%] top-[26%] text-fuchsia-200/70">✦</div>
+      <div className="absolute left-[26%] top-[38%] text-teal-200/60 text-xs">✦</div>
+      <div className="absolute right-[38%] top-[34%] text-violet-200/50 text-[10px]">✦</div>
+      {/* 바닥 신비 글로우 */}
+      <div className="absolute inset-x-0 bottom-0 h-16" style={{ background: "linear-gradient(0deg, rgba(168,85,247,0.24), transparent)" }} />
+    </Layer>
+  );
+}
+
+// ── 훈장(동/은/금): 월계관 · 리본 · 광채 ──
+function Crest({ tone }: { tone: string }) {
+  return (
+    <Layer>
+      {/* 등급 배지 뒤 광채 */}
+      <div
+        className="absolute right-[4%] top-[2%] h-28 w-28 rounded-full opacity-40 blur-xl"
+        style={{ background: `radial-gradient(circle, ${tone}, transparent 70%)` }}
+      />
+      {/* 월계관 */}
+      <svg className="absolute right-2 top-1 h-24 w-24 opacity-40" viewBox="0 0 100 100" fill="none" stroke={tone} strokeWidth="2.5" strokeLinecap="round">
+        <path d="M50 88 C28 84 16 66 16 44 C16 30 22 18 30 12" />
+        <path d="M50 88 C72 84 84 66 84 44 C84 30 78 18 70 12" />
+        {[24, 36, 48, 60].map((y, i) => (
+          <g key={i}>
+            <path d={`M${18 + i * 2} ${y} q-9 -5 -13 -13`} />
+            <path d={`M${82 - i * 2} ${y} q9 -5 13 -13`} />
+          </g>
+        ))}
+      </svg>
+      {/* 리본 */}
+      <svg className="absolute bottom-2 left-4 h-12 w-12 opacity-35" viewBox="0 0 48 48" fill={tone}>
+        <path d="M14 4 L24 22 L34 4 L30 4 L24 14 L18 4 Z" />
+        <path d="M24 18 L12 44 L20 40 L24 46 L28 40 L36 44 Z" opacity="0.8" />
+      </svg>
+    </Layer>
+  );
+}
+
+// ── 전설의 모험가(S): 왕관 · 날개 · 화염 · 광선 (붉은색) ──
+function Legend() {
+  return (
+    <Layer>
+      {/* 등급 배지 뒤 광선 */}
+      <div
+        className="absolute right-[3%] top-[1%] h-32 w-32 rounded-full opacity-45 blur-xl"
+        style={{ background: "radial-gradient(circle, rgba(244,63,94,0.6), transparent 70%)" }}
+      />
+      {/* 날개 + 왕관 크레스트 */}
+      <svg className="absolute right-1 top-1 h-24 w-32 opacity-55" viewBox="0 0 128 96" fill="none">
+        {/* 날개 */}
+        <g fill="#fca5a5" opacity="0.7">
+          <path d="M64 40 C46 30 28 30 12 40 C30 40 40 46 50 56 C40 52 30 52 22 56 C36 58 46 62 56 70 Z" />
+          <path d="M64 40 C82 30 100 30 116 40 C98 40 88 46 78 56 C88 52 98 52 106 56 C92 58 82 62 72 70 Z" />
+        </g>
+        {/* 왕관 */}
+        <path d="M50 34 L54 18 L62 28 L64 12 L66 28 L74 18 L78 34 Z" fill="#fbbf24" stroke="#f59e0b" strokeWidth="1.5" />
+        <circle cx="64" cy="12" r="2.5" fill="#fecaca" />
+      </svg>
+      {/* 화염 */}
+      <svg className="absolute left-[16%] top-[30%] h-12 w-8 opacity-45" viewBox="0 0 40 60" fill="none">
+        <path d="M20 58 C6 50 8 34 18 24 C16 34 24 34 24 26 C34 34 36 48 24 56 C28 50 24 44 20 44 C18 48 22 52 20 58 Z" fill="#f43f5e" />
+        <path d="M20 56 C12 50 14 40 20 34 C20 42 26 42 24 36 C30 42 30 50 20 56 Z" fill="#fbbf24" opacity="0.85" />
+      </svg>
+      {/* 반짝임 */}
+      <div className="absolute left-[24%] top-[22%] text-rose-200/70">✦</div>
+      <div className="absolute right-[42%] top-[40%] text-amber-200/60 text-xs">✦</div>
+      {/* 바닥 붉은 광채 */}
+      <div className="absolute inset-x-0 bottom-0 h-16" style={{ background: "linear-gradient(0deg, rgba(244,63,94,0.24), transparent)" }} />
+    </Layer>
+  );
+}
+
+export default function CardScene({ scene, tone }: { scene?: SceneKey | null; tone?: string }) {
+  switch (scene) {
+    case "angler":
+      return <Angler />;
+    case "botanist":
+      return <Botanist />;
+    case "miner":
+      return <Miner />;
+    case "chef":
+      return <Chef />;
+    case "smith":
+      return <Smith />;
+    case "alchemist":
+      return <Alchemist />;
+    case "crest":
+      return <Crest tone={tone ?? "#e2a86e"} />;
+    case "legend":
+      return <Legend />;
+    default:
+      return null;
+  }
+}

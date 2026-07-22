@@ -7,6 +7,7 @@ import {
   type ProfileCardStyle,
 } from "@/lib/profileCard";
 import ProfileContent, { type ContentStyle } from "./ProfileContent";
+import CardScene, { type SceneKey } from "./CardScene";
 import type { ResolvedWidget } from "@/lib/profileWidgets";
 import type { ProfileIdentity } from "@/lib/profileValues";
 
@@ -22,8 +23,9 @@ interface SkinConfig {
   barTrack: string;
   brand: string;
   serif?: boolean;
-  decoration?: "holo" | "cyber" | "parchment" | "sakura" | "midnight" | "cbt" | "sovereign" | null;
-  motif?: string; // 배경 워터마크 이모지 (생활스킬·훈장 테마)
+  decoration?: "holo" | "cyber" | "parchment" | "sakura" | "midnight" | "cbt" | null;
+  scene?: SceneKey; // 테마 일러스트(인라인 SVG) — components/CardScene.tsx
+  sceneTone?: string; // crest 훈장 색조
   glowStyle?: CSSProperties; // 아바타 링 등 강조 링 색
 }
 
@@ -416,7 +418,8 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(217,160,106,0.16)",
         brand: "#a37c58",
-        motif: "🥉",
+        scene: "crest",
+        sceneTone: "#e2a86e",
         glowStyle: { boxShadow: "0 0 0 3px rgba(217,160,106,0.3)" },
       };
 
@@ -445,7 +448,8 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(203,213,225,0.16)",
         brand: "#9aa4b4",
-        motif: "🥈",
+        scene: "crest",
+        sceneTone: "#dbe3ee",
         glowStyle: { boxShadow: "0 0 0 3px rgba(203,213,225,0.35)" },
       };
 
@@ -474,37 +478,39 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(240,201,110,0.16)",
         brand: "#b8a066",
-        motif: "🥇",
+        scene: "crest",
+        sceneTone: "#f0c96e",
         glowStyle: { boxShadow: "0 0 0 3px rgba(240,201,110,0.34)" },
       };
 
     case "sovereign":
+      // 전설의 모험가 (S) — 붉은 크림슨 + 골드 프레스티지
       return {
         rootStyle: {
           background:
-            "radial-gradient(120% 120% at 0% 0%, rgba(167,139,250,0.32), transparent 55%), radial-gradient(120% 120% at 100% 100%, rgba(103,232,249,0.26), transparent 55%), linear-gradient(150deg, #1a1730, #0c0a1a)",
-          border: "1px solid rgba(199,210,254,0.28)",
-          boxShadow: "0 28px 70px -24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
+            "radial-gradient(130% 120% at 100% -10%, rgba(244,63,94,0.4), transparent 55%), radial-gradient(120% 120% at 0% 100%, rgba(120,20,40,0.5), transparent 55%), linear-gradient(150deg, #2a0f18, #14060b 72%)",
+          border: "1px solid rgba(251,113,133,0.35)",
+          boxShadow: "0 28px 70px -24px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.06)",
         },
-        ink: "#f6f4ff",
-        sub: "#b8b2d8",
-        accent: "#c9b8ff",
-        panelStyle: { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(199,210,254,0.16)" },
+        ink: "#fdeef0",
+        sub: "#d69aa6",
+        accent: "#fb7185",
+        panelStyle: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(251,113,133,0.18)" },
         chipStyle: {
-          background: "rgba(199,210,254,0.12)",
-          color: "#e2ddf8",
-          border: "1px solid rgba(199,210,254,0.2)",
+          background: "rgba(251,113,133,0.12)",
+          color: "#f6c9d1",
+          border: "1px solid rgba(251,113,133,0.24)",
         },
-        dividerColor: "rgba(199,210,254,0.22)",
+        dividerColor: "rgba(251,113,133,0.24)",
         rankStyle: {
-          background: "linear-gradient(135deg, #f472b6, #a78bfa 55%, #67e8f9)",
-          color: "#fff",
-          boxShadow: "0 6px 22px -6px rgba(167,139,250,0.6)",
+          background: "linear-gradient(135deg, #f43f5e, #b91c3c 60%, #7f1d1d)",
+          color: "#ffe9ec",
+          boxShadow: "0 6px 22px -6px rgba(244,63,94,0.65)",
         },
-        barTrack: "rgba(199,210,254,0.16)",
-        brand: "#8a80b8",
-        decoration: "sovereign",
-        glowStyle: { boxShadow: "0 0 0 3px rgba(199,210,254,0.32)" },
+        barTrack: "rgba(251,113,133,0.16)",
+        brand: "#b3717e",
+        scene: "legend",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(251,113,133,0.34)" },
       };
 
     case "angler":
@@ -532,7 +538,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(12,74,110,0.14)",
         brand: "#5a8aa8",
-        motif: "🐟",
+        scene: "angler",
         glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.75)" },
       };
 
@@ -561,7 +567,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(20,83,45,0.14)",
         brand: "#6a9a76",
-        motif: "🌿",
+        scene: "botanist",
         glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.8)" },
       };
 
@@ -590,7 +596,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(245,158,11,0.14)",
         brand: "#8892a0",
-        motif: "💎",
+        scene: "miner",
         glowStyle: { boxShadow: "0 0 0 3px rgba(245,158,11,0.28)" },
       };
 
@@ -619,7 +625,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(124,45,18,0.14)",
         brand: "#a8785a",
-        motif: "🍳",
+        scene: "chef",
         glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.78)" },
       };
 
@@ -648,7 +654,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(249,115,22,0.14)",
         brand: "#8a909c",
-        motif: "⚒️",
+        scene: "smith",
         glowStyle: { boxShadow: "0 0 0 3px rgba(249,115,22,0.26)" },
       };
 
@@ -677,7 +683,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         },
         barTrack: "rgba(192,132,252,0.16)",
         brand: "#8a80b0",
-        motif: "⚗️",
+        scene: "alchemist",
         glowStyle: { boxShadow: "0 0 0 3px rgba(192,132,252,0.3)" },
       };
 
@@ -804,24 +810,8 @@ export default function ProfileCard({
       {s.decoration === "cbt" && (
         <div className="pointer-events-none absolute inset-0 -z-10 card-sheen-sweep opacity-30 mix-blend-overlay" />
       )}
-      {s.decoration === "sovereign" && (
-        <>
-          <div className="pointer-events-none absolute inset-0 -z-10 card-sheen-sweep opacity-25 mix-blend-overlay" />
-          <div className="pointer-events-none absolute inset-0 -z-10 select-none text-[10px] opacity-70">
-            <span className="absolute left-[14%] top-[18%] text-white/60">✦</span>
-            <span className="absolute right-[16%] top-[30%] text-[8px] text-white/45">✦</span>
-            <span className="absolute right-[30%] bottom-[26%] text-white/50">✦</span>
-          </div>
-        </>
-      )}
-      {s.motif && (
-        <div className="pointer-events-none absolute inset-0 -z-10 select-none opacity-[0.12]">
-          <span className="absolute left-[7%] top-[14%] text-5xl">{s.motif}</span>
-          <span className="absolute right-[9%] top-[40%] text-2xl">{s.motif}</span>
-          <span className="absolute left-[26%] bottom-[10%] text-xl">{s.motif}</span>
-          <span className="absolute right-[24%] bottom-[28%] text-3xl">{s.motif}</span>
-        </div>
-      )}
+      {/* 테마 일러스트(생활스킬·훈장·전설) */}
+      <CardScene scene={s.scene} tone={s.sceneTone} />
 
       {/* ── 헤더: 아바타 · 정체성 · 등급 ── */}
       <div className="flex items-start gap-4">
