@@ -11,6 +11,13 @@ import CardScene, { type SceneKey } from "./CardScene";
 import type { ResolvedWidget } from "@/lib/profileWidgets";
 import type { ProfileIdentity } from "@/lib/profileValues";
 
+type CardAchievementBadge = {
+  id?: string;
+  name: string;
+  badge: string | null;
+  rewardTitle: string | null;
+};
+
 interface SkinConfig {
   rootStyle: CSSProperties;
   ink: string;
@@ -748,17 +755,26 @@ export default function ProfileCard({
   identity,
   widgets,
   style,
+  featuredAchievements,
   className = "",
 }: {
   identity: ProfileIdentity;
   widgets: ResolvedWidget[];
   style?: ProfileCardStyle | string | null;
+  featuredAchievements?: CardAchievementBadge[];
   className?: string;
 }) {
   const skinKey = normalizeCardStyle(style ?? DEFAULT_CARD_STYLE);
   const s = buildSkin(skinKey, identity.accent);
   const nameFont = s.serif ? { fontFamily: SERIF } : undefined;
   const rankPct = Math.max(0, Math.min(100, Math.round(identity.rankPct ?? 0)));
+  const achievements =
+    featuredAchievements && featuredAchievements.length > 0
+      ? featuredAchievements
+      : identity.title || identity.badge
+        ? [{ name: identity.title ?? "대표 업적", rewardTitle: identity.title, badge: identity.badge }]
+        : [];
+  const [mainAchievement, ...subAchievements] = achievements;
 
   const contentStyle: ContentStyle = {
     ink: s.ink,
@@ -861,12 +877,26 @@ export default function ProfileCard({
             )}
           </div>
 
-          {(identity.title || identity.badge) && (
-            <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1" style={s.chipStyle}>
-              {identity.badge && <span className="text-xs leading-none">{identity.badge}</span>}
-              {identity.title && (
-                <span className="truncate text-[11px] font-bold leading-none">{identity.title}</span>
-              )}
+          {mainAchievement && (
+            <div className="mt-2 flex max-w-full flex-wrap items-center gap-1.5">
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1" style={s.chipStyle}>
+                {mainAchievement.badge && <span className="text-xs leading-none">{mainAchievement.badge}</span>}
+                <span className="truncate text-[11px] font-bold leading-none">
+                  {mainAchievement.rewardTitle ?? mainAchievement.name}
+                </span>
+              </span>
+              {subAchievements.map((achievement, index) => (
+                <span
+                  key={achievement.id ?? `${achievement.name}-${index}`}
+                  className="inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1 opacity-85"
+                  style={s.chipStyle}
+                >
+                  {achievement.badge && <span className="text-xs leading-none">{achievement.badge}</span>}
+                  <span className="truncate text-[11px] font-bold leading-none">
+                    {achievement.rewardTitle ?? achievement.name}
+                  </span>
+                </span>
+              ))}
             </div>
           )}
         </div>

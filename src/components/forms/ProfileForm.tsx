@@ -188,7 +188,12 @@ export default function ProfileForm({
           </span>
         </div>
         {main === "card" ? (
-          <ProfileCard identity={identity} widgets={resolved} style={previewStyle} />
+          <ProfileCard
+            identity={identity}
+            widgets={resolved}
+            style={previewStyle}
+            featuredAchievements={selectedAchievements}
+          />
         ) : (
           <ProfileHero
             nickname={identity.nickname}

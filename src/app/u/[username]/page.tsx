@@ -431,7 +431,12 @@ export default async function CharacterPage({
       {mainForm === "card" ? (
         <div className="space-y-2">
           {editLink && <div className="flex justify-end">{editLink}</div>}
-          <ProfileCard identity={headerIdentity} widgets={headerWidgets} style={profile.profileCardStyle} />
+          <ProfileCard
+            identity={headerIdentity}
+            widgets={headerWidgets}
+            style={profile.profileCardStyle}
+            featuredAchievements={featuredAchievements}
+          />
         </div>
       ) : (
         <ProfileHero
