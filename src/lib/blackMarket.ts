@@ -163,6 +163,22 @@ export const BLACK_MARKET_MATERIALS = [
   { itemName: "용린 조각", value: 600 },
 ] as const;
 
+const BLACK_MARKET_QUEST_QTY_1 = new Set([
+  "마족의 핵",
+  "거인의 골편",
+  "용린 조각",
+  "크라켄의 빨판",
+]);
+
+const BLACK_MARKET_QUEST_QTY_2 = new Set([
+  "소원이 깃든 동전",
+  "요마의 뿔",
+  "풍화를 거부한 석상 조각",
+  "정령의 눈물",
+  "물에 잠긴 기도서",
+  "살아있는 어둠의 조각",
+]);
+
 const EMPTY_QUEST_STATE: BlackMarketQuestState = {
   day: "",
   offer: null,
@@ -182,10 +198,10 @@ function uniqueByName<T extends { itemName: string }>(items: T[]): T[] {
   });
 }
 
-export function blackMarketQuestQty(value: number): number {
-  if (value >= 150) return 1;
-  if (value >= 75) return 2;
-  if (value >= 40) return 3;
+export function blackMarketQuestQty(itemName: string): number {
+  const name = itemName.trim();
+  if (BLACK_MARKET_QUEST_QTY_1.has(name)) return 1;
+  if (BLACK_MARKET_QUEST_QTY_2.has(name)) return 2;
   return 4;
 }
 
@@ -195,7 +211,7 @@ export function generateBlackMarketQuest(day = kstDayKey(new Date())): BlackMark
     id: `${day}-${material.itemName}`,
     itemName: material.itemName,
     value: material.value,
-    qty: blackMarketQuestQty(material.value),
+    qty: blackMarketQuestQty(material.itemName),
     rewardCoins: BLACK_MARKET_QUEST_REWARD,
   };
 }
