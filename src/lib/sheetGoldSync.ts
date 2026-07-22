@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { MASTER_SHEET_ID } from "@/lib/charsheet";
 import { syncSheetGold } from "@/lib/googleSheets";
 
 const GOLD_SYNC_KIND = "gold";
@@ -8,6 +9,15 @@ const GOLD_SYNC_DELAY_MS = 10_000;
 const GOLD_SYNC_LIMIT = 20;
 
 const localTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function isNpcInventorySource(value: string | null): boolean {
+  try {
+    const parsed = value ? (JSON.parse(value) as { sourceSheetId?: string }) : null;
+    return !!parsed?.sourceSheetId && parsed.sourceSheetId !== MASTER_SHEET_ID;
+  } catch {
+    return false;
+  }
+}
 
 function backoffMs(attempts: number): number {
   return Math.min(5 * 60_000, 30_000 * 2 ** Math.max(0, attempts - 1));
@@ -81,10 +91,10 @@ export async function processDueSheetGoldSyncs(
 
       const sheet = await prisma.characterSheet.findUnique({
         where: { userId: job.userId },
-        select: { sheetTab: true, curGold: true },
+        select: { sheetTab: true, curGold: true, invJson: true },
       });
 
-      if (!sheet?.sheetTab || sheet.curGold == null) {
+      if (!sheet?.sheetTab || sheet.curGold == null || isNpcInventorySource(sheet.invJson)) {
         await prisma.sheetSyncJob.delete({ where: { id: job.id } });
         skipped += 1;
         continue;

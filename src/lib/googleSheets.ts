@@ -1,7 +1,7 @@
 import "server-only";
 
 import { SignJWT, importPKCS8 } from "jose";
-import { MASTER_SHEET_ID } from "./charsheet";
+import { CHARACTER_SHEET_IDS, MASTER_SHEET_ID } from "./charsheet";
 
 type ServiceAccount = {
   client_email: string;
@@ -20,6 +20,7 @@ export type SheetInventoryItem = {
 };
 
 export type SheetInventory = {
+  sourceSheetId?: string;
   gold: string | null;
   curWeight: number | null;
   maxWeight: number | null;
@@ -88,10 +89,14 @@ function quoteSheet(tab: string): string {
 }
 
 async function getValues(range: string): Promise<string[][] | null> {
+  return getValuesFromSheet(MASTER_SHEET_ID, range);
+}
+
+async function getValuesFromSheet(sheetId: string, range: string): Promise<string[][] | null> {
   const token = await accessToken();
   if (!token) return null;
 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_SHEET_ID}/values/${encodeURIComponent(
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
     range,
   )}`;
   const res = await fetch(url, {
@@ -194,27 +199,40 @@ function parseItemBlock(row: string[], offset: number): SheetInventoryItem | nul
   };
 }
 
+function parseSheetInventoryValues(values: string[][], sourceSheetId: string): SheetInventory {
+  const top = values[0] ?? [];
+  const gold = top.find((v) => /G/i.test(String(v ?? "")))?.trim() ?? null;
+  const { curWeight, maxWeight } = parseInventoryWeight(top);
+  const items: SheetInventoryItem[] = [];
+
+  for (let i = 0; i < values.length; i++) {
+    const row = values[i];
+    const left = i >= 2 ? parseItemBlock(row, 0) : null;
+    const right = i >= 1 ? parseItemBlock(row, 6) : null;
+    if (left) items.push(left);
+    if (right) items.push(right);
+  }
+
+  return {
+    sourceSheetId,
+    gold,
+    curWeight: inventoryWeightTotal(items) ?? curWeight,
+    maxWeight,
+    items,
+  };
+}
+
 export async function readSheetInventory(tab: string | null): Promise<SheetInventory | null> {
   if (!tab) return null;
 
   try {
-    const values = await getValues(`${quoteSheet(tab)}!Z31:AK58`);
-    if (!values) return null;
-
-    const top = values[0] ?? [];
-    const gold = top.find((v) => /G/i.test(String(v ?? "")))?.trim() ?? null;
-    const { curWeight, maxWeight } = parseInventoryWeight(top);
-    const items: SheetInventoryItem[] = [];
-
-    for (let i = 0; i < values.length; i++) {
-      const row = values[i];
-      const left = i >= 2 ? parseItemBlock(row, 0) : null;
-      const right = i >= 1 ? parseItemBlock(row, 6) : null;
-      if (left) items.push(left);
-      if (right) items.push(right);
+    const range = `${quoteSheet(tab)}!Z31:AK58`;
+    for (const sheetId of CHARACTER_SHEET_IDS) {
+      const values = await getValuesFromSheet(sheetId, range);
+      if (!values) continue;
+      return parseSheetInventoryValues(values, sheetId);
     }
-
-    return { gold, curWeight: inventoryWeightTotal(items) ?? curWeight, maxWeight, items };
+    return null;
   } catch (error) {
     console.warn("Failed to read sheet inventory", error);
     return null;
@@ -393,7 +411,12 @@ export async function appendSheetItem(
 export async function readSheetClasses(tab: string | null): Promise<string[]> {
   if (!tab) return [];
   try {
-    const v = await getValues(`${quoteSheet(tab)}!B36:I36`);
+    let v: string[][] | null = null;
+    const range = `${quoteSheet(tab)}!B36:I36`;
+    for (const sheetId of CHARACTER_SHEET_IDS) {
+      v = await getValuesFromSheet(sheetId, range);
+      if (v) break;
+    }
     if (!v) return [];
     const row = v[0] ?? [];
     const main = cell(row, 0); // B36

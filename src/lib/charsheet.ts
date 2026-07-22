@@ -1,7 +1,11 @@
 export const MASTER_SHEET_ID =
   process.env.MASTER_SHEET_ID || "1fHofIK9o4eeA2HZ_OQP4h4rOt87dzZ7jDCibmrBROug";
+export const NPC_SHEET_ID =
+  process.env.NPC_SHEET_ID || "1JmeqtVXbQr3A4z0VwLUDKFU5bjJ8tsQCfhZQ-fn_Dys";
 
 export const MASTER_SHEET_URL = `https://docs.google.com/spreadsheets/d/${MASTER_SHEET_ID}/edit`;
+export const NPC_SHEET_URL = `https://docs.google.com/spreadsheets/d/${NPC_SHEET_ID}/edit`;
+export const CHARACTER_SHEET_IDS = Array.from(new Set([MASTER_SHEET_ID, NPC_SHEET_ID].filter(Boolean)));
 
 export type StatEntry = { key: string; label: string; value: number | null; mod: number | null };
 
@@ -15,6 +19,7 @@ type SheetsValuesResponse = {
 };
 
 export type ParsedSheet = {
+  sourceSheetId: string;
   charName: string | null;
   charClass: string | null;
   race: string | null;
@@ -138,13 +143,13 @@ async function accessToken(): Promise<string | null> {
   return tokenCache.token;
 }
 
-async function fetchSheetByApi(tabName: string): Promise<string[][] | null> {
+async function fetchSheetByApi(sheetId: string, tabName: string): Promise<string[][] | null> {
   const token = await accessToken();
   if (!token) return null;
 
   // 스킬란(B65:D104, B144:D181)까지 포함해야 하므로 181행까지 읽는다
   const range = `${quoteSheet(tabName)}!A1:AK181`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_SHEET_ID}/values/${encodeURIComponent(
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(
     range,
   )}`;
   const res = await fetch(url, {
@@ -243,7 +248,7 @@ function parseSheetSkills(g: string[][]): SheetSkill[] {
   return skills;
 }
 
-export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
+export function parseSheetGrid(g: string[][], tabName: string, sourceSheetId = MASTER_SHEET_ID): ParsedSheet {
   const base = find(g, "【능력 기본치】");
   const stats: StatEntry[] = [];
 
@@ -269,6 +274,7 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
   const adventurerRank =
     fameValues.map(parseRank).find((value) => value != null) ?? rankFromFame(fame);
   return {
+    sourceSheetId,
     charName: tabName,
     charClass: below(g, "메인 클래스", 1, 0),
     race: below(g, "종족", 1, 0),
@@ -288,8 +294,44 @@ export function parseSheetGrid(g: string[][], tabName: string): ParsedSheet {
   };
 }
 
+function isCharacterSheetGrid(g: string[][]): boolean {
+  return !!find(g, "HP");
+}
+
+async function fetchSheetByCsv(sheetId: string, tabName: string): Promise<string[][] | null> {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
+    tabName,
+  )}`;
+  const res = await fetch(url, { redirect: "follow", cache: "no-store" });
+  if (!res.ok) return null;
+
+  const text = await res.text();
+  if (/google\.visualization\.Query|"status":"error"/.test(text)) return null;
+  if (/^\s*<(!doctype|html)/i.test(text)) return null;
+  return parseCsv(text);
+}
+
+async function fetchParsedSheetFromSheetId(
+  sheetId: string,
+  tabName: string,
+): Promise<ParsedSheet | null> {
+  const apiGrid = await fetchSheetByApi(sheetId, tabName);
+  if (apiGrid && isCharacterSheetGrid(apiGrid)) return parseSheetGrid(apiGrid, tabName, sheetId);
+
+  const csvGrid = await fetchSheetByCsv(sheetId, tabName);
+  if (csvGrid && isCharacterSheetGrid(csvGrid)) return parseSheetGrid(csvGrid, tabName, sheetId);
+
+  return null;
+}
+
 export async function fetchSheetByTab(tabName: string): Promise<ParsedSheet> {
-  const apiGrid = await fetchSheetByApi(tabName.trim());
+  const tab = tabName.trim();
+  for (const sheetId of CHARACTER_SHEET_IDS) {
+    const parsed = await fetchParsedSheetFromSheetId(sheetId, tab);
+    if (parsed) return parsed;
+  }
+
+  const apiGrid = await fetchSheetByApi(MASTER_SHEET_ID, tabName.trim());
   if (apiGrid && (find(apiGrid, "【능력 기본치】") || find(apiGrid, "HP"))) {
     return parseSheetGrid(apiGrid, tabName.trim());
   }

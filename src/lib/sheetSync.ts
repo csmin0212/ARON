@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { MASTER_SHEET_ID } from "@/lib/charsheet";
 import { pushInventoryToSheet, syncSheetGold, type SheetInventory } from "@/lib/googleSheets";
 
 function parseInv(value: string | null): SheetInventory {
@@ -29,6 +30,9 @@ export async function pushInventoryForUser(
   }
 
   const inv = parseInv(sheet.invJson);
+  if (inv.sourceSheetId && inv.sourceSheetId !== MASTER_SHEET_ID) {
+    return { ok: true, skipped: true };
+  }
   if (sheet.curGold != null) inv.gold = `${sheet.curGold}G`;
 
   const [inventoryOk, goldOk] = await Promise.all([

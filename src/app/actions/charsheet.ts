@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
+import { MASTER_SHEET_ID, fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   pushInventoryToSheet,
@@ -126,7 +126,14 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     return { error: e instanceof Error ? e.message : "시트를 불러오지 못했어요." };
   }
 
-  const inventory = await readSheetInventory(tab);
+  const sheetInventory = await readSheetInventory(tab);
+  const inventory = sheetInventory ?? {
+    sourceSheetId: parsed.sourceSheetId,
+    gold: null,
+    curWeight: null,
+    maxWeight: null,
+    items: [],
+  };
   const catalogFilled = inventory ? await fillItemCatalogDetails(inventory) : false;
   const data = {
     sheetTab: tab,
@@ -154,9 +161,11 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     create: { userId: user.id, ...data },
     update: data,
   });
-  if (inventory) await syncDbInventoryFromSheet(user.id, inventory);
+  if (sheetInventory) await syncDbInventoryFromSheet(user.id, sheetInventory);
   // 새로 채운 효과를 시트 효과·해설 칸에도 반영 (보강된 게 있을 때만)
-  if (inventory && catalogFilled) await pushInventoryToSheet(tab, inventory);
+  if (inventory && inventory.sourceSheetId === MASTER_SHEET_ID && catalogFilled) {
+    await pushInventoryToSheet(tab, inventory);
+  }
 
   revalidatePath("/profile");
   revalidatePath("/world");
@@ -185,7 +194,9 @@ export async function syncSheetInventory(): Promise<void> {
     },
   });
   await syncDbInventoryFromSheet(user.id, inventory);
-  if (catalogFilled) await pushInventoryToSheet(sheet.sheetTab, inventory);
+  if (inventory.sourceSheetId === MASTER_SHEET_ID && catalogFilled) {
+    await pushInventoryToSheet(sheet.sheetTab, inventory);
+  }
 
   revalidatePath("/profile");
   revalidatePath("/world");
