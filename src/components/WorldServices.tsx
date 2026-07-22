@@ -60,6 +60,7 @@ import type { SheetInventoryItem } from "@/lib/googleSheets";
 type Props = {
   canForge: boolean;
   canGuild: boolean;
+  canGuildBackyard: boolean;
   canMarket: boolean;
   canStorage: boolean;
   canInn: boolean;
@@ -3229,6 +3230,7 @@ function InnRest({ inn, onClose }: { inn: InnView; onClose: () => void }) {
 export default function WorldServices({
   canForge,
   canGuild,
+  canGuildBackyard,
   canMarket,
   canStorage,
   canInn,
@@ -3320,7 +3322,7 @@ export default function WorldServices({
     return () => clearInterval(timer);
   }, [alchemy.brewing]);
 
-  if (!canForge && !canGuild && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !weeklyIncome) return null;
+  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -3481,7 +3483,7 @@ export default function WorldServices({
               </span>
             </button>
           )}
-          {canGuild && (
+          {canGuildBackyard && (
             <button
               type="button"
               onClick={() => setTrainingOpen(true)}
@@ -3630,7 +3632,7 @@ export default function WorldServices({
 
       {questOpen && <QuestBoard guild={guild} onClose={() => setQuestOpen(false)} />}
 
-      {trainingOpen && (
+      {trainingOpen && canGuildBackyard && (
         <TrainingYard
           training={guild.training}
           ap={craftAp}

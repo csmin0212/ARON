@@ -77,7 +77,18 @@ function crossedSpMilestone(prevCount: number, nextCount: number): number | null
   return null;
 }
 
-// 현재 위치가 길드(뒷마당)를 이용할 수 있는 곳인지
+const GUILD_BACKYARD_KEYWORDS = [
+  "길드 뒷마당",
+  "길드뒷마당",
+  "guild backyard",
+  "guild_backyard",
+  "guildbackyard",
+  "training yard",
+  "training_yard",
+  "trainingyard",
+];
+
+// 현재 위치가 길드 뒷마당 단련을 이용할 수 있는 곳인지
 async function canUseGuildYard(locationId: string | null): Promise<boolean> {
   if (!locationId) return false;
   const [location, actions] = await Promise.all([
@@ -87,7 +98,7 @@ async function canUseGuildYard(locationId: string | null): Promise<boolean> {
   const source = [location?.id ?? "", location?.name ?? "", ...actions.flatMap((a) => [a.kind, a.label ?? ""])]
     .join(" ")
     .toLowerCase();
-  return ["길드", "guild"].some((keyword) => source.includes(keyword.toLowerCase()));
+  return GUILD_BACKYARD_KEYWORDS.some((keyword) => source.includes(keyword.toLowerCase()));
 }
 
 // 단련 1회. 피로도 5 소모.

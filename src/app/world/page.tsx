@@ -226,6 +226,17 @@ function hasServiceKeyword(
   return keywords.some((keyword) => source.includes(keyword.toLowerCase()));
 }
 
+const GUILD_BACKYARD_KEYWORDS = [
+  "길드 뒷마당",
+  "길드뒷마당",
+  "guild backyard",
+  "guild_backyard",
+  "guildbackyard",
+  "training yard",
+  "training_yard",
+  "trainingyard",
+];
+
 export default async function WorldPage() {
   const user = await getCurrentUser();
   const isGm = isGmUsername(user?.username);
@@ -526,6 +537,7 @@ export default async function WorldPage() {
     };
   });
   const canGuild = hasServiceKeyword(here, locActions, ["길드", "guild"]);
+  const canGuildBackyard = hasServiceKeyword(here, locActions, GUILD_BACKYARD_KEYWORDS);
   // 길드 일일 의뢰 — lazy 리셋(자정/주간) + 보유 수량·스킬북 교환 목록 조립.
   // 창고(storageBox) 재고도 납품 가능하므로 보유 수량에 합산한다.
   const { state: gq } = await loadGuildQuestState(user.id, sheet);
@@ -1453,6 +1465,7 @@ export default async function WorldPage() {
           <WorldServices
             canForge={canForge}
             canGuild={canGuild}
+            canGuildBackyard={canGuildBackyard}
             canMarket={canMarket}
             canStorage={canStorage}
             canInn={canInn}
