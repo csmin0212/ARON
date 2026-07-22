@@ -15,7 +15,8 @@ import {
   profileVisibilityFromForm,
   uniqueFeaturedAchievementIds,
 } from "@/lib/profile";
-import { normalizeCardStyle, ownsSkin, parseOwnedSkins } from "@/lib/profileCard";
+import { normalizeCardStyle, ownsSkin } from "@/lib/profileCard";
+import { ownedSkinsForSheet } from "@/lib/cardSkinUnlock";
 import { sanitizeWidgets } from "@/lib/profileWidgets";
 
 export type FormState = { error?: string } | undefined;
@@ -120,9 +121,13 @@ export async function updateProfile(_prev: FormState, formData: FormData): Promi
   const visibility = profileVisibilityFromForm(formData);
 
   const profileMain = String(formData.get("profileMain") ?? "hero") === "card" ? "card" : "hero";
-  // 소유하지 않은 스킨을 저장하려 하면 기본으로 되돌림
+  // 소유(구매·보상·조건해금)하지 않은 스킨을 저장하려 하면 기본으로 되돌림
   const requestedCardStyle = normalizeCardStyle(String(formData.get("profileCardStyle") ?? ""));
-  const ownedSkins = parseOwnedSkins(user.ownedCardSkinsJson);
+  const cardSheet = await prisma.characterSheet.findUnique({
+    where: { userId: user.id },
+    select: { adventurerRank: true, lifeJson: true },
+  });
+  const ownedSkins = ownedSkinsForSheet(user.ownedCardSkinsJson, cardSheet);
   const profileCardStyle = ownsSkin(requestedCardStyle, ownedSkins) ? requestedCardStyle : "basic";
   const profileWidgets = sanitizeWidgets(formData.getAll("widget").map((v) => String(v)));
 

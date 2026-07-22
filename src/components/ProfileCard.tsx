@@ -22,7 +22,8 @@ interface SkinConfig {
   barTrack: string;
   brand: string;
   serif?: boolean;
-  decoration?: "holo" | "cyber" | "parchment" | "sakura" | "midnight" | "cbt" | null;
+  decoration?: "holo" | "cyber" | "parchment" | "sakura" | "midnight" | "cbt" | "sovereign" | null;
+  motif?: string; // 배경 워터마크 이모지 (생활스킬·훈장 테마)
   glowStyle?: CSSProperties; // 아바타 링 등 강조 링 색
 }
 
@@ -390,6 +391,296 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
         glowStyle: { boxShadow: "0 0 0 3px rgba(244,213,138,0.3)" },
       };
 
+    case "bronze":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 85% -10%, rgba(217,160,106,0.35), transparent 55%), linear-gradient(150deg, #5a3a22, #2c1a10)",
+          border: "1px solid rgba(217,160,106,0.3)",
+          boxShadow: "0 24px 60px -24px rgba(0,0,0,0.65)",
+        },
+        ink: "#f4e4d2",
+        sub: "#c9a888",
+        accent: "#e09a5c",
+        panelStyle: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(217,160,106,0.18)" },
+        chipStyle: {
+          background: "rgba(217,160,106,0.12)",
+          color: "#ecceac",
+          border: "1px solid rgba(217,160,106,0.22)",
+        },
+        dividerColor: "rgba(217,160,106,0.24)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #e2a86e, #8a5a2e)",
+          color: "#2e1a0c",
+          boxShadow: "0 6px 18px -6px rgba(217,160,106,0.55)",
+        },
+        barTrack: "rgba(217,160,106,0.16)",
+        brand: "#a37c58",
+        motif: "🥉",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(217,160,106,0.3)" },
+      };
+
+    case "silver":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 85% -10%, rgba(203,213,225,0.42), transparent 55%), linear-gradient(150deg, #3a4150, #21252d)",
+          border: "1px solid rgba(203,213,225,0.3)",
+          boxShadow: "0 24px 60px -24px rgba(0,0,0,0.6)",
+        },
+        ink: "#f4f7fb",
+        sub: "#b3bccb",
+        accent: "#dbe3ee",
+        panelStyle: { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(203,213,225,0.16)" },
+        chipStyle: {
+          background: "rgba(203,213,225,0.12)",
+          color: "#dde4ee",
+          border: "1px solid rgba(203,213,225,0.2)",
+        },
+        dividerColor: "rgba(203,213,225,0.22)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #eef2f8, #94a3b8)",
+          color: "#2a2f38",
+          boxShadow: "0 6px 18px -6px rgba(203,213,225,0.5)",
+        },
+        barTrack: "rgba(203,213,225,0.16)",
+        brand: "#9aa4b4",
+        motif: "🥈",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(203,213,225,0.35)" },
+      };
+
+    case "gold":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 85% -10%, rgba(240,201,110,0.42), transparent 55%), linear-gradient(150deg, #4a3a12, #251c06)",
+          border: "1px solid rgba(240,201,110,0.34)",
+          boxShadow: "0 26px 64px -24px rgba(0,0,0,0.62)",
+        },
+        ink: "#fdf3d6",
+        sub: "#d8c390",
+        accent: "#f0c96e",
+        panelStyle: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(240,201,110,0.18)" },
+        chipStyle: {
+          background: "rgba(240,201,110,0.12)",
+          color: "#f3e2b0",
+          border: "1px solid rgba(240,201,110,0.22)",
+        },
+        dividerColor: "rgba(240,201,110,0.24)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #f7e2a0, #c99a3a)",
+          color: "#2a2208",
+          boxShadow: "0 6px 20px -6px rgba(240,201,110,0.6)",
+        },
+        barTrack: "rgba(240,201,110,0.16)",
+        brand: "#b8a066",
+        motif: "🥇",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(240,201,110,0.34)" },
+      };
+
+    case "sovereign":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 0% 0%, rgba(167,139,250,0.32), transparent 55%), radial-gradient(120% 120% at 100% 100%, rgba(103,232,249,0.26), transparent 55%), linear-gradient(150deg, #1a1730, #0c0a1a)",
+          border: "1px solid rgba(199,210,254,0.28)",
+          boxShadow: "0 28px 70px -24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
+        },
+        ink: "#f6f4ff",
+        sub: "#b8b2d8",
+        accent: "#c9b8ff",
+        panelStyle: { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(199,210,254,0.16)" },
+        chipStyle: {
+          background: "rgba(199,210,254,0.12)",
+          color: "#e2ddf8",
+          border: "1px solid rgba(199,210,254,0.2)",
+        },
+        dividerColor: "rgba(199,210,254,0.22)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #f472b6, #a78bfa 55%, #67e8f9)",
+          color: "#fff",
+          boxShadow: "0 6px 22px -6px rgba(167,139,250,0.6)",
+        },
+        barTrack: "rgba(199,210,254,0.16)",
+        brand: "#8a80b8",
+        decoration: "sovereign",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(199,210,254,0.32)" },
+      };
+
+    case "angler":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 10% 0%, #bae6fd, transparent 60%), linear-gradient(160deg, #e0f2fe, #bae6fd 55%, #7dd3fc)",
+          border: "1px solid rgba(255,255,255,0.6)",
+          boxShadow: "0 20px 50px -26px rgba(2,132,199,0.45)",
+        },
+        ink: "#0c4a6e",
+        sub: "#3f7398",
+        accent: "#0284c7",
+        panelStyle: { background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.65)" },
+        chipStyle: {
+          background: "rgba(255,255,255,0.6)",
+          color: "#1e5f86",
+          border: "1px solid rgba(255,255,255,0.7)",
+        },
+        dividerColor: "rgba(12,74,110,0.16)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #38bdf8, #0369a1)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(3,105,161,0.5)",
+        },
+        barTrack: "rgba(12,74,110,0.14)",
+        brand: "#5a8aa8",
+        motif: "🐟",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.75)" },
+      };
+
+    case "botanist":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 10% 0%, #d9f99d, transparent 60%), linear-gradient(155deg, #f0fdf4, #dcfce7 55%, #bbf7d0)",
+          border: "1px solid rgba(255,255,255,0.6)",
+          boxShadow: "0 20px 50px -26px rgba(22,163,74,0.4)",
+        },
+        ink: "#14532d",
+        sub: "#4d7c54",
+        accent: "#16a34a",
+        panelStyle: { background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.65)" },
+        chipStyle: {
+          background: "rgba(255,255,255,0.6)",
+          color: "#2f6a3f",
+          border: "1px solid rgba(255,255,255,0.7)",
+        },
+        dividerColor: "rgba(20,83,45,0.16)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #4ade80, #15803d)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(21,128,61,0.5)",
+        },
+        barTrack: "rgba(20,83,45,0.14)",
+        brand: "#6a9a76",
+        motif: "🌿",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.8)" },
+      };
+
+    case "miner":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 80% 100%, rgba(245,158,11,0.3), transparent 55%), linear-gradient(155deg, #2b2f3a, #171a22)",
+          border: "1px solid rgba(245,158,11,0.24)",
+          boxShadow: "0 24px 60px -24px rgba(0,0,0,0.65)",
+        },
+        ink: "#e7ebf2",
+        sub: "#9aa4b4",
+        accent: "#f59e0b",
+        panelStyle: { background: "rgba(255,255,255,0.045)", border: "1px solid rgba(245,158,11,0.16)" },
+        chipStyle: {
+          background: "rgba(245,158,11,0.1)",
+          color: "#f3d9a8",
+          border: "1px solid rgba(245,158,11,0.18)",
+        },
+        dividerColor: "rgba(245,158,11,0.2)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #fbbf24, #b45309)",
+          color: "#2a1e08",
+          boxShadow: "0 6px 18px -6px rgba(245,158,11,0.5)",
+        },
+        barTrack: "rgba(245,158,11,0.14)",
+        brand: "#8892a0",
+        motif: "💎",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(245,158,11,0.28)" },
+      };
+
+    case "chef":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 0% 0%, #fed7aa, transparent 60%), linear-gradient(150deg, #fff7ed, #ffedd5 55%, #fed7aa)",
+          border: "1px solid rgba(255,255,255,0.6)",
+          boxShadow: "0 20px 50px -26px rgba(234,88,12,0.4)",
+        },
+        ink: "#7c2d12",
+        sub: "#a86a4a",
+        accent: "#ea580c",
+        panelStyle: { background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.65)" },
+        chipStyle: {
+          background: "rgba(255,255,255,0.6)",
+          color: "#9a4a24",
+          border: "1px solid rgba(255,255,255,0.7)",
+        },
+        dividerColor: "rgba(124,45,18,0.16)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #fb923c, #c2410c)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(194,65,12,0.5)",
+        },
+        barTrack: "rgba(124,45,18,0.14)",
+        brand: "#a8785a",
+        motif: "🍳",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(255,255,255,0.78)" },
+      };
+
+    case "smith":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 50% 120%, rgba(249,115,22,0.32), transparent 55%), linear-gradient(160deg, #2a2d34, #16181d)",
+          border: "1px solid rgba(249,115,22,0.24)",
+          boxShadow: "0 24px 60px -24px rgba(0,0,0,0.65)",
+        },
+        ink: "#eceff4",
+        sub: "#9aa1ad",
+        accent: "#f97316",
+        panelStyle: { background: "rgba(255,255,255,0.045)", border: "1px solid rgba(249,115,22,0.16)" },
+        chipStyle: {
+          background: "rgba(249,115,22,0.1)",
+          color: "#f6cba8",
+          border: "1px solid rgba(249,115,22,0.18)",
+        },
+        dividerColor: "rgba(249,115,22,0.2)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #fb923c, #9a3412)",
+          color: "#fff",
+          boxShadow: "0 6px 18px -6px rgba(154,52,18,0.55)",
+        },
+        barTrack: "rgba(249,115,22,0.14)",
+        brand: "#8a909c",
+        motif: "⚒️",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(249,115,22,0.26)" },
+      };
+
+    case "alchemist":
+      return {
+        rootStyle: {
+          background:
+            "radial-gradient(120% 120% at 100% 0%, rgba(45,212,191,0.28), transparent 55%), radial-gradient(120% 120% at 0% 100%, rgba(168,85,247,0.3), transparent 55%), linear-gradient(150deg, #241a3a, #120e22)",
+          border: "1px solid rgba(192,132,252,0.26)",
+          boxShadow: "0 26px 64px -24px rgba(0,0,0,0.68)",
+        },
+        ink: "#f3ecff",
+        sub: "#b0a8d0",
+        accent: "#c084fc",
+        panelStyle: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(192,132,252,0.16)" },
+        chipStyle: {
+          background: "rgba(192,132,252,0.12)",
+          color: "#e0d0f8",
+          border: "1px solid rgba(192,132,252,0.2)",
+        },
+        dividerColor: "rgba(192,132,252,0.22)",
+        rankStyle: {
+          background: "linear-gradient(135deg, #5eead4, #7c3aed)",
+          color: "#fff",
+          boxShadow: "0 6px 20px -6px rgba(124,58,237,0.55)",
+        },
+        barTrack: "rgba(192,132,252,0.16)",
+        brand: "#8a80b0",
+        motif: "⚗️",
+        glowStyle: { boxShadow: "0 0 0 3px rgba(192,132,252,0.3)" },
+      };
+
     case "basic":
     default:
       return {
@@ -512,6 +803,24 @@ export default function ProfileCard({
       )}
       {s.decoration === "cbt" && (
         <div className="pointer-events-none absolute inset-0 -z-10 card-sheen-sweep opacity-30 mix-blend-overlay" />
+      )}
+      {s.decoration === "sovereign" && (
+        <>
+          <div className="pointer-events-none absolute inset-0 -z-10 card-sheen-sweep opacity-25 mix-blend-overlay" />
+          <div className="pointer-events-none absolute inset-0 -z-10 select-none text-[10px] opacity-70">
+            <span className="absolute left-[14%] top-[18%] text-white/60">✦</span>
+            <span className="absolute right-[16%] top-[30%] text-[8px] text-white/45">✦</span>
+            <span className="absolute right-[30%] bottom-[26%] text-white/50">✦</span>
+          </div>
+        </>
+      )}
+      {s.motif && (
+        <div className="pointer-events-none absolute inset-0 -z-10 select-none opacity-[0.12]">
+          <span className="absolute left-[7%] top-[14%] text-5xl">{s.motif}</span>
+          <span className="absolute right-[9%] top-[40%] text-2xl">{s.motif}</span>
+          <span className="absolute left-[26%] bottom-[10%] text-xl">{s.motif}</span>
+          <span className="absolute right-[24%] bottom-[28%] text-3xl">{s.motif}</span>
+        </div>
       )}
 
       {/* ── 헤더: 아바타 · 정체성 · 등급 ── */}

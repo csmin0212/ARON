@@ -15,7 +15,8 @@ import {
 } from "@/lib/profile";
 import { computeProfileValues, buildProfileIdentity } from "@/lib/profileValues";
 import { parseProfileWidgets } from "@/lib/profileWidgets";
-import { normalizeCardStyle, parseOwnedSkins } from "@/lib/profileCard";
+import { normalizeCardStyle } from "@/lib/profileCard";
+import { ownedSkinsForSheet } from "@/lib/cardSkinUnlock";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
 
@@ -203,7 +204,7 @@ export default async function ProfilePage({
             initialMain={user.profileMain === "card" ? "card" : "hero"}
             initialCardStyle={normalizeCardStyle(user.profileCardStyle)}
             initialWidgets={parseProfileWidgets(user.profileWidgetsJson)}
-            initialOwnedSkins={parseOwnedSkins(user.ownedCardSkinsJson)}
+            initialOwnedSkins={ownedSkinsForSheet(user.ownedCardSkinsJson, sheet)}
             initialGold={sheet?.curGold ?? 0}
             baseIdentity={baseIdentity}
             values={widgetValues}

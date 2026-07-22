@@ -317,11 +317,7 @@ export default function ProfileForm({
                           미리보기
                         </span>
                       )}
-                      {meta.acquire === "reward" ? (
-                        <span className="pointer-events-none absolute inset-x-0 top-1.5 mx-auto w-fit rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-black text-amber-200">
-                          🔒 CBT 보상
-                        </span>
-                      ) : (
+                      {meta.acquire === "purchase" ? (
                         <button
                           type="button"
                           disabled={buying === meta.key}
@@ -330,6 +326,10 @@ export default function ProfileForm({
                         >
                           {buying === meta.key ? "구매 중…" : `${meta.price.toLocaleString()}G 구매`}
                         </button>
+                      ) : (
+                        <span className="pointer-events-none absolute inset-x-0 top-1.5 mx-auto w-fit rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-black text-amber-200">
+                          🔒 {meta.acquire === "reward" ? "CBT 보상" : meta.unlock?.label ?? "조건 달성"}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -338,7 +338,7 @@ export default function ProfileForm({
             </div>
             {buyMsg && <p className="text-[11px] font-medium text-rose-500">{buyMsg}</p>}
             <p className="text-[11px] leading-relaxed text-faint">
-              카드를 누르면 바로 미리보기돼요. 기본은 무료 · CBT는 보상 전용 · 나머지는 8,000G에 구매해요.
+              카드를 누르면 바로 미리보기돼요. 기본 무료 · 구매 8,000G · 등급·생활스킬 달성으로 해금 · CBT는 보상 전용.
             </p>
           </div>
         )}
