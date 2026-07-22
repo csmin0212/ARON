@@ -213,11 +213,11 @@ function Crest({ tone }: { tone: string }) {
     <Layer>
       {/* 등급 배지 뒤 광채 */}
       <div
-        className="absolute right-[4%] top-[2%] h-28 w-28 rounded-full opacity-40 blur-xl"
+        className="absolute right-[-3px] top-[-4px] h-28 w-28 rounded-full opacity-40 blur-xl"
         style={{ background: `radial-gradient(circle, ${tone}, transparent 70%)` }}
       />
       {/* 월계관 */}
-      <svg className="absolute right-2 top-1 h-24 w-24 opacity-40" viewBox="0 0 100 100" fill="none" stroke={tone} strokeWidth="2.5" strokeLinecap="round">
+      <svg className="absolute right-1 top-1 h-24 w-24 opacity-40" viewBox="0 0 100 100" fill="none" stroke={tone} strokeWidth="2.5" strokeLinecap="round">
         <path d="M50 88 C28 84 16 66 16 44 C16 30 22 18 30 12" />
         <path d="M50 88 C72 84 84 66 84 44 C84 30 78 18 70 12" />
         {[24, 36, 48, 60].map((y, i) => (

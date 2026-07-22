@@ -20,6 +20,7 @@ interface SkinConfig {
   chipStyle: CSSProperties;
   dividerColor: string;
   rankStyle: CSSProperties;
+  rankLabel?: string;
   barTrack: string;
   brand: string;
   serif?: boolean;
@@ -416,6 +417,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
           color: "#2e1a0c",
           boxShadow: "0 6px 18px -6px rgba(217,160,106,0.55)",
         },
+        rankLabel: "BRONZE",
         barTrack: "rgba(217,160,106,0.16)",
         brand: "#a37c58",
         scene: "crest",
@@ -446,6 +448,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
           color: "#2a2f38",
           boxShadow: "0 6px 18px -6px rgba(203,213,225,0.5)",
         },
+        rankLabel: "SILVER",
         barTrack: "rgba(203,213,225,0.16)",
         brand: "#9aa4b4",
         scene: "crest",
@@ -476,6 +479,7 @@ function buildSkin(style: ProfileCardStyle, accentRaw: string | null | undefined
           color: "#2a2208",
           boxShadow: "0 6px 20px -6px rgba(240,201,110,0.6)",
         },
+        rankLabel: "GOLD",
         barTrack: "rgba(240,201,110,0.16)",
         brand: "#b8a066",
         scene: "crest",
@@ -873,7 +877,7 @@ export default function ProfileCard({
               className="text-[9px] font-bold uppercase tracking-wide"
               style={{ color: s.sub }}
             >
-              RANK
+              {s.rankLabel ?? "RANK"}
             </span>
           </div>
         )}
