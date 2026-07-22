@@ -53,9 +53,7 @@ function canUseItem(item: SheetInventoryItem): boolean {
   const effect = item.effect ?? "";
   // 행운·판정(월드 30분 버프)·세션 버프·HP/MP 회복·피로도 회복·던전 횟수 회복
   // useCookingItem이 처리하는 효과들.
-  return /행운\s*\+\d+|판정\s*\+\d+|세션\s*버프|(HP|MP)[^가-힣]*회복|피로도\s*(?:\[\d+\s*D\]|\d+)[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(
-    effect,
-  );
+  return /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+|(?:근력|재주|민첩|지력|감지|정신|행운|명중|회피|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?|세션\s*버프|시나리오\s*종료\s*시\s*까지\s*지속|(HP|MP)[^가-힣]*회복|피로도\s*(?:\[\d+\s*D\]|\d+)[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(effect);
 }
 
 function isLifeResetBlessing(item: SheetInventoryItem): boolean {
