@@ -7,8 +7,11 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { fetchSkillbookPool } from "@/lib/guildQuestsServer";
 import {
   buildBlackMarketStock,
+  parseBlackMarketExchangeState,
   parseBlackMarketQuestState,
+  refreshBlackMarketExchangeState,
   refreshBlackMarketQuestState,
+  type BlackMarketExchangeState,
   type BlackMarketQuestState,
   type BlackMarketStockItem,
 } from "@/lib/blackMarket";
@@ -94,6 +97,20 @@ export async function loadBlackMarketQuestState(
     await prisma.characterSheet.update({
       where: { userId },
       data: { blackMarketQuestJson: JSON.stringify(state) },
+    });
+  }
+  return state;
+}
+
+export async function loadBlackMarketExchangeState(
+  userId: string,
+  sheet: { blackMarketExchangeJson: string | null },
+): Promise<BlackMarketExchangeState> {
+  const state = parseBlackMarketExchangeState(sheet.blackMarketExchangeJson);
+  if (refreshBlackMarketExchangeState(state)) {
+    await prisma.characterSheet.update({
+      where: { userId },
+      data: { blackMarketExchangeJson: JSON.stringify(state) },
     });
   }
   return state;

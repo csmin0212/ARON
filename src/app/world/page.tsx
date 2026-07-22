@@ -37,8 +37,12 @@ import WorldServices, {
   type GuildView,
   type StorageView,
 } from "@/components/WorldServices";
-import { ensureBlackMarketStock, loadBlackMarketQuestState } from "@/lib/blackMarketServer";
-import { BLACK_MARKET_POTIONS } from "@/lib/blackMarket";
+import {
+  ensureBlackMarketStock,
+  loadBlackMarketExchangeState,
+  loadBlackMarketQuestState,
+} from "@/lib/blackMarketServer";
+import { BLACK_MARKET_EXCHANGE_OFFERS, BLACK_MARKET_POTIONS } from "@/lib/blackMarket";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
@@ -1001,6 +1005,7 @@ export default async function WorldPage() {
   };
   const unlockedAlchemyRecipeIds = new Set(life.alchemyPerfect);
   const blackMarketQuest = await loadBlackMarketQuestState(user.id, sheet);
+  const blackMarketExchange = await loadBlackMarketExchangeState(user.id, sheet);
   const blackMarketStock = await ensureBlackMarketStock();
   const blackMarketPotionRows = await prisma.item.findMany({
     where: {
@@ -1058,6 +1063,17 @@ export default async function WorldPage() {
         desc: item?.desc ?? null,
         weight: item?.weight ?? 1,
         coinPrice: potion.coinPrice,
+      };
+    }),
+    exchanges: BLACK_MARKET_EXCHANGE_OFFERS.map((offer) => {
+      const used = blackMarketExchange.used[offer.id] ?? 0;
+      return {
+        id: offer.id,
+        coinCost: offer.coinCost,
+        gold: offer.gold,
+        dailyLimit: offer.dailyLimit,
+        used,
+        remaining: offer.dailyLimit == null ? null : Math.max(0, offer.dailyLimit - used),
       };
     }),
     books: ALCHEMY_BOOKS.map((book) => {

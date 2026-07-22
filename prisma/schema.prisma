@@ -402,6 +402,7 @@ model CharacterSheet {
   guildQuestJson String? // 길드 일일 의뢰 상태 JSON { day, offers[], acceptedId, 리롤권, 주간, 파편 } — lib/guildQuests.ts
   blackMarketCoins Int @default(0) // 암상인 코인 — 뒷골목/암상인 UI에서만 표시
   blackMarketQuestJson String? // 암상인 일일 의뢰 상태 JSON { day, offer, deliveredAt }
+  blackMarketExchangeJson String? // 암상인 코인→골드 일일 교환 상태 JSON { day, used }
   dungeonWeek    String? // 던전 주간 키(월요일 05시 KST 기준) — 바뀌면 횟수 리셋
   dungeonRuns    Int       @default(0) // 이번 주 던전 도전 횟수
   discoveredJson String? // 발견한 히든 장소 ID 목록 JSON

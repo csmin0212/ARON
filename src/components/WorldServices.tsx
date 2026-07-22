@@ -39,6 +39,7 @@ import {
   buyBlackMarketPotion,
   buyBlackMarketItem,
   deliverBlackMarketQuest,
+  exchangeBlackMarketCoin,
   resetBlackMarketStockForGm,
   type BlackMarketState,
 } from "@/app/actions/blackMarket";
@@ -261,6 +262,14 @@ export type BlackMarketView = {
     desc: string | null;
     weight: number | null;
     coinPrice: number;
+  }[];
+  exchanges: {
+    id: string;
+    coinCost: number;
+    gold: number;
+    dailyLimit: number | null;
+    used: number;
+    remaining: number | null;
   }[];
   books: {
     id: string;
@@ -2311,8 +2320,12 @@ function BlackMarketDealer({
     buyBlackMarketPotion,
     undefined,
   );
+  const [exchangeState, exchangeAction, exchangePending] = useActionState<BlackMarketState, FormData>(
+    exchangeBlackMarketCoin,
+    undefined,
+  );
   const [actionState, setActionState] = useState<BlackMarketState>(undefined);
-  const [tab, setTab] = useState<"goods" | "potions">("goods");
+  const [tab, setTab] = useState<"goods" | "potions" | "exchange">("goods");
   const [pending, startTransition] = useTransition();
 
   function run(action: () => Promise<BlackMarketState>) {
@@ -2321,7 +2334,7 @@ function BlackMarketDealer({
     });
   }
 
-  const state = potionState ?? buyState ?? actionState;
+  const state = exchangeState ?? potionState ?? buyState ?? actionState;
   const quest = blackMarket.quest;
 
   const iconOf = (kind: string) => {
@@ -2392,10 +2405,11 @@ function BlackMarketDealer({
             )}
           </section>
 
-          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/[0.04] p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/[0.04] p-1">
             {[
               { id: "goods" as const, label: "오늘의 물품" },
               { id: "potions" as const, label: "포션" },
+              { id: "exchange" as const, label: "교환" },
             ].map((item) => (
               <button
                 key={item.id}
@@ -2460,7 +2474,7 @@ function BlackMarketDealer({
                 )}
               </div>
             </section>
-          ) : (
+          ) : tab === "potions" ? (
             <section>
               <h4 className="mb-2 text-sm font-extrabold text-white">🧪 포션</h4>
               <div className="grid gap-2">
@@ -2490,6 +2504,41 @@ function BlackMarketDealer({
                     </button>
                   </form>
                 ))}
+              </div>
+            </section>
+          ) : (
+            <section>
+              <h4 className="mb-2 text-sm font-extrabold text-white">🪙 교환</h4>
+              <div className="grid gap-2">
+                {blackMarket.exchanges.map((item) => {
+                  const limited = item.dailyLimit != null;
+                  const soldOut = limited && item.remaining != null && item.remaining <= 0;
+                  return (
+                    <form key={item.id} action={exchangeAction}>
+                      <input type="hidden" name="offerId" value={item.id} />
+                      <button
+                        type="submit"
+                        disabled={exchangePending || soldOut || blackMarket.coins < item.coinCost}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-violet-300/50 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <span className="text-xl">💰</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-extrabold text-white">
+                            암상인 코인 {item.coinCost}개 → {item.gold.toLocaleString()}G
+                          </span>
+                          <span className="mt-0.5 block text-[11px] font-semibold text-zinc-400">
+                            {limited
+                              ? `오늘 ${item.used}/${item.dailyLimit}회 사용`
+                              : "일일 제한 없음"}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-black text-violet-100">
+                          {soldOut ? "완료" : limited ? `${item.remaining}회 남음` : "교환"}
+                        </span>
+                      </button>
+                    </form>
+                  );
+                })}
               </div>
             </section>
           )}

@@ -8,21 +8,48 @@ export const BLACK_MARKET_POTIONS = [
   {
     id: "망각의물약",
     itemName: "망각의 물약",
-    coinPrice: 20,
+    coinPrice: 5,
   },
   {
     id: "변화의물약",
     itemName: "변화의 물약",
-    coinPrice: 40,
+    coinPrice: 10,
   },
   {
     id: "망각의 축복",
     itemName: "망각의 축복",
-    coinPrice: 200,
+    coinPrice: 50,
+  },
+] as const;
+
+export const BLACK_MARKET_EXCHANGE_OFFERS = [
+  {
+    id: "coin_500",
+    coinCost: 1,
+    gold: 500,
+    dailyLimit: 2,
+  },
+  {
+    id: "coin_1000",
+    coinCost: 1,
+    gold: 1000,
+    dailyLimit: 5,
+  },
+  {
+    id: "coin_2000",
+    coinCost: 1,
+    gold: 2000,
+    dailyLimit: null,
   },
 ] as const;
 
 export type BlackMarketPotionProduct = (typeof BLACK_MARKET_POTIONS)[number];
+export type BlackMarketExchangeOffer = (typeof BLACK_MARKET_EXCHANGE_OFFERS)[number];
+
+export type BlackMarketExchangeState = {
+  day: string;
+  used: Partial<Record<BlackMarketExchangeOffer["id"], number>>;
+};
 
 export function blackMarketPotionProduct(productId: string): BlackMarketPotionProduct | null {
   return (
@@ -30,6 +57,34 @@ export function blackMarketPotionProduct(productId: string): BlackMarketPotionPr
       (item) => item.id === productId || item.itemName === productId,
     ) ?? null
   );
+}
+
+export function blackMarketExchangeOffer(offerId: string): BlackMarketExchangeOffer | null {
+  return BLACK_MARKET_EXCHANGE_OFFERS.find((offer) => offer.id === offerId) ?? null;
+}
+
+export function parseBlackMarketExchangeState(json: string | null | undefined): BlackMarketExchangeState {
+  if (!json) return { day: "", used: {} };
+  try {
+    const v = JSON.parse(json) as Partial<BlackMarketExchangeState>;
+    return {
+      day: v.day ?? "",
+      used: typeof v.used === "object" && v.used ? v.used : {},
+    };
+  } catch {
+    return { day: "", used: {} };
+  }
+}
+
+export function refreshBlackMarketExchangeState(
+  state: BlackMarketExchangeState,
+  now: Date = new Date(),
+): boolean {
+  const today = kstDayKey(now);
+  if (state.day === today) return false;
+  state.day = today;
+  state.used = {};
+  return true;
 }
 
 export type BlackMarketQuestOffer = {

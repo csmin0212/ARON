@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
   appendSheetItem,
   inventoryWeightTotal,
@@ -22,7 +23,12 @@ import {
 import { findLifeSkillItem, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { kstDayKey } from "@/lib/world";
 import { SKILLBOOK_META } from "@/lib/skillbook";
-import { blackMarketPotionProduct } from "@/lib/blackMarket";
+import {
+  blackMarketExchangeOffer,
+  blackMarketPotionProduct,
+  parseBlackMarketExchangeState,
+  refreshBlackMarketExchangeState,
+} from "@/lib/blackMarket";
 import {
   ensureBlackMarketStock,
   forceResetBlackMarketStock,
@@ -289,6 +295,74 @@ export async function buyBlackMarketItem(
   return {
     ok: `${meta.skillName ?? listing.itemName} 구매 완료. 암상인 코인 -${listing.price}`,
   };
+}
+
+export async function exchangeBlackMarketCoin(
+  _prev: BlackMarketState,
+  formData: FormData,
+): Promise<BlackMarketState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+  const offerId = String(formData.get("offerId") ?? "").trim();
+  const offer = blackMarketExchangeOffer(offerId);
+  if (!offer) return { error: "교환 목록에 없는 조건입니다." };
+
+  const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
+  if (!sheet?.sheetTab) return { error: "캐릭터 시트 연동이 필요합니다." };
+  if (!(await canUseBlackMarket(sheet.locationId))) {
+    return { error: "암상인 교환은 뒷골목에서만 이용할 수 있습니다." };
+  }
+  if ((sheet.blackMarketCoins ?? 0) < offer.coinCost) {
+    return { error: `암상인 코인이 부족합니다. (${sheet.blackMarketCoins ?? 0}/${offer.coinCost})` };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const latest = await tx.characterSheet.findUnique({
+        where: { userId: user.id },
+        select: {
+          blackMarketCoins: true,
+          blackMarketExchangeJson: true,
+          curGold: true,
+          achStatsJson: true,
+        },
+      });
+      if (!latest) throw new Error("sheet-missing");
+      if ((latest.blackMarketCoins ?? 0) < offer.coinCost) throw new Error("coin-shortage");
+
+      const exchangeState = parseBlackMarketExchangeState(latest.blackMarketExchangeJson);
+      refreshBlackMarketExchangeState(exchangeState);
+      const used = exchangeState.used[offer.id] ?? 0;
+      if (offer.dailyLimit != null && used >= offer.dailyLimit) throw new Error("limit-reached");
+      exchangeState.used[offer.id] = used + 1;
+      const nextGold = (latest.curGold ?? 0) + offer.gold;
+
+      await tx.characterSheet.update({
+        where: { userId: user.id },
+        data: {
+          blackMarketCoins: { decrement: offer.coinCost },
+          curGold: { increment: offer.gold },
+          gold: `${nextGold}G`,
+          blackMarketExchangeJson: JSON.stringify(exchangeState),
+          achStatsJson: bumpStat(latest.achStatsJson, "암상인코인교환"),
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "limit-reached") {
+      return { error: "오늘 이 교환 조건은 모두 사용했습니다." };
+    }
+    if (error instanceof Error && error.message === "coin-shortage") {
+      return { error: "암상인 코인이 부족합니다." };
+    }
+    throw error;
+  }
+
+  void enqueueSheetGoldSync(user.id, { delayMs: 0 });
+  void checkAndGrant(user.id);
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `암상인 코인 ${offer.coinCost}개를 ${offer.gold.toLocaleString()}G로 교환했습니다.` };
 }
 
 export async function buyBlackMarketPotion(
