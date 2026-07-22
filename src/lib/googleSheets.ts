@@ -245,12 +245,6 @@ const EQUIPMENT_SLOT_DEFS = [
   },
 ] as const;
 
-export type EquipmentSlotId = (typeof EQUIPMENT_SLOT_DEFS)[number]["id"];
-
-function equipmentSlotDef(slotId: string) {
-  return EQUIPMENT_SLOT_DEFS.find((slot) => slot.id === slotId) ?? null;
-}
-
 function parseEquipmentStats(
   row: string[],
   statIndexes: Record<string, number>,
@@ -306,38 +300,6 @@ export async function readSheetEquipment(tab: string | null): Promise<SheetEquip
     console.warn("Failed to read sheet equipment", error);
   }
   return null;
-}
-
-function equipmentRow(
-  slot: Pick<SheetEquipmentSlot, "id" | "itemType" | "name" | "effect" | "weight" | "stats">,
-): string[] | null {
-  const def = equipmentSlotDef(slot.id);
-  if (!def) return null;
-  const row = new Array<string>(12).fill("");
-  row[0] = slot.itemType ?? def.defaultType;
-  row[1] = slot.name ?? "";
-  row[4] = slot.weight != null ? String(slot.weight) : "";
-  for (const [label, index] of Object.entries(def.statIndexes)) {
-    row[index] = slot.stats[label] ?? "";
-  }
-  row[def.effectIndex] = slot.effect ?? "";
-  return row;
-}
-
-export async function writeSheetEquipmentSlot(
-  tab: string | null,
-  slot: Pick<SheetEquipmentSlot, "id" | "itemType" | "name" | "effect" | "weight" | "stats">,
-): Promise<boolean> {
-  if (!tab) return false;
-  const def = equipmentSlotDef(slot.id);
-  const row = equipmentRow(slot);
-  if (!def || !row) return false;
-  try {
-    return updateValues(`${quoteSheet(tab)}!Z${def.row}:AK${def.row}`, [row]);
-  } catch (error) {
-    console.warn("Failed to write sheet equipment", error);
-    return false;
-  }
 }
 
 export function inventoryWeightTotal(items: SheetInventoryItem[]): number | null {

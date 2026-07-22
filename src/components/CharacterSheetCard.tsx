@@ -67,10 +67,8 @@ function currentMaxValue(current: number | null | undefined, max: number | null)
 
 export default function CharacterSheetCard({
   sheet,
-  editable = false,
 }: {
   sheet: SheetData;
-  editable?: boolean;
 }) {
   let stats: StatEntry[] = [];
   try {
@@ -191,7 +189,7 @@ export default function CharacterSheetCard({
         </div>
       )}
 
-      <EquipmentPanel equipment={equipment} editable={editable} />
+      <EquipmentPanel equipment={equipment} />
     </div>
   );
 }

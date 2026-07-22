@@ -2,7 +2,6 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { useCookingItem, type CookingState } from "@/app/actions/services";
-import { equipInventoryItem, type EquipmentState } from "@/app/actions/equipment";
 import { useSkillBook, type SkillBookState } from "@/app/actions/skills";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
@@ -61,13 +60,6 @@ function isLifeResetBlessing(item: SheetInventoryItem): boolean {
   return item.name.replace(/\s+/g, "").trim() === "망각의축복";
 }
 
-function canEquipItem(item: SheetInventoryItem): boolean {
-  const effect = item.effect ?? "";
-  return /Lv\s*\d+\s+(?:격투|단검|장검|양손검|도끼|타격|창|채찍|카타나|활|방패|머리|몸통|전신|보조)|(?:명중|공격력|물리\s*방어력|마법\s*방어력|물방|마방|회피)\s*[+-]?\d+/.test(
-    effect,
-  );
-}
-
 function CookingStateLine({ state }: { state: CookingState }) {
   if (!state?.error && !state?.ok) return null;
   return (
@@ -90,10 +82,6 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
   );
   const [skillResult, skillAction, skillPending] = useActionState<SkillBookState, FormData>(
     useSkillBook,
-    undefined,
-  );
-  const [equipResult, equipAction, equipPending] = useActionState<EquipmentState, FormData>(
-    equipInventoryItem,
     undefined,
   );
   const skillBookSet = useMemo(() => new Set(skillBooks), [skillBooks]);
@@ -202,7 +190,6 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
             <div className="space-y-3 px-5 py-4">
               <CookingStateLine state={useStateResult} />
               <CookingStateLine state={skillResult} />
-              <CookingStateLine state={equipResult} />
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-2xl bg-subtle px-3 py-2">
                   <p className="text-[11px] font-bold text-faint">갯수</p>
@@ -274,18 +261,6 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
                     className="w-full rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-violet-600 disabled:opacity-50"
                   >
                     {skillPending ? "습득 중..." : "📖 스킬 습득"}
-                  </button>
-                </form>
-              )}
-              {canEquipItem(selected) && (
-                <form action={equipAction}>
-                  <input type="hidden" name="itemName" value={selected.name} />
-                  <button
-                    type="submit"
-                    disabled={equipPending}
-                    className="w-full rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-slate-900 disabled:opacity-50"
-                  >
-                    {equipPending ? "장착 중..." : "장비하기"}
                   </button>
                 </form>
               )}
