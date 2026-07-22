@@ -1069,8 +1069,8 @@ export default async function WorldPage() {
       const used = blackMarketExchange.used[offer.id] ?? 0;
       return {
         id: offer.id,
-        coinCost: offer.coinCost,
-        gold: offer.gold,
+        goldCost: offer.goldCost,
+        coinReward: offer.coinReward,
         dailyLimit: offer.dailyLimit,
         used,
         remaining: offer.dailyLimit == null ? null : Math.max(0, offer.dailyLimit - used),

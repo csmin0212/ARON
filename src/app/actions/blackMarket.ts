@@ -312,8 +312,8 @@ export async function exchangeBlackMarketCoin(
   if (!(await canUseBlackMarket(sheet.locationId))) {
     return { error: "암상인 교환은 뒷골목에서만 이용할 수 있습니다." };
   }
-  if ((sheet.blackMarketCoins ?? 0) < offer.coinCost) {
-    return { error: `암상인 코인이 부족합니다. (${sheet.blackMarketCoins ?? 0}/${offer.coinCost})` };
+  if ((sheet.curGold ?? 0) < offer.goldCost) {
+    return { error: `골드가 부족합니다. (${(sheet.curGold ?? 0).toLocaleString()}G/${offer.goldCost.toLocaleString()}G)` };
   }
 
   try {
@@ -321,27 +321,26 @@ export async function exchangeBlackMarketCoin(
       const latest = await tx.characterSheet.findUnique({
         where: { userId: user.id },
         select: {
-          blackMarketCoins: true,
           blackMarketExchangeJson: true,
           curGold: true,
           achStatsJson: true,
         },
       });
       if (!latest) throw new Error("sheet-missing");
-      if ((latest.blackMarketCoins ?? 0) < offer.coinCost) throw new Error("coin-shortage");
+      if ((latest.curGold ?? 0) < offer.goldCost) throw new Error("gold-shortage");
 
       const exchangeState = parseBlackMarketExchangeState(latest.blackMarketExchangeJson);
       refreshBlackMarketExchangeState(exchangeState);
       const used = exchangeState.used[offer.id] ?? 0;
       if (offer.dailyLimit != null && used >= offer.dailyLimit) throw new Error("limit-reached");
       exchangeState.used[offer.id] = used + 1;
-      const nextGold = (latest.curGold ?? 0) + offer.gold;
+      const nextGold = (latest.curGold ?? 0) - offer.goldCost;
 
       await tx.characterSheet.update({
         where: { userId: user.id },
         data: {
-          blackMarketCoins: { decrement: offer.coinCost },
-          curGold: { increment: offer.gold },
+          blackMarketCoins: { increment: offer.coinReward },
+          curGold: { decrement: offer.goldCost },
           gold: `${nextGold}G`,
           blackMarketExchangeJson: JSON.stringify(exchangeState),
           achStatsJson: bumpStat(latest.achStatsJson, "암상인코인교환"),
@@ -352,8 +351,8 @@ export async function exchangeBlackMarketCoin(
     if (error instanceof Error && error.message === "limit-reached") {
       return { error: "오늘 이 교환 조건은 모두 사용했습니다." };
     }
-    if (error instanceof Error && error.message === "coin-shortage") {
-      return { error: "암상인 코인이 부족합니다." };
+    if (error instanceof Error && error.message === "gold-shortage") {
+      return { error: "골드가 부족합니다." };
     }
     throw error;
   }
@@ -362,7 +361,9 @@ export async function exchangeBlackMarketCoin(
   void checkAndGrant(user.id);
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: `암상인 코인 ${offer.coinCost}개를 ${offer.gold.toLocaleString()}G로 교환했습니다.` };
+  return {
+    ok: `${offer.goldCost.toLocaleString()}G를 암상인 코인 ${offer.coinReward}개로 교환했습니다.`,
+  };
 }
 
 export async function buyBlackMarketPotion(

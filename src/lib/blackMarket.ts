@@ -25,20 +25,20 @@ export const BLACK_MARKET_POTIONS = [
 export const BLACK_MARKET_EXCHANGE_OFFERS = [
   {
     id: "coin_500",
-    coinCost: 1,
-    gold: 500,
+    goldCost: 500,
+    coinReward: 1,
     dailyLimit: 2,
   },
   {
     id: "coin_1000",
-    coinCost: 1,
-    gold: 1000,
+    goldCost: 1000,
+    coinReward: 1,
     dailyLimit: 5,
   },
   {
     id: "coin_2000",
-    coinCost: 1,
-    gold: 2000,
+    goldCost: 2000,
+    coinReward: 1,
     dailyLimit: null,
   },
 ] as const;

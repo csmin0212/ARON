@@ -265,8 +265,8 @@ export type BlackMarketView = {
   }[];
   exchanges: {
     id: string;
-    coinCost: number;
-    gold: number;
+    goldCost: number;
+    coinReward: number;
     dailyLimit: number | null;
     used: number;
     remaining: number | null;
@@ -2513,18 +2513,19 @@ function BlackMarketDealer({
                 {blackMarket.exchanges.map((item) => {
                   const limited = item.dailyLimit != null;
                   const soldOut = limited && item.remaining != null && item.remaining <= 0;
+                  const goldShortage = blackMarket.gold < item.goldCost;
                   return (
                     <form key={item.id} action={exchangeAction}>
                       <input type="hidden" name="offerId" value={item.id} />
                       <button
                         type="submit"
-                        disabled={exchangePending || soldOut || blackMarket.coins < item.coinCost}
+                        disabled={exchangePending || soldOut || goldShortage}
                         className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-violet-300/50 hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <span className="text-xl">💰</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-extrabold text-white">
-                            암상인 코인 {item.coinCost}개 → {item.gold.toLocaleString()}G
+                            {item.goldCost.toLocaleString()}G → 암상인 코인 {item.coinReward}개
                           </span>
                           <span className="mt-0.5 block text-[11px] font-semibold text-zinc-400">
                             {limited
@@ -2533,7 +2534,13 @@ function BlackMarketDealer({
                           </span>
                         </span>
                         <span className="shrink-0 text-xs font-black text-violet-100">
-                          {soldOut ? "완료" : limited ? `${item.remaining}회 남음` : "교환"}
+                          {soldOut
+                            ? "완료"
+                            : goldShortage
+                              ? "골드 부족"
+                              : limited
+                                ? `${item.remaining}회 남음`
+                                : "교환"}
                         </span>
                       </button>
                     </form>
