@@ -49,6 +49,7 @@ import { FURNITURE_OPTIONS } from "@/lib/housing";
 import type { WeeklyIncomeView } from "@/lib/weeklyIncome";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
+import TrainingYard, { type TrainingView } from "@/components/TrainingYard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
 import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
@@ -206,6 +207,7 @@ export type GuildView = {
   rank: string;
   fame: number;
   quests: GuildQuestBoardView;
+  training: TrainingView;
 };
 
 export type StorageItemView = SheetInventoryItem & {
@@ -3257,6 +3259,7 @@ export default function WorldServices({
   const [incomeOpen, setIncomeOpen] = useState(false);
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
   const [questOpen, setQuestOpen] = useState(false);
+  const [trainingOpen, setTrainingOpen] = useState(false);
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
   const [alchemyOpen, setAlchemyOpen] = useState(false);
@@ -3478,6 +3481,24 @@ export default function WorldServices({
               </span>
             </button>
           )}
+          {canGuild && (
+            <button
+              type="button"
+              onClick={() => setTrainingOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-xl">🏋️</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-content">길드 뒷마당</span>
+                <span className="text-[11px] text-faint">단련 · 피로도 5</span>
+              </span>
+              {guild.training.pendingPicks > 0 && (
+                <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-black text-white">
+                  성장 {guild.training.pendingPicks}
+                </span>
+              )}
+            </button>
+          )}
           {canInn && (
             <button
               type="button"
@@ -3608,6 +3629,14 @@ export default function WorldServices({
       )}
 
       {questOpen && <QuestBoard guild={guild} onClose={() => setQuestOpen(false)} />}
+
+      {trainingOpen && (
+        <TrainingYard
+          training={guild.training}
+          ap={craftAp}
+          onClose={() => setTrainingOpen(false)}
+        />
+      )}
 
       {craftOpen && (
         <CraftingForge

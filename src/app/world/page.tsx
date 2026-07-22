@@ -580,9 +580,44 @@ export default async function WorldPage() {
       };
     })
     .filter((book): book is NonNullable<typeof book> => book != null);
+  // 길드 뒷마당 단련 — 누적 카운터(단련횟수)로 밀린 능력치 선택 수를 계산.
+  // 100~900회마다 1회씩(최대 9회) 능력치를 성장시킬 수 있다.
+  const trainingStats: { key: string; label: string; value: number | null }[] = (() => {
+    try {
+      const arr = JSON.parse(sheet.statsJson ?? "[]") as {
+        key?: string;
+        label?: string;
+        value?: number | null;
+      }[];
+      return arr
+        .filter((s) => s.label)
+        .map((s) => ({ key: s.key ?? s.label!, label: s.label!, value: s.value ?? null }));
+    } catch {
+      return [];
+    }
+  })();
+  const { trainingPending, trainingConsumed } = (() => {
+    try {
+      const stats = JSON.parse(sheet.achStatsJson ?? "{}") as Record<string, number>;
+      const count = stats["단련횟수"] ?? 0;
+      const consumed = stats["단련성장선택"] ?? 0;
+      return {
+        trainingConsumed: consumed,
+        trainingPending: Math.max(0, Math.min(9, Math.floor(count / 100)) - consumed),
+      };
+    } catch {
+      return { trainingConsumed: 0, trainingPending: 0 };
+    }
+  })();
   const guild: GuildView = {
     rank: sheet.adventurerRank,
     fame: sheet.fame ?? 0,
+    training: {
+      pendingPicks: trainingPending,
+      // 지금 고를 선택은 (이미 소비한 선택 + 1) 번째 마일스톤 = ×100회
+      currentMilestone: trainingPending > 0 ? (trainingConsumed + 1) * 100 : null,
+      stats: trainingStats,
+    },
     quests: {
       offers: questOffers,
       acceptedId: gq.acceptedId,

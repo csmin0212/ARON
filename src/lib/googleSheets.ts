@@ -485,6 +485,65 @@ export async function appendSheetFormula(
   }
 }
 
+// ── 능력 기본치 성장 (길드 뒷마당 단련) ──
+// 시트마다 표 위치가 조금씩 달라도 안전하도록, charsheet.ts 리더와 '똑같은' 방식으로
+// 【능력 기본치】 헤더를 찾아 그 기준 셀에 +N 을 붙인다(수식 보존). 리더가 읽는 바로 그 칸이므로
+// 절대 어긋나지 않는다. 능력 순서: 근력·재주·민첩·지력·감지·정신·행운.
+const ABILITY_KEY_ORDER = ["STR", "DEX", "AGI", "INT", "PER", "SPI", "LUK"] as const;
+export type AbilityKey = (typeof ABILITY_KEY_ORDER)[number];
+
+function colLetter(index: number): string {
+  let n = index;
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
+// 능력 기본치 칸 A1 주소 계산 — 못 찾으면 null.
+async function abilityBaseCellA1(tab: string, abilityKey: AbilityKey): Promise<string | null> {
+  const index = ABILITY_KEY_ORDER.indexOf(abilityKey);
+  if (index < 0) return null;
+  // 표는 상단부에 있으므로 넉넉히 A1:AK40 만 읽는다.
+  const grid = await getValues(`${quoteSheet(tab)}!A1:AK40`);
+  if (!grid) return null;
+  // charsheet.ts 와 동일: 【능력 기본치】 위치 → 값열 = hc+1, 값행 = hr+2+i (모두 0-기준)
+  let hr = -1;
+  let hc = -1;
+  for (let r = 0; r < grid.length && hr < 0; r++) {
+    const row = grid[r] ?? [];
+    for (let c = 0; c < row.length; c++) {
+      if (String(row[c] ?? "").trim() === "【능력 기본치】") {
+        hr = r;
+        hc = c;
+        break;
+      }
+    }
+  }
+  if (hr < 0) return null;
+  const rowNumber = hr + 2 + index + 1; // 0-기준 행 → A1 행번호(+1)
+  return `${colLetter(hc + 1)}${rowNumber}`;
+}
+
+// 선택한 능력의 기본치를 +addend. 성공 여부 반환.
+export async function appendSheetAbilityBase(
+  tab: string | null,
+  abilityKey: AbilityKey,
+  addend: number,
+): Promise<boolean> {
+  if (!tab || addend === 0) return false;
+  try {
+    const a1 = await abilityBaseCellA1(tab, abilityKey);
+    if (!a1) return false;
+    return appendSheetFormula(tab, a1, addend);
+  } catch (error) {
+    console.warn("Failed to append sheet ability base", error);
+    return false;
+  }
+}
+
 export async function appendSheetItem(
   tab: string | null,
   itemName: string,
