@@ -91,6 +91,11 @@ import {
   getCookingRecipes,
   getCraftEffectItems,
   getCraftTagRows,
+  getDungeonsAt,
+  getLocationActionsAt,
+  getLocationById,
+  getLocationCount,
+  getLocationsBrief,
 } from "@/lib/gameCatalog";
 import { parseGoldToInt } from "@/lib/dice";
 import {
@@ -259,7 +264,7 @@ export default async function WorldPage() {
     );
   }
 
-  const locationCount = await prisma.location.count();
+  const locationCount = await getLocationCount();
 
   if (locationCount === 0) {
     return (
@@ -286,17 +291,10 @@ export default async function WorldPage() {
   const atMyHome = atHome && homeOwnerId === user.id; // 친구 집 방문 중이면 false
   const activeHomeTier = homeTierFromLocationId(sheet.locationId) ?? sheet.houseTier;
   const bellTowerLocations =
-    atHome || housingState.owned.length > 0
-      ? await prisma.location.findMany({
-          select: { id: true, name: true, emoji: true },
-          orderBy: { order: "asc" },
-        })
-      : [];
+    atHome || housingState.owned.length > 0 ? await getLocationsBrief() : [];
   const bellTower = bellTowerLocations.find((location) => isBellTowerLocation(location)) ?? null;
   const dbHere =
-    sheet.locationId && !atHome
-      ? await prisma.location.findUnique({ where: { id: sheet.locationId } })
-      : null;
+    sheet.locationId && !atHome ? await getLocationById(sheet.locationId) : null;
   // 내가 보유한 집 (하우징 메뉴·입장 목록용) — 지금 서 있는 집과 별개
   const house = houseOption(housingState.owned[0] ?? sheet.houseTier);
   const hereHouse = houseOption(atHome ? activeHomeTier : null);
@@ -402,7 +400,7 @@ export default async function WorldPage() {
   });
 
   const [rawLocActions, invEntries, storageBox] = await Promise.all([
-    prisma.locationAction.findMany({ where: { locationId: here.id }, orderBy: { order: "asc" } }),
+    getLocationActionsAt(here.id),
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, qty: { gt: 0 } },
       orderBy: { updatedAt: "desc" },
@@ -1131,10 +1129,7 @@ export default async function WorldPage() {
     }
   }
 
-  const dungeonsHere = await prisma.dungeon.findMany({
-    where: { locationId: here.id },
-    orderBy: { order: "asc" },
-  });
+  const dungeonsHere = await getDungeonsAt(here.id);
   let dungeonView: DungeonView[] = [];
   let dungeonAbilities: DungeonAbility[] = [];
   let dungeonRunsLeft = 0;

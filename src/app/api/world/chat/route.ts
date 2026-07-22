@@ -65,11 +65,20 @@ export async function GET(req: Request) {
       ...(after ? { id: { gt: after } } : {}),
     },
     orderBy: { id: "asc" },
-    take: 200,
+    take: 60,
     include: MSG_INCLUDE,
   });
 
   return Response.json({ messages: rows.map(serialize) });
+}
+
+// 월드 로그(WorldMessage) 무한 증가 방지 — 가끔 오래된 메시지를 정리한다.
+// 채팅 조회는 '입장 이후'만 읽으므로 하루 지난 로그를 지워도 활성 세션에 영향 없다.
+const CHAT_RETENTION_MS = 24 * 60 * 60 * 1000;
+function maybeTrimOldMessages() {
+  if (Math.random() >= 0.04) return; // ~25건당 1회
+  const cutoff = new Date(Date.now() - CHAT_RETENTION_MS);
+  void prisma.worldMessage.deleteMany({ where: { createdAt: { lt: cutoff } } }).catch(() => {});
 }
 
 export async function POST(req: Request) {
@@ -79,6 +88,8 @@ export async function POST(req: Request) {
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.locationId)
     return Response.json({ error: "월드에 입장한 상태에서만 채팅할 수 있어요." }, { status: 400 });
+
+  maybeTrimOldMessages();
 
   let content = "";
   try {

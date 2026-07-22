@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
@@ -12,6 +12,7 @@ import { startGathering } from "@/app/actions/gathering";
 import { startMining } from "@/app/actions/mining";
 import { discoverByKeyword } from "@/app/actions/world";
 import { getPreset, isImageUrl } from "@/lib/avatars";
+import { usePolling } from "@/lib/usePolling";
 import { formatFullDate, formatTime } from "@/lib/format";
 
 type ChatMessage = {
@@ -24,7 +25,7 @@ type ChatMessage = {
 
 export type ChatActionChip = { kind: string; label: string | null; apCost: number; statLabel?: string | null };
 
-const POLL_MS = 4000;
+const POLL_MS = 8000;
 
 const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
@@ -123,11 +124,7 @@ export default function WorldChat({
     }
   }, [append]);
 
-  useEffect(() => {
-    void poll();
-    const t = setInterval(() => void poll(), POLL_MS);
-    return () => clearInterval(t);
-  }, [poll]);
+  usePolling(() => void poll(), POLL_MS);
 
   async function beginFishing() {
     if (busy) return;

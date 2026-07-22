@@ -163,7 +163,26 @@ export default async function CharacterPage({
 
   const profile = await prisma.user.findUnique({
     where: { username: uname },
-    include: { sheet: true },
+    // 공개 프로필은 시트의 표시용 컬럼만 필요 — 월드 전용 대용량 JSON은 제외해 egress 절감.
+    include: {
+      sheet: {
+        omit: {
+          invJson: true,
+          guildQuestJson: true,
+          housingJson: true,
+          weeklyIncomeJson: true,
+          sheetSkillsJson: true,
+          achStatsJson: true,
+          probeJson: true,
+          visitedJson: true,
+          discoveredJson: true,
+          pendingCatchJson: true,
+          pendingGatherJson: true,
+          pendingMineJson: true,
+          pendingBrewJson: true,
+        },
+      },
+    },
   });
   if (!profile) notFound();
 

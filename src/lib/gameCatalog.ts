@@ -41,3 +41,41 @@ export const getCraftEffectItems = unstable_cache(
   ["catalog:craft-effect-items"],
   { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
 );
+
+// ── 월드 참조 데이터 — 유저와 무관하게 동일(맵 동기화 때만 변경). 15명이 캐시를 공유해
+//    매 렌더/새로고침마다 DB를 다시 안 친다. (모두 Date 컬럼 미사용 → 캐시 직렬화 안전)
+export const getLocationCount = unstable_cache(
+  () => prisma.location.count(),
+  ["catalog:location-count"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
+export const getLocationById = unstable_cache(
+  (id: string) => prisma.location.findUnique({ where: { id } }),
+  ["catalog:location-by-id"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
+export const getLocationsBrief = unstable_cache(
+  () =>
+    prisma.location.findMany({
+      select: { id: true, name: true, emoji: true },
+      orderBy: { order: "asc" },
+    }),
+  ["catalog:locations-brief"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
+export const getLocationActionsAt = unstable_cache(
+  (locationId: string) =>
+    prisma.locationAction.findMany({ where: { locationId }, orderBy: { order: "asc" } }),
+  ["catalog:location-actions"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);
+
+export const getDungeonsAt = unstable_cache(
+  (locationId: string) =>
+    prisma.dungeon.findMany({ where: { locationId }, orderBy: { order: "asc" } }),
+  ["catalog:dungeons-at"],
+  { revalidate: CATALOG_TTL, tags: [CATALOG_TAG] },
+);

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
+import { usePolling } from "@/lib/usePolling";
 import {
   cancelTradeOffer,
   confirmTradeOffer,
@@ -321,29 +322,20 @@ export default function TradeRoom({
   const mine = currentUserId === live.fromSide.userId ? live.fromSide : live.toSide;
   const isOpen = live.status === "PENDING";
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
+  usePolling(() => {
+    void (async () => {
       try {
         const res = await fetch(`/api/trade/${encodeURIComponent(tradeId)}`, {
           cache: "no-store",
         });
         if (!res.ok) return;
         const next = (await res.json()) as TradeSnapshot;
-        if (!cancelled) setLive(next);
+        setLive(next);
       } catch {
         // 다음 주기에서 다시 시도한다.
       }
-    }
-
-    const timer = window.setInterval(poll, 2000);
-    void poll();
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [tradeId]);
+    })();
+  }, 3000);
 
   return (
     <div className="mx-auto max-w-5xl animate-fadeup space-y-5 py-4">

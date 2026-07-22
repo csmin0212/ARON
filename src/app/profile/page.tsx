@@ -55,7 +55,25 @@ export default async function ProfilePage({
   await checkAndGrant(user.id); // 임계값 업적 지연 판정
   const [counts, sheet, earnedRows] = await Promise.all([
     prisma.post.count({ where: { authorId: user.id } }),
-    prisma.characterSheet.findUnique({ where: { userId: user.id } }),
+    prisma.characterSheet.findUnique({
+      where: { userId: user.id },
+      // 프로필 편집 화면은 표시·위젯용 컬럼만 필요 — 월드 전용 대용량 JSON 제외.
+      omit: {
+        invJson: true,
+        guildQuestJson: true,
+        housingJson: true,
+        weeklyIncomeJson: true,
+        sheetSkillsJson: true,
+        achStatsJson: true,
+        probeJson: true,
+        visitedJson: true,
+        discoveredJson: true,
+        pendingCatchJson: true,
+        pendingGatherJson: true,
+        pendingMineJson: true,
+        pendingBrewJson: true,
+      },
+    }),
     prisma.userAchievement.findMany({ where: { userId: user.id }, select: { achId: true } }),
   ]);
   const earnedIds = earnedRows.map((row) => row.achId);
