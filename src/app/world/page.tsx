@@ -1464,10 +1464,10 @@ export default async function WorldPage() {
 
           <WorldServices
             canForge={canForge}
-            canGuild={canGuild}
+            canGuild={canGuild && !canGuildBackyard}
             canGuildBackyard={canGuildBackyard}
             canMarket={canMarket}
-            canStorage={canStorage}
+            canStorage={canStorage && !canGuildBackyard}
             canInn={canInn}
             canHousing={canHousing}
             canGacha={here.id === "대상야영지"}
