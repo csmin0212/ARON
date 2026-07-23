@@ -8,6 +8,7 @@ import { isGmUsername } from "@/lib/gm";
 import { postSystem } from "@/lib/play";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import { RIFT_CAPACITY, RIFT_EMOJI, isRiftType, riftInteriorId } from "@/lib/rift";
+import { invalidateRifts, invalidateWorldUser } from "@/lib/worldCache";
 
 export type RiftActionState = { error?: string; ok?: string } | undefined;
 
@@ -35,6 +36,7 @@ export async function openRift(_prev: RiftActionState, formData: FormData): Prom
   if (existing) return { error: "그 장소엔 이미 열린 균열이 있어요." };
 
   await prisma.rift.create({ data: { type, originId, interiorId, capacity: RIFT_CAPACITY } });
+  invalidateRifts();
   await postSystem(
     originId,
     `${RIFT_EMOJI[type] ?? "⚡"} ${origin.name}에 '${type}' 균열이 나타났다! 선착순 ${RIFT_CAPACITY}명 진입 가능.`,
@@ -70,6 +72,7 @@ export async function closeRift(_prev: RiftActionState, formData: FormData): Pro
     });
     void checkAndGrant(member.userId);
   }
+  invalidateRifts();
   await postSystem(rift.originId, `${RIFT_EMOJI[rift.type] ?? "⚡"} '${rift.type}' 균열이 닫혔다.`);
   revalidatePath("/world");
   return { ok: `균열을 닫았어요.${members.length > 0 ? ` (내부 ${members.length}명 클리어 인정)` : ""}` };
@@ -115,6 +118,8 @@ export async function enterRift(riftId: string): Promise<RiftActionState> {
     },
   });
   void checkAndGrant(user.id);
+  invalidateWorldUser(user.id);
+  invalidateRifts();
   await Promise.all([
     postSystem(rift.originId, `🌀 ${user.nickname}님이 '${rift.type}' 균열에 진입합니다.`),
     postSystem(rift.interiorId, `🌀 ${user.nickname}님이 균열에 진입했다.`),
@@ -140,6 +145,8 @@ export async function exitRift(): Promise<RiftActionState> {
     where: { userId: user.id },
     data: { locationId: rift.originId, enteredAt: new Date() },
   });
+  invalidateWorldUser(user.id);
+  invalidateRifts();
   await Promise.all([
     postSystem(rift.interiorId, `↩️ ${user.nickname}님이 균열에서 나갔다.`),
     postSystem(rift.originId, `↩️ ${user.nickname}님이 균열에서 빠져나왔다.`),

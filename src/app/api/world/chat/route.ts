@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, getSessionUid } from "@/lib/auth";
+import {
+  getRecentMessages,
+  getUserWorldState,
+  invalidateWorldLocation,
+} from "@/lib/worldCache";
 import { runActionCommand } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 
@@ -46,31 +51,26 @@ function serialize(m: RawMsg): ChatMessage {
 }
 
 export async function GET(req: Request) {
-  // 폴링 핫패스 — JWT 검증만으로 인증해 유저 행 DB 조회를 생략한다 (egress 절감).
+  // 폴링 핫패스 — JWT 검증 + 캐시만 사용해 평상시 DB 를 치지 않는다 (egress 절감).
   const uid = await getSessionUid();
   if (!uid) return Response.json({ error: "unauthorized" }, { status: 401 });
 
-  const sheet = await prisma.characterSheet.findUnique({
-    where: { userId: uid },
-    select: { locationId: true, enteredAt: true },
-  });
-  if (!sheet?.locationId) return Response.json({ messages: [] });
+  const state = await getUserWorldState(uid);
+  if (!state.locationId) return Response.json({ messages: [] });
 
   const after = Number(new URL(req.url).searchParams.get("after") ?? 0);
-  const since = sheet.enteredAt ?? new Date(0);
+  const cached = await getRecentMessages(state.locationId);
+  const messages: ChatMessage[] = cached
+    .filter((m) => m.createdAtMs >= state.enteredAtMs && (!after || m.id > after))
+    .map((m) => ({
+      id: m.id,
+      content: m.content,
+      createdAt: m.createdAt,
+      system: m.system,
+      user: m.user,
+    }));
 
-  const rows = await prisma.worldMessage.findMany({
-    where: {
-      locationId: sheet.locationId,
-      createdAt: { gte: since },
-      ...(after ? { id: { gt: after } } : {}),
-    },
-    orderBy: { id: "asc" },
-    take: 60,
-    include: MSG_INCLUDE,
-  });
-
-  return Response.json({ messages: rows.map(serialize) });
+  return Response.json({ messages });
 }
 
 // 월드 로그(WorldMessage) 무한 증가 방지 — 가끔 오래된 메시지를 정리한다.
@@ -110,6 +110,8 @@ export async function POST(req: Request) {
 
     const result = await runActionCommand(user.id, user.nickname, sheet, command);
     if (result.error) return Response.json({ error: result.error }, { status: 400 });
+    // 행동 로그(시스템 메시지)가 쌓였으니 이 장소 캐시를 즉시 갱신
+    invalidateWorldLocation(sheet.locationId);
     return Response.json({ ok: true, refresh: true });
   }
 
@@ -117,6 +119,7 @@ export async function POST(req: Request) {
     data: { locationId: sheet.locationId, userId: user.id, content },
     include: MSG_INCLUDE,
   });
+  invalidateWorldLocation(sheet.locationId);
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: { achStatsJson: bumpStat(sheet.achStatsJson, "월드채팅횟수") },

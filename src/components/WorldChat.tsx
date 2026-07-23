@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
@@ -11,8 +11,8 @@ import { startFishing } from "@/app/actions/fishing";
 import { startGathering } from "@/app/actions/gathering";
 import { startMining } from "@/app/actions/mining";
 import { discoverByKeyword } from "@/app/actions/world";
+import { useWorldSync } from "./WorldSyncProvider";
 import { getPreset, isImageUrl } from "@/lib/avatars";
-import { usePolling } from "@/lib/usePolling";
 import { formatFullDate, formatTime } from "@/lib/format";
 
 type ChatMessage = {
@@ -24,8 +24,6 @@ type ChatMessage = {
 };
 
 export type ChatActionChip = { kind: string; label: string | null; apCost: number; statLabel?: string | null };
-
-const POLL_MS = 8000;
 
 const KIND_EMOJI: Record<string, string> = {
   채집: "🌿",
@@ -71,6 +69,11 @@ export default function WorldChat({
   actions?: ChatActionChip[];
 }) {
   const router = useRouter();
+  const sync = useWorldSync();
+  const syncRef = useRef(sync);
+  useEffect(() => {
+    syncRef.current = sync;
+  }, [sync]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -106,6 +109,7 @@ export default function WorldChat({
         if (fresh.length === 0) return prev;
         const next = [...prev, ...fresh].slice(-300);
         lastIdRef.current = next[next.length - 1].id;
+        syncRef.current?.setAfter(lastIdRef.current);
         return next;
       });
       requestAnimationFrame(scrollToBottom);
@@ -113,18 +117,10 @@ export default function WorldChat({
     [scrollToBottom],
   );
 
-  const poll = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/world/chat?after=${lastIdRef.current}`, { cache: "no-store" });
-      if (!res.ok) return;
-      const data = (await res.json()) as { messages?: ChatMessage[] };
-      if (data.messages) append(data.messages);
-    } catch {
-      /* 다음 폴링에서 회복 */
-    }
-  }, [append]);
-
-  usePolling(() => void poll(), POLL_MS);
+  // 통합 폴링(WorldSyncProvider)이 가져온 새 메시지를 누적한다.
+  useEffect(() => {
+    if (sync?.batch?.length) append(sync.batch);
+  }, [sync?.batch, append]);
 
   async function beginFishing() {
     if (busy) return;
@@ -225,7 +221,7 @@ export default function WorldChat({
         stickToBottomRef.current = true;
         if (data.message) append([data.message]);
         if (data.notice) setNotice(data.notice);
-        await poll(); // 행동 결과·발견 등 시스템 메시지 즉시 수신
+        await syncRef.current?.refresh(); // 행동 결과·발견 등 시스템 메시지 즉시 수신
         if (data.refresh) router.refresh();
       }
     } catch {
@@ -462,7 +458,7 @@ ${body}
           drainSlow={fishing.drainSlow}
           onDone={() => {
             setFishing(null);
-            void poll();
+            void syncRef.current?.refresh();
             router.refresh();
           }}
         />
@@ -475,7 +471,7 @@ ${body}
           drainSlow={gathering.drainSlow}
           onDone={() => {
             setGathering(null);
-            void poll();
+            void syncRef.current?.refresh();
             router.refresh();
           }}
         />
@@ -488,7 +484,7 @@ ${body}
           drainSlow={mining.drainSlow}
           onDone={() => {
             setMining(null);
-            void poll();
+            void syncRef.current?.refresh();
             router.refresh();
           }}
         />

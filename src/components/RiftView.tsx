@@ -4,10 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
 import { enterRift, exitRift } from "@/app/actions/rift";
-import { usePolling } from "@/lib/usePolling";
+import { useWorldSync } from "./WorldSyncProvider";
 import type { RiftContext, RiftPerson } from "@/app/api/world/rift/route";
-
-const POLL_MS = 8000;
 const EMOJI: Record<string, string> = { "별의 바다": "🌌", "망자의 정원": "🥀", "핏빛 성채": "🩸" };
 
 function Members({ list, capacity }: { list: RiftPerson[]; capacity?: number }) {
@@ -34,22 +32,10 @@ function Members({ list, capacity }: { list: RiftPerson[]; capacity?: number }) 
 
 export default function RiftView({ initial = { mode: "none" } }: { initial?: RiftContext }) {
   const router = useRouter();
-  const [ctx, setCtx] = useState<RiftContext>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  usePolling(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/world/rift", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as RiftContext;
-        setCtx(data);
-      } catch {
-        /* 다음 폴링 */
-      }
-    })();
-  }, POLL_MS);
+  const sync = useWorldSync();
+  const ctx: RiftContext = sync?.rift ?? initial;
 
   if (ctx.mode === "none") return null;
 

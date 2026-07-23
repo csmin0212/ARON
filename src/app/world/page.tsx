@@ -25,6 +25,7 @@ import type { PendingFishView } from "@/app/actions/fishing";
 import type { PendingMineView } from "@/app/actions/mining";
 import WorldAdmin from "@/components/WorldAdmin";
 import WorldChat from "@/components/WorldChat";
+import { WorldSyncProvider } from "@/components/WorldSyncProvider";
 import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
 import { dailyEventBuffs, dailyLifeEventBonus } from "@/lib/dailyEvents";
 import WorldServices, {
@@ -1351,6 +1352,7 @@ export default async function WorldPage() {
         />
       )}
 
+      <WorldSyncProvider>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <WorldChat
@@ -1528,6 +1530,7 @@ export default async function WorldPage() {
           />
         </div>
       </div>
+      </WorldSyncProvider>
 
       {isGm && (
         <WorldAdmin locations={adminLocations} openRifts={adminRifts} players={adminPlayers} />

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "./prisma";
+import { invalidateWorldLocation } from "./worldCache";
 import { dailyLifeEventBonus } from "./dailyEvents";
 import { rollDice } from "./dice";
 import { KEYWORD_SEARCH_COST, regenFatigue } from "./world";
@@ -171,6 +172,8 @@ async function ensureLifeSkillItem(item: LifeSkillItem, kind: LifeSkillKind): Pr
 
 export async function postSystem(locationId: string, content: string): Promise<void> {
   await prisma.worldMessage.create({ data: { locationId, system: true, content } });
+  // 이 장소의 채팅 캐시를 즉시 갱신 (폴링이 캐시만 보므로 필수)
+  invalidateWorldLocation(locationId);
 }
 
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();

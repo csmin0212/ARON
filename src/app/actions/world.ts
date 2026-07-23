@@ -20,6 +20,7 @@ import {
   fetchCombatSkillsRows,
 } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
+import { invalidateWorldLocation, invalidateWorldUser } from "@/lib/worldCache";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import type { ActionRow, DropEntry } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
@@ -354,6 +355,7 @@ export async function enterWorld(): Promise<void> {
       visitedJson: addVisited(sheet.visitedJson, start.id),
     },
   });
+  invalidateWorldUser(user.id);
   await postSystem(start.id, `🌟 ${user.nickname}님이 월드에 입장하셨습니다!`);
   await triggerFirstVisitEvents(user, sheet, start.id);
   void checkAndGrant(user.id);
@@ -406,6 +408,10 @@ export async function moveTo(formData: FormData): Promise<void> {
       achStatsJson: bumpStat(sheet.achStatsJson, "이동횟수"),
     },
   });
+  // 위치가 바뀌었으니 내 상태 + 떠난 곳/도착한 곳 접속자 캐시를 즉시 갱신
+  invalidateWorldUser(user.id);
+  invalidateWorldLocation(here.id);
+  invalidateWorldLocation(target);
   void checkAndGrant(user.id);
   // 일반 이동으로 균열을 벗어나면 멤버십 해제
   await prisma.riftMember.deleteMany({ where: { userId: user.id } });
@@ -452,6 +458,7 @@ export async function enterHome(formData: FormData): Promise<void> {
     where: { userId: user.id },
     data: { locationId: homeLocationId(user.id, tier.tier), houseTier: tier.tier, enteredAt: new Date() },
   });
+  invalidateWorldUser(user.id);
   await postSystem(sheet.locationId, `📤 ${user.nickname}님이 자리를 떠났습니다.`);
   revalidatePath("/world");
 }
@@ -473,6 +480,8 @@ export async function leaveHome(): Promise<void> {
     where: { userId: user.id },
     data: { locationId: dest.id, enteredAt: new Date() },
   });
+  invalidateWorldUser(user.id);
+  invalidateWorldLocation(sheet?.locationId);
   await postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`);
   revalidatePath("/world");
 }

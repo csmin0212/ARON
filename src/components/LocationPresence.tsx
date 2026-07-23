@@ -1,30 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import Avatar from "./Avatar";
-import { usePolling } from "@/lib/usePolling";
+import { useWorldSync } from "./WorldSyncProvider";
 import type { PresencePerson } from "@/app/api/world/presence/route";
 
-const POLL_MS = 15000;
-
-// 현재 위치의 모험가 목록 — 폴링해 실시간 갱신(백그라운드 탭은 자동 정지).
+// 현재 위치의 모험가 목록 — 통합 폴링(WorldSyncProvider)에서 받아 갱신.
 // (장소 변경 시 page에서 key로 리마운트되어 initial이 갱신됨)
 export default function LocationPresence({ initial }: { initial: PresencePerson[] }) {
-  const [people, setPeople] = useState<PresencePerson[]>(initial);
-
-  usePolling(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/world/presence", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { people?: PresencePerson[] };
-        if (data.people) setPeople(data.people);
-      } catch {
-        /* 다음 폴링에서 회복 */
-      }
-    })();
-  }, POLL_MS);
+  const sync = useWorldSync();
+  const people = sync?.people ?? initial;
 
   const me = people.find((p) => p.isMe);
   const others = people.filter((p) => !p.isMe);
