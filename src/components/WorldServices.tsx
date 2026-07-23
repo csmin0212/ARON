@@ -3673,7 +3673,7 @@ export default function WorldServices({
     ? Date.parse(wanderingMerchant.active.endsAt) - nowMs
     : 0;
   const merchantOpenNow = !!wanderingMerchant.active && merchantRemainMs > 0;
-  const merchantVisible = merchantOpenNow || wanderingMerchant.isGm;
+  const merchantVisible = wanderingMerchant.enabled && (merchantOpenNow || wanderingMerchant.isGm);
   // 티어 무관 — 해당 종류의 생산 가구(어항·화분 계열)를 하나라도 보유하면 시설 노출
   const productionFacilities = (["낚시", "채집"] as const).filter((kind) =>
     FURNITURE_OPTIONS.some(
