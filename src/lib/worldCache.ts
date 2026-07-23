@@ -12,7 +12,10 @@ import { prisma } from "./prisma";
 // 캐시는 JSON 직렬화되므로 Date 를 그대로 담지 않는다(문자열/숫자로 고정).
 
 export const worldUserTag = (uid: string) => `world-user:${uid}`;
-export const worldLocTag = (locationId: string) => `world-loc:${locationId}`;
+// 메시지와 접속자는 바뀌는 시점이 다르므로 태그를 분리한다.
+// (같이 묶으면 채팅 한 줄마다 접속자 캐시까지 날아가 폴링이 계속 DB를 친다)
+export const worldMsgTag = (locationId: string) => `world-msg:${locationId}`;
+export const worldPeopleTag = (locationId: string) => `world-people:${locationId}`;
 export const WORLD_RIFT_TAG = "world-rifts";
 
 export type CachedMessage = {
@@ -32,7 +35,8 @@ export type CachedPerson = {
 };
 
 const USER_TTL = 300; // 이동 시 즉시 무효화되므로 길게
-const LOC_TTL = 60; // 메시지 작성 시 즉시 무효화
+const MSG_TTL = 60; // 메시지 작성 시 즉시 무효화
+const PEOPLE_TTL = 120; // 이동 시 즉시 무효화
 const RIFT_TTL = 60;
 
 // 내 위치·입장시각 (이동 시 invalidateWorldUser 로 갱신)
@@ -80,7 +84,7 @@ export function getRecentMessages(locationId: string) {
       }));
     },
     ["world:messages", locationId],
-    { revalidate: LOC_TTL, tags: [worldLocTag(locationId)] },
+    { revalidate: MSG_TTL, tags: [worldMsgTag(locationId)] },
   )();
 }
 
@@ -105,7 +109,7 @@ export function getLocationPeople(locationId: string) {
       }));
     },
     ["world:people", locationId],
-    { revalidate: LOC_TTL, tags: [worldLocTag(locationId)] },
+    { revalidate: PEOPLE_TTL, tags: [worldPeopleTag(locationId)] },
   )();
 }
 
@@ -221,8 +225,18 @@ const PURGE = { expire: 0 } as const;
 export function invalidateWorldUser(uid: string) {
   revalidateTag(worldUserTag(uid), PURGE);
 }
+/** 채팅·행동 로그가 생겼을 때 (메시지 캐시만) */
+export function invalidateWorldMessages(locationId: string | null | undefined) {
+  if (locationId) revalidateTag(worldMsgTag(locationId), PURGE);
+}
+/** 누군가 들어오거나 나갔을 때 (접속자 캐시만) */
+export function invalidateLocationPeople(locationId: string | null | undefined) {
+  if (locationId) revalidateTag(worldPeopleTag(locationId), PURGE);
+}
+/** 이동처럼 둘 다 바뀌는 경우 */
 export function invalidateWorldLocation(locationId: string | null | undefined) {
-  if (locationId) revalidateTag(worldLocTag(locationId), PURGE);
+  invalidateWorldMessages(locationId);
+  invalidateLocationPeople(locationId);
 }
 export function invalidateRifts() {
   revalidateTag(WORLD_RIFT_TAG, PURGE);

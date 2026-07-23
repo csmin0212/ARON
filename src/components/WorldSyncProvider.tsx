@@ -22,7 +22,7 @@ type SyncCtx = {
 
 const Ctx = createContext<SyncCtx | null>(null);
 
-const POLL_MS = 8000;
+const POLL_MS = 12000;
 
 export function WorldSyncProvider({ children }: { children: ReactNode }) {
   const afterRef = useRef(0);

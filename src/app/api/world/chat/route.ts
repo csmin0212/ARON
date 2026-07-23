@@ -3,7 +3,7 @@ import { getCurrentUser, getSessionUid } from "@/lib/auth";
 import {
   getRecentMessages,
   getUserWorldState,
-  invalidateWorldLocation,
+  invalidateWorldMessages,
 } from "@/lib/worldCache";
 import { runActionCommand } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
     const result = await runActionCommand(user.id, user.nickname, sheet, command);
     if (result.error) return Response.json({ error: result.error }, { status: 400 });
     // 행동 로그(시스템 메시지)가 쌓였으니 이 장소 캐시를 즉시 갱신
-    invalidateWorldLocation(sheet.locationId);
+    invalidateWorldMessages(sheet.locationId);
     return Response.json({ ok: true, refresh: true });
   }
 
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
     data: { locationId: sheet.locationId, userId: user.id, content },
     include: MSG_INCLUDE,
   });
-  invalidateWorldLocation(sheet.locationId);
+  invalidateWorldMessages(sheet.locationId);
   await prisma.characterSheet.update({
     where: { userId: user.id },
     data: { achStatsJson: bumpStat(sheet.achStatsJson, "월드채팅횟수") },
