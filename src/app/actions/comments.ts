@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
 import { getMaskedIp, DEFAULT_ANON_NICK } from "@/lib/anon";
 import { checkAndGrant } from "@/lib/achievements";
+import { displaySnapshot } from "@/lib/gmNpc";
 
 export type CommentState = { error?: string; ok?: boolean } | undefined;
 
@@ -49,6 +50,7 @@ export async function createComment(
         parentId,
         content,
         authorId: user!.id,
+        ...displaySnapshot(user!),
         isAuthorPost: post.authorId === user!.id,
       },
     });

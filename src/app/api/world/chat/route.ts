@@ -7,6 +7,7 @@ import {
 } from "@/lib/worldCache";
 import { runActionCommand } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
+import { activeDisplayPersona, displaySnapshot } from "@/lib/gmNpc";
 
 export type ChatMessage = {
   id: number;
@@ -31,6 +32,8 @@ type RawMsg = {
   content: string;
   createdAt: Date;
   system: boolean;
+  authorName: string | null;
+  authorAvatar: string | null;
   user: {
     username: string;
     nickname: string;
@@ -45,7 +48,11 @@ function serialize(m: RawMsg): ChatMessage {
     createdAt: m.createdAt.toISOString(),
     system: m.system,
     user: m.user
-      ? { username: m.user.username, nickname: m.user.nickname, avatar: m.user.avatar }
+      ? {
+          username: m.user.username,
+          nickname: m.authorName ?? m.user.nickname,
+          avatar: m.authorAvatar ?? m.user.avatar,
+        }
       : null,
   };
 }
@@ -108,7 +115,8 @@ export async function POST(req: Request) {
     if (!command)
       return Response.json({ error: "명령을 입력해주세요. (예: /낚시)" }, { status: 400 });
 
-    const result = await runActionCommand(user.id, user.nickname, sheet, command);
+    const persona = activeDisplayPersona(user);
+    const result = await runActionCommand(user.id, persona.name, sheet, command);
     if (result.error) return Response.json({ error: result.error }, { status: 400 });
     // 행동 로그(시스템 메시지)가 쌓였으니 이 장소 캐시를 즉시 갱신
     invalidateWorldMessages(sheet.locationId);
@@ -116,7 +124,7 @@ export async function POST(req: Request) {
   }
 
   const msg = await prisma.worldMessage.create({
-    data: { locationId: sheet.locationId, userId: user.id, content },
+    data: { locationId: sheet.locationId, userId: user.id, content, ...displaySnapshot(user) },
     include: MSG_INCLUDE,
   });
   invalidateWorldMessages(sheet.locationId);

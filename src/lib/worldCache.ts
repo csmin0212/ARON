@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidateTag, unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
+import { activeDisplayPersona } from "./gmNpc";
 
 // 월드 폴링(채팅·접속자·균열) 전용 캐시 계층.
 //
@@ -71,6 +72,8 @@ export function getRecentMessages(locationId: string) {
           content: true,
           createdAt: true,
           system: true,
+          authorName: true,
+          authorAvatar: true,
           user: { select: { username: true, nickname: true, avatar: true } },
         },
       });
@@ -80,7 +83,13 @@ export function getRecentMessages(locationId: string) {
         createdAt: m.createdAt.toISOString(),
         createdAtMs: m.createdAt.getTime(),
         system: m.system,
-        user: m.user,
+        user: m.user
+          ? {
+              username: m.user.username,
+              nickname: m.authorName ?? m.user.nickname,
+              avatar: m.authorAvatar ?? m.user.avatar,
+            }
+          : null,
       }));
     },
     ["world:messages", locationId],
@@ -96,17 +105,28 @@ export function getLocationPeople(locationId: string) {
         where: { locationId },
         select: {
           userId: true,
-          user: { select: { username: true, nickname: true, avatar: true } },
+          user: {
+            select: {
+              username: true,
+              nickname: true,
+              avatar: true,
+              gmNpcPersonasJson: true,
+              activeNpcPersonaKey: true,
+            },
+          },
         },
         orderBy: { updatedAt: "desc" },
         take: 50,
       });
-      return rows.map((r) => ({
-        userId: r.userId,
-        username: r.user.username,
-        nickname: r.user.nickname,
-        avatar: r.user.avatar,
-      }));
+      return rows.map((r) => {
+        const persona = activeDisplayPersona(r.user);
+        return {
+          userId: r.userId,
+          username: r.user.username,
+          nickname: persona.name,
+          avatar: persona.avatar,
+        };
+      });
     },
     ["world:people", locationId],
     { revalidate: PEOPLE_TTL, tags: [worldPeopleTag(locationId)] },
@@ -153,18 +173,28 @@ export function getRiftMembers(riftId: string) {
       if (ids.length === 0) return [];
       const users = await prisma.user.findMany({
         where: { id: { in: ids } },
-        select: { id: true, username: true, nickname: true, avatar: true },
+        select: {
+          id: true,
+          username: true,
+          nickname: true,
+          avatar: true,
+          gmNpcPersonasJson: true,
+          activeNpcPersonaKey: true,
+        },
       });
       const byId = new Map(users.map((u) => [u.id, u]));
       return ids
         .map((id) => byId.get(id))
         .filter((u): u is NonNullable<typeof u> => !!u)
-        .map((u) => ({
-          userId: u.id,
-          username: u.username,
-          nickname: u.nickname,
-          avatar: u.avatar,
-        }));
+        .map((u) => {
+          const persona = activeDisplayPersona(u);
+          return {
+            userId: u.id,
+            username: u.username,
+            nickname: persona.name,
+            avatar: persona.avatar,
+          };
+        });
     },
     ["world:rift-members", riftId],
     { revalidate: RIFT_TTL, tags: [WORLD_RIFT_TAG] },

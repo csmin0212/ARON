@@ -7,6 +7,7 @@ import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
 import { getMaskedIp, DEFAULT_ANON_NICK } from "@/lib/anon";
 import { isValidCategory } from "@/lib/categories";
 import { checkAndGrant } from "@/lib/achievements";
+import { displaySnapshot } from "@/lib/gmNpc";
 
 export type FormState = { error?: string } | undefined;
 
@@ -51,7 +52,7 @@ export async function createPost(_prev: FormState, formData: FormData): Promise<
 
   if (writeAsMember) {
     const post = await prisma.post.create({
-      data: { category, title, content, authorId: user!.id, ...tradeData },
+      data: { category, title, content, authorId: user!.id, ...displaySnapshot(user!), ...tradeData },
     });
     newId = post.id;
   } else {

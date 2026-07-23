@@ -53,6 +53,8 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
 
   const user = await getCurrentUser();
   const category = getCategory(post.category);
+  const postAuthorName = post.authorName ?? post.author?.nickname ?? "";
+  const postAuthorAvatar = post.authorAvatar ?? post.author?.avatar ?? null;
 
   const images = await prisma.image.findMany({
     where: { postId },
@@ -86,7 +88,11 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       isDeleted: c.isDeleted,
       isAuthorPost: c.isAuthorPost,
       member: c.author
-        ? { username: c.author.username, nickname: c.author.nickname, avatar: c.author.avatar }
+        ? {
+            username: c.author.username,
+            nickname: c.authorName ?? c.author.nickname,
+            avatar: c.authorAvatar ?? c.author.avatar,
+          }
         : null,
       anonNick: c.anonNick,
       anonIp: c.anonIp,
@@ -146,12 +152,12 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
             <div className="flex items-center gap-2">
               {post.author ? (
                 <>
-                  <Avatar name={post.author.nickname} avatar={post.author.avatar} size={32} />
+                  <Avatar name={postAuthorName} avatar={postAuthorAvatar} size={32} />
                   <Link
                     href={`/u/${encodeURIComponent(post.author.username)}`}
                     className="text-sm font-bold text-content transition hover:text-brand-600 hover:underline"
                   >
-                    {post.author.nickname}
+                    {postAuthorName}
                   </Link>
                 </>
               ) : (

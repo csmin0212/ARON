@@ -20,6 +20,8 @@ const POST_SELECT = {
   price: true,
   tradeType: true,
   tradeStatus: true,
+  authorName: true,
+  authorAvatar: true,
   author: { select: { nickname: true, avatar: true } },
   _count: { select: { comments: true, images: true } },
 } as const;
@@ -35,6 +37,8 @@ type RawPost = {
   price: number | null;
   tradeType: string | null;
   tradeStatus: string | null;
+  authorName: string | null;
+  authorAvatar: string | null;
   author: { nickname: string; avatar: string | null } | null;
   _count: { comments: number; images: number };
 };
@@ -48,7 +52,12 @@ function normalize(p: RawPost, recMap: Map<number, number>, pinned = false): Lis
     views: p.views,
     commentCount: p._count.comments,
     recommendCount: recMap.get(p.id) ?? 0,
-    author: p.author,
+    author: p.author
+      ? {
+          nickname: p.authorName ?? p.author.nickname,
+          avatar: p.authorAvatar ?? p.author.avatar,
+        }
+      : null,
     anonNick: p.anonNick,
     anonIp: p.anonIp,
     hasImage: p._count.images > 0,

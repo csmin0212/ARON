@@ -61,6 +61,8 @@ export type SessionUser = {
   featuredAchievementsJson: string | null;
   equippedTitle: string | null;
   equippedBadge: string | null;
+  gmNpcPersonasJson: string | null;
+  activeNpcPersonaKey: string | null;
 };
 
 // 세션 uid만 — JWT 검증만으로 얻으므로 DB를 전혀 안 친다.
@@ -105,6 +107,8 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
         featuredAchievementsJson: true,
         equippedTitle: true,
         equippedBadge: true,
+        gmNpcPersonasJson: true,
+        activeNpcPersonaKey: true,
       },
     });
     return user;

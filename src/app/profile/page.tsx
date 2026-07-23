@@ -6,9 +6,12 @@ import { formatFullDate } from "@/lib/format";
 import { MASTER_SHEET_URL } from "@/lib/charsheet";
 import ProfileForm from "@/components/forms/ProfileForm";
 import SheetLinkForm from "@/components/forms/SheetLinkForm";
+import GmNpcPersonaForm from "@/components/forms/GmNpcPersonaForm";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
 import type { ProfileAchievementBadge } from "@/components/ProfileHero";
 import { checkAndGrant } from "@/lib/achievements";
+import { isGmUsername } from "@/lib/gm";
+import { parseGmNpcPersonas } from "@/lib/gmNpc";
 import {
   parseFeaturedAchievementIds,
   parseProfileVisibility,
@@ -74,6 +77,7 @@ export default async function ProfilePage({
   const featuredIds = savedFeaturedIds.length > 0 ? savedFeaturedIds : legacyFeaturedId ? [legacyFeaturedId] : [];
   const visibility = parseProfileVisibility(user.profileVisibilityJson);
   const section = sp.section === "sheet" ? "sheet" : "edit";
+  const isGm = isGmUsername(user.username);
 
   // 프로필 폼 미리보기용 — 위젯 값·정체성(본인이라 전부 열람)
   const widgetValues = await computeProfileValues({
@@ -120,6 +124,15 @@ export default async function ProfilePage({
         <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-600">
           ✅ 프로필이 저장되었어요.
         </p>
+      )}
+
+      {isGm && (
+        <GmNpcPersonaForm
+          ownName={user.nickname}
+          ownAvatar={user.avatar}
+          personas={parseGmNpcPersonas(user.gmNpcPersonasJson)}
+          activeKey={user.activeNpcPersonaKey}
+        />
       )}
 
       {section === "sheet" && (

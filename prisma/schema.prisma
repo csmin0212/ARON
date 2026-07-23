@@ -29,6 +29,8 @@ model User {
   featuredAchievementsJson String? // 프로필 대표 업적 슬롯 JSON [대표, 서브1, 서브2]
   equippedTitle String? // 장착한 대표 칭호 (업적 보상)
   equippedBadge String? // 장착한 대표 배지 (이모지)
+  gmNpcPersonasJson String? // GM 전용 NPC 페르소나 6슬롯 JSON [{ key, name, avatar }]
+  activeNpcPersonaKey String? // GM 전용 현재 NPC 페르소나 키. null = 본인으로 표시
   createdAt    DateTime  @default(now())
   posts        Post[]
   comments     Comment[]
@@ -616,6 +618,8 @@ model WorldMessage {
   locationId String
   userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authorName String? // 작성 당시 표시명 스냅샷 (GM NPC 페르소나 포함)
+  authorAvatar String? // 작성 당시 아바타 스냅샷
   system     Boolean  @default(false)
   content    String
   createdAt  DateTime @default(now())
@@ -655,6 +659,8 @@ model Post {
   // 회원 작성
   authorId  String?
   author    User?     @relation(fields: [authorId], references: [id])
+  authorName String? // 작성 당시 표시명 스냅샷 (GM NPC 페르소나 포함)
+  authorAvatar String? // 작성 당시 아바타 스냅샷
   // 익명 작성
   anonNick  String? // 표시 닉네임 (기본 "ㅇㅇ")
   anonIp    String? // 마스킹된 IP "121.♡.4.12"
@@ -691,6 +697,8 @@ model Comment {
   replies      Comment[] @relation("Replies")
   authorId     String?
   author       User?     @relation(fields: [authorId], references: [id])
+  authorName   String? // 작성 당시 표시명 스냅샷 (GM NPC 페르소나 포함)
+  authorAvatar String? // 작성 당시 아바타 스냅샷
   anonNick     String?
   anonIp       String?
   anonPass     String?

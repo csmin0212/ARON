@@ -22,6 +22,7 @@ import {
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
 import { invalidateWorldLocation, invalidateWorldUser } from "@/lib/worldCache";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
+import { activeDisplayPersona } from "@/lib/gmNpc";
 import type { ActionRow, DropEntry } from "@/lib/gamedata";
 import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
 import {
@@ -331,6 +332,7 @@ export async function enterWorld(): Promise<void> {
 
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet) return;
+  const persona = activeDisplayPersona(user);
 
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   if (sheet.locationId) {
@@ -356,8 +358,8 @@ export async function enterWorld(): Promise<void> {
     },
   });
   invalidateWorldUser(user.id);
-  await postSystem(start.id, `🌟 ${user.nickname}님이 월드에 입장하셨습니다!`);
-  await triggerFirstVisitEvents(user, sheet, start.id);
+  await postSystem(start.id, `🌟 ${persona.name}님이 월드에 입장하셨습니다!`);
+  await triggerFirstVisitEvents({ id: user.id, nickname: persona.name }, sheet, start.id);
   void checkAndGrant(user.id);
   revalidatePath("/world");
 }
@@ -369,6 +371,7 @@ export async function moveTo(formData: FormData): Promise<void> {
 
   const user = await getCurrentUser();
   if (!user) return;
+  const persona = activeDisplayPersona(user);
 
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.locationId) return;
@@ -417,10 +420,10 @@ export async function moveTo(formData: FormData): Promise<void> {
   await prisma.riftMember.deleteMany({ where: { userId: user.id } });
   // 퇴장/입장 알림 (목적지는 노출하지 않음 — 히든 보호)
   await Promise.all([
-    postSystem(here.id, `📤 ${user.nickname}님이 자리를 떠났습니다.`),
-    postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`),
+    postSystem(here.id, `📤 ${persona.name}님이 자리를 떠났습니다.`),
+    postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`),
   ]);
-  await triggerFirstVisitEvents(user, sheet, target);
+  await triggerFirstVisitEvents({ id: user.id, nickname: persona.name }, sheet, target);
   revalidatePath("/world");
 }
 
@@ -435,6 +438,7 @@ async function bellTowerLocation() {
 export async function enterHome(formData: FormData): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
+  const persona = activeDisplayPersona(user);
 
   const tier = houseOption(String(formData.get("tier") ?? ""));
   if (!tier) return;
@@ -459,13 +463,14 @@ export async function enterHome(formData: FormData): Promise<void> {
     data: { locationId: homeLocationId(user.id, tier.tier), houseTier: tier.tier, enteredAt: new Date() },
   });
   invalidateWorldUser(user.id);
-  await postSystem(sheet.locationId, `📤 ${user.nickname}님이 자리를 떠났습니다.`);
+  await postSystem(sheet.locationId, `📤 ${persona.name}님이 자리를 떠났습니다.`);
   revalidatePath("/world");
 }
 
 export async function leaveHome(): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
+  const persona = activeDisplayPersona(user);
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
@@ -482,7 +487,7 @@ export async function leaveHome(): Promise<void> {
   });
   invalidateWorldUser(user.id);
   invalidateWorldLocation(sheet?.locationId);
-  await postSystem(dest.id, `📥 ${user.nickname}님이 입장하셨습니다!`);
+  await postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`);
   revalidatePath("/world");
 }
 
