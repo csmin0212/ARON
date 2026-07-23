@@ -314,7 +314,11 @@ export type WanderingMerchantView = {
   } | null;
 };
 
-const GEM_NAMES = ["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
+export type WanderingMerchantStockView = NonNullable<
+  WanderingMerchantView["active"]
+>["stock"][number];
+
+const GEM_NAMES =["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
 const WEAPON_HINTS = [
   "검",
   "도",
@@ -2645,10 +2649,102 @@ function WanderingMerchantModal({
       return null;
     }
   };
+  const rankTone = (rank: number) => {
+    if (rank >= 4) return "bg-amber-400/20 text-amber-100 ring-amber-300/30";
+    if (rank === 3) return "bg-violet-400/15 text-violet-200 ring-violet-300/25";
+    if (rank === 2) return "bg-sky-400/15 text-sky-200 ring-sky-300/25";
+    return "bg-white/10 text-stone-300 ring-white/15";
+  };
+
+  const stock = active?.stock ?? [];
+  const specials = stock.filter((item) => item.kind === "포션" || item.kind === "소모품");
+  const goods = stock
+    .filter((item) => item.kind !== "포션" && item.kind !== "소모품")
+    .sort((a, b) => a.rank - b.rank || a.price - b.price);
+  const totalMs = active
+    ? Math.max(1, Date.parse(active.endsAt) - Date.parse(active.startsAt))
+    : 1;
+  const remainRatio = open ? Math.min(1, Math.max(0, remainMs / totalMs)) : 0;
+  const soldOutCount = stock.filter((item) => item.stock <= 0).length;
+
+  function renderCard(item: WanderingMerchantStockView) {
+    const soldOut = item.stock <= 0;
+    const shortage = merchant.gold < item.price;
+    const disabled = buyPending || soldOut || shortage;
+    const extra = metaLabel(item.meta);
+    const special = item.kind === "포션" || item.kind === "소모품";
+    const ratio = item.initialStock > 0 ? item.stock / item.initialStock : 0;
+    return (
+      <form key={item.id} action={buyAction} className="contents">
+        <input type="hidden" name="listingId" value={item.id} />
+        <button
+          type="submit"
+          disabled={disabled}
+          className={`group flex flex-col gap-2.5 rounded-2xl border p-3.5 text-left transition ${
+            soldOut
+              ? "border-white/5 bg-white/[0.02] opacity-50"
+              : shortage
+                ? "border-white/10 bg-white/[0.03] opacity-70"
+                : "border-white/10 bg-white/[0.05] hover:-translate-y-0.5 hover:border-amber-300/50 hover:bg-amber-400/10 hover:shadow-lg hover:shadow-amber-950/40"
+          } disabled:cursor-not-allowed`}
+        >
+          <span className="flex items-start gap-2.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-black/40 text-xl ring-1 ring-white/10">
+              {iconOf(item.kind)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-extrabold text-white">{item.itemName}</span>
+              <span className="mt-1 flex flex-wrap items-center gap-1">
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ring-1 ${rankTone(item.rank)}`}
+                >
+                  {special ? item.kind : `${labelOf(item.kind)} ${item.rank}★`}
+                </span>
+                {extra && (
+                  <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-stone-300">
+                    {extra}
+                  </span>
+                )}
+              </span>
+            </span>
+          </span>
+
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+              <span
+                className={`block h-full rounded-full ${soldOut ? "bg-stone-600" : "bg-amber-400/80"}`}
+                style={{ width: `${Math.round(ratio * 100)}%` }}
+              />
+            </span>
+            <span className="shrink-0 text-[10px] font-bold text-stone-400">
+              재고 {item.stock}/{item.initialStock}
+            </span>
+          </span>
+
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-sm font-black text-amber-200">
+              {item.price.toLocaleString()}G
+            </span>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-black ${
+                soldOut
+                  ? "bg-white/5 text-stone-400"
+                  : shortage
+                    ? "bg-rose-400/10 text-rose-200"
+                    : "bg-amber-400/15 text-amber-100 group-hover:bg-amber-400 group-hover:text-stone-950"
+              }`}
+            >
+              {soldOut ? "매진" : shortage ? "골드 부족" : "구매하기"}
+            </span>
+          </span>
+        </button>
+      </form>
+    );
+  }
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4 py-6"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 py-6"
       role="presentation"
       onClick={onClose}
     >
@@ -2656,108 +2752,138 @@ function WanderingMerchantModal({
         role="dialog"
         aria-modal="true"
         aria-label="떠돌이 행상인"
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-amber-900/20 bg-stone-950 text-amber-50 shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-amber-900/25 bg-stone-950 text-amber-50 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-white/10 bg-gradient-to-r from-stone-950 via-amber-950 to-stone-900 px-5 py-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">
-            Traveling Merchant
-          </p>
-          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold">
-            <span>🧳 떠돌이 행상인</span>
-            <span className="rounded-full bg-amber-400/15 px-3 py-1 text-sm font-black text-amber-100">
+        <div className="relative shrink-0 overflow-hidden border-b border-white/10 bg-gradient-to-br from-stone-950 via-amber-950 to-stone-900 px-5 py-4">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-amber-400/10 blur-3xl"
+          />
+          <div className="relative flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-black text-amber-100 transition hover:border-amber-300/50 hover:bg-white/10"
+            >
+              <span aria-hidden>←</span> 돌아가기
+            </button>
+            <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-sm font-black text-amber-100 ring-1 ring-amber-300/20">
               {merchant.gold.toLocaleString()}G
             </span>
-          </h3>
+          </div>
+          <p className="relative mt-3 text-[11px] font-black uppercase tracking-[0.22em] text-amber-200/80">
+            Traveling Merchant
+          </p>
+          <h3 className="relative mt-0.5 text-2xl font-extrabold">🧳 떠돌이 행상인</h3>
+          <p className="relative mt-1 text-xs font-semibold text-stone-400">
+            대상 야영지에 머무는 동안에만 물건을 살 수 있습니다.
+          </p>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {state?.ok && (
-            <p className="rounded-xl bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">{state.ok}</p>
+            <p className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">
+              ✅ {state.ok}
+            </p>
           )}
           {state?.error && (
-            <p className="rounded-xl bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-200">{state.error}</p>
+            <p className="rounded-xl border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-200">
+              ⚠️ {state.error}
+            </p>
           )}
 
           <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <h4 className="text-sm font-extrabold text-white">⛺ 대상 야영지</h4>
                 <p className="mt-1 text-xs font-semibold text-stone-400">
-                  오늘 행상인 소환 {merchant.todaySummonCount}회
+                  오늘 소환 {merchant.todaySummonCount}회
+                  {open && ` · 판매 품목 ${stock.length}종`}
+                  {open && soldOutCount > 0 && ` · 매진 ${soldOutCount}종`}
                 </p>
               </div>
               {open ? (
-                <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-sm font-black text-amber-100">
-                  남은 시간 {formatRemain(remainMs)}
+                <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-sm font-black text-amber-100 ring-1 ring-amber-300/20">
+                  ⏳ {formatRemain(remainMs)}
                 </span>
               ) : (
                 <span className="rounded-full bg-white/[0.06] px-3 py-1.5 text-sm font-black text-stone-300">
                   부재중
                 </span>
               )}
-              {merchant.isGm && (
+            </div>
+
+            {open && (
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-[width] duration-1000 ease-linear"
+                  style={{ width: `${Math.round(remainRatio * 100)}%` }}
+                />
+              </div>
+            )}
+
+            {merchant.isGm && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+                <p className="text-[11px] font-bold text-stone-500">
+                  GM 전용 · 소환 시 1시간 동안 전역 재고가 열립니다.
+                </p>
                 <button
                   type="button"
                   disabled={pending}
                   onClick={() => run(summonWanderingMerchantForGm)}
-                  className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white transition hover:bg-amber-400 disabled:opacity-50"
+                  className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-stone-950 transition hover:bg-amber-400 disabled:opacity-50"
                 >
                   {pending ? "소환 중..." : "행상인 소환"}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </section>
 
           {open && active ? (
-            <section>
-              <h4 className="mb-2 text-sm font-extrabold text-white">🛒 판매 물품</h4>
-              <div className="grid gap-2">
-                {active.stock.map((item) => {
-                  const soldOut = item.stock <= 0;
-                  const shortage = merchant.gold < item.price;
-                  const extra = metaLabel(item.meta);
-                  return (
-                    <form key={item.id} action={buyAction}>
-                      <input type="hidden" name="listingId" value={item.id} />
-                      <button
-                        type="submit"
-                        disabled={buyPending || soldOut || shortage}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-amber-300/50 hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <span className="text-xl">{iconOf(item.kind)}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-extrabold text-white">{item.itemName}</span>
-                          <span className="mt-0.5 block text-[11px] font-semibold text-stone-400">
-                            {item.kind === "포션" || item.kind === "소모품"
-                              ? [item.kind, extra].filter(Boolean).join(" · ")
-                              : `${labelOf(item.kind)} · ${item.rank}성`}{" "}
-                            · 재고 {item.stock}/{item.initialStock}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-xs font-black text-amber-100">
-                          {soldOut ? "매진" : shortage ? "골드 부족" : `${item.price.toLocaleString()}G`}
-                        </span>
-                      </button>
-                    </form>
-                  );
-                })}
-              </div>
-            </section>
+            <>
+              {specials.length > 0 && (
+                <section>
+                  <h4 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-white">
+                    ✨ 특별 상품
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-stone-300">
+                      {specials.length}
+                    </span>
+                  </h4>
+                  <div className="grid gap-2 sm:grid-cols-2">{specials.map(renderCard)}</div>
+                </section>
+              )}
+
+              {goods.length > 0 && (
+                <section>
+                  <h4 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-white">
+                    🛒 생활 재료
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-stone-300">
+                      {goods.length}
+                    </span>
+                  </h4>
+                  <div className="grid gap-2 sm:grid-cols-2">{goods.map(renderCard)}</div>
+                </section>
+              )}
+            </>
           ) : (
-            <p className="rounded-2xl bg-white/[0.04] px-4 py-8 text-center text-sm text-stone-400">
-              지금은 행상인이 없습니다. GM이 소환하면 1시간 동안 판매를 시작합니다.
-            </p>
+            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-10 text-center">
+              <p className="text-3xl">🏜️</p>
+              <p className="mt-2 text-sm font-bold text-stone-300">지금은 행상인이 없습니다</p>
+              <p className="mt-1 text-xs font-semibold text-stone-500">
+                GM이 소환하면 1시간 동안 판매를 시작합니다.
+              </p>
+            </div>
           )}
         </div>
 
-        <div className="border-t border-white/10 px-5 py-3">
+        <div className="shrink-0 border-t border-white/10 px-5 py-3">
           <button
             type="button"
             onClick={onClose}
             className="w-full rounded-xl bg-white/10 px-4 py-2.5 text-sm font-black text-white transition hover:bg-white/15"
           >
-            닫기
+            ← 돌아가기
           </button>
         </div>
       </div>
@@ -3499,6 +3625,8 @@ export default function WorldServices({
   const [blackDealerOpen, setBlackDealerOpen] = useState(false);
   const [wanderingMerchantOpen, setWanderingMerchantOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // 서버·클라이언트가 각자 Date.now() 를 찍으면 카운트다운 문구가 어긋나 하이드레이션이 깨진다.
+  const [mounted, setMounted] = useState(false);
   const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
   const [housingOpen, setHousingOpen] = useState(false);
@@ -3537,6 +3665,7 @@ export default function WorldServices({
     ? Date.parse(wanderingMerchant.active.endsAt) - nowMs
     : 0;
   const merchantOpenNow = !!wanderingMerchant.active && merchantRemainMs > 0;
+  const merchantVisible = merchantOpenNow || wanderingMerchant.isGm;
   // 티어 무관 — 해당 종류의 생산 가구(어항·화분 계열)를 하나라도 보유하면 시설 노출
   const productionFacilities = (["낚시", "채집"] as const).filter((kind) =>
     FURNITURE_OPTIONS.some(
@@ -3552,12 +3681,14 @@ export default function WorldServices({
   const alchemyReady = !!alchemy.brewing && nowMs >= alchemy.brewing.readyAt;
 
   useEffect(() => {
+    setMounted(true);
+    setNowMs(Date.now());
     if (!alchemy.brewing && !wanderingMerchant.active) return;
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [alchemy.brewing, wanderingMerchant.active]);
 
-  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !wanderingMerchant.enabled && !weeklyIncome) return null;
+  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !merchantVisible && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -3662,7 +3793,7 @@ export default function WorldServices({
               </span>
             </button>
           )}
-          {wanderingMerchant.enabled && (
+          {merchantVisible && (
             <button
               type="button"
               onClick={() => setWanderingMerchantOpen(true)}
@@ -3673,7 +3804,9 @@ export default function WorldServices({
                 <span className="block text-sm font-extrabold">떠돌이 행상인</span>
                 <span className="text-[11px] text-amber-100">
                   {merchantOpenNow
-                    ? `전역 재고 · 남은 시간 ${formatRemain(merchantRemainMs)}`
+                    ? mounted
+                      ? `전역 재고 · 남은 시간 ${formatRemain(merchantRemainMs)}`
+                      : "전역 재고 판매 중"
                     : wanderingMerchant.isGm
                       ? `GM 소환 가능 · 오늘 ${wanderingMerchant.todaySummonCount}회`
                       : "지금은 머물고 있지 않음"}

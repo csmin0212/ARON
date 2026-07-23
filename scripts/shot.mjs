@@ -15,6 +15,8 @@
 //   --path   찍을 경로 (기본 /)
 //   --out    저장 파일 (기본 shot.png, 절대/상대 모두 가능)
 //   --as     이 username 으로 로그인한 것처럼 세션 쿠키 주입 (선택)
+//   --click  이 텍스트가 든 버튼/링크를 눌러 모달 등을 연 뒤 캡처 (선택)
+//   --wait   클릭 후 추가 대기 ms (선택)
 //   --base   베이스 URL (기본 http://localhost:3000)
 //   --w      뷰포트 너비 (기본 820)
 //   --scale  디바이스 픽셀 배율 (기본 2)
@@ -61,6 +63,8 @@ const scale = Number(args.scale ?? 2);
 const fullPage = !args.viewport;
 const vpHeight = Number(args.h ?? 1400);
 const asUser = args.as ? String(args.as) : null;
+const clickText = args.click ? String(args.click) : null;
+const waitMs = Number(args.wait ?? 0);
 
 // ── Chrome/Edge 탐색 ──
 function findBrowser() {
@@ -207,6 +211,29 @@ async function main() {
   await cdp.send("Page.navigate", { url: target }, sessionId);
   await Promise.race([loaded, sleep(15000)]);
   await sleep(700); // 폰트·레이아웃 안정화
+
+  // --click: 텍스트가 들어간 버튼/링크를 눌러 모달 등을 연 뒤 찍는다.
+  if (clickText) {
+    let clicked = "not-found";
+    for (let i = 0; i < 20 && clicked !== "ok"; i += 1) {
+      const { result } = await cdp.send(
+        "Runtime.evaluate",
+        {
+          expression: `(()=>{const t=${JSON.stringify(clickText)};
+            const el=[...document.querySelectorAll('button,a,[role="button"]')].find(e=>(e.innerText||'').includes(t));
+            if(!el) return 'not-found';
+            el.click(); return 'ok';})()`,
+          returnByValue: true,
+        },
+        sessionId,
+      );
+      clicked = result.value;
+      if (clicked !== "ok") await sleep(1000);
+    }
+    console.log(`🖱️  click ${JSON.stringify(clickText)}: ${clicked}`);
+    await sleep(600);
+  }
+  if (waitMs > 0) await sleep(waitMs);
 
   // 무한 CSS 애니메이션은 캡처를 멈추게 하므로 정지시킨다.
   await cdp.send(
