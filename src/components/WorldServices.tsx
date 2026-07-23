@@ -2777,9 +2777,6 @@ function WanderingMerchantModal({
             Traveling Merchant
           </p>
           <h3 className="relative mt-0.5 text-2xl font-extrabold">🧳 떠돌이 행상인</h3>
-          <p className="relative mt-1 text-xs font-semibold text-stone-400">
-            대상 야영지에 머무는 동안에만 물건을 살 수 있습니다.
-          </p>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -2798,11 +2795,9 @@ function WanderingMerchantModal({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <h4 className="text-sm font-extrabold text-white">⛺ 대상 야영지</h4>
-                <p className="mt-1 text-xs font-semibold text-stone-400">
-                  오늘 소환 {merchant.todaySummonCount}회
-                  {open && ` · 판매 품목 ${stock.length}종`}
-                  {open && soldOutCount > 0 && ` · 매진 ${soldOutCount}종`}
-                </p>
+                {open && soldOutCount > 0 && (
+                  <p className="mt-1 text-xs font-semibold text-stone-400">매진 {soldOutCount}종</p>
+                )}
               </div>
               {open ? (
                 <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-sm font-black text-amber-100 ring-1 ring-amber-300/20">
@@ -2886,9 +2881,6 @@ function WanderingMerchantModal({
             <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-10 text-center">
               <p className="text-3xl">🏜️</p>
               <p className="mt-2 text-sm font-bold text-stone-300">지금은 행상인이 없습니다</p>
-              <p className="mt-1 text-xs font-semibold text-stone-500">
-                GM이 소환하면 1시간 동안 판매를 시작합니다.
-              </p>
             </div>
           )}
         </div>
