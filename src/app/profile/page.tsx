@@ -7,7 +7,7 @@ import { MASTER_SHEET_URL } from "@/lib/charsheet";
 import ProfileForm from "@/components/forms/ProfileForm";
 import SheetLinkForm from "@/components/forms/SheetLinkForm";
 import CharacterSheetCard from "@/components/CharacterSheetCard";
-import ProfileHero, { type ProfileAchievementBadge } from "@/components/ProfileHero";
+import type { ProfileAchievementBadge } from "@/components/ProfileHero";
 import { checkAndGrant } from "@/lib/achievements";
 import {
   parseFeaturedAchievementIds,
@@ -19,29 +19,6 @@ import { normalizeCardStyle } from "@/lib/profileCard";
 import { ownedSkinsForSheet } from "@/lib/cardSkinUnlock";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
-
-function HeroStat({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl bg-subtle px-3 py-2.5 text-center">
-      <p className="text-[11px] font-bold text-faint">{label}</p>
-      <p
-        className={`mt-0.5 truncate text-sm font-extrabold ${
-          accent ? "text-emerald-500" : "text-content"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
 
 export default async function ProfilePage({
   searchParams,
@@ -95,9 +72,6 @@ export default async function ProfilePage({
         )?.id
       : undefined;
   const featuredIds = savedFeaturedIds.length > 0 ? savedFeaturedIds : legacyFeaturedId ? [legacyFeaturedId] : [];
-  const featuredAchievements = featuredIds
-    .map((id) => achievementOptions.find((achievement) => achievement.id === id))
-    .filter((achievement): achievement is ProfileAchievementBadge => Boolean(achievement));
   const visibility = parseProfileVisibility(user.profileVisibilityJson);
   const section = sp.section === "sheet" ? "sheet" : "edit";
 
@@ -119,46 +93,8 @@ export default async function ProfilePage({
     attribute: previewIdentity.attribute,
   };
 
-  const rank = sheet?.adventurerRank ?? null;
-  const tags = (
-    sheet
-      ? [sheet.charClass, sheet.race, sheet.attribute && `속성 ${sheet.attribute}`]
-      : []
-  ).filter(Boolean) as string[];
-  const gold =
-    sheet?.curGold != null ? `${sheet.curGold.toLocaleString()}G` : sheet?.gold ?? null;
-
   return (
     <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
-      {/* 히어로 헤더 */}
-      <ProfileHero
-        nickname={user.nickname}
-        username={user.username}
-        avatar={user.avatar}
-        status={user.profileStatus}
-        level={sheet?.level}
-        rank={rank}
-        tags={tags}
-        color={user.profileColor}
-        cover={user.profileCover}
-        title={user.equippedTitle}
-        badge={user.equippedBadge}
-        featuredAchievements={featuredAchievements}
-        footer={
-          <div className="grid grid-cols-3 gap-2">
-            <HeroStat label="작성한 글" value={`${counts}`} />
-            <HeroStat label="레벨" value={sheet?.level != null ? `Lv.${sheet.level}` : "-"} />
-            <HeroStat label="소지금" value={gold ?? "-"} accent />
-          </div>
-        }
-      />
-
-      {sp.saved && (
-        <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-600">
-          ✅ 프로필이 저장되었어요.
-        </p>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <Link
           href="/profile?section=sheet"
@@ -179,6 +115,12 @@ export default async function ProfilePage({
           <h2 className="mt-1 text-lg font-extrabold text-content">프로필 편집</h2>
         </Link>
       </div>
+
+      {sp.saved && (
+        <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-600">
+          ✅ 프로필이 저장되었어요.
+        </p>
+      )}
 
       {section === "sheet" && (
         <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
