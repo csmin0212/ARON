@@ -94,6 +94,7 @@ import {
   serializeHousingState,
   type HousingProductionKind,
 } from "@/lib/housing";
+import { MYSTERY_PARCHMENT_NAME } from "@/lib/wanderingMerchant";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
 export type StorageState = { error?: string; ok?: string } | undefined;
@@ -2053,6 +2054,10 @@ function isLifeResetBlessing(name: string): boolean {
   return normalizedConsumableName(name) === "망각의축복";
 }
 
+function isMysteryParchment(name: string): boolean {
+  return normalizedConsumableName(name) === MYSTERY_PARCHMENT_NAME.replace(/\s+/g, "");
+}
+
 export async function useCookingItem(
   _prev: CookingState,
   formData: FormData,
@@ -2064,6 +2069,29 @@ export async function useCookingItem(
   const itemName = String(formData.get("itemName") ?? "").trim();
   if (!itemName) return { error: "사용할 요리가 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < 1) return { error: `${itemName}을 보유하고 있지 않습니다.` };
+
+  if (isMysteryParchment(itemName)) {
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          achStatsJson: bumpStat((await prisma.characterSheet.findUnique({
+            where: { userId: ctx.userId },
+            select: { achStatsJson: true },
+          }))?.achStatsJson ?? null, "의문의양피지사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+    await checkAndGrant(ctx.userId);
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return { ok: "'라카노아를 기억하라' 라는 목소리가 들렸다." };
+  }
 
   if (isRebuildPotion(itemName)) {
     const sheet = await prisma.characterSheet.findUnique({

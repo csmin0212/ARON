@@ -37,6 +37,7 @@ import WorldServices, {
   type LifeStorageItemView,
   type GuildView,
   type StorageView,
+  type WanderingMerchantView,
 } from "@/components/WorldServices";
 import {
   ensureBlackMarketStock,
@@ -44,6 +45,11 @@ import {
   loadBlackMarketQuestState,
 } from "@/lib/blackMarketServer";
 import { BLACK_MARKET_EXCHANGE_OFFERS, BLACK_MARKET_POTIONS } from "@/lib/blackMarket";
+import {
+  countTodayWanderingMerchantSummons,
+  loadActiveWanderingMerchant,
+} from "@/lib/wanderingMerchantServer";
+import { WANDERING_MERCHANT_LOCATION_ID, WANDERING_MERCHANT_LOCATION_NAME } from "@/lib/wanderingMerchant";
 import { inventoryWeightTotal, type SheetInventory, type SheetInventoryItem } from "@/lib/googleSheets";
 import { dedupeLifeActions } from "@/lib/locationActions";
 import {
@@ -403,6 +409,8 @@ export default async function WorldPage() {
     return connIds.includes(d.id) || (d.hidden && parseJsonArray(d.connJson).includes(here.id));
   });
   const canEnterHome = !atHome && isBellTowerLocation(here) && housingState.owned.length > 0;
+  const atWanderingMerchantCamp =
+    here.id === WANDERING_MERCHANT_LOCATION_ID || here.name === WANDERING_MERCHANT_LOCATION_NAME;
   const ownedHouseOptions = house
     ? [house]
     : HOUSE_OPTIONS.filter((option) => housingState.owned.includes(option.tier)).slice(0, 1);
@@ -1130,6 +1138,33 @@ export default async function WorldPage() {
       };
     }),
   };
+  const [activeWanderingMerchant, wanderingMerchantSummonCount] = atWanderingMerchantCamp
+    ? await Promise.all([loadActiveWanderingMerchant(), countTodayWanderingMerchantSummons()])
+    : [null, 0];
+  const wanderingMerchant: WanderingMerchantView = {
+    enabled: atWanderingMerchantCamp,
+    isGm,
+    gold: housing.gold,
+    todaySummonCount: wanderingMerchantSummonCount,
+    active: activeWanderingMerchant
+      ? {
+          id: activeWanderingMerchant.id,
+          startsAt: activeWanderingMerchant.startsAt.toISOString(),
+          endsAt: activeWanderingMerchant.endsAt.toISOString(),
+          stock: activeWanderingMerchant.stock.map((item) => ({
+            id: item.id,
+            slot: item.slot,
+            kind: item.kind,
+            itemName: item.itemName,
+            rank: item.rank,
+            price: item.price,
+            stock: item.stock,
+            initialStock: item.initialStock,
+            meta: item.meta,
+          })),
+        }
+      : null,
+  };
   let gatherPending: PendingGatherView | null = null;
   if (sheet.pendingGatherJson) {
     try {
@@ -1481,6 +1516,7 @@ export default async function WorldPage() {
             cooking={cooking}
             alchemy={alchemy}
             blackMarket={blackMarket}
+            wanderingMerchant={wanderingMerchant}
             inventoryItems={bagItems}
             lifeStorageItems={lifeStorageItems}
             lifeShop={lifeShop}

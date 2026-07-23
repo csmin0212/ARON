@@ -53,6 +53,7 @@ model User {
   friendshipsTo    Friendship[]     @relation("FriendshipTo")
   houseInvitesFrom HouseInvite[]    @relation("HouseInviteFrom")
   houseInvitesTo   HouseInvite[]    @relation("HouseInviteTo")
+  wanderingMerchantEvents WanderingMerchantEvent[]
   guestbookOwned   HouseGuestbook[] @relation("GuestbookOwner")
   guestbookWritten HouseGuestbook[] @relation("GuestbookAuthor")
 }
@@ -366,6 +367,42 @@ model BlackMarketListing {
 
   @@unique([day, slot])
   @@index([day, slot])
+}
+
+// 대상 야영지 행상인 — GM 소환 시 1시간 동안 열리는 전역 재고
+model WanderingMerchantEvent {
+  id           String   @id @default(cuid())
+  day          String
+  locationId   String
+  startsAt     DateTime
+  endsAt       DateTime
+  createdById  String?
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  listings     WanderingMerchantListing[]
+  createdAt    DateTime @default(now())
+
+  @@index([day, locationId, startsAt])
+  @@index([locationId, endsAt])
+}
+
+// 행상인 전역 재고 — 한 명이 사면 전체 재고에서 차감
+model WanderingMerchantListing {
+  id           String   @id
+  eventId      String
+  event        WanderingMerchantEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  slot         String
+  kind         String // 낚시 | 채집 | 채광 | 포션 | 소모품
+  itemName     String
+  rank         Int      @default(0)
+  price        Int
+  stock        Int
+  initialStock Int
+  meta         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([eventId, slot])
+  @@index([eventId, slot])
 }
 
 // 캐릭터 시트 (구글 스프레드시트에서 파싱한 핵심 정보 — 향후 맵/판정 기능 밑작업)

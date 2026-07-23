@@ -47,6 +47,7 @@ function weightText(item: SheetInventoryItem): string {
 function canUseItem(item: SheetInventoryItem): boolean {
   const name = item.name.trim();
   const compactName = name.replace(/\s+/g, "");
+  if (compactName === "의문의양피지") return true;
   if (compactName === "망각의물약" || compactName === "변화의물약" || compactName === "망각의축복") {
     return true;
   }

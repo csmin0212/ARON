@@ -43,6 +43,11 @@ import {
   resetBlackMarketStockForGm,
   type BlackMarketState,
 } from "@/app/actions/blackMarket";
+import {
+  buyWanderingMerchantItem,
+  summonWanderingMerchantForGm,
+  type WanderingMerchantState,
+} from "@/app/actions/wanderingMerchant";
 import { inviteToHouse, type FriendState } from "@/app/actions/friends";
 import { enterHome } from "@/app/actions/world";
 import { FURNITURE_OPTIONS } from "@/lib/housing";
@@ -70,6 +75,7 @@ type Props = {
   cooking: CookingView;
   alchemy: AlchemyView;
   blackMarket: BlackMarketView;
+  wanderingMerchant: WanderingMerchantView;
   inventoryItems: SheetInventoryItem[];
   lifeStorageItems: LifeStorageItemView[];
   lifeShop: LifeShopView;
@@ -283,6 +289,29 @@ export type BlackMarketView = {
     total: number;
     unlocked: number;
   }[];
+};
+
+export type WanderingMerchantView = {
+  enabled: boolean;
+  isGm: boolean;
+  gold: number;
+  todaySummonCount: number;
+  active: {
+    id: string;
+    startsAt: string;
+    endsAt: string;
+    stock: {
+      id: string;
+      slot: string;
+      kind: "낚시" | "채집" | "채광" | "포션" | "소모품";
+      itemName: string;
+      rank: number;
+      price: number;
+      stock: number;
+      initialStock: number;
+      meta: string | null;
+    }[];
+  } | null;
 };
 
 const GEM_NAMES = ["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
@@ -2391,7 +2420,7 @@ function BlackMarketDealer({
                 <div className="min-w-0">
                   <p className="text-base font-black text-white">{quest.itemName} x{quest.qty}</p>
                   <p className="mt-1 text-xs font-semibold text-zinc-400">
-                    보유 {quest.have}/{quest.qty} · 가치 {quest.value.toLocaleString()}G
+                    보유 {quest.have}/{quest.qty}
                   </p>
                 </div>
                 <button
@@ -2559,6 +2588,174 @@ function BlackMarketDealer({
             type="button"
             onClick={onClose}
             className="w-full rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/15"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatRemain(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function WanderingMerchantModal({
+  merchant,
+  nowMs,
+  onClose,
+}: {
+  merchant: WanderingMerchantView;
+  nowMs: number;
+  onClose: () => void;
+}) {
+  const [buyState, buyAction, buyPending] = useActionState<WanderingMerchantState, FormData>(
+    buyWanderingMerchantItem,
+    undefined,
+  );
+  const [actionState, setActionState] = useState<WanderingMerchantState>(undefined);
+  const [pending, startTransition] = useTransition();
+  const active = merchant.active;
+  const remainMs = active ? Date.parse(active.endsAt) - nowMs : 0;
+  const open = !!active && remainMs > 0;
+
+  function run(action: () => Promise<WanderingMerchantState>) {
+    startTransition(() => {
+      void action().then(setActionState);
+    });
+  }
+
+  const state = buyState ?? actionState;
+  const iconOf = (kind: string) => {
+    if (kind === "낚시") return "🐟";
+    if (kind === "채집") return "🌿";
+    if (kind === "채광") return "⛏️";
+    if (kind === "포션") return "🧪";
+    return "📜";
+  };
+  const labelOf = (kind: string) => (kind === "채광" ? "광물" : kind);
+  const metaLabel = (meta: string | null) => {
+    try {
+      return meta ? ((JSON.parse(meta) as { label?: string }).label ?? null) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4 py-6"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="떠돌이 행상인"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-amber-900/20 bg-stone-950 text-amber-50 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-white/10 bg-gradient-to-r from-stone-950 via-amber-950 to-stone-900 px-5 py-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-200">
+            Traveling Merchant
+          </p>
+          <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold">
+            <span>🧳 떠돌이 행상인</span>
+            <span className="rounded-full bg-amber-400/15 px-3 py-1 text-sm font-black text-amber-100">
+              {merchant.gold.toLocaleString()}G
+            </span>
+          </h3>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {state?.ok && (
+            <p className="rounded-xl bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">{state.ok}</p>
+          )}
+          {state?.error && (
+            <p className="rounded-xl bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-200">{state.error}</p>
+          )}
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-extrabold text-white">⛺ 대상 야영지</h4>
+                <p className="mt-1 text-xs font-semibold text-stone-400">
+                  오늘 행상인 소환 {merchant.todaySummonCount}회
+                </p>
+              </div>
+              {open ? (
+                <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-sm font-black text-amber-100">
+                  남은 시간 {formatRemain(remainMs)}
+                </span>
+              ) : (
+                <span className="rounded-full bg-white/[0.06] px-3 py-1.5 text-sm font-black text-stone-300">
+                  부재중
+                </span>
+              )}
+              {merchant.isGm && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => run(summonWanderingMerchantForGm)}
+                  className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-white transition hover:bg-amber-400 disabled:opacity-50"
+                >
+                  {pending ? "소환 중..." : "행상인 소환"}
+                </button>
+              )}
+            </div>
+          </section>
+
+          {open && active ? (
+            <section>
+              <h4 className="mb-2 text-sm font-extrabold text-white">🛒 판매 물품</h4>
+              <div className="grid gap-2">
+                {active.stock.map((item) => {
+                  const soldOut = item.stock <= 0;
+                  const shortage = merchant.gold < item.price;
+                  const extra = metaLabel(item.meta);
+                  return (
+                    <form key={item.id} action={buyAction}>
+                      <input type="hidden" name="listingId" value={item.id} />
+                      <button
+                        type="submit"
+                        disabled={buyPending || soldOut || shortage}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-amber-300/50 hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <span className="text-xl">{iconOf(item.kind)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-extrabold text-white">{item.itemName}</span>
+                          <span className="mt-0.5 block text-[11px] font-semibold text-stone-400">
+                            {item.kind === "포션" || item.kind === "소모품"
+                              ? [item.kind, extra].filter(Boolean).join(" · ")
+                              : `${labelOf(item.kind)} · ${item.rank}성`}{" "}
+                            · 재고 {item.stock}/{item.initialStock}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs font-black text-amber-100">
+                          {soldOut ? "매진" : shortage ? "골드 부족" : `${item.price.toLocaleString()}G`}
+                        </span>
+                      </button>
+                    </form>
+                  );
+                })}
+              </div>
+            </section>
+          ) : (
+            <p className="rounded-2xl bg-white/[0.04] px-4 py-8 text-center text-sm text-stone-400">
+              지금은 행상인이 없습니다. GM이 소환하면 1시간 동안 판매를 시작합니다.
+            </p>
+          )}
+        </div>
+
+        <div className="border-t border-white/10 px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-white/10 px-4 py-2.5 text-sm font-black text-white transition hover:bg-white/15"
           >
             닫기
           </button>
@@ -3272,6 +3469,7 @@ export default function WorldServices({
   cooking,
   alchemy,
   blackMarket,
+  wanderingMerchant,
   inventoryItems,
   lifeStorageItems,
   lifeShop,
@@ -3299,6 +3497,7 @@ export default function WorldServices({
   const [alchemyOpen, setAlchemyOpen] = useState(false);
   const [blackMarketOpen, setBlackMarketOpen] = useState(false);
   const [blackDealerOpen, setBlackDealerOpen] = useState(false);
+  const [wanderingMerchantOpen, setWanderingMerchantOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [gachaOpen, setGachaOpen] = useState(false);
   const [innOpen, setInnOpen] = useState(false);
@@ -3334,6 +3533,10 @@ export default function WorldServices({
   const steelCount = countOf(items, "강철 파편");
   const moonCount = countOf(items, "달의 파편");
   const ownedFurniture = useMemo(() => new Set(housing.furnitureOwned), [housing.furnitureOwned]);
+  const merchantRemainMs = wanderingMerchant.active
+    ? Date.parse(wanderingMerchant.active.endsAt) - nowMs
+    : 0;
+  const merchantOpenNow = !!wanderingMerchant.active && merchantRemainMs > 0;
   // 티어 무관 — 해당 종류의 생산 가구(어항·화분 계열)를 하나라도 보유하면 시설 노출
   const productionFacilities = (["낚시", "채집"] as const).filter((kind) =>
     FURNITURE_OPTIONS.some(
@@ -3349,12 +3552,12 @@ export default function WorldServices({
   const alchemyReady = !!alchemy.brewing && nowMs >= alchemy.brewing.readyAt;
 
   useEffect(() => {
-    if (!alchemy.brewing) return;
+    if (!alchemy.brewing && !wanderingMerchant.active) return;
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [alchemy.brewing]);
+  }, [alchemy.brewing, wanderingMerchant.active]);
 
-  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !weeklyIncome) return null;
+  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !wanderingMerchant.enabled && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -3456,6 +3659,25 @@ export default function WorldServices({
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">레시피 가챠</span>
                 <span className="text-[11px] text-faint">대상 야영지 전용 · 랜덤 레시피 · 1회 50골드</span>
+              </span>
+            </button>
+          )}
+          {wanderingMerchant.enabled && (
+            <button
+              type="button"
+              onClick={() => setWanderingMerchantOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-amber-300/50 bg-gradient-to-r from-stone-900 to-amber-900 px-3.5 py-3 text-left text-white shadow-sm transition hover:border-amber-300"
+            >
+              <span className="text-xl">🧳</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold">떠돌이 행상인</span>
+                <span className="text-[11px] text-amber-100">
+                  {merchantOpenNow
+                    ? `전역 재고 · 남은 시간 ${formatRemain(merchantRemainMs)}`
+                    : wanderingMerchant.isGm
+                      ? `GM 소환 가능 · 오늘 ${wanderingMerchant.todaySummonCount}회`
+                      : "지금은 머물고 있지 않음"}
+                </span>
               </span>
             </button>
           )}
@@ -3698,6 +3920,13 @@ export default function WorldServices({
         <BlackMarketDealer
           blackMarket={blackMarket}
           onClose={() => setBlackDealerOpen(false)}
+        />
+      )}
+      {wanderingMerchantOpen && (
+        <WanderingMerchantModal
+          merchant={wanderingMerchant}
+          nowMs={nowMs}
+          onClose={() => setWanderingMerchantOpen(false)}
         />
       )}
 
