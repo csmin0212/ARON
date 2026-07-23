@@ -16,7 +16,7 @@ import {
   parseLifeState,
   recordCollection,
 } from "@/lib/lifeSkillPerks";
-import { findLifeSkillItem, type LifeSkillKind } from "@/lib/lifeSkillData";
+import { findLifeSkillItem, isSeaLifeItem, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { prisma } from "@/lib/prisma";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import { postSystem } from "@/lib/play";
@@ -25,9 +25,12 @@ import {
   VITALITY_POTION_EVENT_NAME,
   WANDERING_MERCHANT_LOCATION_ID,
   WANDERING_MERCHANT_LOCATION_NAME,
+  isWanderingMerchantLifeKind,
+  wanderingMerchantLifePrice,
 } from "@/lib/wanderingMerchant";
 import {
   countTodayWanderingMerchantSummons,
+  dismissWanderingMerchant,
   loadActiveWanderingMerchant,
   summonWanderingMerchant,
 } from "@/lib/wanderingMerchantServer";
@@ -95,6 +98,21 @@ export async function summonWanderingMerchantForGm(): Promise<WanderingMerchantS
     : { ok: `이미 행상인이 머물고 있습니다. 오늘 ${count}회 소환.` };
 }
 
+export async function dismissWanderingMerchantForGm(): Promise<WanderingMerchantState> {
+  const user = await getCurrentUser();
+  if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
+
+  const result = await dismissWanderingMerchant();
+  if (!result.dismissed) return { error: "지금은 행상인이 머물고 있지 않습니다." };
+
+  await postSystem(
+    WANDERING_MERCHANT_LOCATION_ID,
+    `🧳 행상인이 ${WANDERING_MERCHANT_LOCATION_NAME}를 떠났습니다.`,
+  );
+  revalidatePath("/world");
+  return { ok: "행상인을 돌려보냈습니다." };
+}
+
 export async function buyWanderingMerchantItem(
   _prev: WanderingMerchantState,
   formData: FormData,
@@ -120,20 +138,18 @@ export async function buyWanderingMerchantItem(
   if (!listing || listing.eventId !== active.id || listing.event.endsAt <= now) {
     return { error: "이미 떠난 행상인의 물품입니다." };
   }
-  if (listing.stock <= 0) return { error: "이미 매진된 물품입니다." };
-  if ((sheet.curGold ?? 0) < listing.price) {
-    return { error: `골드가 부족합니다. (${(sheet.curGold ?? 0).toLocaleString()}G/${listing.price.toLocaleString()}G)` };
-  }
-
   const life = parseLifeState(sheet.lifeJson);
   const inv = parseInv(sheet.invJson);
-  const isLife = listing.kind === "낚시" || listing.kind === "채집" || listing.kind === "채광";
+  const isLife = isWanderingMerchantLifeKind(listing.kind);
+  let price = listing.price;
 
   let basicItem: { itemId: string | null; itemName: string; effect: string | null; weight: number | null } | null = null;
   if (isLife) {
     const kind = listing.kind as LifeSkillKind;
     const item = findLifeSkillItem(kind, listing.itemName);
     if (!item) return { error: "생활 아이템 정보를 찾지 못했습니다." };
+    if (kind === "낚시" && isSeaLifeItem(item)) return { error: "행상인은 강 물고기만 취급합니다." };
+    price = wanderingMerchantLifePrice(item);
     const bag = life.bags[kind];
     const nextWeight = lifeBagWeight(bag) + item.weight;
     const maxWeight = lifeBagLimit(life, kind);
@@ -155,22 +171,26 @@ export async function buyWanderingMerchantItem(
     const overflow = inventoryWeightOverflowMessage(inv);
     if (overflow) return { error: overflow };
   }
+  if (listing.stock <= 0) return { error: "이미 매진된 물품입니다." };
+  if ((sheet.curGold ?? 0) < price) {
+    return { error: `골드가 부족합니다. (${(sheet.curGold ?? 0).toLocaleString()}G/${price.toLocaleString()}G)` };
+  }
 
-  const nextGold = (sheet.curGold ?? 0) - listing.price;
+  const nextGold = (sheet.curGold ?? 0) - price;
   inv.gold = `${nextGold}G`;
 
   try {
     await prisma.$transaction(async (tx) => {
       const stock = await tx.wanderingMerchantListing.updateMany({
         where: { id: listing.id, eventId: active.id, stock: { gt: 0 } },
-        data: { stock: { decrement: 1 } },
+        data: { stock: { decrement: 1 }, price },
       });
       if (stock.count !== 1) throw new Error("sold-out");
 
       const paid = await tx.characterSheet.updateMany({
-        where: { userId: user.id, curGold: { gte: listing.price } },
+        where: { userId: user.id, curGold: { gte: price } },
         data: {
-          curGold: { decrement: listing.price },
+          curGold: { decrement: price },
           gold: `${nextGold}G`,
           invJson: JSON.stringify(inv),
           ...(isLife ? { lifeJson: JSON.stringify(life) } : {}),
@@ -209,5 +229,5 @@ export async function buyWanderingMerchantItem(
   }
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: `${listing.itemName} 구매 완료. -${listing.price.toLocaleString()}G` };
+  return { ok: `${listing.itemName} 구매 완료. -${price.toLocaleString()}G` };
 }

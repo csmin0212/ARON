@@ -1,5 +1,5 @@
 import { kstDayKey } from "./world";
-import { lifeSkillSellPrice, type LifeSkillItem, type LifeSkillKind } from "./lifeSkillData";
+import { type LifeSkillItem, type LifeSkillKind } from "./lifeSkillData";
 
 export const WANDERING_MERCHANT_LOCATION_ID = "대상야영지";
 export const WANDERING_MERCHANT_LOCATION_NAME = "대상 야영지";
@@ -36,7 +36,15 @@ function uniqueLifeKey(entry: WanderingMerchantLifeCandidate): string {
 }
 
 function lifePrice(entry: WanderingMerchantLifeCandidate): number {
-  return Math.max(1, lifeSkillSellPrice(entry.kind, entry.item.name) * 2);
+  return wanderingMerchantLifePrice(entry.item);
+}
+
+export function isWanderingMerchantLifeKind(kind: string): kind is LifeSkillKind {
+  return kind === "낚시" || kind === "채집" || kind === "채광";
+}
+
+export function wanderingMerchantLifePrice(item: LifeSkillItem): number {
+  return Math.max(1, item.price * 2);
 }
 
 export function wanderingMerchantDay(now = new Date()): string {

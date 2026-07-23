@@ -45,6 +45,7 @@ import {
 } from "@/app/actions/blackMarket";
 import {
   buyWanderingMerchantItem,
+  dismissWanderingMerchantForGm,
   summonWanderingMerchantForGm,
   type WanderingMerchantState,
 } from "@/app/actions/wanderingMerchant";
@@ -2828,14 +2829,29 @@ function WanderingMerchantModal({
                 <p className="text-[11px] font-bold text-stone-500">
                   GM 전용 · 소환 시 1시간 동안 전역 재고가 열립니다.
                 </p>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => run(summonWanderingMerchantForGm)}
-                  className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-stone-950 transition hover:bg-amber-400 disabled:opacity-50"
-                >
-                  {pending ? "소환 중..." : "행상인 소환"}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {open && (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => {
+                        if (!window.confirm("남은 시간과 상관없이 행상인을 지금 돌려보냅니다. 진행할까요?")) return;
+                        run(dismissWanderingMerchantForGm);
+                      }}
+                      className="rounded-xl border border-rose-300/30 bg-rose-500/15 px-4 py-2 text-sm font-black text-rose-200 transition hover:bg-rose-500/25 disabled:opacity-50"
+                    >
+                      {pending ? "처리 중..." : "행상인 돌려보내기"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => run(summonWanderingMerchantForGm)}
+                    className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-stone-950 transition hover:bg-amber-400 disabled:opacity-50"
+                  >
+                    {pending ? "소환 중..." : "행상인 소환"}
+                  </button>
+                </div>
               </div>
             )}
           </section>
