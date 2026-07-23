@@ -2694,6 +2694,7 @@ function CookingKitchen({
   const [pot, setPot] = useState<string[]>([]);
   const [bookRank, setBookRank] = useState("all");
   const [bookFilter, setBookFilter] = useState("");
+  const [bookSort, setBookSort] = useState<"name" | "craftable">("name");
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const ingredientOptions = useMemo(
@@ -2777,14 +2778,26 @@ function CookingKitchen({
     [cooking.knownRecipes],
   );
 
-  const filteredRecipes = cooking.knownRecipes.filter((recipe) => {
-    if (bookRank !== "all" && recipe.rank !== bookRank) return false;
-    const keyword = bookFilter.trim();
-    if (!keyword) return true;
-    return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients} ${
-      recipe.effect ?? ""
-    }`.includes(keyword);
-  });
+  const filteredRecipes = [...cooking.knownRecipes]
+    .filter((recipe) => {
+      if (bookRank !== "all" && recipe.rank !== bookRank) return false;
+      const keyword = bookFilter.trim();
+      if (!keyword) return true;
+      return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients} ${
+        recipe.effect ?? ""
+      }`.includes(keyword);
+    })
+    .sort((a, b) => {
+      if (bookSort === "craftable") {
+        const aStatus = recipeStatus(a);
+        const bStatus = recipeStatus(b);
+        const aCraftable = aStatus.hasAll && !aStatus.overCap;
+        const bCraftable = bStatus.hasAll && !bStatus.overCap;
+        if (aCraftable !== bCraftable) return aCraftable ? -1 : 1;
+        if (aStatus.overCap !== bStatus.overCap) return aStatus.overCap ? 1 : -1;
+      }
+      return a.name.localeCompare(b.name, "ko");
+    });
 
   const potSlots = Array.from({ length: cooking.maxIngredients }, (_, i) => pot[i] ?? null);
 
@@ -2976,6 +2989,25 @@ function CookingKitchen({
                 <span className="shrink-0 text-[11px] font-bold text-faint">
                   {filteredRecipes.length}개
                 </span>
+              </div>
+              <div className="flex gap-1 overflow-x-auto rounded-2xl bg-subtle p-1">
+                {[
+                  { key: "name" as const, label: "이름순" },
+                  { key: "craftable" as const, label: "제작 가능순" },
+                ].map((sort) => (
+                  <button
+                    key={sort.key}
+                    type="button"
+                    onClick={() => setBookSort(sort.key)}
+                    className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                      bookSort === sort.key
+                        ? "bg-surface text-brand-600 shadow-sm"
+                        : "text-muted hover:text-content"
+                    }`}
+                  >
+                    {sort.label}
+                  </button>
+                ))}
               </div>
               {cooking.knownRecipes.length === 0 ? (
                 <p className="rounded-2xl bg-subtle px-4 py-10 text-center text-sm text-faint">
