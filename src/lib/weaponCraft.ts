@@ -250,13 +250,16 @@ export function parseCraftEffect(spec: string | null | undefined): CraftEffect {
 // ── 등급 (요리 등급과 동일 문법: 고품질/명품/장인작) ──
 export type CraftGradeKey = "고품질" | "명품" | "장인";
 export const CRAFT_GRADES: Record<CraftGradeKey, { bonus: number; priceMult: number }> = {
-  고품질: { bonus: 1, priceMult: 1.1 },
-  명품: { bonus: 2, priceMult: 1.2 },
-  장인: { bonus: 3, priceMult: 1.4 },
+  고품질: { bonus: 1, priceMult: 1.2 },
+  명품: { bonus: 2, priceMult: 1.5 },
+  장인: { bonus: 3, priceMult: 2 },
 };
 
 export function craftSellPrice(basePrice: number, grade: CraftGradeKey | null): number {
-  return Math.max(1, Math.round(basePrice * CRAFT_SELL_PRICE_RATE * (grade ? CRAFT_GRADES[grade].priceMult : 1)));
+  const baseSellPrice = Math.round(basePrice * CRAFT_SELL_PRICE_RATE);
+  if (!grade) return Math.max(1, baseSellPrice);
+  const profit = Math.max(0, baseSellPrice - craftBaseFee(basePrice));
+  return Math.max(1, baseSellPrice + Math.ceil(profit * (CRAFT_GRADES[grade].priceMult - 1)));
 }
 
 export function craftBaseFee(basePrice: number): number {

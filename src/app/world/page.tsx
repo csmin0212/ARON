@@ -83,14 +83,14 @@ import {
   lifeBagWeight,
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
-import { gradeInfo, parseCookedName } from "@/lib/auction";
+import { parseCookedName } from "@/lib/auction";
 import {
   WEAK_PRICE_MULT,
   alchemyAcceleratorMinutes,
-  alchemyGradeInfo,
   parsePendingBrew,
   parsePotionName,
 } from "@/lib/alchemy";
+import { profitAdjustedSellPrice, recipeCostMap } from "@/lib/qualityPricing";
 import type { AlchemyRecipeView, AlchemyView } from "@/components/AlchemyLab";
 import {
   getAlchemyRecipes,
@@ -929,6 +929,7 @@ export default async function WorldPage() {
       };
     });
   const cookedPrice = new Map(allRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
+  const cookedCost = await recipeCostMap(allRecipes);
   cookedPrice.set("실패한 요리", 1);
   // 등급 요리("고품질 ○○", "○○의 △△")도 판매 목록에 포함 — 접두어를 떼어 기본 레시피와 대조하고
   // 등급 배수(priceMult)를 곱한 단가를 표기. 접두어만 우연히 걸리는 재료는 base 매칭으로 걸러진다.
@@ -940,7 +941,7 @@ export default async function WorldPage() {
       }
       const { base, grade } = parseCookedName(raw);
       if (grade && cookedPrice.has(base)) {
-        const unit = Math.round((cookedPrice.get(base) ?? 1) * (gradeInfo(grade)?.priceMult ?? 1));
+        const unit = profitAdjustedSellPrice(cookedPrice.get(base) ?? 1, cookedCost.get(base) ?? 0, grade);
         return { name: raw, qty: item.qty, unitPrice: unit, effect: item.effect };
       }
       return null;
@@ -998,6 +999,7 @@ export default async function WorldPage() {
     };
   });
   const potionPrice = new Map(alchemyRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
+  const potionCost = await recipeCostMap(alchemyRecipes);
   const potionsForSale = alchemyEnabled
     ? bagItems
         .map((item) => {
@@ -1005,14 +1007,11 @@ export default async function WorldPage() {
           const { base, modifier, grade } = parsePotionName(raw);
           if (!potionPrice.has(base)) return null;
           const acceleratorMinutes = alchemyAcceleratorMinutes(raw, item.effect);
+          const basePrice = Math.round((potionPrice.get(base) ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
           const unit =
             acceleratorMinutes != null
               ? Math.round(((potionPrice.get(base) ?? 1) * acceleratorMinutes) / 10)
-              : Math.round(
-                  (potionPrice.get(base) ?? 1) *
-                    (alchemyGradeInfo(grade)?.priceMult ?? 1) *
-                    (modifier === "약한" ? WEAK_PRICE_MULT : 1),
-                );
+              : profitAdjustedSellPrice(basePrice, potionCost.get(base) ?? 0, grade);
           return { name: raw, qty: item.qty, unitPrice: unit, effect: item.effect };
         })
         .filter((potion): potion is NonNullable<typeof potion> => potion != null && potion.qty > 0)

@@ -102,12 +102,12 @@ export function listingExpiry(from: Date = new Date()): Date {
 export type CookGrade = { key: string; effectBonus: number; priceMult: number };
 
 export const COOK_GRADES: CookGrade[] = [
-  { key: "고품질", effectBonus: 1, priceMult: 1.1 },
-  { key: "명품", effectBonus: 2, priceMult: 1.2 },
+  { key: "고품질", effectBonus: 1, priceMult: 1.2 },
+  { key: "명품", effectBonus: 2, priceMult: 1.5 },
 ];
 
 // 시그니처(장인작) — 요리사 닉네임이 "{닉네임}의 {기본이름}" 으로 새겨지는 최상위 등급.
-export const SIGNATURE_GRADE: CookGrade = { key: "장인", effectBonus: 3, priceMult: 1.4 };
+export const SIGNATURE_GRADE: CookGrade = { key: "장인", effectBonus: 3, priceMult: 2 };
 
 const GRADE_KEYS = COOK_GRADES.map((g) => g.key);
 

@@ -27,8 +27,8 @@ export function judgeBrew(minutes: number, bestMinutes: number, tolerance: numbe
 }
 
 export const ALCHEMY_GRADE_INFO: Record<string, { priceMult: number }> = {
-  고급: { priceMult: 1.1 },
-  명품: { priceMult: 1.2 },
+  고급: { priceMult: 1.2 },
+  명품: { priceMult: 1.5 },
 };
 
 const GRADE_KEYS = Object.keys(ALCHEMY_GRADE_INFO);

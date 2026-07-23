@@ -26,7 +26,6 @@ import { isSkillBookItem } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
   auctionCategoryOrder,
-  gradeInfo,
   listingExpiry,
   listingFee,
   netProceeds,
@@ -39,6 +38,7 @@ import {
 } from "@/lib/auction";
 import { auctionSlots, normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { detectForgeSlot } from "@/lib/forge";
+import { profitAdjustedSellPrice, recipeIngredientCostFromJson } from "@/lib/qualityPricing";
 
 export type AuctionResult = { ok?: string; error?: string };
 
@@ -238,9 +238,15 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
   const { base, grade } = parseCookedName(name);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
-    select: { sellPrice: true },
+    select: { sellPrice: true, ingredientsJson: true },
   });
-  if (recipe?.sellPrice) return Math.round(recipe.sellPrice * (gradeInfo(grade)?.priceMult ?? 1));
+  if (recipe?.sellPrice) {
+    return profitAdjustedSellPrice(
+      recipe.sellPrice,
+      await recipeIngredientCostFromJson(recipe.ingredientsJson),
+      grade,
+    );
+  }
 
   // 아이템 도감의 모든 분류(포션·무기·방어구·스킬북 …)를 매입 대상으로 인정.
   // 판매가가 비어 있으면 구매가의 40%로 폴백 — 시트에 구매가만 적어도 팔 수 있다.

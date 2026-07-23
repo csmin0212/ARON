@@ -35,7 +35,6 @@ import {
   WEAK_PRICE_MULT,
   alchemyAcceleratorEffect,
   alchemyAcceleratorMinutes,
-  alchemyGradeInfo,
   brewHint,
   buildPotionName,
   judgeBrew,
@@ -53,6 +52,7 @@ import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
+import { profitAdjustedSellPrice, recipeIngredientCostFromJson } from "@/lib/qualityPricing";
 import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
 import { FATIGUE_MAX, dungeonWeekKey, regenFatigue, restedTodayKst } from "@/lib/world";
 import { buildWeeklyIncomeEntries, parseWeeklyIncomeState } from "@/lib/weeklyIncome";
@@ -1371,10 +1371,11 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
       )
     : null;
   const gi = gradeInfo(grade);
+  const recipeCost = recipe ? await recipeIngredientCostFromJson(recipe.ingredientsJson) : 0;
   const result = recipe
     ? (() => {
         const bonus = gi?.effectBonus ?? 0;
-        const price = Math.round(recipe.sellPrice * (gi?.priceMult ?? 1));
+        const price = profitAdjustedSellPrice(recipe.sellPrice, recipeCost, grade);
         const baseEffect = recipe.effect ? (bonus > 0 ? enhanceEffectText(recipe.effect, bonus) : recipe.effect) : "";
         const durText = recipe.duration ? ` (${recipe.duration})` : "";
         const label = grade === "장인" ? `✨${ctx.nickname}의 서명작 — ` : grade ? `✨${grade} — ` : "";
@@ -1476,11 +1477,14 @@ export async function sellCookedFood(
   const { base, grade } = parseCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
-    select: { sellPrice: true },
+    select: { sellPrice: true, ingredientsJson: true },
   });
   const baseUnit = base === FAILED_DISH.name ? FAILED_DISH.sellPrice : recipe?.sellPrice;
   if (!baseUnit) return { error: "요리 판매가를 찾지 못했습니다." };
-  const unitPrice = Math.round(baseUnit * (gradeInfo(grade)?.priceMult ?? 1));
+  const unitPrice =
+    base === FAILED_DISH.name
+      ? baseUnit
+      : profitAdjustedSellPrice(baseUnit, await recipeIngredientCostFromJson(recipe?.ingredientsJson), grade);
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const gain = unitPrice * qty;
@@ -1725,16 +1729,15 @@ export async function collectBrew(): Promise<AlchemyState> {
   const modifier = judgeBrew(pending.minutes, recipe.bestMinutes, tolerance);
   const mastery = recordAlchemyCraft(life, recipe.id, modifier === "완벽한");
   const grade = alchemyMasterySuffix(mastery.after);
-  const gi = alchemyGradeInfo(grade);
 
   const resultName = buildPotionName(recipe.resultName, modifier, grade);
   const acceleratorMinutes = alchemyAcceleratorMinutes(resultName);
+  const brewCost = await recipeIngredientCostFromJson(recipe.ingredientsJson);
+  const brewBasePrice = Math.round(recipe.sellPrice * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
   const price =
     acceleratorMinutes != null
       ? Math.round((recipe.sellPrice * acceleratorMinutes) / 10)
-      : Math.round(
-          recipe.sellPrice * (gi?.priceMult ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1),
-        );
+      : profitAdjustedSellPrice(brewBasePrice, brewCost, grade);
   const label = grade ? `✨${grade} — ` : "";
   const perfectStacks = modifier === "완벽한" ? (mastery.rank === "기본" ? 1 : 2) : 0;
   const mergedEffect =
@@ -1887,17 +1890,18 @@ export async function sellPotion(_prev: AlchemyState, formData: FormData): Promi
   const { base, modifier, grade } = parsePotionName(itemName);
   const recipe = await prisma.alchemyRecipe.findFirst({
     where: { resultName: base },
-    select: { sellPrice: true },
+    select: { sellPrice: true, ingredientsJson: true },
   });
   if (!recipe) return { error: "포션 판매가를 찾지 못했습니다." };
   const acceleratorMinutes = alchemyAcceleratorMinutes(itemName);
+  const potionBasePrice = Math.round(recipe.sellPrice * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
   const unitPrice =
     acceleratorMinutes != null
       ? Math.round((recipe.sellPrice * acceleratorMinutes) / 10)
-      : Math.round(
-          recipe.sellPrice *
-            (alchemyGradeInfo(grade)?.priceMult ?? 1) *
-            (modifier === "약한" ? WEAK_PRICE_MULT : 1),
+      : profitAdjustedSellPrice(
+          potionBasePrice,
+          await recipeIngredientCostFromJson(recipe.ingredientsJson),
+          grade,
         );
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
