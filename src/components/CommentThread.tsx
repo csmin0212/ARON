@@ -13,7 +13,7 @@ export type CommentNode = {
   createdAt: string;
   isDeleted: boolean;
   isAuthorPost: boolean;
-  member: { username: string; nickname: string; avatar: string | null } | null;
+  member: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
   anonNick: string | null;
   anonIp: string | null;
   isMine: boolean;
@@ -27,7 +27,7 @@ function AuthorLine({ node }: { node: CommentNode }) {
       <span className="flex items-center gap-1.5">
         <Avatar name={node.member.nickname} avatar={node.member.avatar} size={22} />
         <Link
-          href={`/u/${encodeURIComponent(node.member.username)}`}
+          href={node.member.profileHref ?? `/u/${encodeURIComponent(node.member.username)}`}
           className="text-sm font-bold text-content transition hover:text-brand-600 hover:underline"
         >
           {node.member.nickname}

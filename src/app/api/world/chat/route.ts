@@ -7,14 +7,14 @@ import {
 } from "@/lib/worldCache";
 import { runActionCommand } from "@/lib/play";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
-import { activeDisplayPersona, displaySnapshot } from "@/lib/gmNpc";
+import { activeDisplayPersona, displaySnapshot, profileHrefForPersonaSnapshot } from "@/lib/gmNpc";
 
 export type ChatMessage = {
   id: number;
   content: string;
   createdAt: string;
   system: boolean;
-  user: { username: string; nickname: string; avatar: string | null } | null;
+  user: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
 };
 
 const MSG_INCLUDE = {
@@ -23,6 +23,8 @@ const MSG_INCLUDE = {
       username: true,
       nickname: true,
       avatar: true,
+      gmNpcPersonasJson: true,
+      activeNpcPersonaKey: true,
     },
   },
 } as const;
@@ -38,6 +40,8 @@ type RawMsg = {
     username: string;
     nickname: string;
     avatar: string | null;
+    gmNpcPersonasJson?: string | null;
+    activeNpcPersonaKey?: string | null;
   } | null;
 };
 
@@ -52,6 +56,10 @@ function serialize(m: RawMsg): ChatMessage {
           username: m.user.username,
           nickname: m.authorName ?? m.user.nickname,
           avatar: m.authorAvatar ?? m.user.avatar,
+          profileHref: profileHrefForPersonaSnapshot(m.user, {
+            authorName: m.authorName,
+            authorAvatar: m.authorAvatar,
+          }),
         }
       : null,
   };

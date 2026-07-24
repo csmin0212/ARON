@@ -2,7 +2,7 @@ import "server-only";
 
 import { revalidateTag, unstable_cache } from "next/cache";
 import { prisma } from "./prisma";
-import { activeDisplayPersona } from "./gmNpc";
+import { activeDisplayPersona, profileHrefForPersonaSnapshot } from "./gmNpc";
 
 // 월드 폴링(채팅·접속자·균열) 전용 캐시 계층.
 //
@@ -25,7 +25,7 @@ export type CachedMessage = {
   createdAt: string; // ISO
   createdAtMs: number;
   system: boolean;
-  user: { username: string; nickname: string; avatar: string | null } | null;
+  user: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
 };
 
 export type CachedPerson = {
@@ -74,7 +74,15 @@ export function getRecentMessages(locationId: string) {
           system: true,
           authorName: true,
           authorAvatar: true,
-          user: { select: { username: true, nickname: true, avatar: true } },
+          user: {
+            select: {
+              username: true,
+              nickname: true,
+              avatar: true,
+              gmNpcPersonasJson: true,
+              activeNpcPersonaKey: true,
+            },
+          },
         },
       });
       return rows.reverse().map((m) => ({
@@ -88,6 +96,10 @@ export function getRecentMessages(locationId: string) {
               username: m.user.username,
               nickname: m.authorName ?? m.user.nickname,
               avatar: m.authorAvatar ?? m.user.avatar,
+              profileHref: profileHrefForPersonaSnapshot(m.user, {
+                authorName: m.authorName,
+                authorAvatar: m.authorAvatar,
+              }),
             }
           : null,
       }));

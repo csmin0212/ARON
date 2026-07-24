@@ -13,6 +13,7 @@ import TradeStatusButton from "@/components/TradeStatusButton";
 import CommentThread, { type CommentNode } from "@/components/CommentThread";
 import CommentForm from "@/components/CommentForm";
 import PostActions from "@/components/PostActions";
+import { profileHrefForPersonaSnapshot } from "@/lib/gmNpc";
 
 export async function generateMetadata({
   params,
@@ -40,7 +41,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
     (h.get("purpose") ?? h.get("sec-purpose") ?? "").includes("prefetch");
 
   const authorSelect = {
-    author: { select: { id: true, username: true, nickname: true, avatar: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, gmNpcPersonasJson: true } },
   } as const;
   const post = isPrefetch
     ? await prisma.post.findUnique({ where: { id: postId }, include: authorSelect })
@@ -55,6 +56,9 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const category = getCategory(post.category);
   const postAuthorName = post.authorName ?? post.author?.nickname ?? "";
   const postAuthorAvatar = post.authorAvatar ?? post.author?.avatar ?? null;
+  const postAuthorHref = post.author
+    ? profileHrefForPersonaSnapshot(post.author, { authorName: post.authorName, authorAvatar: post.authorAvatar })
+    : null;
 
   const images = await prisma.image.findMany({
     where: { postId },
@@ -76,7 +80,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const comments = await prisma.comment.findMany({
     where: { postId },
     orderBy: { createdAt: "asc" },
-    include: { author: { select: { id: true, username: true, nickname: true, avatar: true } } },
+    include: { author: { select: { id: true, username: true, nickname: true, avatar: true, gmNpcPersonasJson: true } } },
   });
 
   const nodeMap = new Map<number, CommentNode>();
@@ -92,6 +96,10 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
             username: c.author.username,
             nickname: c.authorName ?? c.author.nickname,
             avatar: c.authorAvatar ?? c.author.avatar,
+            profileHref: profileHrefForPersonaSnapshot(c.author, {
+              authorName: c.authorName,
+              authorAvatar: c.authorAvatar,
+            }),
           }
         : null,
       anonNick: c.anonNick,
@@ -154,7 +162,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
                 <>
                   <Avatar name={postAuthorName} avatar={postAuthorAvatar} size={32} />
                   <Link
-                    href={`/u/${encodeURIComponent(post.author.username)}`}
+                    href={postAuthorHref ?? `/u/${encodeURIComponent(post.author.username)}`}
                     className="text-sm font-bold text-content transition hover:text-brand-600 hover:underline"
                   >
                     {postAuthorName}

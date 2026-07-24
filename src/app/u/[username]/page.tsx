@@ -25,6 +25,8 @@ import {
   parseFeaturedAchievementIds,
   parseProfileVisibility,
 } from "@/lib/profile";
+import { isGmUsername } from "@/lib/gm";
+import { parseGmNpcPersonas } from "@/lib/gmNpc";
 
 export async function generateMetadata({
   params,
@@ -155,10 +157,13 @@ function tradeView(offer: {
 
 export default async function CharacterPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ username: string }>;
+  searchParams?: Promise<{ npc?: string }>;
 }) {
   const { username } = await params;
+  const sp = searchParams ? await searchParams : {};
   const uname = decodeURIComponent(username);
 
   const profile = await prisma.user.findUnique({
@@ -186,8 +191,24 @@ export default async function CharacterPage({
   });
   if (!profile) notFound();
 
+  const npcKey = String(sp.npc ?? "").trim();
+  const npcPersona =
+    npcKey && isGmUsername(profile.username)
+      ? parseGmNpcPersonas(profile.gmNpcPersonasJson).find((persona) => persona.key === npcKey)
+      : null;
+  const isNpcProfile = Boolean(npcPersona);
+  const displayProfile = npcPersona
+    ? {
+        ...profile,
+        nickname: npcPersona.name,
+        username: npcPersona.key,
+        avatar: npcPersona.avatar ?? profile.avatar,
+        profileStatus: null,
+      }
+    : profile;
+
   const me = await getCurrentUser();
-  const isOwn = me?.id === profile.id;
+  const isOwn = !isNpcProfile && me?.id === profile.id;
 
   // 본인 프로필 열람 시 임계값 업적(명성·골드·레벨 등) 지연 판정
   if (isOwn) await checkAndGrant(profile.id);
@@ -291,11 +312,11 @@ export default async function CharacterPage({
   }));
   const pendingCount = isOwn ? life.pending.length : 0;
   const visibility = parseProfileVisibility(profile.profileVisibilityJson);
-  const canViewSheet = isOwn || visibility.sheet;
-  const canViewLifeProfile = isOwn || visibility.lifeProfile;
-  const canViewCollection = isOwn || visibility.collection;
-  const canViewSkills = isOwn || visibility.skills;
-  const canViewAchievements = isOwn || visibility.achievements;
+  const canViewSheet = !isNpcProfile && (isOwn || visibility.sheet);
+  const canViewLifeProfile = !isNpcProfile && (isOwn || visibility.lifeProfile);
+  const canViewCollection = !isNpcProfile && (isOwn || visibility.collection);
+  const canViewSkills = !isNpcProfile && (isOwn || visibility.skills);
+  const canViewAchievements = !isNpcProfile && (isOwn || visibility.achievements);
 
   const achievementOptions: ProfileAchievementBadge[] = achs
     .filter((achievement) => earnedSet.has(achievement.id))
@@ -334,16 +355,18 @@ export default async function CharacterPage({
   // ── 프로필 헤더(메인/카드) 정체성 + 내용물 위젯 ──
   const mainForm = profile.profileMain === "card" ? "card" : "hero";
   const headerWidgetKeys = parseProfileWidgets(profile.profileWidgetsJson);
-  const headerPostCount = await prisma.post.count({ where: { authorId: profile.id } });
+  const headerPostCount = await prisma.post.count({
+    where: isNpcProfile ? { authorId: profile.id, authorName: npcPersona!.name } : { authorId: profile.id },
+  });
   const headerValues = await computeProfileValues({
     userId: profile.id,
-    sheet: profile.sheet,
+    sheet: isNpcProfile ? null : profile.sheet,
     postCount: headerPostCount,
     canViewSheet,
     includeCollection: headerWidgetKeys.includes("collection"),
     canViewCollection,
   });
-  const headerIdentity = buildProfileIdentity(profile, profile.sheet, {
+  const headerIdentity = buildProfileIdentity(displayProfile, isNpcProfile ? null : profile.sheet, {
     title: canViewAchievements ? profile.equippedTitle : null,
     badge: canViewAchievements ? profile.equippedBadge : null,
     canViewSheet,
@@ -356,7 +379,7 @@ export default async function CharacterPage({
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-extrabold text-content">캐릭터 시트</h2>
         {profile.sheet ? (
-          <CharacterSheetCard sheet={{ ...profile.sheet, charName: profile.nickname }} />
+          <CharacterSheetCard sheet={{ ...profile.sheet, charName: displayProfile.nickname }} />
         ) : (
           <p className="py-6 text-center text-sm text-faint">
             아직 캐릭터 시트를 연동하지 않았어요.
@@ -459,10 +482,10 @@ export default async function CharacterPage({
         </div>
       ) : (
         <ProfileHero
-          nickname={profile.nickname}
-          username={profile.username}
-          avatar={profile.avatar}
-          status={profile.profileStatus}
+          nickname={displayProfile.nickname}
+          username={displayProfile.username}
+          avatar={displayProfile.avatar}
+          status={displayProfile.profileStatus}
           level={headerIdentity.level}
           rank={headerIdentity.rank}
           tags={tags}
@@ -480,6 +503,8 @@ export default async function CharacterPage({
         />
       )}
 
+      {!isNpcProfile && (
+        <>
       <CharacterTabs
         tabs={[
           { key: "sheet", label: "📜 캐릭터 시트", content: sheetTab },
@@ -503,6 +528,8 @@ export default async function CharacterPage({
         <div className="rounded-3xl border border-line bg-surface p-5 text-sm text-faint shadow-sm">
           로그인하면 이 캐릭터에게 거래를 제안할 수 있어요.
         </div>
+      )}
+        </>
       )}
     </div>
   );

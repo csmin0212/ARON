@@ -98,3 +98,24 @@ export function displaySnapshot(user: PersonaCapableUser): { authorName: string 
   const persona = activeDisplayPersona(user);
   return persona.isNpc ? { authorName: persona.name, authorAvatar: persona.avatar } : { authorName: null, authorAvatar: null };
 }
+
+export function findGmNpcPersonaBySnapshot(
+  user: PersonaCapableUser,
+  snapshot: { authorName?: string | null; authorAvatar?: string | null },
+): GmNpcPersona | null {
+  if (!isGmUsername(user.username) || !snapshot.authorName) return null;
+  const personas = parseGmNpcPersonas(user.gmNpcPersonasJson);
+  const sameName = personas.filter((persona) => persona.name === snapshot.authorName);
+  if (sameName.length === 0) return null;
+  if (sameName.length === 1) return sameName[0];
+  return sameName.find((persona) => (persona.avatar ?? null) === (snapshot.authorAvatar ?? null)) ?? sameName[0];
+}
+
+export function profileHrefForPersonaSnapshot(
+  user: PersonaCapableUser,
+  snapshot: { authorName?: string | null; authorAvatar?: string | null },
+): string {
+  const base = `/u/${encodeURIComponent(user.username)}`;
+  const persona = findGmNpcPersonaBySnapshot(user, snapshot);
+  return persona ? `${base}?npc=${encodeURIComponent(persona.key)}` : base;
+}

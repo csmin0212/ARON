@@ -20,7 +20,7 @@ type ChatMessage = {
   content: string;
   createdAt: string;
   system: boolean;
-  user: { username: string; nickname: string; avatar: string | null } | null;
+  user: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
 };
 
 export type ChatActionChip = { kind: string; label: string | null; apCost: number; statLabel?: string | null };
@@ -341,7 +341,7 @@ ${body}
           const mine = m.user?.username === myUsername;
           return (
             <div key={m.id} className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
-              <Link href={`/u/${encodeURIComponent(m.user!.username)}`} className="shrink-0">
+              <Link href={m.user!.profileHref ?? `/u/${encodeURIComponent(m.user!.username)}`} className="shrink-0">
                 <Avatar name={m.user!.nickname} avatar={m.user!.avatar} size={32} />
               </Link>
               <div className={`min-w-0 max-w-[75%] ${mine ? "text-right" : ""}`}>
