@@ -27,12 +27,12 @@ import {
   lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
-  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordCollection,
   recordLifeItemLocation,
   recordLifeCatch,
+  toolRankRateBonus,
 } from "@/lib/lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 
@@ -184,10 +184,12 @@ export async function startMining(): Promise<MineStart> {
   if (!pool?.enabled) return { error: "여기서는 채광을 할 수 없어요." };
 
   const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, MINE, lifeLuckModFromStats(sheet.statsJson));
+  const mods = computeMods(life, MINE);
   const eventBonus = dailyLifeEventBonus(MINE);
   mods.apCostDown += eventBonus.apCostDown;
   mods.luck += eventBonus.luck;
+  const mineToolTier = toolTier(life.tools.채광);
+  mods.luck += toolRankRateBonus(mineToolTier, mods.toolEff);
 
   // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
   const apCost = Math.max(1, action.apCost - mods.apCostDown);
@@ -202,7 +204,7 @@ export async function startMining(): Promise<MineStart> {
   await loadLifeItems();
   let caught;
   try {
-    caught = pickLifeSkillCatch(MINE, { ...pool, weights: adjustedRankWeights(mods, regionBase, level) });
+    caught = pickLifeSkillCatch(MINE, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "채광 목록 설정을 확인해주세요." };
   }
@@ -215,7 +217,7 @@ export async function startMining(): Promise<MineStart> {
 
   // '곡괭이 숙련' 특성 — 도구 보정 공식을 N% 개선 (기본 도구는 보정 0이라 효과 없음)
   const rankDiff = RANK_DIFFICULTY[item.rank] ?? 60;
-  const rodRelief = toolTier(life.tools.채광) * 10 * (1 + mods.toolEff / 100);
+  const rodRelief = mineToolTier * 10 * (1 + mods.toolEff / 100);
   const difficulty = Math.max(DIFFICULTY_FLOOR, Math.min(100, rankDiff - level - rodRelief)) / 100;
 
   const pending: Pending = {

@@ -600,7 +600,7 @@ export type LifeMods = {
   rank0Down: number; // %p 감소 (cap 10)
   rank1Down: number; // (cap 20)
   rank2Down: number; // (cap 20)
-  luck: number; // 행운아 — 고랭크 가중치 가산
+  luck: number; // 행운아/버프 — 이미 열린 4·5성 가중치 상대 증가율(%)
   rank5Up: number; // 신의 어부
   noTrash: boolean; // 행운의 부적
   toolEff: number; // 도구 숙련 — 도구 보정 공식 개선 % (기본 도구는 보정 0이라 효과 없음)
@@ -608,19 +608,6 @@ export type LifeMods = {
   apCostDown: number; // 효율적인 정리 — 생활 행동 피로도 소모 감소 (최소 1은 소모)
   doubleDrop: number; // 일석이조(채광) — 획득 시 N% 확률로 결과물 1개 추가 (cap 100)
 };
-
-type StatLike = { label: string; mod: number | null };
-
-export function lifeLuckModFromStats(statsJson: string | null | undefined): number {
-  if (!statsJson) return 0;
-  try {
-    const stats = JSON.parse(statsJson) as StatLike[];
-    const luck = stats.find((stat) => stat.label === "행운");
-    return luck?.mod ?? 0;
-  } catch {
-    return 0;
-  }
-}
 
 // 효과키가 없는 옛 특성(스냅샷)용 폴백 — 이름·희귀도 → 수치. 시트 '스킬' 탭과 동일하게 유지.
 const VAL: Record<string, Record<string, number>> = {
@@ -695,14 +682,14 @@ function applyEffectKey(mods: LifeMods, key: string | null | undefined, value: s
   }
 }
 
-export function computeMods(state: LifeState, kind: LifeSkillKind, luckMod = 0): LifeMods {
+export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
   const mods: LifeMods = {
     expMult: 1,
     goldMult: 1,
     rank0Down: 0,
     rank1Down: 0,
     rank2Down: 0,
-    luck: luckMod,
+    luck: 0,
     rank5Up: 0,
     noTrash: false,
     toolEff: 0,
@@ -769,10 +756,6 @@ export function computeMods(state: LifeState, kind: LifeSkillKind, luckMod = 0):
       mods.luck += buff.amount;
     }
   }
-  for (const buff of state.cookingBuffs.stat) {
-    if (Date.parse(buff.until) <= now) continue;
-    if (buff.label === "행운" || buff.label === "모든") mods.luck += buff.amount;
-  }
   mods.rank0Down = Math.min(mods.rank0Down, 10);
   mods.rank1Down = Math.min(mods.rank1Down, 20);
   mods.rank2Down = Math.min(mods.rank2Down, 20);
@@ -781,10 +764,9 @@ export function computeMods(state: LifeState, kind: LifeSkillKind, luckMod = 0):
   return mods;
 }
 
-function luckBonusForLevel(level: number | undefined): { rank4: number; rank5: number } {
-  if (level == null || level < 31) return { rank4: 0.05, rank5: 0 };
-  if (level < 61) return { rank4: 0.09, rank5: 0.01 };
-  return { rank4: 0.25, rank5: 0.05 };
+export function toolRankRateBonus(toolTier: number, toolEff: number): number {
+  const base = toolTier >= 2 ? 5 : toolTier >= 1 ? 2 : 0;
+  return base * (1 + Math.max(0, toolEff) / 100);
 }
 
 function takeEvenlyFromLowRanks(weights: number[], amount: number): number {
@@ -810,7 +792,7 @@ function takeEvenlyFromLowRanks(weights: number[], amount: number): number {
 
 // 등급 가중치 [0성..5성] 에 특성/행운 보정 적용.
 // base 는 레벨 구간표(baseWeightsFor) 또는 장소별 override다.
-export function adjustedRankWeights(mods: LifeMods, base?: number[], level?: number): number[] {
+export function adjustedRankWeights(mods: LifeMods, base?: number[]): number[] {
   const orig = base ? [...base] : [30, 40, 25, 5, 0, 0];
   const w = [...orig];
   let removed = 0;
@@ -834,12 +816,10 @@ export function adjustedRankWeights(mods: LifeMods, base?: number[], level?: num
     w[2] += removed; // 상위 등급이 모두 잠긴 극단 케이스
   }
 
-  // 행운: 행운 수정치 + 행운아/요리 행운.
-  // 증가분만큼 0~3성에서 균등 차감하고, 레벨 구간별 비율로 4~5성에 더한다.
+  // 행운: 이미 열린 4·5성 확률을 상대 비율로 늘린다. 예: 4성 1%에 행운 +1이면 1.01%.
   if (mods.luck > 0 && upper.length > 0) {
-    const bonus = luckBonusForLevel(level);
-    const rank4Gain = mods.luck * bonus.rank4;
-    const rank5Gain = mods.luck * bonus.rank5;
+    const rank4Gain = orig[4] > 0 ? w[4] * (mods.luck / 100) : 0;
+    const rank5Gain = orig[5] > 0 ? w[5] * (mods.luck / 100) : 0;
     const requested = rank4Gain + rank5Gain;
     const actual = takeEvenlyFromLowRanks(w, requested);
     if (actual > 0 && requested > 0) {

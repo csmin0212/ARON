@@ -115,6 +115,18 @@ const FAILED_DISH = {
   weight: 1,
   sellPrice: 1,
 };
+const MESSAGE_BOTTLE_NAME = "종이가 든 병";
+const MESSAGE_BOTTLE_READINGS = [
+  "요정의 윤무",
+  "물의 환영",
+  "침묵의 유적",
+  "바람의 끝",
+  "갱도 탐사",
+  "잠들지 않는 것",
+  "심해 속으로",
+  "하늘로",
+  "어둠의 시대",
+] as const;
 
 const LIFE_SHOP_ITEMS = [
   // 가방 — 낚시·채집·채광 공통 (기본 5칸 → 10/20/30칸 확장, 1000/2500/5000G)
@@ -2042,7 +2054,7 @@ function setMaxStat(json: string | null | undefined, name: string, value: number
 }
 
 function normalizedConsumableName(name: string): string {
-  return name.replace(/\s+/g, "").trim();
+  return name.normalize("NFKC").replace(/[\s\u200B-\u200D\uFEFF]+/g, "").trim();
 }
 
 function isRebuildPotion(name: string): boolean {
@@ -2056,6 +2068,10 @@ function isLifeResetBlessing(name: string): boolean {
 
 function isMysteryParchment(name: string): boolean {
   return normalizedConsumableName(name) === MYSTERY_PARCHMENT_NAME.replace(/\s+/g, "");
+}
+
+function isMessageBottle(name: string): boolean {
+  return normalizedConsumableName(name) === MESSAGE_BOTTLE_NAME.replace(/\s+/g, "");
 }
 
 export async function useCookingItem(
@@ -2091,6 +2107,30 @@ export async function useCookingItem(
     revalidatePath("/world");
     revalidatePath("/profile");
     return { ok: "'라카노아를 기억하라' 라는 목소리가 들렸다." };
+  }
+
+  if (isMessageBottle(itemName)) {
+    const reading = MESSAGE_BOTTLE_READINGS[Math.floor(Math.random() * MESSAGE_BOTTLE_READINGS.length)];
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          achStatsJson: bumpStat((await prisma.characterSheet.findUnique({
+            where: { userId: ctx.userId },
+            select: { achStatsJson: true },
+          }))?.achStatsJson ?? null, "종이가든병사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+    await checkAndGrant(ctx.userId);
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return { ok: `병 속 종이를 펼치자, '${reading}' 라는 글귀가 적혀 있었다.` };
   }
 
   if (isRebuildPotion(itemName)) {

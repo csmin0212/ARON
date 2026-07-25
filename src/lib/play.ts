@@ -41,13 +41,13 @@ import {
   lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
-  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordLifeCatch,
   recordCollection,
   recordLifeItemLocation,
   statBuffBonus,
+  toolRankRateBonus,
 } from "./lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "./skillCatalog";
 
@@ -147,6 +147,22 @@ function locationPoolConfig(
   return life.fish ?? null;
 }
 
+function lifeToolTier(kind: LifeSkillKind, name: string): number {
+  if (kind === "낚시") {
+    if (name === "고급 낚싯대") return 2;
+    if (name === "좋은 낚싯대") return 1;
+  }
+  if (kind === "채집") {
+    if (name === "장인의 채집 도구") return 2;
+    if (name === "숙련 채집 도구") return 1;
+  }
+  if (kind === "채광") {
+    if (name === "미스릴 곡괭이") return 2;
+    if (name === "철 곡괭이") return 1;
+  }
+  return 0;
+}
+
 async function ensureLifeSkillItem(item: LifeSkillItem, kind: LifeSkillKind): Promise<void> {
   const sellPrice = lifeSkillMarketPrice(kind, item);
   await prisma.item.upsert({
@@ -209,13 +225,12 @@ export async function runActionCommand(
 
   const lifeSkillKind = lifeSkillKindOf(target.kind, target.label);
   const life = lifeSkillKind ? parseLifeState(sheet.lifeJson) : null;
-  const lifeMods = lifeSkillKind && life
-    ? computeMods(life, lifeSkillKind, lifeLuckModFromStats(sheet.statsJson))
-    : null;
+  const lifeMods = lifeSkillKind && life ? computeMods(life, lifeSkillKind) : null;
   if (lifeSkillKind && lifeMods) {
     const eventBonus = dailyLifeEventBonus(lifeSkillKind);
     lifeMods.apCostDown += eventBonus.apCostDown;
     lifeMods.luck += eventBonus.luck;
+    lifeMods.luck += toolRankRateBonus(lifeToolTier(lifeSkillKind, life!.tools[lifeSkillKind]), lifeMods.toolEff);
   }
   const actionApCost = lifeMods ? Math.max(1, target.apCost - lifeMods.apCostDown) : target.apCost;
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
@@ -279,7 +294,7 @@ export async function runActionCommand(
       try {
         caught = pickLifeSkillCatch(lifeSkillKind, {
           ...locationPool,
-          weights: adjustedRankWeights(mods, regionBase, level),
+          weights: adjustedRankWeights(mods, regionBase),
         });
       } catch (e) {
         return { error: e instanceof Error ? e.message : `${lifeSkillKind} 목록 설정을 확인해주세요.` };

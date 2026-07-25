@@ -27,12 +27,12 @@ import {
   lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
-  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordCollection,
   recordLifeItemLocation,
   recordLifeCatch,
+  toolRankRateBonus,
 } from "@/lib/lifeSkillPerks";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 
@@ -201,10 +201,12 @@ export async function startFishing(): Promise<FishingStart> {
   if (!pool?.enabled) return { error: "여기서는 낚시를 할 수 없어요." };
 
   const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, FISH, lifeLuckModFromStats(sheet.statsJson));
+  const mods = computeMods(life, FISH);
   const eventBonus = dailyLifeEventBonus(FISH);
   mods.apCostDown += eventBonus.apCostDown;
   mods.luck += eventBonus.luck;
+  const toolTier = rodTier(life.tools.낚시);
+  mods.luck += toolRankRateBonus(toolTier, mods.toolEff);
 
   // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
   const apCost = Math.max(1, action.apCost - mods.apCostDown);
@@ -220,7 +222,7 @@ export async function startFishing(): Promise<FishingStart> {
   await loadLifeItems();
   let caught;
   try {
-    caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase, level) });
+    caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "낚시 목록 설정을 확인해주세요." };
   }
@@ -235,7 +237,7 @@ export async function startFishing(): Promise<FishingStart> {
   // 효과 난이도 = max(10, 등급기본 − 레벨 − 낚싯대보정), 상한 100 → 0~1로 변환
   // '낚싯대 숙련' 특성 — 낚싯대 보정 공식을 N% 개선 (기본 낚싯대는 보정 0이라 효과 없음)
   const rankDiff = RANK_DIFFICULTY[item.rank] ?? 60;
-  const rodRelief = rodTier(life.tools.낚시) * 10 * (1 + mods.toolEff / 100); // 좋은 -10 / 고급 -20
+  const rodRelief = toolTier * 10 * (1 + mods.toolEff / 100); // 좋은 -10 / 고급 -20
   const eff = Math.max(DIFFICULTY_FLOOR, Math.min(100, rankDiff - level - rodRelief));
   const difficulty = eff / 100;
   const barBonus = 0; // 낚싯대 효과는 난이도 하락으로 통합

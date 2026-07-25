@@ -44,21 +44,26 @@ function weightText(item: SheetInventoryItem): string {
   return item.qty > 1 ? `${item.weight} / 합계 ${total}` : String(item.weight);
 }
 
+function normalizedItemName(name: string): string {
+  return name.normalize("NFKC").replace(/[\s\u200B-\u200D\uFEFF]+/g, "").trim();
+}
+
 function canUseItem(item: SheetInventoryItem): boolean {
-  const name = item.name.trim();
-  const compactName = name.replace(/\s+/g, "");
+  const compactName = normalizedItemName(item.name);
   if (compactName === "의문의양피지") return true;
+  if (compactName === "종이가든병") return true;
   if (compactName === "망각의물약" || compactName === "변화의물약" || compactName === "망각의축복") {
     return true;
   }
   const effect = item.effect ?? "";
+  if (effect.includes("아무도 없는 곳에서 열어보자")) return true;
   // 행운·판정(월드 30분 버프)·세션 버프·HP/MP 회복·피로도 회복·던전 횟수 회복
   // useCookingItem이 처리하는 효과들.
   return /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+|(?:근력|재주|민첩|지력|감지|정신|행운|명중|회피|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?|세션\s*버프|시나리오\s*종료\s*시\s*까지\s*지속|(HP|MP)[^가-힣]*회복|피로도\s*(?:\[\d+\s*D\]|\d+)[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(effect);
 }
 
 function isLifeResetBlessing(item: SheetInventoryItem): boolean {
-  return item.name.replace(/\s+/g, "").trim() === "망각의축복";
+  return normalizedItemName(item.name) === "망각의축복";
 }
 
 function CookingStateLine({ state }: { state: CookingState }) {
