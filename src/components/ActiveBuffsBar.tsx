@@ -8,7 +8,7 @@ export type WorldBuff = {
   icon: string;
   label: string;
   until: string;
-  source?: "event" | "food";
+  source?: "event" | "food" | "potion";
 };
 
 export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
@@ -25,7 +25,8 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
   if (alive.length === 0) return null;
 
   const events = alive.filter((buff) => buff.source === "event");
-  const foods = alive.filter((buff) => buff.source !== "event");
+  const foods = alive.filter((buff) => buff.source !== "event" && buff.source !== "potion");
+  const potions = alive.filter((buff) => buff.source === "potion");
   const minutesLeft = (iso: string) =>
     now == null ? null : Math.max(1, Math.ceil((Date.parse(iso) - now) / 60_000));
 
@@ -58,6 +59,27 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
               >
                 {buff.icon} {buff.label}
                 <span className="font-semibold text-emerald-500">
+                  · {formatTime(buff.until)}까지{left != null ? ` (${left}분)` : ""}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {potions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-extrabold text-muted">🧪 포션 효과</span>
+          {potions.map((buff, i) => {
+            const left = minutesLeft(buff.until);
+
+            return (
+              <span
+                key={`potion-${buff.label}-${i}`}
+                className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700"
+              >
+                {buff.icon} {buff.label}
+                <span className="font-semibold text-sky-500">
                   · {formatTime(buff.until)}까지{left != null ? ` (${left}분)` : ""}
                 </span>
               </span>

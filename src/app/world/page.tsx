@@ -85,17 +85,20 @@ import {
   alchemyLevel,
   alchemyMasterCount,
   alchemyMasteryRank,
+  expForNext,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
 } from "@/lib/lifeSkillPerks";
 import { parseCookedName } from "@/lib/auction";
 import {
-  ALCHEMY_BASE_POTION_NAME,
   WEAK_PRICE_MULT,
   alchemyAcceleratorMinutes,
   alchemyLabSlotLimit,
+  alchemyOptionRepeatPointStep,
+  alchemyOptionRepeatable,
   customPotionSellPrice,
+  isCustomAlchemyPotionName,
   parsePendingBrew,
   parsePotionName,
 } from "@/lib/alchemy";
@@ -1011,6 +1014,8 @@ export default async function WorldPage() {
       pointCost: Math.max(0, recipe.skillExp),
       requiredMaterials: ingredientList,
       optionPrice: Math.max(0, recipe.sellPrice),
+      repeatable: alchemyOptionRepeatable(recipe.tags),
+      repeatPointStep: alchemyOptionRepeatPointStep(recipe.tags),
     };
   });
   const potionPrice = new Map(alchemyRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
@@ -1019,11 +1024,11 @@ export default async function WorldPage() {
     ? bagItems
         .map((item) => {
           const raw = item.name.trim();
-          const { base, modifier, grade } = parsePotionName(raw);
-          if (base === ALCHEMY_BASE_POTION_NAME || base.startsWith(`${ALCHEMY_BASE_POTION_NAME} (`)) {
+          if (isCustomAlchemyPotionName(raw)) {
             const unitPrice = customPotionSellPrice(item.effect);
             return unitPrice != null ? { name: raw, qty: item.qty, unitPrice, effect: item.effect } : null;
           }
+          const { base, modifier, grade } = parsePotionName(raw);
           if (!potionPrice.has(base)) return null;
           const acceleratorMinutes = alchemyAcceleratorMinutes(raw, item.effect);
           const basePrice = Math.round((potionPrice.get(base) ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
@@ -1051,7 +1056,7 @@ export default async function WorldPage() {
       const brewRecipe = alchemyRecipes.find((recipe) => recipe.id === pendingBrew.recipeId);
       brewing = {
         recipeId: pendingBrew.recipeId,
-        recipeName: brewRecipe?.name ?? "알 수 없는 포션",
+        recipeName: pendingBrew.resultName ?? brewRecipe?.name ?? "알 수 없는 포션",
         minutes: pendingBrew.minutes,
         startedAt: pendingBrew.startedAt,
         readyAt: pendingBrew.readyAt,
@@ -1068,6 +1073,8 @@ export default async function WorldPage() {
     gold: housing.gold,
     level: alchemyLevel(life),
     masterCount: alchemyMasterCount(life),
+    exp: life.alchemy.exp,
+    nextExp: expForNext(life.alchemy.level),
     recipeCount: alchemyRecipes.length,
     maxIngredients: alchemyLabSlotLimit(alchemyLab?.tier ?? 1),
     recipes: alchemyRecipeViews,
@@ -1323,12 +1330,34 @@ export default async function WorldPage() {
       buffRows.push({ icon: "🍀", label: `${kinds.join("·")} 행운 +${buff.amount}`, until: buff.until, source: "food" });
     }
   }
+  for (const buff of life.cookingBuffs.potionLifeLuck) {
+    const kinds =
+      buff.kind === "all"
+        ? ["낚시", "채집", "채광"]
+        : buff.kind === "both"
+          ? ["낚시", "채집"]
+          : [buff.kind];
+    buffRows.push({
+      icon: "🍀",
+      label: `${kinds.join("·")} 행운 +${buff.amount}`,
+      until: buff.until,
+      source: "potion",
+    });
+  }
   for (const buff of life.cookingBuffs.stat) {
     buffRows.push({
       icon: "🎲",
       label: `${buff.label === "모든" ? "모든 능력" : buff.label} 판정 +${buff.amount}`,
       until: buff.until,
       source: "food",
+    });
+  }
+  for (const buff of life.cookingBuffs.potionStat) {
+    buffRows.push({
+      icon: "🎲",
+      label: `${buff.label === "모든" ? "모든 능력" : buff.label} +${buff.amount}`,
+      until: buff.until,
+      source: "potion",
     });
   }
   const displayActionApCost = (action: (typeof locActions)[number]): number => {

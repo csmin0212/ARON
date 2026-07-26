@@ -299,10 +299,10 @@ export const CARD_STYLES: CardStyleMeta[] = [
   {
     key: "alchemist",
     label: "연금술사",
-    tagline: "연금술 Lv.5 · 신비한 물약",
+    tagline: "연금술 Lv.30 · 신비한 물약",
     acquire: "unlock",
     price: 0,
-    unlock: { kind: "life", skill: "alchemy", level: 5, label: "연금술 Lv.5" },
+    unlock: { kind: "life", skill: "alchemy", level: 30, label: "연금술 Lv.30" },
     usesAccent: false,
     swatch:
       "radial-gradient(120% 120% at 100% 0%, rgba(45,212,191,0.3), transparent 55%), radial-gradient(120% 120% at 0% 100%, rgba(168,85,247,0.32), transparent 55%), linear-gradient(150deg, #241a3a, #120e22)",

@@ -15,11 +15,12 @@ import {
   type AlchemyState,
 } from "@/app/actions/services";
 import {
+  ALCHEMY_OPTION_LIMIT,
   BREW_AP_COST,
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
   alchemyLabSlotLimit,
-  alchemyMaterialPoints,
+  alchemyMaterialPointsForItem,
   parsePotionName,
 } from "@/lib/alchemy";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
@@ -49,6 +50,8 @@ export type AlchemyRecipeView = {
   pointCost: number;
   requiredMaterials: { name: string; qty: number }[];
   optionPrice: number;
+  repeatable: boolean;
+  repeatPointStep: number;
 };
 
 export type AlchemyBrewingView = {
@@ -81,6 +84,8 @@ export type AlchemyView = {
   ap: number;
   gold: number;
   level: number;
+  exp: number;
+  nextExp: number;
   masterCount: number;
   recipeCount: number;
   maxIngredients: number;
@@ -243,13 +248,14 @@ export default function AlchemyLab({
     return ranks;
   }, [lifeItems, storageItems]);
 
-  const materialPointOf = (name: string) => alchemyMaterialPoints(materialRanks.get(name.trim()) ?? 0);
+  const materialPointOf = (name: string) =>
+    alchemyMaterialPointsForItem(name, materialRanks.get(name.trim()) ?? 0);
 
   // 재료 후보 — 연금 포인트가 붙는 생활 재료만
   const drawerNames = useMemo(() => {
     const names = new Set<string>();
     for (const [name, rank] of materialRanks) {
-      if (alchemyMaterialPoints(rank) > 0) names.add(name);
+      if (alchemyMaterialPointsForItem(name, rank) > 0) names.add(name);
     }
     return names;
   }, [materialRanks]);
@@ -317,19 +323,54 @@ export default function AlchemyLab({
     );
   };
 
-  const selectedOptions = useMemo(
-    () => alchemy.recipes.filter((option) => selectedOptionIds.includes(option.id)),
-    [alchemy.recipes, selectedOptionIds],
+  const optionById = useMemo(
+    () => new Map(alchemy.recipes.map((option) => [option.id, option])),
+    [alchemy.recipes],
   );
+  const selectedOptions = useMemo(
+    () =>
+      selectedOptionIds
+        .map((id) => optionById.get(id))
+        .filter((option): option is AlchemyRecipeView => !!option),
+    [optionById, selectedOptionIds],
+  );
+  const selectedOptionCopyIndexes = useMemo(() => {
+    const counts = new Map<string, number>();
+    return selectedOptions.map((option) => {
+      const index = counts.get(option.id) ?? 0;
+      counts.set(option.id, index + 1);
+      return index;
+    });
+  }, [selectedOptions]);
+  const selectedCountOf = (id: string) => selectedOptionIds.filter((selected) => selected === id).length;
+  const optionCopyCost = (option: AlchemyRecipeView, copyIndex: number): number => {
+    if (copyIndex <= 0) return option.pointCost;
+    if (!option.repeatable) return Number.POSITIVE_INFINITY;
+    return option.pointCost + option.repeatPointStep * copyIndex;
+  };
   const availablePoints = pot.reduce((sum, entry) => sum + materialPointOf(entry.name), 0);
-  const spentPoints = selectedOptions.reduce((sum, option) => sum + option.pointCost, 0);
+  const spentPoints = selectedOptions.reduce(
+    (sum, option, index) => sum + optionCopyCost(option, selectedOptionCopyIndexes[index]),
+    0,
+  );
   const potNames = useMemo(() => new Set(pot.map((entry) => entry.name)), [pot]);
   const optionUnlocked = (option: AlchemyRecipeView) =>
     option.requiredMaterials.every((ingredient) => potNames.has(ingredient.name));
-  const optionSpendWithout = (id: string) =>
-    selectedOptions
-      .filter((option) => option.id !== id)
-      .reduce((sum, option) => sum + option.pointCost, 0);
+  const addOption = (option: AlchemyRecipeView) => {
+    const count = selectedCountOf(option.id);
+    if (selectedOptionIds.length >= ALCHEMY_OPTION_LIMIT) return;
+    if (count > 0 && !option.repeatable) return;
+    const nextCost = optionCopyCost(option, count);
+    if (spentPoints + nextCost > availablePoints) return;
+    setSelectedOptionIds((prev) => [...prev, option.id]);
+  };
+  const removeOption = (id: string) => {
+    setSelectedOptionIds((prev) => {
+      const index = prev.lastIndexOf(id);
+      if (index < 0) return prev;
+      return [...prev.slice(0, index), ...prev.slice(index + 1)];
+    });
+  };
   const potUnits = pot.map((entry) => entry.name);
   const maxIngredients = alchemy.maxIngredients ?? alchemyLabSlotLimit(alchemy.labTier);
   const potSlots = Array.from({ length: maxIngredients }, (_, i) => pot[i] ?? null);
@@ -379,6 +420,9 @@ export default function AlchemyLab({
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold">
             <span className="rounded-full bg-white/15 px-2.5 py-1">
               🧫 연금술 Lv.{alchemy.level}
+            </span>
+            <span className="rounded-full bg-white/15 px-2.5 py-1">
+              ⚗️ 숙련도 {alchemy.exp}/{alchemy.nextExp}
             </span>
             <span className="rounded-full bg-white/15 px-2.5 py-1">
               ⚡ {alchemy.ap} · 제조 -{BREW_AP_COST}
@@ -543,7 +587,7 @@ export default function AlchemyLab({
                   }`}
                 >
                   {selectedOptions.length > 0
-                    ? `선택 옵션 ${selectedOptions.length}개 · 포인트 ${spentPoints}/${availablePoints} · 판매가 ${selectedOptions.reduce((sum, option) => sum + option.optionPrice, 0).toLocaleString()}G`
+                    ? `선택 옵션 ${selectedOptions.length}/${ALCHEMY_OPTION_LIMIT}개 · 포인트 ${spentPoints}/${availablePoints} · 판매가 ${selectedOptions.reduce((sum, option) => sum + option.optionPrice, 0).toLocaleString()}G`
                     : pot.length > 0
                       ? `사용 가능 포인트 ${availablePoints} · 포션 옵션을 선택해보세요.`
                       : "재료를 넣으면 연금 포인트가 생기고, 그 포인트로 옵션을 넣을 수 있어요."}
@@ -568,33 +612,30 @@ export default function AlchemyLab({
                   </div>
                   <div className="grid gap-1.5 sm:grid-cols-2">
                     {alchemy.recipes.map((option) => {
-                      const picked = selectedOptionIds.includes(option.id);
+                      const pickedCount = selectedCountOf(option.id);
+                      const picked = pickedCount > 0;
                       const unlocked = optionUnlocked(option);
-                      const wouldSpend = optionSpendWithout(option.id) + option.pointCost;
-                      const affordable = picked || wouldSpend <= availablePoints;
-                      const disabled = !unlocked || !affordable;
+                      const nextCost = optionCopyCost(option, pickedCount);
+                      const affordable = spentPoints + nextCost <= availablePoints;
+                      const canAdd =
+                        unlocked &&
+                        affordable &&
+                        selectedOptionIds.length < ALCHEMY_OPTION_LIMIT &&
+                        (pickedCount === 0 || option.repeatable);
                       return (
-                        <button
+                        <div
                           key={option.id}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() =>
-                            setSelectedOptionIds((prev) =>
-                              prev.includes(option.id)
-                                ? prev.filter((id) => id !== option.id)
-                                : [...prev, option.id],
-                            )
-                          }
                           className={`rounded-xl border px-3 py-2 text-left transition ${
                             picked
                               ? "border-violet-400 bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-200"
                               : "border-line bg-surface text-content hover:border-violet-300"
-                          } disabled:cursor-not-allowed disabled:opacity-40`}
+                          } ${!unlocked ? "opacity-40" : ""}`}
                         >
                           <span className="flex items-center justify-between gap-2">
                             <span className="truncate text-xs font-extrabold">{option.name}</span>
                             <span className="shrink-0 text-[11px] font-black">
-                              {option.pointCost}pt · {option.optionPrice.toLocaleString()}G
+                              {pickedCount > 0 ? `x${pickedCount} · ` : ""}
+                              다음 {Number.isFinite(nextCost) ? `${nextCost}pt` : "-"} · {option.optionPrice.toLocaleString()}G
                             </span>
                           </span>
                           {option.effect && (
@@ -602,12 +643,39 @@ export default function AlchemyLab({
                               {option.effect}
                             </span>
                           )}
+                          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-faint">
+                            <span>기본 {option.pointCost}pt</span>
+                            {option.repeatable && (
+                              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-violet-600 dark:text-violet-300">
+                                중복 가능 · +{option.repeatPointStep}pt
+                              </span>
+                            )}
+                          </span>
                           {option.requiredMaterials.length > 0 && (
                             <span className="mt-1 block text-[10px] font-bold text-amber-600">
                               필요: {option.requiredMaterials.map((item) => item.name).join(", ")}
                             </span>
                           )}
-                        </button>
+                          <span className="mt-2 flex items-center gap-1.5">
+                            {pickedCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => removeOption(option.id)}
+                                className="rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-black text-content transition hover:bg-subtle"
+                              >
+                                −
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={!canAdd}
+                              onClick={() => addOption(option)}
+                              className="flex-1 rounded-lg bg-violet-600 px-2 py-1 text-[11px] font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              추가
+                            </button>
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
@@ -652,8 +720,8 @@ export default function AlchemyLab({
                   {potUnits.map((name, i) => (
                     <input key={`${name}-${i}`} type="hidden" name="ingredient" value={name} />
                   ))}
-                  {selectedOptionIds.map((id) => (
-                    <input key={id} type="hidden" name="optionId" value={id} />
+                  {selectedOptionIds.map((id, i) => (
+                    <input key={`${id}-${i}`} type="hidden" name="optionId" value={id} />
                   ))}
                   <input type="hidden" name="minutes" value={minutes} />
                   <button
@@ -662,6 +730,7 @@ export default function AlchemyLab({
                       startPending ||
                       pot.length === 0 ||
                       selectedOptionIds.length === 0 ||
+                      selectedOptionIds.length > ALCHEMY_OPTION_LIMIT ||
                       spentPoints > availablePoints ||
                       alchemy.ap < BREW_AP_COST
                     }
@@ -719,6 +788,11 @@ export default function AlchemyLab({
                         {recipe.pointCost}pt · {recipe.optionPrice.toLocaleString()}G
                       </span>
                     </div>
+                    {recipe.repeatable && (
+                      <p className="mt-1 text-[11px] font-bold text-violet-600 dark:text-violet-300">
+                        중복 가능 · 중복마다 필요 포인트 +{recipe.repeatPointStep}
+                      </p>
+                    )}
                     {recipe.effect && (
                       <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-faint">
                         {recipe.effect}

@@ -4,7 +4,6 @@ import { prisma } from "./prisma";
 import { getActiveItems } from "./lifeSkillData";
 import { loadLifeItems } from "./lifeSkillLoader";
 import {
-  ALCHEMY_ADEPT_MASTERY,
   alchemyLevel,
   alchemyMasterCount,
   lifeBagWeight,
@@ -220,10 +219,7 @@ export async function checkAndGrant(
   const plantAreaCount = countStatPrefix(stats, "채집지역:");
   const mineAreaCount = countStatPrefix(stats, "채광지역:");
   const craftMineralKinds = countStatPrefix(stats, "제작광물:");
-  // 연금술 — 포션별 숙련도(alchemyMastery) 파생값
-  const alchemyAdeptCount = Object.values(life.alchemyMastery).filter(
-    (exp) => exp >= ALCHEMY_ADEPT_MASTERY,
-  ).length;
+  // 연금술 — 조제 포션은 life.alchemy 레벨, 구형 포션별 장인도는 호환용으로만 유지.
   const alchemyMasters = alchemyMasterCount(life);
   const alchemyLv = alchemyLevel(life);
 
@@ -348,7 +344,18 @@ export async function checkAndGrant(
         return n != null && alchemyMasters >= n;
       case "연금숙련포션수":
       case "연금고급수":
-        return n != null && alchemyAdeptCount >= n;
+        return false;
+      case "연금등급":
+      case "연금제작등급":
+      case "연금품질": {
+        const made = stats.연금최고제작등급 ?? 0;
+        const src = norm(condSource(a));
+        if (src.includes(norm("네이밍")) || src.includes(norm("이름"))) return made >= 3;
+        if (src.includes(norm("명품"))) return made >= 2;
+        if (src.includes(norm("고품질")) || src.includes(norm("희귀"))) return made >= 1;
+        if (n != null) return made >= n;
+        return false;
+      }
       case "제작광물종류수":
         return n != null && craftMineralKinds >= n;
       case "제작등급": {

@@ -2,10 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import {
-  ALCHEMY_BASE_POTION_NAME,
   WEAK_PRICE_MULT,
   alchemyAcceleratorMinutes,
   customPotionSellPrice,
+  isCustomAlchemyPotionName,
   parsePotionName,
 } from "@/lib/alchemy";
 import { lifeSkillItemKind, lifeSkillSellPrice } from "@/lib/lifeSkillData";
@@ -118,7 +118,7 @@ export async function potionSellPrice(
   effectText?: string | null,
 ): Promise<number | null> {
   const { base, modifier, grade } = parsePotionName(rawName);
-  if (base === ALCHEMY_BASE_POTION_NAME || base.startsWith(`${ALCHEMY_BASE_POTION_NAME} (`)) {
+  if (isCustomAlchemyPotionName(rawName)) {
     return customPotionSellPrice(effectText);
   }
   const recipe = await prisma.alchemyRecipe.findFirst({

@@ -297,6 +297,26 @@ function parseOptionalIngredients(spec: string): IngredientEntry[] {
   return spec.trim() ? parseIngredients(spec) : [];
 }
 
+function truthySheetFlag(raw: string): boolean {
+  return /^(y|yes|true|1|공개|가능|중복|o|○|⭕)$/i.test(raw.replace(/\s+/g, ""));
+}
+
+function withAlchemyOptionMetaTags(
+  tags: string | null,
+  repeatableRaw: string,
+  repeatPointStep: number,
+): string | null {
+  const parts = (tags ?? "")
+    .split(/[,，]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  if (truthySheetFlag(repeatableRaw) && !parts.includes("중복가능")) parts.push("중복가능");
+  if (repeatPointStep > 0 && !parts.some((tag) => /^중복증가\s*:/.test(tag))) {
+    parts.push(`중복증가:${repeatPointStep}`);
+  }
+  return parts.length > 0 ? parts.join(",") : null;
+}
+
 // margin(판정 총합 − 목표치, 성공 시 0 이상)이 있으면 꽝 "확률"을 1점당 1%p씩 낮춘다.
 // 꽝 확률은 30% 아래로 내리지 않고(원래 30% 이하면 그대로), 빠진 만큼은 나머지
 // 드랍에 기존 비율대로 배분된다. 결과 텍스트에는 절대 노출하지 않는다.
@@ -691,6 +711,15 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
     지속: "duration",
     태그: "tags",
     공개: "isPublic",
+    중복가능: "repeatable",
+    "중복 가능": "repeatable",
+    중복: "repeatable",
+    중복증가: "repeatPointStep",
+    "중복 증가": "repeatPointStep",
+    중복시증가: "repeatPointStep",
+    "중복시 증가": "repeatPointStep",
+    중복포인트증가: "repeatPointStep",
+    "중복 포인트 증가": "repeatPointStep",
   });
   if (optionHeader) {
     const rows: PotionRow[] = [];
@@ -705,6 +734,11 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
       seen.add(id);
       const publicRaw = at(g, r, optionHeader.col.isPublic);
       const result = parseOptionalIngredients(at(g, r, optionHeader.col.result))[0];
+      const tags = withAlchemyOptionMetaTags(
+        at(g, r, optionHeader.col.tags) || null,
+        at(g, r, optionHeader.col.repeatable),
+        Math.max(0, num(at(g, r, optionHeader.col.repeatPointStep)) ?? 0),
+      );
       rows.push({
         id,
         name,
@@ -717,7 +751,7 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
         effect: at(g, r, optionHeader.col.effect) || null,
         duration: at(g, r, optionHeader.col.duration) || null,
         skillExp: pointCost,
-        tags: at(g, r, optionHeader.col.tags) || null,
+        tags,
         sellPrice: num(at(g, r, optionHeader.col.sellPrice)) ?? 0,
         weight: num(at(g, r, optionHeader.col.weight)) ?? 1,
         isPublic: /^(y|yes|true|1|공개)$/i.test(publicRaw),

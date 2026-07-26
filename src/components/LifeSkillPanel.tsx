@@ -9,7 +9,6 @@ import {
   lifeBagWeight,
   PERK_EVERY,
   RARITY_COLORS,
-  alchemyMasterCount,
   type LifeState,
   type LifeBag,
   type PerkRarity,
@@ -221,18 +220,47 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
     if (found) found.kinds.push(...kinds.filter((k) => !found.kinds.includes(k)));
     else luckRows.push({ source: buff.source, amount: buff.amount, until: buff.until, kinds });
   }
+  const activePotionLuck =
+    now == null
+      ? life.cookingBuffs.potionLifeLuck
+      : life.cookingBuffs.potionLifeLuck.filter((buff) => Date.parse(buff.until) > now);
+  const potionLuckRows: { source: string; amount: number; until: string; kinds: string[] }[] = [];
+  for (const buff of activePotionLuck) {
+    const kinds =
+      buff.kind === "all"
+        ? ["낚시", "채집", "채광"]
+        : buff.kind === "both"
+          ? ["낚시", "채집"]
+          : [buff.kind];
+    const found = potionLuckRows.find(
+      (row) => row.source === buff.source && row.amount === buff.amount && row.until === buff.until,
+    );
+    if (found) found.kinds.push(...kinds.filter((k) => !found.kinds.includes(k)));
+    else potionLuckRows.push({ source: buff.source, amount: buff.amount, until: buff.until, kinds });
+  }
   const statBuffs =
     now == null
       ? life.cookingBuffs.stat
       : life.cookingBuffs.stat.filter((buff) => Date.parse(buff.until) > now);
+  const potionStatBuffs =
+    now == null
+      ? life.cookingBuffs.potionStat
+      : life.cookingBuffs.potionStat.filter((buff) => Date.parse(buff.until) > now);
   const sessions = life.cookingBuffs.session;
-  if (luckRows.length === 0 && statBuffs.length === 0 && sessions.length === 0) return null;
+  if (
+    luckRows.length === 0 &&
+    potionLuckRows.length === 0 &&
+    statBuffs.length === 0 &&
+    potionStatBuffs.length === 0 &&
+    sessions.length === 0
+  )
+    return null;
 
   const timeOf = (iso: string) => formatTime(iso);
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
-      <h2 className="mb-3 text-lg font-extrabold text-content">🍲 요리 효과</h2>
+      <h2 className="mb-3 text-lg font-extrabold text-content">🍲 요리·포션 효과</h2>
       <div className="space-y-2">
         {luckRows.map((row, i) => (
           <div key={`${row.source}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
@@ -247,6 +275,23 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
             <p className="text-sm font-extrabold text-content">{buff.source}</p>
             <p className="mt-0.5 text-xs font-bold text-sky-600">
               {buff.label === "모든" ? "모든 능력" : buff.label} 판정 +{buff.amount} ·{" "}
+              {timeOf(buff.until)}까지
+            </p>
+          </div>
+        ))}
+        {potionLuckRows.map((row, i) => (
+          <div key={`${row.source}-potion-luck-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
+            <p className="text-sm font-extrabold text-content">{row.source}</p>
+            <p className="mt-0.5 text-xs font-bold text-violet-600">
+              포션: {row.kinds.join("·")} 행운 +{row.amount} · {timeOf(row.until)}까지
+            </p>
+          </div>
+        ))}
+        {potionStatBuffs.map((buff, i) => (
+          <div key={`${buff.source}-potion-stat-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
+            <p className="text-sm font-extrabold text-content">{buff.source}</p>
+            <p className="mt-0.5 text-xs font-bold text-violet-600">
+              포션: {buff.label === "모든" ? "모든 능력" : buff.label} +{buff.amount} ·{" "}
               {timeOf(buff.until)}까지
             </p>
           </div>
@@ -295,7 +340,6 @@ export default function LifeSkillPanel({
           const prog = life[key];
           const need = expForNext(prog.level);
           const pct = Math.min(100, Math.round((prog.exp / need) * 100));
-          const isAlchemy = key === "alchemy";
           return (
             <div key={kind} className="rounded-2xl border border-line bg-subtle/50 p-4">
               <div className="mb-2 flex items-center justify-between">
@@ -313,9 +357,7 @@ export default function LifeSkillPanel({
                 />
               </div>
               <p className="mt-1.5 text-right text-[11px] font-semibold text-faint">
-                {isAlchemy
-                  ? `장인 포션 ${alchemyMasterCount(life)}개`
-                  : `숙련도 ${prog.exp} / ${need}`}
+                숙련도 {prog.exp} / {need}
               </p>
             </div>
           );

@@ -9,8 +9,10 @@ export const BREW_MIN_MINUTES = 1;
 export const BREW_MAX_MINUTES = 30;
 export const ALCHEMY_BASE_POTION_NAME = "조제 포션";
 export const ALCHEMY_OPTION_PRICE_PATTERN = /판매가\s*([0-9,]+)\s*G/;
+export const ALCHEMY_OPTION_LIMIT = 3;
 
 export type BrewModifier = "완벽한" | "약한" | null;
+export type CustomAlchemyGrade = "고품질" | "명품" | "네이밍";
 
 // '약한' 판정 가격 배수 — 공식가(판매가)의 절반
 export const WEAK_PRICE_MULT = 0.5;
@@ -89,16 +91,38 @@ export function alchemyMaterialPoints(rank: number): number {
   return 0;
 }
 
+export function alchemyMaterialPointsForItem(name: string, rank: number): number {
+  const normalized = name.trim().replace(/\s+/g, "");
+  if (rank === 2 && (normalized === "시프의요깃거리" || normalized === "백양초")) return 4;
+  return alchemyMaterialPoints(rank);
+}
+
 export function alchemyLabSlotLimit(tier: number | null | undefined): number {
   if ((tier ?? 0) >= 3) return 5;
   if ((tier ?? 0) >= 2) return 4;
   return 3;
 }
 
-export function buildCustomPotionName(optionNames: string[]): string {
-  const labels = optionNames.map((name) => name.trim()).filter(Boolean);
-  if (labels.length === 0) return ALCHEMY_BASE_POTION_NAME;
-  return `${ALCHEMY_BASE_POTION_NAME} (${labels.join(", ")})`;
+export function buildCustomPotionName(optionNames: string[], grade?: CustomAlchemyGrade | null): string {
+  const counts = new Map<string, number>();
+  for (const name of optionNames.map((item) => item.trim()).filter(Boolean)) {
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const labels = [...counts.entries()].map(([name, count]) => (count > 1 ? `${name}x${count}` : name));
+  const base = labels.length === 0 ? ALCHEMY_BASE_POTION_NAME : `${ALCHEMY_BASE_POTION_NAME} (${labels.join(", ")})`;
+  return grade ? `${base} [${grade}]` : base;
+}
+
+export function isCustomAlchemyPotionName(rawName: string): boolean {
+  const base = parsePotionName(rawName).base;
+  return base === ALCHEMY_BASE_POTION_NAME || base.startsWith(`${ALCHEMY_BASE_POTION_NAME} (`);
+}
+
+export function customAlchemyBonusCopies(grade: CustomAlchemyGrade | null): number {
+  if (grade === "네이밍") return 3;
+  if (grade === "명품") return 2;
+  if (grade === "고품질") return 1;
+  return 0;
 }
 
 export function customPotionSellPrice(effectText?: string | null): number | null {
@@ -106,6 +130,28 @@ export function customPotionSellPrice(effectText?: string | null): number | null
   if (!match) return null;
   const price = Number(match[1].replace(/,/g, ""));
   return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+export function alchemyOptionRepeatable(tags?: string | null): boolean {
+  return /(^|[,;\s])(?:중복가능|repeatable)(?=$|[,;\s])/i.test(tags ?? "");
+}
+
+export function alchemyOptionRepeatPointStep(tags?: string | null): number {
+  const match = (tags ?? "").match(/(?:중복증가|중복시증가|repeatStep|repeat_step)\s*[:=]\s*(\d+)/i);
+  if (!match) return 0;
+  const step = Number(match[1]);
+  return Number.isFinite(step) && step > 0 ? Math.floor(step) : 0;
+}
+
+export function alchemyOptionPointCost(
+  basePointCost: number,
+  tags: string | null | undefined,
+  copyIndex: number,
+): number {
+  const base = Math.max(0, Math.floor(basePointCost));
+  if (copyIndex <= 0) return base;
+  if (!alchemyOptionRepeatable(tags)) return Number.POSITIVE_INFINITY;
+  return base + alchemyOptionRepeatPointStep(tags) * copyIndex;
 }
 
 export function alchemyAcceleratorMinutes(
@@ -221,6 +267,8 @@ export type PendingBrew = {
   effect?: string;
   price?: number;
   weight?: number;
+  availablePoints?: number;
+  spentPoints?: number;
   minutes: number;
   startedAt: number; // epoch ms
   readyAt: number; // epoch ms
@@ -249,6 +297,12 @@ export function parsePendingBrew(json: string | null | undefined): PendingBrew |
       effect: typeof v.effect === "string" ? v.effect : undefined,
       price: typeof v.price === "number" && Number.isFinite(v.price) ? v.price : undefined,
       weight: typeof v.weight === "number" && Number.isFinite(v.weight) ? v.weight : undefined,
+      availablePoints:
+        typeof v.availablePoints === "number" && Number.isFinite(v.availablePoints)
+          ? v.availablePoints
+          : undefined,
+      spentPoints:
+        typeof v.spentPoints === "number" && Number.isFinite(v.spentPoints) ? v.spentPoints : undefined,
       minutes: v.minutes,
       startedAt: typeof v.startedAt === "number" ? v.startedAt : v.readyAt - v.minutes * 60_000,
       readyAt: v.readyAt,

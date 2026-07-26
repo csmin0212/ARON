@@ -17,6 +17,7 @@ import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
   ALCHEMY_MASTER_MASTERY,
+  applyAlchemyExp,
   applyCookingExp,
   alchemyMasterySuffix,
   recordAlchemyCraft,
@@ -29,6 +30,7 @@ import {
   rollPerkOptions,
 } from "@/lib/lifeSkillPerks";
 import {
+  ALCHEMY_OPTION_LIMIT,
   BREW_AP_COST,
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
@@ -36,11 +38,15 @@ import {
   alchemyAcceleratorEffect,
   alchemyAcceleratorMinutes,
   alchemyLabSlotLimit,
-  alchemyMaterialPoints,
+  alchemyMaterialPointsForItem,
+  alchemyOptionPointCost,
+  alchemyOptionRepeatable,
   brewHint,
   buildPotionName,
   buildCustomPotionName,
+  customAlchemyBonusCopies,
   customPotionSellPrice,
+  isCustomAlchemyPotionName,
   judgeBrew,
   mergePotionPerfectEffect,
   parsePendingBrew,
@@ -1328,6 +1334,15 @@ function rollCookGrade(level: number, isChushi: boolean, highGradeMultiplier = 1
   return null;
 }
 
+function rollCustomAlchemyGrade(level: number): "고품질" | "명품" | "네이밍" | null {
+  const r = Math.random() * 100;
+  const { signature, master, hq } = cookGradeRates(level, false);
+  if (r < signature) return "네이밍";
+  if (r < signature + master) return "명품";
+  if (r < signature + master + hq) return "고품질";
+  return null;
+}
+
 export async function cookDish(_prev: CookingState, formData: FormData): Promise<CookingState> {
   const ctx = await currentSheet();
   if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
@@ -1585,35 +1600,89 @@ async function alchemyIngredientPoints(name: string): Promise<number | null> {
   await loadLifeItems();
   for (const kind of ["채집", "낚시", "채광"] as const) {
     const item = findLifeSkillItem(kind, name);
-    if (item) return alchemyMaterialPoints(item.rank);
+    if (item) return alchemyMaterialPointsForItem(name, item.rank);
   }
   return null;
 }
 
 function selectedOptionIds(formData: FormData): string[] {
-  return [
-    ...new Set(
-      formData
-        .getAll("optionId")
-        .map((value) => String(value ?? "").trim())
-        .filter(Boolean),
-    ),
-  ];
+  return formData
+    .getAll("optionId")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .slice(0, ALCHEMY_OPTION_LIMIT + 1);
 }
 
-function optionPointCost(option: { skillExp: number }): number {
-  return Math.max(0, option.skillExp);
+function optionPointCost(option: { skillExp: number; tags: string | null }, copyIndex: number): number {
+  return alchemyOptionPointCost(option.skillExp, option.tags, copyIndex);
 }
 
 function optionRequiredMaterials(option: { ingredientsJson: string }): { name: string; qty: number }[] {
   return parseRecipeIngredients(option.ingredientsJson).filter((ingredient) => ingredient.qty > 0);
 }
 
-function optionEffectLine(option: { name: string; effect: string | null; duration: string | null }): string {
+function scaleAlchemyOptionEffect(effect: string, copies: number): string {
+  if (copies <= 1) return effect;
+  if (/\[\d+\s*D\]/.test(effect)) {
+    return effect
+      .replace(/\[(\d+)\s*D\]/g, (_m, dice: string) => `[${Number(dice) * copies}D]`)
+      .replace(/(\]\s*\+\s*)(\d+)/g, (_m, head: string, value: string) => `${head}${Number(value) * copies}`);
+  }
+  return effect.replace(/([+＋])\s*(\d+)/g, (_m, sign: string, value: string) => `${sign}${Number(value) * copies}`);
+}
+
+function optionEffectLine(
+  option: { name: string; effect: string | null; duration: string | null },
+  copies = 1,
+): string {
   const effect = option.effect?.trim();
   const duration = option.duration?.trim();
-  if (!effect && !duration) return option.name;
-  return `${option.name}: ${effect ?? ""}${duration ? ` (${duration})` : ""}`.trim();
+  const name = copies > 1 ? `${option.name} x${copies}` : option.name;
+  if (!effect && !duration) return name;
+  return `${name}: ${effect ? scaleAlchemyOptionEffect(effect, copies) : ""}${
+    duration ? ` (${duration})` : ""
+  }`.trim();
+}
+
+function selectedOptionCopyIndexes<T extends { id: string }>(options: T[]): number[] {
+  const counts = new Map<string, number>();
+  return options.map((option) => {
+    const index = counts.get(option.id) ?? 0;
+    counts.set(option.id, index + 1);
+    return index;
+  });
+}
+
+function optionCopyCounts<T extends { id: string }>(options: T[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const option of options) counts.set(option.id, (counts.get(option.id) ?? 0) + 1);
+  return counts;
+}
+
+function groupedOptionEffectLines<T extends { id: string; name: string; effect: string | null; duration: string | null }>(
+  options: T[],
+): string[] {
+  const byId = new Map<string, T>();
+  for (const option of options) if (!byId.has(option.id)) byId.set(option.id, option);
+  const counts = optionCopyCounts(options);
+  return [...byId.values()].map((option) => optionEffectLine(option, counts.get(option.id) ?? 1));
+}
+
+function addRandomMasteryOptionCopies<T extends { id: string; name: string; tags: string | null }>(
+  options: T[],
+  bonusCopies: number,
+): { options: T[]; bonusNames: string[] } {
+  if (bonusCopies <= 0) return { options, bonusNames: [] };
+  const eligible = [...new Map(options.filter((option) => alchemyOptionRepeatable(option.tags)).map((option) => [option.id, option])).values()];
+  if (eligible.length === 0) return { options, bonusNames: [] };
+  const next = [...options];
+  const bonusNames: string[] = [];
+  for (let i = 0; i < bonusCopies; i += 1) {
+    const picked = eligible[Math.floor(Math.random() * eligible.length)];
+    next.push(picked);
+    bonusNames.push(picked.name);
+  }
+  return { options: next, bonusNames };
 }
 
 export async function startBrew(_prev: AlchemyState, formData: FormData): Promise<AlchemyState> {
@@ -1680,11 +1749,24 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
     const optionIds = selectedOptionIds(formData);
     if (optionIds.length === 0) return { error: "포션에 넣을 옵션을 하나 이상 선택해주세요." };
-    const options = await prisma.alchemyRecipe.findMany({
-      where: { id: { in: optionIds } },
+    if (optionIds.length > ALCHEMY_OPTION_LIMIT) {
+      return { error: `포션 옵션은 최대 ${ALCHEMY_OPTION_LIMIT}개까지만 넣을 수 있어요.` };
+    }
+    const uniqueOptionIds = [...new Set(optionIds)];
+    const optionRows = await prisma.alchemyRecipe.findMany({
+      where: { id: { in: uniqueOptionIds } },
       orderBy: { order: "asc" },
     });
-    if (options.length !== optionIds.length) return { error: "존재하지 않는 연금 옵션이 포함되어 있어요." };
+    if (optionRows.length !== uniqueOptionIds.length) return { error: "존재하지 않는 연금 옵션이 포함되어 있어요." };
+    const optionById = new Map(optionRows.map((option) => [option.id, option]));
+    const options = optionIds.map((id) => optionById.get(id)).filter((option): option is NonNullable<typeof option> => !!option);
+    const optionCounts = new Map<string, number>();
+    for (const option of options) optionCounts.set(option.id, (optionCounts.get(option.id) ?? 0) + 1);
+    for (const option of optionRows) {
+      if ((optionCounts.get(option.id) ?? 0) > 1 && !alchemyOptionRepeatable(option.tags)) {
+        return { error: `${option.name} 옵션은 중복할 수 없어요.` };
+      }
+    }
 
     let availablePoints = 0;
     for (const ingredient of potIngredients) {
@@ -1693,7 +1775,11 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
       if (points <= 0) return { error: `${ingredient.name}은(는) 연금 포인트가 없습니다.` };
       availablePoints += points;
     }
-    const spentPoints = options.reduce((sum, option) => sum + optionPointCost(option), 0);
+    const copyIndexes = selectedOptionCopyIndexes(options);
+    const spentPoints = options.reduce(
+      (sum, option, index) => sum + optionPointCost(option, copyIndexes[index]),
+      0,
+    );
     if (spentPoints > availablePoints) {
       return { error: `연금 포인트가 부족합니다. (${spentPoints}/${availablePoints})` };
     }
@@ -1710,7 +1796,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     const price = options.reduce((sum, option) => sum + Math.max(0, option.sellPrice), 0);
     const resultName = buildCustomPotionName(options.map((option) => option.name));
     const effectLines = [
-      ...options.map(optionEffectLine),
+      ...groupedOptionEffectLines(options),
       `재료 ${potIngredients.map((ingredient) => ingredient.name).join(", ")}`,
       `연금 포인트 ${spentPoints}/${availablePoints}`,
       `판매가 ${price.toLocaleString()}G`,
@@ -1764,6 +1850,8 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     effect: customBrew?.effect,
     price: customBrew?.price,
     weight: customBrew?.weight,
+    availablePoints: customBrew?.availablePoints,
+    spentPoints: customBrew?.spentPoints,
     minutes,
     startedAt: now,
     readyAt: now + minutes * 60_000,
@@ -1831,11 +1919,60 @@ export async function collectBrew(): Promise<AlchemyState> {
   }
 
   if (pending.resultName && pending.effect) {
+    let resultName = pending.resultName;
+    let effect = pending.effect;
+    let price = pending.price ?? customPotionSellPrice(pending.effect) ?? 0;
+    let lifeForUpdate: ReturnType<typeof parseLifeState> | null = null;
+    const masteryNotes: string[] = [];
+
+    if (pending.optionIds && pending.optionIds.length > 0) {
+      const uniqueOptionIds = [...new Set(pending.optionIds)];
+      const optionRows = await prisma.alchemyRecipe.findMany({
+        where: { id: { in: uniqueOptionIds } },
+        orderBy: { order: "asc" },
+      });
+      const optionById = new Map(optionRows.map((option) => [option.id, option]));
+      const baseOptions = pending.optionIds
+        .map((id) => optionById.get(id))
+        .filter((option): option is NonNullable<typeof option> => !!option);
+
+      if (baseOptions.length === pending.optionIds.length) {
+        const life = parseLifeState(sheet?.lifeJson);
+        const grade = rollCustomAlchemyGrade(life.alchemy.level);
+        const { options: finalOptions, bonusNames } = addRandomMasteryOptionCopies(
+          baseOptions,
+          customAlchemyBonusCopies(grade),
+        );
+        price = finalOptions.reduce((sum, option) => sum + Math.max(0, option.sellPrice), 0);
+        resultName = buildCustomPotionName(finalOptions.map((option) => option.name), grade);
+        effect = [
+          grade ? `✨${grade} — 숙련 보너스 옵션 +${bonusNames.length}` : "",
+          ...groupedOptionEffectLines(finalOptions),
+          pending.ingredientNames?.length ? `재료 ${pending.ingredientNames.join(", ")}` : "",
+          pending.spentPoints != null && pending.availablePoints != null
+            ? `연금 포인트 ${pending.spentPoints}/${pending.availablePoints}`
+            : "",
+          bonusNames.length > 0 ? `숙련 보너스 ${bonusNames.join(", ")}` : "",
+          `판매가 ${price.toLocaleString()}G`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const gainedExp =
+          pending.spentPoints ??
+          baseOptions.reduce((sum, option) => sum + Math.max(1, option.skillExp), 0);
+        const levelUps = applyAlchemyExp(life, Math.max(1, gainedExp));
+        lifeForUpdate = life;
+        masteryNotes.push(`연금술 숙련도 +${Math.max(1, gainedExp)}`);
+        if (bonusNames.length > 0) masteryNotes.push(`숙련 보너스: ${bonusNames.join(", ")}`);
+        if (levelUps.length > 0) masteryNotes.push(`연금술 Lv.${levelUps.at(-1)} 달성.`);
+      }
+    }
+
     const inv = addInvItem(
       ctx.inv,
       {
-        name: pending.resultName,
-        effect: pending.effect,
+        name: resultName,
+        effect,
         weight: pending.weight ?? 1,
       },
       1,
@@ -1844,20 +1981,34 @@ export async function collectBrew(): Promise<AlchemyState> {
     const overflow = inventoryWeightOverflowMessage(inv);
     if (overflow) return { error: overflow };
 
-    const achStats = bumpStat(sheet?.achStatsJson, "연금성공횟수");
+    let achStats = bumpStat(sheet?.achStatsJson, "연금성공횟수");
+    const customGradeNumber: Record<"고품질" | "명품" | "네이밍", number> = {
+      고품질: 1,
+      명품: 2,
+      네이밍: 3,
+    };
+    const customGradeMatch = effect.match(/✨(고품질|명품|네이밍)/);
+    if (customGradeMatch) {
+      achStats = setMaxStat(
+        achStats,
+        "연금최고제작등급",
+        customGradeNumber[customGradeMatch[1] as "고품질" | "명품" | "네이밍"],
+      );
+    }
     await Promise.all([
       prisma.characterSheet.update({
         where: { userId: ctx.userId },
         data: {
           invJson: JSON.stringify(inv),
+          ...(lifeForUpdate ? { lifeJson: JSON.stringify(lifeForUpdate) } : {}),
           pendingBrewJson: null,
           achStatsJson: achStats,
         },
       }),
-      incrementDbInventory(ctx.userId, pending.resultName, 1),
+      incrementDbInventory(ctx.userId, resultName, 1),
     ]);
-    void appendSheetItem(ctx.tab, pending.resultName, 1, {
-      effect: pending.effect,
+    void appendSheetItem(ctx.tab, resultName, 1, {
+      effect,
       weight: pending.weight ?? 1,
     });
     await checkAndGrant(ctx.userId);
@@ -1865,7 +2016,9 @@ export async function collectBrew(): Promise<AlchemyState> {
     revalidatePath("/world");
     revalidatePath("/profile");
     return {
-      ok: `⚗️ ${pending.resultName} x1 완성. 판매가 ${(pending.price ?? customPotionSellPrice(pending.effect) ?? 0).toLocaleString()}G`,
+      ok: [`⚗️ ${resultName} x1 완성. 판매가 ${price.toLocaleString()}G`, ...masteryNotes]
+        .filter(Boolean)
+        .join(" "),
     };
   }
 
@@ -2085,6 +2238,10 @@ function parseLifeLuck(effect: string): { kind: LifeSkillKind | "both" | "all"; 
   return null;
 }
 
+function lifeLuckKinds(k: LifeSkillKind | "both" | "all"): LifeSkillKind[] {
+  return k === "all" ? ["낚시", "채집", "채광"] : k === "both" ? ["낚시", "채집"] : [k];
+}
+
 function parseSessionBuff(effect: string): string | null {
   const match = effect.match(/세션\s*버프\s*:\s*([^\n(]+)/);
   if (match?.[1]) return match[1].trim();
@@ -2093,17 +2250,25 @@ function parseSessionBuff(effect: string): string | null {
   return null;
 }
 
+function parseBuffDurationMinutes(effect: string): number | null {
+  const match = effect.match(/(\d+)\s*분/);
+  if (!match) return null;
+  const minutes = Number.parseInt(match[1], 10);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
+}
+
 // "30분 동안 감지 판정 +1" — 월드 판정 버프 (행동·탐색·던전 판정에 적용).
 // '원하는 능력/모든 능력'은 '모든'으로 저장. "세션 버프: ..." 형식은 세션 쪽에서 처리.
 function parseStatBuff(effect: string): { label: string; amount: number } | null {
   if (/세션\s*버프/.test(effect)) return null;
   const match = effect.match(
-    /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+(\d+)(?:\s*(?:증가|버프))?/,
+    /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|마술|무기\s*공격|무기\s*공격\s*대미지|마법\s*공격\s*대미지|물리\s*방어력|마법\s*방어력|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정(?:의)?\s*)?(?:달성치(?:에)?\s*)?(?:에\s*)?\+(\d+)(?:\s*(?:증가|버프))?/,
   );
   if (!match) return null;
   const amount = Number.parseInt(match[2], 10);
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  const label = /능력/.test(match[1]) ? "모든" : match[1];
+  const matchedLabel = match[1].replace(/\s+/g, " ").trim();
+  const label = /능력/.test(matchedLabel) ? "모든" : matchedLabel === "무기 공격" ? "명중" : matchedLabel;
   return { label, amount };
 }
 
@@ -2348,6 +2513,7 @@ export async function useCookingItem(
   if (!rawEffect || base === FAILED_DISH.name) {
     return { error: "사용할 수 있는 요리 효과가 없습니다." };
   }
+  const isCustomAlchemyPotion = isCustomAlchemyPotionName(itemName);
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: ctx.userId },
@@ -2372,6 +2538,13 @@ export async function useCookingItem(
   life.cookingBuffs.lifeLuck = life.cookingBuffs.lifeLuck.filter(
     (buff) => Date.parse(buff.until) > now.getTime(),
   );
+  life.cookingBuffs.potionLifeLuck = life.cookingBuffs.potionLifeLuck.filter(
+    (buff) => Date.parse(buff.until) > now.getTime(),
+  );
+  life.cookingBuffs.stat = life.cookingBuffs.stat.filter((buff) => Date.parse(buff.until) > now.getTime());
+  life.cookingBuffs.potionStat = life.cookingBuffs.potionStat.filter(
+    (buff) => Date.parse(buff.until) > now.getTime(),
+  );
 
   let ok = "";
   // 피로도(AP) 회복은 요리에서 비활성 — 음식으로 AP 상한을 우회하면 밸런스가 깨짐.
@@ -2381,14 +2554,135 @@ export async function useCookingItem(
   const statBuff = parseStatBuff(rawEffect);
   const recovery = parseRecovery(rawEffect);
   const dungeonRunRecovery = parseDungeonRunRecovery(rawEffect);
+  const potionDurationMinutes = isCustomAlchemyPotion ? parseBuffDurationMinutes(rawEffect) : null;
+  const timedPotionLifeLuck = potionDurationMinutes && lifeLuck ? lifeLuck : null;
+  const timedPotionStat = potionDurationMinutes && statBuff ? statBuff : null;
 
-  if (lifeLuck) {
+  if (isCustomAlchemyPotion && (timedPotionLifeLuck || timedPotionStat || recovery.length > 0)) {
+    const gains: string[] = [];
+    let curHp = sheet.curHp ?? sheet.hp ?? 0;
+    let curMp = sheet.curMp ?? sheet.mp ?? 0;
+    for (const rec of recovery) {
+      if (rec.resource === "HP") {
+        const before = curHp;
+        curHp = sheet.hp != null ? Math.min(sheet.hp, curHp + rec.amount) : curHp + rec.amount;
+        gains.push(`HP +${curHp - before}`);
+      } else {
+        const before = curMp;
+        curMp = sheet.mp != null ? Math.min(sheet.mp, curMp + rec.amount) : curMp + rec.amount;
+        gains.push(`MP +${curMp - before}`);
+      }
+    }
+
+    const buffLines: string[] = [];
+    if (timedPotionLifeLuck && potionDurationMinutes) {
+      const until = new Date(now.getTime() + potionDurationMinutes * 60 * 1000);
+      const kindsOf = lifeLuckKinds;
+      const bestFor = (k: LifeSkillKind) =>
+        Math.max(
+          0,
+          ...life.cookingBuffs.potionLifeLuck
+            .filter((b) => kindsOf(b.kind).includes(k))
+            .map((b) => b.amount),
+        );
+      const applicable = kindsOf(timedPotionLifeLuck.kind).filter(
+        (k) => timedPotionLifeLuck.amount >= bestFor(k),
+      );
+      if (applicable.length === 0 && gains.length === 0 && !timedPotionStat) {
+        const blocking = kindsOf(timedPotionLifeLuck.kind)
+          .map((k) => {
+            const b = life.cookingBuffs.potionLifeLuck.find(
+              (x) => kindsOf(x.kind).includes(k) && x.amount > timedPotionLifeLuck.amount,
+            );
+            return b ? `${k} +${b.amount}(${b.source})` : null;
+          })
+          .filter(Boolean)
+          .join(" · ");
+        return { error: `이미 더 강한 포션 행운 버프가 적용 중이라 사용하지 않았습니다. (${blocking})` };
+      }
+
+      const rest: typeof life.cookingBuffs.potionLifeLuck = [];
+      for (const b of life.cookingBuffs.potionLifeLuck) {
+        const remain = kindsOf(b.kind).filter((k) => !applicable.includes(k));
+        if (remain.length === kindsOf(b.kind).length) rest.push(b);
+        else if (remain.length === 1) rest.push({ ...b, kind: remain[0] });
+        else if (remain.length === 2 && remain.includes("낚시") && remain.includes("채집")) {
+          rest.push({ ...b, kind: "both" });
+        } else if (remain.length > 0) {
+          for (const kind of remain) rest.push({ ...b, kind });
+        }
+      }
+      for (const k of applicable) {
+        rest.push({
+          kind: k,
+          amount: timedPotionLifeLuck.amount,
+          until: until.toISOString(),
+          source: itemName,
+        });
+      }
+      life.cookingBuffs.potionLifeLuck = rest;
+      const skipped = kindsOf(timedPotionLifeLuck.kind).filter((k) => !applicable.includes(k));
+      if (applicable.length > 0) {
+        buffLines.push(`${potionDurationMinutes}분 동안 ${applicable.join("·")} 행운 +${timedPotionLifeLuck.amount}`);
+      }
+      if (skipped.length > 0) buffLines.push(`${skipped.join("·")}은 더 강한 포션 행운 버프 유지`);
+    }
+    if (timedPotionStat && potionDurationMinutes) {
+      const until = new Date(now.getTime() + potionDurationMinutes * 60 * 1000);
+      const existing = life.cookingBuffs.potionStat.find((b) => b.label === timedPotionStat.label);
+      if (existing && existing.amount > timedPotionStat.amount && gains.length === 0) {
+        return {
+          error: `이미 더 강한 포션 버프가 적용 중이라 사용하지 않았습니다. (${
+            existing.label === "모든" ? "모든 능력" : existing.label
+          } +${existing.amount} · ${existing.source})`,
+        };
+      }
+      if (!existing || existing.amount <= timedPotionStat.amount) {
+        life.cookingBuffs.potionStat = life.cookingBuffs.potionStat.filter(
+          (b) => b.label !== timedPotionStat.label,
+        );
+        life.cookingBuffs.potionStat.push({
+          label: timedPotionStat.label,
+          amount: timedPotionStat.amount,
+          until: until.toISOString(),
+          source: itemName,
+        });
+        buffLines.push(
+          `${potionDurationMinutes}분 동안 ${
+            timedPotionStat.label === "모든" ? "모든 능력" : timedPotionStat.label
+          } +${timedPotionStat.amount}`,
+        );
+      } else {
+        buffLines.push(`더 강한 ${existing.label} 포션 버프 유지`);
+      }
+    }
+
+    ok = `${itemName}을 사용했습니다. ${[...gains, ...buffLines].join(", ")}`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    const data = {
+      invJson: JSON.stringify(inv),
+      lifeJson: JSON.stringify(life),
+      achStatsJson: bumpStat(sheet.achStatsJson, "연금포션사용"),
+      ...(recovery.length > 0 ? { curHp, curMp } : {}),
+    };
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data,
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+  } else if (isCustomAlchemyPotion && lifeLuck) {
+    return { error: "생활 행운 포션은 '30분' 같은 지속 옵션이 있어야 월드에서 사용할 수 있어요." };
+  } else if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
     // 같은 종류엔 행운 버프 1개만 — 가장 높은 수치가 남는다.
     // 낚시·채집·채광은 슬롯이 따로라, 적용되는 종류만 교체한다.
     // 더 약한(미만) 요리는 소모하지 않고 거부. 같은 수치는 시간 갱신용으로 허용.
-    const kindsOf = (k: LifeSkillKind | "both" | "all"): LifeSkillKind[] =>
-      k === "all" ? ["낚시", "채집", "채광"] : k === "both" ? ["낚시", "채집"] : [k];
+    const kindsOf = lifeLuckKinds;
     const bestFor = (k: LifeSkillKind) =>
       Math.max(
         0,
@@ -2467,6 +2761,8 @@ export async function useCookingItem(
       decrementDbInventory(ctx.userId, itemName, 1),
     ]);
     void pushInventoryToSheet(ctx.tab, inv);
+  } else if (isCustomAlchemyPotion && statBuff) {
+    return { error: "포션 판정 버프는 '30분 지속' 같은 지속 옵션이 있어야 월드에서 사용할 수 있어요." };
   } else if (statBuff) {
     // 월드 판정 버프 — 같은 라벨엔 최고 수치 1개만. 약한 요리는 소모 없이 거부, 같은 수치는 시간 갱신.
     const until = new Date(now.getTime() + 30 * 60 * 1000);

@@ -35,9 +35,9 @@ export type LifeState = {
   mining: SkillProgress;
   cooking: SkillProgress;
   smithing: SkillProgress; // 대장(장비 제작) — 레벨업 시 마이너 슬롯 확장
-  alchemy: SkillProgress; // 연금술(하위호환 표시값) — 실제 레벨은 장인 달성 포션 수로 계산
-  alchemyPerfect: string[]; // 완벽 제조에 성공한 포션ID — 최적시간·완벽효과 해금 표시
-  alchemyMastery: Record<string, number>; // 포션ID별 숙련도. 60=숙련([고급]), 300=장인([명품])
+  alchemy: SkillProgress; // 연금술 — 조제 옵션 포인트를 숙련도로 받아 요리/제작과 같은 곡선으로 성장
+  alchemyPerfect: string[]; // 구형 레시피 호환: 완벽 제조에 성공한 포션ID — 최적시간·완벽효과 해금 표시
+  alchemyMastery: Record<string, number>; // 구형 레시피 호환: 포션ID별 숙련도. 60=숙련([고급]), 300=장인([명품])
   perks: OwnedPerk[];
   pending: PendingChoice[];
   // 도감 — 한 번이라도 획득한 아이템 이름
@@ -50,8 +50,10 @@ export type LifeState = {
   catchCounts: Record<LifeSkillKind, Record<string, number>>;
   cookingBuffs: {
     lifeLuck: CookingLifeLuckBuff[];
+    potionLifeLuck: CookingLifeLuckBuff[];
     session: CookingSessionBuff[];
     stat: CookingStatBuff[];
+    potionStat: CookingStatBuff[];
   };
 };
 
@@ -229,7 +231,7 @@ const EMPTY: LifeState = {
     채광: "기본 곡괭이",
   },
   catchCounts: { 채집: {}, 낚시: {}, 채광: {} },
-  cookingBuffs: { lifeLuck: [], session: [], stat: [] },
+  cookingBuffs: { lifeLuck: [], potionLifeLuck: [], session: [], stat: [], potionStat: [] },
 };
 
 function defaultBag(kind: LifeSkillKind): LifeBag {
@@ -340,11 +342,22 @@ export function parseLifeState(json: string | null | undefined): LifeState {
               (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
             )
           : [],
+        potionLifeLuck: Array.isArray(v.cookingBuffs?.potionLifeLuck)
+          ? v.cookingBuffs.potionLifeLuck.filter(
+              (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
+            )
+          : [],
         session: Array.isArray(v.cookingBuffs?.session)
           ? v.cookingBuffs.session.filter((buff) => buff && buff.source && buff.effect)
           : [],
         stat: Array.isArray(v.cookingBuffs?.stat)
           ? v.cookingBuffs.stat.filter(
+              (buff) =>
+                buff && buff.label && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
+            )
+          : [],
+        potionStat: Array.isArray(v.cookingBuffs?.potionStat)
+          ? v.cookingBuffs.potionStat.filter(
               (buff) =>
                 buff && buff.label && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
             )
@@ -356,16 +369,23 @@ export function parseLifeState(json: string | null | undefined): LifeState {
   }
 }
 
-// 요리 판정 버프 — 해당 능력치 판정에 더할 보정.
-// '모든' 라벨은 전 능력치에 적용되며, 겹치면 최대값 하나만 적용(중첩 없음).
-export function statBuffBonus(state: LifeState, label: string): number {
-  const now = Date.now();
+function bestStatBuffBonus(buffs: CookingStatBuff[], label: string, now: number): number {
   let best = 0;
-  for (const buff of state.cookingBuffs.stat) {
+  for (const buff of buffs) {
     if (Date.parse(buff.until) <= now) continue;
     if (buff.label === label || buff.label === "모든") best = Math.max(best, buff.amount);
   }
   return best;
+}
+
+// 요리와 포션 판정 버프 — 같은 계열 안에서는 최고값 1개만, 요리/포션은 각각 적용.
+// '모든' 라벨은 전 능력치에 적용된다.
+export function statBuffBonus(state: LifeState, label: string): number {
+  const now = Date.now();
+  return (
+    bestStatBuffBonus(state.cookingBuffs.stat, label, now) +
+    bestStatBuffBonus(state.cookingBuffs.potionStat, label, now)
+  );
 }
 
 // 도감 기록 — 처음 잡은 아이템이면 true 반환
@@ -542,12 +562,17 @@ export function alchemyMasterCount(state: Pick<LifeState, "alchemyMastery">): nu
   return Object.values(state.alchemyMastery).filter((exp) => alchemyMasteryRank(exp) === "장인").length;
 }
 
-export function alchemyLevel(state: Pick<LifeState, "alchemyMastery">): number {
-  return 1 + alchemyMasterCount(state);
+export function alchemyLevel(
+  state: Pick<LifeState, "alchemyMastery"> & Partial<Pick<LifeState, "alchemy">>,
+): number {
+  return Math.max(state.alchemy?.level ?? 1, 1 + alchemyMasterCount(state));
 }
 
 function withDerivedAlchemyLevel(state: LifeState): LifeState {
-  state.alchemy = { exp: 0, level: alchemyLevel(state) };
+  state.alchemy = {
+    exp: Math.max(0, state.alchemy.exp ?? 0),
+    level: alchemyLevel(state),
+  };
   return state;
 }
 
@@ -568,7 +593,7 @@ export function recordAlchemyCraft(
   const gained = perfect ? 3 : 1;
   const after = before + gained;
   state.alchemyMastery[id] = after;
-  state.alchemy = { exp: 0, level: alchemyLevel(state) };
+  state.alchemy = { exp: state.alchemy.exp ?? 0, level: alchemyLevel(state) };
 
   return {
     before,
@@ -578,6 +603,19 @@ export function recordAlchemyCraft(
     becameAdept: before < ALCHEMY_ADEPT_MASTERY && after >= ALCHEMY_ADEPT_MASTERY,
     becameMaster: before < ALCHEMY_MASTER_MASTERY && after >= ALCHEMY_MASTER_MASTERY,
   };
+}
+
+export function applyAlchemyExp(state: LifeState, gained: number): number[] {
+  const prog = state.alchemy;
+  prog.exp += Math.max(0, gained);
+  const leveled: number[] = [];
+  while (prog.exp >= expForNext(prog.level)) {
+    prog.exp -= expForNext(prog.level);
+    prog.level += 1;
+    leveled.push(prog.level);
+  }
+  prog.level = alchemyLevel(state);
+  return leveled;
 }
 
 // 대장(장비 제작) 숙련 — 요리와 동일 곡선, 특성 없이 레벨만 (레벨업 = 마이너 슬롯 확장)
@@ -746,14 +784,16 @@ export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
     }
   }
   const now = Date.now();
-  for (const buff of state.cookingBuffs.lifeLuck) {
-    if (Date.parse(buff.until) <= now) continue;
-    if (
-      buff.kind === "all" ||
-      buff.kind === kind ||
-      (buff.kind === "both" && (kind === "낚시" || kind === "채집"))
-    ) {
-      mods.luck += buff.amount;
+  for (const buffs of [state.cookingBuffs.lifeLuck, state.cookingBuffs.potionLifeLuck]) {
+    for (const buff of buffs) {
+      if (Date.parse(buff.until) <= now) continue;
+      if (
+        buff.kind === "all" ||
+        buff.kind === kind ||
+        (buff.kind === "both" && (kind === "낚시" || kind === "채집"))
+      ) {
+        mods.luck += buff.amount;
+      }
     }
   }
   mods.rank0Down = Math.min(mods.rank0Down, 10);
