@@ -1611,6 +1611,17 @@ function selectedOptionIds(formData: FormData): string[] {
     .slice(0, 200);
 }
 
+function sanitizePotionCustomName(raw: string): string | { error: string } {
+  const name = raw.replace(/\s+/g, " ").trim();
+  if (!name) return "";
+  if (name.length < 2 || name.length > 20) return { error: "포션 이름은 2~20자로 지어주세요." };
+  if (/고품질|명품|네이밍|완벽한|약한/.test(name)) {
+    return { error: "등급/수식어 표기는 포션 이름에 쓸 수 없어요." };
+  }
+  if (/[\n\r,，"<>[\]]/.test(name)) return { error: "이름에 쓸 수 없는 문자가 있어요." };
+  return name;
+}
+
 function optionPointCost(option: { skillExp: number; tags: string | null }, copyIndex: number): number {
   return alchemyOptionPointCost(option.skillExp, option.tags, copyIndex);
 }
@@ -1721,6 +1732,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
         weight: number;
         availablePoints: number;
         spentPoints: number;
+        customName: string;
       }
     | null = null;
   if (recipeId) {
@@ -1747,11 +1759,13 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     if (uniqueOptionIds.length > ALCHEMY_OPTION_LIMIT) {
       return { error: `포션 옵션은 최대 ${ALCHEMY_OPTION_LIMIT}종류까지만 넣을 수 있어요.` };
     }
+    const customNameResult = sanitizePotionCustomName(String(formData.get("customName") ?? ""));
+    if (typeof customNameResult !== "string") return customNameResult;
     const optionRows = await prisma.alchemyRecipe.findMany({
-      where: { id: { in: uniqueOptionIds } },
+      where: { id: { in: uniqueOptionIds }, isPublic: true },
       orderBy: { order: "asc" },
     });
-    if (optionRows.length !== uniqueOptionIds.length) return { error: "존재하지 않는 연금 옵션이 포함되어 있어요." };
+    if (optionRows.length !== uniqueOptionIds.length) return { error: "존재하지 않거나 공개되지 않은 연금 옵션이 포함되어 있어요." };
     const optionById = new Map(optionRows.map((option) => [option.id, option]));
     const options = optionIds.map((id) => optionById.get(id)).filter((option): option is NonNullable<typeof option> => !!option);
     const optionCounts = new Map<string, number>();
@@ -1788,7 +1802,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     }
 
     const price = options.reduce((sum, option) => sum + Math.max(0, option.sellPrice), 0);
-    const resultName = buildCustomPotionName(options.map((option) => option.name));
+    const resultName = customNameResult || buildCustomPotionName(options.map((option) => option.name));
     const effectLines = [
       ...groupedOptionEffectLines(options),
       `재료 ${potIngredients.map((ingredient) => ingredient.name).join(", ")}`,
@@ -1804,6 +1818,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
       weight: 1,
       availablePoints,
       spentPoints,
+      customName: customNameResult,
     };
     recipe = null;
   }
@@ -1840,6 +1855,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     recipeId: recipe?.id ?? `custom:${now}`,
     optionIds: customBrew?.optionIds,
     ingredientNames: customBrew?.ingredients.map((ingredient) => ingredient.name),
+    customName: customBrew?.customName,
     resultName: customBrew?.resultName,
     effect: customBrew?.effect,
     price: customBrew?.price,
@@ -1938,7 +1954,9 @@ export async function collectBrew(): Promise<AlchemyState> {
           customAlchemyBonusCopies(grade),
         );
         price = finalOptions.reduce((sum, option) => sum + Math.max(0, option.sellPrice), 0);
-        resultName = buildCustomPotionName(finalOptions.map((option) => option.name), grade);
+        resultName = pending.customName
+          ? `${pending.customName}${grade ? ` [${grade}]` : ""}`
+          : buildCustomPotionName(finalOptions.map((option) => option.name), grade);
         effect = [
           grade ? `✨${grade} — 숙련 보너스 옵션 +${bonusNames.length}` : "",
           ...groupedOptionEffectLines(finalOptions),
@@ -2507,7 +2525,7 @@ export async function useCookingItem(
   if (!rawEffect || base === FAILED_DISH.name) {
     return { error: "사용할 수 있는 요리 효과가 없습니다." };
   }
-  const isCustomAlchemyPotion = isCustomAlchemyPotionName(itemName);
+  const isCustomAlchemyPotion = isCustomAlchemyPotionName(itemName) || customPotionSellPrice(rawEffect) != null;
 
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: ctx.userId },

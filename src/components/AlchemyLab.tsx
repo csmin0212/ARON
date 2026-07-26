@@ -1,8 +1,6 @@
 "use client";
 
-// 연금술 공방 — 집 가구(연금술 공방)로 해금되는 타이머 제조 시설.
-// 가마 탭: 요리처럼 재료를 칸에 넣고 시간을 정해 실험 (조합의 수수께끼가 아니라 '시간'의 수수께끼).
-// 레시피 탭: 완벽 제조로 최적 시간을 익힌 포션을 그 시간으로 바로 가마에 올린다.
+// 연금술 공방 — 재료의 연금 포인트로 포션 효과를 설계하는 집 가구 시설.
 
 import { useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
@@ -184,8 +182,10 @@ export default function AlchemyLab({
   storageItems?: (SheetInventoryItem & { sourceKind?: string })[];
   onClose: () => void;
 }) {
+  const [step, setStep] = useState<"materials" | "effects">("materials");
   const [pot, setPot] = useState<PotEntry[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
+  const [customName, setCustomName] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -208,6 +208,13 @@ export default function AlchemyLab({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [alchemy.brewing]);
+
+  useEffect(() => {
+    if (pot.length === 0) {
+      setStep("materials");
+      setSelectedOptionIds([]);
+    }
+  }, [pot.length]);
 
   const materialRanks = useMemo(() => {
     const ranks = new Map<string, number>();
@@ -332,6 +339,7 @@ export default function AlchemyLab({
     (sum, option, index) => sum + optionCopyCost(option, selectedOptionCopyIndexes[index]),
     0,
   );
+  const remainingPoints = availablePoints - spentPoints;
   const potNames = useMemo(() => new Set(pot.map((entry) => entry.name)), [pot]);
   const optionUnlocked = (option: AlchemyRecipeView) =>
     option.requiredMaterials.every((ingredient) => potNames.has(ingredient.name));
@@ -402,9 +410,27 @@ export default function AlchemyLab({
             </span>
           </div>
           <div className="mt-3 flex gap-1">
-            <span className="rounded-t-xl bg-surface px-4 py-2 text-sm font-extrabold text-content shadow-sm">
-              🔥 실험 테이블
-            </span>
+            {[
+              { key: "materials" as const, label: "🔥 실험 테이블" },
+              { key: "effects" as const, label: "🧪 효과 지정" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  if (item.key === "effects" && pot.length === 0) return;
+                  setStep(item.key);
+                }}
+                disabled={item.key === "effects" && pot.length === 0}
+                className={`rounded-t-xl px-4 py-2 text-sm font-extrabold transition ${
+                  step === item.key
+                    ? "bg-surface text-content shadow-sm"
+                    : "text-violet-100 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -464,7 +490,7 @@ export default function AlchemyLab({
           )}
 
           {/* ── 가마: 조합 ── */}
-          {!brewing && (
+          {!brewing && step === "materials" && (
             <>
               <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
                 <div className="mb-2 flex items-center justify-between">
@@ -474,7 +500,10 @@ export default function AlchemyLab({
                   {pot.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setPot([])}
+                      onClick={() => {
+                        setPot([]);
+                        setSelectedOptionIds([]);
+                      }}
                       className="text-[11px] font-bold text-faint transition hover:text-red-500"
                     >
                       전부 빼기
@@ -519,10 +548,10 @@ export default function AlchemyLab({
                   }`}
                 >
                   {selectedOptions.length > 0
-                    ? `선택 옵션 ${selectedOptionTypeCount}/${ALCHEMY_OPTION_LIMIT}종 · 누적 ${selectedOptions.length}회 · 포인트 ${spentPoints}/${availablePoints} · 판매가 ${selectedOptions.reduce((sum, option) => sum + option.optionPrice, 0).toLocaleString()}G`
+                    ? `선택 옵션 ${selectedOptionTypeCount}/${ALCHEMY_OPTION_LIMIT}종 · 누적 ${selectedOptions.length}회 · 포인트 ${spentPoints}/${availablePoints}`
                     : pot.length > 0
-                      ? `사용 가능 포인트 ${availablePoints} · 포션 옵션을 선택해보세요.`
-                      : "재료를 넣으면 연금 포인트가 생기고, 그 포인트로 옵션을 넣을 수 있어요."}
+                      ? `사용 가능 포인트 ${availablePoints} · 다음 단계에서 효과를 지정하세요.`
+                      : "재료를 넣으면 연금 포인트가 생깁니다."}
                 </p>
                 <button
                   type="button"
@@ -531,123 +560,187 @@ export default function AlchemyLab({
                 >
                   🗄️ 재료 넣기 — 가방에서 골라 담기
                 </button>
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-extrabold text-faint">옵션 선택</p>
-                    <p
-                      className={`text-xs font-black ${
-                        spentPoints > availablePoints ? "text-red-500" : "text-violet-500"
-                      }`}
-                    >
-                      {spentPoints}/{availablePoints}pt
+              </section>
+
+              <section className="rounded-2xl border border-line bg-surface p-3">
+                <button
+                  type="button"
+                  disabled={pot.length === 0 || availablePoints <= 0}
+                  onClick={() => setStep("effects")}
+                  className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
+                >
+                  🧪 포션 효과 지정
+                </button>
+                <p className="mt-1.5 text-center text-[10px] text-faint">
+                  한 칸에는 재료 1개만 들어갑니다.
+                </p>
+              </section>
+            </>
+          )}
+
+          {!brewing && step === "effects" && (
+            <>
+              <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl bg-surface px-3 py-2">
+                    <p className="text-[10px] font-bold text-faint">사용 가능</p>
+                    <p className="text-lg font-black text-violet-600">{availablePoints}pt</p>
+                  </div>
+                  <div className="rounded-xl bg-surface px-3 py-2">
+                    <p className="text-[10px] font-bold text-faint">사용함</p>
+                    <p className="text-lg font-black text-content">{spentPoints}pt</p>
+                  </div>
+                  <div className="rounded-xl bg-surface px-3 py-2">
+                    <p className="text-[10px] font-bold text-faint">남은 포인트</p>
+                    <p className={`text-lg font-black ${remainingPoints < 0 ? "text-red-500" : "text-emerald-600"}`}>
+                      {remainingPoints}pt
                     </p>
                   </div>
-                  <div className="grid gap-1.5 sm:grid-cols-2">
-                    {alchemy.recipes.map((option) => {
-                      const pickedCount = selectedCountOf(option.id);
-                      const picked = pickedCount > 0;
-                      const unlocked = optionUnlocked(option);
-                      const nextCost = optionCopyCost(option, pickedCount);
-                      const affordable = spentPoints + nextCost <= availablePoints;
-                      const newOptionType = pickedCount === 0;
-                      const canAdd =
-                        unlocked &&
-                        affordable &&
-                        (!newOptionType || selectedOptionTypeCount < ALCHEMY_OPTION_LIMIT) &&
-                        (pickedCount === 0 || option.repeatable);
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedOptions.length === 0 ? (
+                    <span className="rounded-full bg-subtle px-2.5 py-1 text-[11px] font-bold text-faint">
+                      선택한 효과 없음
+                    </span>
+                  ) : (
+                    [...new Set(selectedOptionIds)].map((id) => {
+                      const option = optionById.get(id);
+                      if (!option) return null;
+                      const count = selectedCountOf(id);
                       return (
-                        <div
-                          key={option.id}
-                          className={`rounded-xl border px-3 py-2 text-left transition ${
-                            picked
-                              ? "border-violet-400 bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-200"
-                              : "border-line bg-surface text-content hover:border-violet-300"
-                          } ${!unlocked ? "opacity-40" : ""}`}
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => removeOption(id)}
+                          className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-black text-violet-700 transition hover:bg-violet-200"
                         >
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="truncate text-xs font-extrabold">{option.name}</span>
-                            <span className="shrink-0 text-[11px] font-black">
-                              {pickedCount > 0 ? `x${pickedCount} · ` : ""}
-                              다음 {Number.isFinite(nextCost) ? `${nextCost}pt` : "-"} · {option.optionPrice.toLocaleString()}G
-                            </span>
-                          </span>
-                          {option.effect && (
-                            <span className="mt-1 block line-clamp-2 text-[10px] text-faint">
-                              {option.effect}
-                            </span>
-                          )}
-                          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-faint">
-                            <span>기본 {option.pointCost}pt</span>
-                            {option.repeatable && (
-                              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-violet-600 dark:text-violet-300">
-                                중복 가능 · +{option.repeatPointStep}pt
-                              </span>
-                            )}
-                          </span>
-                          {option.requiredMaterials.length > 0 && (
-                            <span className="mt-1 block text-[10px] font-bold text-amber-600">
-                              필요: {option.requiredMaterials.map((item) => item.name).join(", ")}
-                            </span>
-                          )}
-                          <span className="mt-2 flex items-center gap-1.5">
-                            {pickedCount > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => removeOption(option.id)}
-                                className="rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-black text-content transition hover:bg-subtle"
-                              >
-                                −
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={!canAdd}
-                              onClick={() => addOption(option)}
-                              className="flex-1 rounded-lg bg-violet-600 px-2 py-1 text-[11px] font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              추가
-                            </button>
-                          </span>
-                        </div>
+                          {option.name}
+                          {count > 1 ? ` x${count}` : ""} −
+                        </button>
                       );
-                    })}
-                  </div>
-                  {alchemy.recipes.length === 0 && (
-                    <p className="rounded-xl bg-subtle px-3 py-4 text-center text-xs font-bold text-faint">
-                      포션 탭에 등록된 연금 옵션이 없어요.
-                    </p>
+                    })
                   )}
                 </div>
               </section>
 
+              <section className="space-y-2 rounded-2xl border border-line bg-surface p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-extrabold text-faint">효과 선택</p>
+                  <p className="text-xs font-black text-violet-500">
+                    {selectedOptionTypeCount}/{ALCHEMY_OPTION_LIMIT}종
+                  </p>
+                </div>
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  {alchemy.recipes.map((option) => {
+                    const pickedCount = selectedCountOf(option.id);
+                    const picked = pickedCount > 0;
+                    const unlocked = optionUnlocked(option);
+                    const nextCost = optionCopyCost(option, pickedCount);
+                    const affordable = spentPoints + nextCost <= availablePoints;
+                    const newOptionType = pickedCount === 0;
+                    const canAdd =
+                      unlocked &&
+                      affordable &&
+                      (!newOptionType || selectedOptionTypeCount < ALCHEMY_OPTION_LIMIT) &&
+                      (pickedCount === 0 || option.repeatable);
+                    return (
+                      <div
+                        key={option.id}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${
+                          picked
+                            ? "border-violet-400 bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-200"
+                            : "border-line bg-surface text-content hover:border-violet-300"
+                        } ${!unlocked ? "opacity-40" : ""}`}
+                      >
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-extrabold">
+                              {option.name}
+                              {pickedCount > 0 ? ` x${pickedCount}` : ""}
+                            </span>
+                            {option.effect && (
+                              <span className="mt-1 block line-clamp-2 text-[10px] leading-relaxed text-faint">
+                                {option.effect}
+                              </span>
+                            )}
+                            {option.requiredMaterials.length > 0 && (
+                              <span className="mt-1 block text-[10px] font-bold text-amber-600">
+                                필요: {option.requiredMaterials.map((item) => item.name).join(", ")}
+                              </span>
+                            )}
+                          </span>
+                          {pickedCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => removeOption(option.id)}
+                              className="shrink-0 rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-black text-content transition hover:bg-subtle"
+                            >
+                              −
+                            </button>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={!canAdd}
+                          onClick={() => addOption(option)}
+                          className="mt-2 w-full rounded-lg bg-violet-600 px-2 py-1 text-[11px] font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          추가 ({Number.isFinite(nextCost) ? `${nextCost}pt` : "-"})
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {alchemy.recipes.length === 0 && (
+                  <p className="rounded-xl bg-subtle px-3 py-4 text-center text-xs font-bold text-faint">
+                    포션 탭에 등록된 공개 연금 옵션이 없어요.
+                  </p>
+                )}
+              </section>
+
               <section className="rounded-2xl border border-line bg-surface p-3">
-                <form action={startAction}>
+                <form action={startAction} className="space-y-2">
                   {potUnits.map((name, i) => (
                     <input key={`${name}-${i}`} type="hidden" name="ingredient" value={name} />
                   ))}
                   {selectedOptionIds.map((id, i) => (
                     <input key={`${id}-${i}`} type="hidden" name="optionId" value={id} />
                   ))}
-                  <button
-                    type="submit"
-                    disabled={
-                      startPending ||
-                      pot.length === 0 ||
-                      selectedOptionIds.length === 0 ||
-                      selectedOptionTypeCount > ALCHEMY_OPTION_LIMIT ||
-                      spentPoints > availablePoints ||
-                      alchemy.ap < BREW_AP_COST
-                    }
-                    className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
-                  >
-                    {startPending
-                      ? "가마에 올리는 중…"
-                      : `⚗️ 조제하기 (피로도 -${BREW_AP_COST})`}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <input
+                      name="customName"
+                      value={customName}
+                      onChange={(event) => setCustomName(event.target.value)}
+                      maxLength={20}
+                      placeholder="조제 포션"
+                      className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-bold text-content outline-none transition placeholder:font-normal placeholder:text-faint focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+                    />
+                    <span className="shrink-0 text-[11px] font-bold text-faint">✏️ 이름 짓기</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep("materials")}
+                      className="rounded-xl border border-line bg-surface px-4 py-2 text-sm font-bold text-muted transition hover:text-content"
+                    >
+                      재료로
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        startPending ||
+                        pot.length === 0 ||
+                        selectedOptionIds.length === 0 ||
+                        selectedOptionTypeCount > ALCHEMY_OPTION_LIMIT ||
+                        spentPoints > availablePoints ||
+                        alchemy.ap < BREW_AP_COST
+                      }
+                      className="min-w-0 flex-1 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
+                    >
+                      {startPending ? "조제 중…" : `⚗️ 포션 완성 (피로도 -${BREW_AP_COST})`}
+                    </button>
+                  </div>
                 </form>
-                <p className="mt-1.5 text-center text-[10px] text-faint">
-                  한 칸에는 재료 1개만 들어갑니다. 포션 가격은 선택한 옵션 가격의 합계입니다.
-                </p>
               </section>
             </>
           )}

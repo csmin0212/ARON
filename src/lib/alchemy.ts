@@ -263,6 +263,7 @@ export type PendingBrew = {
   recipeId: string;
   optionIds?: string[];
   ingredientNames?: string[];
+  customName?: string;
   resultName?: string;
   effect?: string;
   price?: number;
@@ -293,6 +294,7 @@ export function parsePendingBrew(json: string | null | undefined): PendingBrew |
       ingredientNames: Array.isArray(v.ingredientNames)
         ? v.ingredientNames.map((item) => String(item ?? "").trim()).filter(Boolean)
         : undefined,
+      customName: typeof v.customName === "string" ? v.customName : undefined,
       resultName: typeof v.resultName === "string" ? v.resultName : undefined,
       effect: typeof v.effect === "string" ? v.effect : undefined,
       price: typeof v.price === "number" && Number.isFinite(v.price) ? v.price : undefined,

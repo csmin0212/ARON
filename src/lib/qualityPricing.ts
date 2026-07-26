@@ -118,7 +118,7 @@ export async function potionSellPrice(
   effectText?: string | null,
 ): Promise<number | null> {
   const { base, modifier, grade } = parsePotionName(rawName);
-  if (isCustomAlchemyPotionName(rawName)) {
+  if (isCustomAlchemyPotionName(rawName) || customPotionSellPrice(effectText) != null) {
     return customPotionSellPrice(effectText);
   }
   const recipe = await prisma.alchemyRecipe.findFirst({

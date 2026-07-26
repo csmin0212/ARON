@@ -975,7 +975,8 @@ export default async function WorldPage() {
   const alchemyLab = ownedAlchemyLab(housingState);
   const alchemyEnabled = atMyHome && alchemyLab != null;
   const alchemyRecipes = alchemyEnabled || canAlchemyBookShop ? await getAlchemyRecipes() : [];
-  const alchemyRecipeViews: AlchemyRecipeView[] = alchemyRecipes.map((recipe) => {
+  const visibleAlchemyRecipes = alchemyRecipes.filter((recipe) => recipe.isPublic);
+  const alchemyRecipeViews: AlchemyRecipeView[] = visibleAlchemyRecipes.map((recipe) => {
     const ingredientList = parseRecipeIngredients(recipe.ingredientsJson).map((ingredient) => ({
       name: ingredient.name,
       qty: ingredient.qty,
@@ -1024,7 +1025,7 @@ export default async function WorldPage() {
     ? bagItems
         .map((item) => {
           const raw = item.name.trim();
-          if (isCustomAlchemyPotionName(raw)) {
+          if (isCustomAlchemyPotionName(raw) || customPotionSellPrice(item.effect) != null) {
             const unitPrice = customPotionSellPrice(item.effect);
             return unitPrice != null ? { name: raw, qty: item.qty, unitPrice, effect: item.effect } : null;
           }
@@ -1075,7 +1076,7 @@ export default async function WorldPage() {
     masterCount: alchemyMasterCount(life),
     exp: life.alchemy.exp,
     nextExp: expForNext(life.alchemy.level),
-    recipeCount: alchemyRecipes.length,
+    recipeCount: visibleAlchemyRecipes.length,
     maxIngredients: alchemyLabSlotLimit(alchemyLab?.tier ?? 1),
     recipes: alchemyRecipeViews,
     brewing,
@@ -1149,7 +1150,7 @@ export default async function WorldPage() {
       };
     }),
     books: ALCHEMY_BOOKS.map((book) => {
-      const recipes = alchemyRecipes.filter((recipe) => recipe.rank === book.rank);
+      const recipes = visibleAlchemyRecipes.filter((recipe) => recipe.rank === book.rank);
       return {
         ...book,
         total: recipes.length,
