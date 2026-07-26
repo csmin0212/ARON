@@ -32,8 +32,6 @@ import {
 import {
   ALCHEMY_OPTION_LIMIT,
   BREW_AP_COST,
-  BREW_MAX_MINUTES,
-  BREW_MIN_MINUTES,
   WEAK_PRICE_MULT,
   alchemyAcceleratorEffect,
   alchemyAcceleratorMinutes,
@@ -1610,7 +1608,7 @@ function selectedOptionIds(formData: FormData): string[] {
     .getAll("optionId")
     .map((value) => String(value ?? "").trim())
     .filter(Boolean)
-    .slice(0, ALCHEMY_OPTION_LIMIT + 1);
+    .slice(0, 200);
 }
 
 function optionPointCost(option: { skillExp: number; tags: string | null }, copyIndex: number): number {
@@ -1712,7 +1710,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   // 두 가지 진입로 — ① 구형 recipeId: 하위호환. ② 새 가마: 재료 포인트 안에서 옵션 선택.
   const recipeId = String(formData.get("recipeId") ?? "").trim();
   let recipe: Awaited<ReturnType<typeof prisma.alchemyRecipe.findFirst>>;
-  let minutes: number;
+  let minutes = 0;
   let customBrew:
     | {
         optionIds: string[];
@@ -1733,10 +1731,6 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     }
     minutes = recipe.bestMinutes;
   } else {
-    minutes = Math.trunc(Number(formData.get("minutes")));
-    if (!Number.isFinite(minutes) || minutes < BREW_MIN_MINUTES || minutes > BREW_MAX_MINUTES) {
-      return { error: `제조 시간은 ${BREW_MIN_MINUTES}~${BREW_MAX_MINUTES}분 사이로 정해주세요.` };
-    }
     const potIngredients = ingredientsFromForm(formData);
     const totalIngredients = potIngredients.reduce((sum, ingredient) => sum + ingredient.qty, 0);
     const maxIngredients = alchemyLabSlotLimit(lab.tier);
@@ -1749,10 +1743,10 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
     const optionIds = selectedOptionIds(formData);
     if (optionIds.length === 0) return { error: "포션에 넣을 옵션을 하나 이상 선택해주세요." };
-    if (optionIds.length > ALCHEMY_OPTION_LIMIT) {
-      return { error: `포션 옵션은 최대 ${ALCHEMY_OPTION_LIMIT}개까지만 넣을 수 있어요.` };
-    }
     const uniqueOptionIds = [...new Set(optionIds)];
+    if (uniqueOptionIds.length > ALCHEMY_OPTION_LIMIT) {
+      return { error: `포션 옵션은 최대 ${ALCHEMY_OPTION_LIMIT}종류까지만 넣을 수 있어요.` };
+    }
     const optionRows = await prisma.alchemyRecipe.findMany({
       where: { id: { in: uniqueOptionIds } },
       orderBy: { order: "asc" },
@@ -1854,7 +1848,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     spentPoints: customBrew?.spentPoints,
     minutes,
     startedAt: now,
-    readyAt: now + minutes * 60_000,
+    readyAt: customBrew ? now : now + minutes * 60_000,
   };
   await prisma.characterSheet.update({
     where: { userId: ctx.userId },
@@ -1870,7 +1864,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   revalidatePath("/world");
   return {
     ok: customBrew
-      ? `⚗️ ${customBrew.resultName} 제조 시작! 포인트 ${customBrew.spentPoints}/${customBrew.availablePoints}. ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`
+      ? `⚗️ ${customBrew.resultName} 조제 완료! 포인트 ${customBrew.spentPoints}/${customBrew.availablePoints}. 가마를 열어 수령하세요. 피로도 -${BREW_AP_COST}`
       : `⚗️ ${recipe!.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
   };
 }

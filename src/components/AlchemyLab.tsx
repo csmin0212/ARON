@@ -7,18 +7,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
 import {
-  accelerateBrew,
   cancelBrew,
   collectBrew,
-  sellPotion,
   startBrew,
   type AlchemyState,
 } from "@/app/actions/services";
 import {
   ALCHEMY_OPTION_LIMIT,
   BREW_AP_COST,
-  BREW_MAX_MINUTES,
-  BREW_MIN_MINUTES,
   alchemyLabSlotLimit,
   alchemyMaterialPointsForItem,
   parsePotionName,
@@ -97,16 +93,6 @@ export type AlchemyView = {
 
 type LifeItemLike = { name: string; qty: number; rank?: number; sourceKind?: "낚시" | "채집" | "채광" };
 type PotEntry = { name: string; qty: number };
-
-const RANK_STYLE: Record<string, { chip: string; ring: string; label: string }> = {
-  R1: { chip: "bg-emerald-50 text-emerald-600", ring: "border-emerald-200", label: "★☆☆" },
-  R2: { chip: "bg-sky-50 text-sky-600", ring: "border-sky-200", label: "★★☆" },
-  R3: { chip: "bg-violet-50 text-violet-600", ring: "border-violet-200", label: "★★★" },
-};
-
-function rankStyle(rank: string) {
-  return RANK_STYLE[rank] ?? RANK_STYLE.R1;
-}
 
 function rankFromNote(note: string | null | undefined): number | null {
   const match = (note ?? "").match(/R\s*(\d+)/i);
@@ -198,13 +184,10 @@ export default function AlchemyLab({
   storageItems?: (SheetInventoryItem & { sourceKind?: string })[];
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"brew" | "book" | "sell">("brew");
   const [pot, setPot] = useState<PotEntry[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
-  const [minutes, setMinutes] = useState(7);
   const [now, setNow] = useState(() => Date.now());
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [bookFilter, setBookFilter] = useState("");
 
   const [startState, startAction, startPending] = useActionState<AlchemyState, FormData>(
     startBrew,
@@ -216,14 +199,6 @@ export default function AlchemyLab({
   );
   const [cancelState, cancelAction, cancelPending] = useActionState<AlchemyState, FormData>(
     cancelBrew,
-    undefined,
-  );
-  const [accelerateState, accelerateAction, acceleratePending] = useActionState<
-    AlchemyState,
-    FormData
-  >(accelerateBrew, undefined);
-  const [sellState, sellAction, sellPending] = useActionState<AlchemyState, FormData>(
-    sellPotion,
     undefined,
   );
 
@@ -343,6 +318,10 @@ export default function AlchemyLab({
     });
   }, [selectedOptions]);
   const selectedCountOf = (id: string) => selectedOptionIds.filter((selected) => selected === id).length;
+  const selectedOptionTypeCount = useMemo(
+    () => new Set(selectedOptionIds).size,
+    [selectedOptionIds],
+  );
   const optionCopyCost = (option: AlchemyRecipeView, copyIndex: number): number => {
     if (copyIndex <= 0) return option.pointCost;
     if (!option.repeatable) return Number.POSITIVE_INFINITY;
@@ -358,7 +337,7 @@ export default function AlchemyLab({
     option.requiredMaterials.every((ingredient) => potNames.has(ingredient.name));
   const addOption = (option: AlchemyRecipeView) => {
     const count = selectedCountOf(option.id);
-    if (selectedOptionIds.length >= ALCHEMY_OPTION_LIMIT) return;
+    if (count === 0 && selectedOptionTypeCount >= ALCHEMY_OPTION_LIMIT) return;
     if (count > 0 && !option.repeatable) return;
     const nextCost = optionCopyCost(option, count);
     if (spentPoints + nextCost > availablePoints) return;
@@ -380,12 +359,6 @@ export default function AlchemyLab({
   const ready = brewing ? remainMs <= 0 : false;
   const totalMs = brewing ? Math.max(1, brewing.readyAt - brewing.startedAt) : 1;
   const progress = brewing ? Math.min(100, Math.max(0, ((totalMs - remainMs) / totalMs) * 100)) : 0;
-
-  const TABS = [
-    { key: "brew" as const, label: "🔥 실험 테이블" },
-    { key: "book" as const, label: `📖 옵션표 (${alchemy.recipes.length})` },
-    { key: "sell" as const, label: `💰 판매 (${alchemy.potions.length})` },
-  ];
 
   return (
     <div
@@ -429,20 +402,9 @@ export default function AlchemyLab({
             </span>
           </div>
           <div className="mt-3 flex gap-1">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={`rounded-t-xl px-4 py-2 text-sm font-extrabold transition ${
-                  tab === t.key
-                    ? "bg-surface text-content shadow-sm"
-                    : "text-violet-100 hover:text-white"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+            <span className="rounded-t-xl bg-surface px-4 py-2 text-sm font-extrabold text-content shadow-sm">
+              🔥 실험 테이블
+            </span>
           </div>
         </div>
 
@@ -450,17 +412,14 @@ export default function AlchemyLab({
           <StateLine state={startState} />
           <StateLine state={collectState} />
           <StateLine state={cancelState} />
-          <StateLine state={accelerateState} />
-          <StateLine state={sellState} />
 
           {/* ── 가마: 끓는 중 ── */}
-          {tab === "brew" && brewing && (
+          {brewing && (
             <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50 to-fuchsia-50 p-5 text-center dark:from-violet-950/40 dark:to-fuchsia-950/30">
               <Cauldron boiling={!ready} />
               <p className="mt-2 text-lg font-extrabold text-content">
                 {ready ? "✨ 완성! 가마를 열어보세요" : `${brewing.recipeName} 끓는 중…`}
               </p>
-              <p className="mt-1 text-xs font-bold text-muted">설정한 시간 {brewing.minutes}분</p>
               <p
                 className={`mt-3 font-mono text-4xl font-black tabular-nums ${
                   ready ? "text-emerald-500" : "text-violet-600 dark:text-violet-300"
@@ -501,38 +460,11 @@ export default function AlchemyLab({
                   </button>
                 </form>
               </div>
-              {!ready && (
-                <>
-                  {alchemy.accelerators.length > 0 && (
-                    <div className="mx-auto mt-4 max-w-md rounded-2xl border border-violet-200 bg-white/60 p-3 text-left dark:bg-black/10">
-                      <p className="mb-2 text-xs font-extrabold text-faint">연금 가속</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {alchemy.accelerators.map((item) => (
-                          <form key={item.name} action={accelerateAction}>
-                            <input type="hidden" name="itemName" value={item.name} />
-                            <button
-                              type="submit"
-                              disabled={acceleratePending}
-                              className="rounded-xl border border-violet-200 bg-surface px-3 py-1.5 text-[11px] font-extrabold text-violet-600 transition hover:bg-violet-50 disabled:opacity-40 dark:text-violet-300"
-                              title={`${item.name} x${item.qty}`}
-                            >
-                              {item.minutes}분 가속 x{item.qty}
-                            </button>
-                          </form>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <p className="mt-3 text-[11px] text-faint">
-                    기다리는 동안 다른 일을 해도 좋아요. 시간이 되면 돌아와서 가마를 열면 됩니다.
-                  </p>
-                </>
-              )}
             </section>
           )}
 
-          {/* ── 가마: 조합 + 시간 (한 화면) ── */}
-          {tab === "brew" && !brewing && (
+          {/* ── 가마: 조합 ── */}
+          {!brewing && (
             <>
               <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
                 <div className="mb-2 flex items-center justify-between">
@@ -587,7 +519,7 @@ export default function AlchemyLab({
                   }`}
                 >
                   {selectedOptions.length > 0
-                    ? `선택 옵션 ${selectedOptions.length}/${ALCHEMY_OPTION_LIMIT}개 · 포인트 ${spentPoints}/${availablePoints} · 판매가 ${selectedOptions.reduce((sum, option) => sum + option.optionPrice, 0).toLocaleString()}G`
+                    ? `선택 옵션 ${selectedOptionTypeCount}/${ALCHEMY_OPTION_LIMIT}종 · 누적 ${selectedOptions.length}회 · 포인트 ${spentPoints}/${availablePoints} · 판매가 ${selectedOptions.reduce((sum, option) => sum + option.optionPrice, 0).toLocaleString()}G`
                     : pot.length > 0
                       ? `사용 가능 포인트 ${availablePoints} · 포션 옵션을 선택해보세요.`
                       : "재료를 넣으면 연금 포인트가 생기고, 그 포인트로 옵션을 넣을 수 있어요."}
@@ -617,10 +549,11 @@ export default function AlchemyLab({
                       const unlocked = optionUnlocked(option);
                       const nextCost = optionCopyCost(option, pickedCount);
                       const affordable = spentPoints + nextCost <= availablePoints;
+                      const newOptionType = pickedCount === 0;
                       const canAdd =
                         unlocked &&
                         affordable &&
-                        selectedOptionIds.length < ALCHEMY_OPTION_LIMIT &&
+                        (!newOptionType || selectedOptionTypeCount < ALCHEMY_OPTION_LIMIT) &&
                         (pickedCount === 0 || option.repeatable);
                       return (
                         <div
@@ -688,49 +621,20 @@ export default function AlchemyLab({
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-3">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setMinutes((m) => Math.max(BREW_MIN_MINUTES, m - 1))}
-                    className="h-9 w-9 shrink-0 rounded-full border border-line bg-subtle text-lg font-black text-content transition hover:bg-surface"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="range"
-                    min={BREW_MIN_MINUTES}
-                    max={BREW_MAX_MINUTES}
-                    value={minutes}
-                    onChange={(e) => setMinutes(Number(e.target.value))}
-                    className="min-w-0 flex-1 accent-violet-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setMinutes((m) => Math.min(BREW_MAX_MINUTES, m + 1))}
-                    className="h-9 w-9 shrink-0 rounded-full border border-line bg-subtle text-lg font-black text-content transition hover:bg-surface"
-                  >
-                    +
-                  </button>
-                  <p className="w-16 shrink-0 text-right font-mono text-2xl font-black tabular-nums text-violet-600 dark:text-violet-300">
-                    {minutes}
-                    <span className="text-sm text-faint">분</span>
-                  </p>
-                </div>
-                <form action={startAction} className="mt-2.5">
+                <form action={startAction}>
                   {potUnits.map((name, i) => (
                     <input key={`${name}-${i}`} type="hidden" name="ingredient" value={name} />
                   ))}
                   {selectedOptionIds.map((id, i) => (
                     <input key={`${id}-${i}`} type="hidden" name="optionId" value={id} />
                   ))}
-                  <input type="hidden" name="minutes" value={minutes} />
                   <button
                     type="submit"
                     disabled={
                       startPending ||
                       pot.length === 0 ||
                       selectedOptionIds.length === 0 ||
-                      selectedOptionIds.length > ALCHEMY_OPTION_LIMIT ||
+                      selectedOptionTypeCount > ALCHEMY_OPTION_LIMIT ||
                       spentPoints > availablePoints ||
                       alchemy.ap < BREW_AP_COST
                     }
@@ -738,7 +642,7 @@ export default function AlchemyLab({
                   >
                     {startPending
                       ? "가마에 올리는 중…"
-                      : `🔥 ${minutes}분 동안 달이기 (피로도 -${BREW_AP_COST})`}
+                      : `⚗️ 조제하기 (피로도 -${BREW_AP_COST})`}
                   </button>
                 </form>
                 <p className="mt-1.5 text-center text-[10px] text-faint">
@@ -746,124 +650,6 @@ export default function AlchemyLab({
                 </p>
               </section>
             </>
-          )}
-
-          {/* ── 옵션표 ── */}
-          {tab === "book" && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={bookFilter}
-                  onChange={(e) => setBookFilter(e.target.value)}
-                  placeholder="옵션·효과·재료 검색"
-                  className="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm text-content placeholder:text-faint2 focus:border-brand-300 focus:outline-none"
-                />
-                <span className="shrink-0 text-[11px] font-bold text-faint">
-                  {alchemy.recipes.length}개
-                </span>
-              </div>
-              {alchemy.recipes
-                .filter((option) => {
-                  const keyword = bookFilter.trim();
-                  if (!keyword) return true;
-                  return `${option.name} ${option.category} ${option.effect ?? ""} ${
-                    option.requiredMaterials.map((item) => item.name).join(" ")
-                  }`.includes(keyword);
-                })
-                .map((recipe) => {
-                const style = rankStyle(recipe.rank);
-                return (
-                  <div key={recipe.id} className={`rounded-2xl border ${style.ring} bg-subtle p-3.5`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-extrabold text-content">
-                        🧪 {recipe.name}
-                        <span
-                          className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-black ${style.chip}`}
-                        >
-                          {recipe.category}
-                        </span>
-                      </p>
-                      <span className="shrink-0 text-xs font-black text-amber-600">
-                        {recipe.pointCost}pt · {recipe.optionPrice.toLocaleString()}G
-                      </span>
-                    </div>
-                    {recipe.repeatable && (
-                      <p className="mt-1 text-[11px] font-bold text-violet-600 dark:text-violet-300">
-                        중복 가능 · 중복마다 필요 포인트 +{recipe.repeatPointStep}
-                      </p>
-                    )}
-                    {recipe.effect && (
-                      <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-faint">
-                        {recipe.effect}
-                      </p>
-                    )}
-                    {recipe.requiredMaterials.length > 0 && (
-                      <p className="mt-1 text-[11px] font-bold text-amber-600">
-                        특수 재료: {recipe.requiredMaterials.map((item) => item.name).join(", ")}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-              {alchemy.recipes.length === 0 && (
-                <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
-                  포션 탭에 등록된 옵션이 없어요.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ── 판매 ── */}
-          {tab === "sell" && (
-            <div className="space-y-2">
-              {alchemy.potions.map((potion) => (
-                <div
-                  key={potion.name}
-                  className="flex items-center gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3"
-                >
-                  <span className="text-xl">⚗️</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-extrabold text-content">
-                      {potion.name}{" "}
-                      <span className="text-xs font-bold text-faint">x{potion.qty}</span>
-                    </p>
-                    <p className="text-[11px] font-bold text-amber-600">
-                      개당 {potion.unitPrice.toLocaleString()}G
-                    </p>
-                  </div>
-                  <form action={sellAction}>
-                    <input type="hidden" name="itemName" value={potion.name} />
-                    <input type="hidden" name="qty" value={1} />
-                    <button
-                      type="submit"
-                      disabled={sellPending}
-                      className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-extrabold text-content transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-40"
-                    >
-                      1개 판매
-                    </button>
-                  </form>
-                  {potion.qty > 1 && (
-                    <form action={sellAction}>
-                      <input type="hidden" name="itemName" value={potion.name} />
-                      <input type="hidden" name="qty" value={potion.qty} />
-                      <button
-                        type="submit"
-                        disabled={sellPending}
-                        className="rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-extrabold text-white transition hover:bg-emerald-600 disabled:opacity-40"
-                      >
-                        전부
-                      </button>
-                    </form>
-                  )}
-                </div>
-              ))}
-              {alchemy.potions.length === 0 && (
-                <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
-                  팔 수 있는 포션이 가방에 없어요. 가마에서 만들어보자!
-                </p>
-              )}
-            </div>
           )}
         </div>
 

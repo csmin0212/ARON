@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
+import { getCookingRecipes } from "@/lib/gameCatalog";
 import { collectionItems, isSeaLifeItem, lifeSkillMarketPrice } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { parseLifeState } from "@/lib/lifeSkillPerks";
@@ -54,13 +54,12 @@ export default async function CollectionPage() {
       Object.values(life.locationRecords).flatMap((records) => Object.values(records).flat()),
     ),
   ];
-  const [entries, recipes, alchemyRecipes, discoveredRecipes, locations] = await Promise.all([
+  const [entries, recipes, discoveredRecipes, locations] = await Promise.all([
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, itemId: { in: itemNames } },
       select: { itemId: true, qty: true },
     }),
     getCookingRecipes(),
-    getAlchemyRecipes(),
     prisma.userRecipe.findMany({ where: { userId: user.id }, select: { recipeId: true } }),
     prisma.location.findMany({
       where: { id: { in: locationIds } },
@@ -114,24 +113,7 @@ export default async function CollectionPage() {
       .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
       .join(", "),
   }));
-  const potionEntries: CollectionBookEntry[] = alchemyRecipes.map((recipe) => ({
-    id: recipe.id,
-    kind: "포션",
-    name: recipe.name,
-    category: recipe.category,
-    rank: recipeRankNumber(recipe.rank),
-    rarity: recipe.rank,
-    price: recipe.sellPrice,
-    weight: 1,
-    text: recipe.effect || "특별한 효과는 없습니다.",
-    discovered: life.alchemyPerfect.includes(recipe.id),
-    count: life.alchemyMastery[recipe.id] ?? 0,
-    resultName: recipe.resultName,
-    ingredients: parseRecipeIngredients(recipe.ingredientsJson)
-      .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
-      .join(", "),
-  }));
-  const bookEntries = [...lifeEntries, ...cookingEntries, ...potionEntries];
+  const bookEntries = [...lifeEntries, ...cookingEntries];
   const found = bookEntries.filter((entry) => entry.discovered).length;
   const pct = bookEntries.length > 0 ? Math.round((found / bookEntries.length) * 1000) / 10 : 0;
 

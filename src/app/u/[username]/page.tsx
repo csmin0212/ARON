@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
+import { getCookingRecipes } from "@/lib/gameCatalog";
 import { getCurrentUser } from "@/lib/auth";
 import { formatFullDate } from "@/lib/format";
 import type { SheetInventory } from "@/lib/googleSheets";
@@ -213,7 +213,7 @@ export default async function CharacterPage({
   // 본인 프로필 열람 시 임계값 업적(명성·골드·레벨 등) 지연 판정
   if (isOwn) await checkAndGrant(profile.id);
 
-  const [achs, earnedRows, mySheet, incomingRows, outgoingRows, recipes, alchemyRecipes, discoveredRecipes] = await Promise.all([
+  const [achs, earnedRows, mySheet, incomingRows, outgoingRows, recipes, discoveredRecipes] = await Promise.all([
     prisma.achievement.findMany({ orderBy: { order: "asc" } }),
     prisma.userAchievement.findMany({ where: { userId: profile.id }, select: { achId: true } }),
     me
@@ -246,7 +246,6 @@ export default async function CharacterPage({
         })
       : Promise.resolve([]),
     getCookingRecipes(),
-    getAlchemyRecipes(),
     prisma.userRecipe.findMany({ where: { userId: profile.id }, select: { recipeId: true } }),
   ]);
   const earnedSet = new Set(earnedRows.map((r) => r.achId));
@@ -292,23 +291,6 @@ export default async function CharacterPage({
     text: recipe.effect || "특별한 효과는 없습니다.",
     count: discoveredRecipeIds.has(recipe.id) ? 1 : 0,
     discovered: recipe.isPublic || discoveredRecipeIds.has(recipe.id),
-  }));
-  const potionEntries: CollectionBookEntry[] = alchemyRecipes.map((recipe) => ({
-    kind: "포션",
-    id: recipe.id,
-    name: recipe.name,
-    rank: recipeRankNumber(recipe.rank),
-    rarity: recipe.rank,
-    category: recipe.category,
-    ingredients: parseRecipeIngredients(recipe.ingredientsJson)
-      .map((ingredient) => `${ingredient.name}x${ingredient.qty}`)
-      .join(", "),
-    resultName: recipe.resultName,
-    price: recipe.sellPrice,
-    weight: 1,
-    text: recipe.effect || "특별한 효과는 없습니다.",
-    count: life.alchemyMastery[recipe.id] ?? 0,
-    discovered: life.alchemyPerfect.includes(recipe.id),
   }));
   const pendingCount = isOwn ? life.pending.length : 0;
   const visibility = parseProfileVisibility(profile.profileVisibilityJson);
@@ -430,12 +412,6 @@ export default async function CharacterPage({
       emoji: "🍳",
       found: cookingRecipes.filter((entry) => entry.discovered).length,
       total: cookingRecipes.length,
-    },
-    {
-      label: "포션 도감",
-      emoji: "⚗️",
-      found: potionEntries.filter((entry) => entry.discovered).length,
-      total: potionEntries.length,
     },
   ];
   const collectionTab = canViewCollection ? (
