@@ -293,6 +293,10 @@ export function parseIngredients(spec: string): IngredientEntry[] {
   return out.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
+function parseOptionalIngredients(spec: string): IngredientEntry[] {
+  return spec.trim() ? parseIngredients(spec) : [];
+}
+
 // margin(판정 총합 − 목표치, 성공 시 0 이상)이 있으면 꽝 "확률"을 1점당 1%p씩 낮춘다.
 // 꽝 확률은 30% 아래로 내리지 않고(원래 30% 이하면 그대로), 빠진 만큼은 나머지
 // 드랍에 기존 비율대로 배분된다. 결과 텍스트에는 절대 노출하지 않는다.
@@ -700,14 +704,14 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
       if (seen.has(id)) throw new Error(`포션 옵션ID '${id}' 가 중복됐어요.`);
       seen.add(id);
       const publicRaw = at(g, r, optionHeader.col.isPublic);
-      const result = parseIngredients(at(g, r, optionHeader.col.result))[0];
+      const result = parseOptionalIngredients(at(g, r, optionHeader.col.result))[0];
       rows.push({
         id,
         name,
         category: at(g, r, optionHeader.col.category) || "일반옵션",
         rank: at(g, r, optionHeader.col.rank) || "R1",
         facility: at(g, r, optionHeader.col.facility) || "연금술 공방",
-        ingredients: parseIngredients(at(g, r, optionHeader.col.ingredients)),
+        ingredients: parseOptionalIngredients(at(g, r, optionHeader.col.ingredients)),
         resultName: result?.name ?? "조제 포션",
         resultQty: result?.qty ?? 1,
         effect: at(g, r, optionHeader.col.effect) || null,

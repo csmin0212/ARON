@@ -29,7 +29,6 @@ import {
   rollPerkOptions,
 } from "@/lib/lifeSkillPerks";
 import {
-  ALCHEMY_BASE_POTION_NAME,
   BREW_AP_COST,
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
@@ -1733,8 +1732,9 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   if (fresh.value < BREW_AP_COST) {
     return { error: `피로도가 부족합니다. (${fresh.value}/${BREW_AP_COST})` };
   }
+  if (!customBrew && !recipe) return { error: "포션 제조 정보를 찾지 못했습니다." };
 
-  const ingredients = customBrew?.ingredients ?? parseRecipeIngredients(recipe.ingredientsJson);
+  const ingredients = customBrew?.ingredients ?? parseRecipeIngredients(recipe!.ingredientsJson);
   for (const ingredient of ingredients) {
     const have = availableBrewQty(ctx.inv, life, storageIngredients, ingredient.name);
     if (have < ingredient.qty) {
@@ -1783,7 +1783,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   return {
     ok: customBrew
       ? `⚗️ ${customBrew.resultName} 제조 시작! 포인트 ${customBrew.spentPoints}/${customBrew.availablePoints}. ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`
-      : `⚗️ ${recipe.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
+      : `⚗️ ${recipe!.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
   };
 }
 

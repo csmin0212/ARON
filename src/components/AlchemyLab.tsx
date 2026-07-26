@@ -15,13 +15,11 @@ import {
   type AlchemyState,
 } from "@/app/actions/services";
 import {
-  ALCHEMY_BASE_POTION_NAME,
   BREW_AP_COST,
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
   alchemyLabSlotLimit,
   alchemyMaterialPoints,
-  customPotionSellPrice,
   parsePotionName,
 } from "@/lib/alchemy";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
@@ -105,17 +103,6 @@ function rankStyle(rank: string) {
   return RANK_STYLE[rank] ?? RANK_STYLE.R1;
 }
 
-function rankOrder(rank: string): number {
-  const value = Number(rank.replace(/[^\d]/g, ""));
-  return Number.isFinite(value) && value > 0 ? value : 99;
-}
-
-function sortedRanks(ranks: string[]): string[] {
-  return [...new Set(ranks.filter(Boolean))].sort(
-    (a, b) => rankOrder(a) - rankOrder(b) || a.localeCompare(b, "ko"),
-  );
-}
-
 function rankFromNote(note: string | null | undefined): number | null {
   const match = (note ?? "").match(/R\s*(\d+)/i);
   if (!match) return null;
@@ -141,16 +128,6 @@ function formatClock(ms: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-// 서버 ingredientKey 와 동일한 정규화 — 조합 일치 미리보기용
-function potKey(entries: PotEntry[]): string {
-  return entries
-    .filter((entry) => entry.qty > 0)
-    .map((entry) => ({ name: entry.name.trim(), qty: entry.qty }))
-    .sort((a, b) => a.name.localeCompare(b.name, "ko"))
-    .map((entry) => `${entry.name}x${entry.qty}`)
-    .join("|");
 }
 
 // 끓는 가마 — CSS 애니메이션 연출
@@ -222,7 +199,6 @@ export default function AlchemyLab({
   const [minutes, setMinutes] = useState(7);
   const [now, setNow] = useState(() => Date.now());
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [bookRank, setBookRank] = useState("all");
   const [bookFilter, setBookFilter] = useState("");
 
   const [startState, startAction, startPending] = useActionState<AlchemyState, FormData>(
@@ -252,29 +228,6 @@ export default function AlchemyLab({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [alchemy.brewing]);
-
-  // 재료 보유량 — 시트 가방(등급 붙은 포션도 기본 이름으로 인정) + 생활 가방 + 창고
-  const haveOf = useMemo(() => {
-    const counts = new Map<string, number>();
-    const add = (name: string, qty: number) => {
-      if (qty <= 0) return;
-      counts.set(name, (counts.get(name) ?? 0) + qty);
-    };
-    for (const item of inventoryItems) {
-      const raw = item.name.trim();
-      add(raw, item.qty);
-      const { base } = parsePotionName(raw);
-      if (base !== raw) add(base, item.qty);
-    }
-    for (const item of lifeItems) add(item.name.trim(), item.qty);
-    for (const item of storageItems ?? []) {
-      const raw = item.name.trim();
-      add(raw, item.qty);
-      const { base } = parsePotionName(raw);
-      if (base !== raw) add(base, item.qty);
-    }
-    return (name: string) => counts.get(name.trim()) ?? 0;
-  }, [inventoryItems, lifeItems, storageItems]);
 
   const materialRanks = useMemo(() => {
     const ranks = new Map<string, number>();
@@ -323,7 +276,11 @@ export default function AlchemyLab({
       if (key) stored.set(key, (stored.get(key) ?? 0) + item.qty);
     }
     const storedItems = [...stored.entries()]
-      .map(([name, qty]) => ({ name, qty }))
+      .map(([name, qty]) => ({
+        name,
+        qty,
+        note: `R${materialRanks.get(name) ?? 0} · ${materialPointOf(name)}pt`,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
     const byKind = (kind: "채집" | "낚시" | "채광") => {
@@ -335,7 +292,11 @@ export default function AlchemyLab({
         merged.set(name, (merged.get(name) ?? 0) + item.qty);
       }
       return [...merged.entries()]
-        .map(([name, qty]) => ({ name, qty }))
+        .map(([name, qty]) => ({
+          name,
+          qty,
+          note: `R${materialRanks.get(name) ?? 0} · ${materialPointOf(name)}pt`,
+        }))
         .sort((a, b) => a.name.localeCompare(b.name, "ko"));
     };
 
@@ -346,7 +307,7 @@ export default function AlchemyLab({
       { key: "fish", label: "낚시", emoji: "🎣", items: byKind("낚시") },
       { key: "mine", label: "채광", emoji: "⛏️", items: byKind("채광") },
     ];
-  }, [inventoryItems, lifeItems, storageItems, drawerNames]);
+  }, [inventoryItems, lifeItems, storageItems, drawerNames, materialRanks]);
 
   const takeFromPot = (name: string) => {
     setPot((prev) =>
@@ -356,39 +317,22 @@ export default function AlchemyLab({
     );
   };
 
-  // 현재 조합과 일치하는 레시피 미리보기
-  const matched = useMemo(() => {
-    if (pot.length === 0) return null;
-    const key = potKey(pot);
-    return alchemy.recipes.find((recipe) => potKey(recipe.ingredientList) === key) ?? null;
-  }, [pot, alchemy.recipes]);
-
-  const canAfford = (recipe: AlchemyRecipeView) =>
-    recipe.ingredientList.every((ingredient) => haveOf(ingredient.name) >= ingredient.qty);
-
-  const masteredRecipes = useMemo(
-    () => alchemy.recipes.filter((recipe) => recipe.mastered && recipe.bestMinutes != null),
-    [alchemy.recipes],
+  const selectedOptions = useMemo(
+    () => alchemy.recipes.filter((option) => selectedOptionIds.includes(option.id)),
+    [alchemy.recipes, selectedOptionIds],
   );
-
-  const recipeRanks = useMemo(
-    () => sortedRanks(masteredRecipes.map((recipe) => recipe.rank)),
-    [masteredRecipes],
-  );
-
-  const filteredMasteredRecipes = useMemo(() => {
-    const keyword = bookFilter.trim();
-    return masteredRecipes.filter((recipe) => {
-      if (bookRank !== "all" && recipe.rank !== bookRank) return false;
-      if (!keyword) return true;
-      return `${recipe.name} ${recipe.resultName} ${recipe.category} ${recipe.ingredients} ${
-        recipe.effect ?? ""
-      } ${recipe.perfectEffect ?? ""}`.includes(keyword);
-    });
-  }, [bookFilter, bookRank, masteredRecipes]);
-
-  const potUnits = pot.flatMap((entry) => Array.from({ length: entry.qty }, () => entry.name));
-  const potSlots = Array.from({ length: POT_TYPE_MAX }, (_, i) => pot[i] ?? null);
+  const availablePoints = pot.reduce((sum, entry) => sum + materialPointOf(entry.name), 0);
+  const spentPoints = selectedOptions.reduce((sum, option) => sum + option.pointCost, 0);
+  const potNames = useMemo(() => new Set(pot.map((entry) => entry.name)), [pot]);
+  const optionUnlocked = (option: AlchemyRecipeView) =>
+    option.requiredMaterials.every((ingredient) => potNames.has(ingredient.name));
+  const optionSpendWithout = (id: string) =>
+    selectedOptions
+      .filter((option) => option.id !== id)
+      .reduce((sum, option) => sum + option.pointCost, 0);
+  const potUnits = pot.map((entry) => entry.name);
+  const maxIngredients = alchemy.maxIngredients ?? alchemyLabSlotLimit(alchemy.labTier);
+  const potSlots = Array.from({ length: maxIngredients }, (_, i) => pot[i] ?? null);
 
   const brewing = alchemy.brewing;
   const remainMs = brewing ? brewing.readyAt - now : 0;
@@ -397,8 +341,8 @@ export default function AlchemyLab({
   const progress = brewing ? Math.min(100, Math.max(0, ((totalMs - remainMs) / totalMs) * 100)) : 0;
 
   const TABS = [
-    { key: "brew" as const, label: "🔥 실험 가마" },
-    { key: "book" as const, label: `📖 확정 레시피 (${masteredRecipes.length})` },
+    { key: "brew" as const, label: "🔥 실험 테이블" },
+    { key: "book" as const, label: `📖 옵션표 (${alchemy.recipes.length})` },
     { key: "sell" as const, label: `💰 판매 (${alchemy.potions.length})` },
   ];
 
@@ -549,7 +493,7 @@ export default function AlchemyLab({
               <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-extrabold text-faint">
-                    🫧 가마 ({pot.length}/{POT_TYPE_MAX}종)
+                    🫧 연금술 테이블 ({pot.length}/{maxIngredients}칸)
                   </p>
                   {pot.length > 0 && (
                     <button
@@ -574,7 +518,9 @@ export default function AlchemyLab({
                         <span className="block truncate text-[11px] font-extrabold text-content">
                           {entry.name}
                         </span>
-                        <span className="text-xs font-black text-violet-500">x{entry.qty}</span>
+                        <span className="text-xs font-black text-violet-500">
+                          {materialPointOf(entry.name)}pt
+                        </span>
                       </button>
                     ) : (
                       <button
@@ -591,16 +537,16 @@ export default function AlchemyLab({
                 </div>
                 <p
                   className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${
-                    matched
+                    selectedOptions.length > 0 && spentPoints <= availablePoints
                       ? "bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300"
                       : "bg-subtle text-faint"
                   }`}
                 >
-                  {matched
-                    ? `🧪 이 조합: ${matched.name} (판매가 ${matched.sellPrice.toLocaleString()}G)`
+                  {selectedOptions.length > 0
+                    ? `선택 옵션 ${selectedOptions.length}개 · 포인트 ${spentPoints}/${availablePoints} · 판매가 ${selectedOptions.reduce((sum, option) => sum + option.optionPrice, 0).toLocaleString()}G`
                     : pot.length > 0
-                      ? "아직 아무것도 떠오르지 않는 조합…"
-                      : "재료를 넣고 시간을 정해 실험해보세요."}
+                      ? `사용 가능 포인트 ${availablePoints} · 포션 옵션을 선택해보세요.`
+                      : "재료를 넣으면 연금 포인트가 생기고, 그 포인트로 옵션을 넣을 수 있어요."}
                 </p>
                 <button
                   type="button"
@@ -609,6 +555,68 @@ export default function AlchemyLab({
                 >
                   🗄️ 재료 넣기 — 가방에서 골라 담기
                 </button>
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-extrabold text-faint">옵션 선택</p>
+                    <p
+                      className={`text-xs font-black ${
+                        spentPoints > availablePoints ? "text-red-500" : "text-violet-500"
+                      }`}
+                    >
+                      {spentPoints}/{availablePoints}pt
+                    </p>
+                  </div>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {alchemy.recipes.map((option) => {
+                      const picked = selectedOptionIds.includes(option.id);
+                      const unlocked = optionUnlocked(option);
+                      const wouldSpend = optionSpendWithout(option.id) + option.pointCost;
+                      const affordable = picked || wouldSpend <= availablePoints;
+                      const disabled = !unlocked || !affordable;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() =>
+                            setSelectedOptionIds((prev) =>
+                              prev.includes(option.id)
+                                ? prev.filter((id) => id !== option.id)
+                                : [...prev, option.id],
+                            )
+                          }
+                          className={`rounded-xl border px-3 py-2 text-left transition ${
+                            picked
+                              ? "border-violet-400 bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-200"
+                              : "border-line bg-surface text-content hover:border-violet-300"
+                          } disabled:cursor-not-allowed disabled:opacity-40`}
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-xs font-extrabold">{option.name}</span>
+                            <span className="shrink-0 text-[11px] font-black">
+                              {option.pointCost}pt · {option.optionPrice.toLocaleString()}G
+                            </span>
+                          </span>
+                          {option.effect && (
+                            <span className="mt-1 block line-clamp-2 text-[10px] text-faint">
+                              {option.effect}
+                            </span>
+                          )}
+                          {option.requiredMaterials.length > 0 && (
+                            <span className="mt-1 block text-[10px] font-bold text-amber-600">
+                              필요: {option.requiredMaterials.map((item) => item.name).join(", ")}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {alchemy.recipes.length === 0 && (
+                    <p className="rounded-xl bg-subtle px-3 py-4 text-center text-xs font-bold text-faint">
+                      포션 탭에 등록된 연금 옵션이 없어요.
+                    </p>
+                  )}
+                </div>
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-3">
@@ -644,10 +652,19 @@ export default function AlchemyLab({
                   {potUnits.map((name, i) => (
                     <input key={`${name}-${i}`} type="hidden" name="ingredient" value={name} />
                   ))}
+                  {selectedOptionIds.map((id) => (
+                    <input key={id} type="hidden" name="optionId" value={id} />
+                  ))}
                   <input type="hidden" name="minutes" value={minutes} />
                   <button
                     type="submit"
-                    disabled={startPending || pot.length === 0 || alchemy.ap < BREW_AP_COST}
+                    disabled={
+                      startPending ||
+                      pot.length === 0 ||
+                      selectedOptionIds.length === 0 ||
+                      spentPoints > availablePoints ||
+                      alchemy.ap < BREW_AP_COST
+                    }
                     className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
                   >
                     {startPending
@@ -656,60 +673,37 @@ export default function AlchemyLab({
                   </button>
                 </form>
                 <p className="mt-1.5 text-center text-[10px] text-faint">
-                  재료마다 <b>최적의 시간</b>이 있어요 — 정확히 맞추면{" "}
-                  <b className="text-violet-500">완벽한</b>, 크게 벗어나면{" "}
-                  <b className="text-red-400">약한</b> 포션이 됩니다.
+                  한 칸에는 재료 1개만 들어갑니다. 포션 가격은 선택한 옵션 가격의 합계입니다.
                 </p>
               </section>
             </>
           )}
 
-          {/* ── 레시피 — 익힌 최적 시간으로 바로 달이기 ── */}
+          {/* ── 옵션표 ── */}
           {tab === "book" && (
             <div className="space-y-2">
-              {masteredRecipes.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex gap-1 overflow-x-auto rounded-2xl bg-surface/70 p-1">
-                    {[
-                      { key: "all", label: `전체 ${masteredRecipes.length}` },
-                      ...recipeRanks.map((rank) => ({
-                        key: rank,
-                        label: `${rank} ${
-                          masteredRecipes.filter((recipe) => recipe.rank === rank).length
-                        }`,
-                      })),
-                    ].map((filter) => (
-                      <button
-                        key={filter.key}
-                        type="button"
-                        onClick={() => setBookRank(filter.key)}
-                        className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-black transition ${
-                          bookRank === filter.key
-                            ? "bg-white text-brand-600 shadow-sm"
-                            : "text-muted hover:text-content"
-                        }`}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={bookFilter}
-                      onChange={(e) => setBookFilter(e.target.value)}
-                      placeholder="레시피·재료 검색"
-                      className="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm text-content placeholder:text-faint2 focus:border-brand-300 focus:outline-none"
-                    />
-                    <span className="shrink-0 text-[11px] font-bold text-faint">
-                      {filteredMasteredRecipes.length}개
-                    </span>
-                  </div>
-                </div>
-              )}
-              {filteredMasteredRecipes.map((recipe) => {
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={bookFilter}
+                  onChange={(e) => setBookFilter(e.target.value)}
+                  placeholder="옵션·효과·재료 검색"
+                  className="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm text-content placeholder:text-faint2 focus:border-brand-300 focus:outline-none"
+                />
+                <span className="shrink-0 text-[11px] font-bold text-faint">
+                  {alchemy.recipes.length}개
+                </span>
+              </div>
+              {alchemy.recipes
+                .filter((option) => {
+                  const keyword = bookFilter.trim();
+                  if (!keyword) return true;
+                  return `${option.name} ${option.category} ${option.effect ?? ""} ${
+                    option.requiredMaterials.map((item) => item.name).join(" ")
+                  }`.includes(keyword);
+                })
+                .map((recipe) => {
                 const style = rankStyle(recipe.rank);
-                const affordable = canAfford(recipe);
                 return (
                   <div key={recipe.id} className={`rounded-2xl border ${style.ring} bg-subtle p-3.5`}>
                     <div className="flex items-center justify-between gap-2">
@@ -718,68 +712,29 @@ export default function AlchemyLab({
                         <span
                           className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-black ${style.chip}`}
                         >
-                          {recipe.rank} {style.label}
+                          {recipe.category}
                         </span>
                       </p>
                       <span className="shrink-0 text-xs font-black text-amber-600">
-                        {recipe.sellPrice.toLocaleString()}G
+                        {recipe.pointCost}pt · {recipe.optionPrice.toLocaleString()}G
                       </span>
                     </div>
-                    <p className="mt-1.5 text-[11px] font-bold text-muted">
-                      재료: {recipe.ingredients}
-                    </p>
-                    <p className="mt-1 text-[11px] font-bold text-faint">
-                      숙련: {recipe.masteryRank} · {recipe.masteryExp}
-                      {recipe.nextMastery ? `/${recipe.nextMastery}` : ""}
-                    </p>
                     {recipe.effect && (
                       <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-faint">
                         {recipe.effect}
                       </p>
                     )}
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {recipe.perfectEffect && (
-                        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
-                          ✨완벽 — {recipe.perfectEffect}
-                        </span>
-                      )}
-                      {recipe.masteryRank !== "기본" && recipe.adeptPerfectEffect && (
-                        <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-600 dark:bg-sky-950/40 dark:text-sky-300">
-                          고급 — {recipe.adeptPerfectEffect}
-                        </span>
-                      )}
-                      {recipe.masteryRank === "장인" && recipe.masterPerfectEffect && (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-300">
-                          명품 — {recipe.masterPerfectEffect}
-                        </span>
-                      )}
-                      <form action={startAction} className="ml-auto">
-                        <input type="hidden" name="recipeId" value={recipe.id} />
-                        <button
-                          type="submit"
-                          disabled={
-                            startPending ||
-                            !affordable ||
-                            !!alchemy.brewing ||
-                            alchemy.ap < BREW_AP_COST
-                          }
-                          className="rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:opacity-40"
-                        >
-                          ⏱ {recipe.bestMinutes}분 · 바로 달이기
-                        </button>
-                      </form>
-                    </div>
+                    {recipe.requiredMaterials.length > 0 && (
+                      <p className="mt-1 text-[11px] font-bold text-amber-600">
+                        특수 재료: {recipe.requiredMaterials.map((item) => item.name).join(", ")}
+                      </p>
+                    )}
                   </div>
                 );
               })}
-              {masteredRecipes.length === 0 && (
+              {alchemy.recipes.length === 0 && (
                 <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
-                  아직 최적 시간을 익힌 포션이 없어요. 실험 가마에서 완벽 제조를 해보세요.
-                </p>
-              )}
-              {masteredRecipes.length > 0 && filteredMasteredRecipes.length === 0 && (
-                <p className="rounded-xl bg-subtle px-3 py-6 text-center text-xs font-bold text-faint">
-                  조건에 맞는 확정 레시피가 없어요.
+                  포션 탭에 등록된 옵션이 없어요.
                 </p>
               )}
             </div>
@@ -855,12 +810,13 @@ export default function AlchemyLab({
           accent="violet"
           sources={pickerSources}
           initial={Object.fromEntries(pot.map((entry) => [entry.name, entry.qty]))}
-          maxTypes={POT_TYPE_MAX}
+          maxTypes={maxIngredients}
+          maxUnits={maxIngredients}
           onConfirm={(draft) =>
             setPot(
               Object.entries(draft)
                 .filter(([, qty]) => qty > 0)
-                .map(([name, qty]) => ({ name, qty })),
+                .map(([name]) => ({ name, qty: 1 })),
             )
           }
           onClose={() => setPickerOpen(false)}
