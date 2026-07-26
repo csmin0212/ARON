@@ -656,8 +656,78 @@ export function parseRecipesGrid(g: string[][]): RecipeRow[] {
 }
 
 // ── 포션(연금술) 탭 ──
-// 포션ID | 이름 | 분류 | 등급 | 필요시설 | 재료 | 결과 | 효과 | 지속 | 숙련도 | 태그 | 공개 | 판매가 | 최적시간(분) | 오차(분) | 완벽효과
+// 새 형식: 옵션ID | 이름 | 분류 | 필요포인트 | 필요재료 | 효과 | 판매가 | 태그 | 공개
+// 하위호환: 포션ID | 이름 | 분류 | 등급 | 필요시설 | 재료 | 결과 | 효과 | ...
 export function parsePotionsGrid(g: string[][]): PotionRow[] {
+  const optionHeader = findHeader(g, ["이름", "포인트"], {
+    옵션ID: "id",
+    포션ID: "id",
+    레시피ID: "id",
+    ID: "id",
+    id: "id",
+    이름: "name",
+    분류: "category",
+    등급: "rank",
+    필요시설: "facility",
+    시설: "facility",
+    필요재료: "ingredients",
+    "필요 재료": "ingredients",
+    특수재료: "ingredients",
+    "특수 재료": "ingredients",
+    재료: "ingredients",
+    결과: "result",
+    필요포인트: "pointCost",
+    "필요 포인트": "pointCost",
+    포인트: "pointCost",
+    연금포인트: "pointCost",
+    "연금 포인트": "pointCost",
+    판매가: "sellPrice",
+    중량: "weight",
+    효과: "effect",
+    지속: "duration",
+    태그: "tags",
+    공개: "isPublic",
+  });
+  if (optionHeader) {
+    const rows: PotionRow[] = [];
+    const seen = new Set<string>();
+    for (let r = optionHeader.row + 1; r < g.length; r++) {
+      const name = at(g, r, optionHeader.col.name);
+      if (!name) continue;
+      const pointCost = Math.max(0, num(at(g, r, optionHeader.col.pointCost)) ?? 0);
+      const id = at(g, r, optionHeader.col.id) || name;
+      if (/[,，]/.test(id)) throw new Error(`포션 옵션ID '${id}' 에는 쉼표를 쓸 수 없어요.`);
+      if (seen.has(id)) throw new Error(`포션 옵션ID '${id}' 가 중복됐어요.`);
+      seen.add(id);
+      const publicRaw = at(g, r, optionHeader.col.isPublic);
+      const result = parseIngredients(at(g, r, optionHeader.col.result))[0];
+      rows.push({
+        id,
+        name,
+        category: at(g, r, optionHeader.col.category) || "일반옵션",
+        rank: at(g, r, optionHeader.col.rank) || "R1",
+        facility: at(g, r, optionHeader.col.facility) || "연금술 공방",
+        ingredients: parseIngredients(at(g, r, optionHeader.col.ingredients)),
+        resultName: result?.name ?? "조제 포션",
+        resultQty: result?.qty ?? 1,
+        effect: at(g, r, optionHeader.col.effect) || null,
+        duration: at(g, r, optionHeader.col.duration) || null,
+        skillExp: pointCost,
+        tags: at(g, r, optionHeader.col.tags) || null,
+        sellPrice: num(at(g, r, optionHeader.col.sellPrice)) ?? 0,
+        weight: num(at(g, r, optionHeader.col.weight)) ?? 1,
+        isPublic: /^(y|yes|true|1|공개)$/i.test(publicRaw),
+        bestMinutes: 5,
+        tolerance: 0,
+        perfectEffect: null,
+        adeptPerfectEffect: null,
+        masterPerfectEffect: null,
+      });
+    }
+    if (rows.length === 0) throw new Error("포션 탭에 옵션이 없어요.");
+    return rows;
+  }
+
   const h = findHeader(g, ["이름", "재료", "최적시간"], {
     포션ID: "id",
     레시피ID: "id",

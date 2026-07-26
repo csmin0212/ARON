@@ -15,9 +15,13 @@ import {
   type AlchemyState,
 } from "@/app/actions/services";
 import {
+  ALCHEMY_BASE_POTION_NAME,
   BREW_AP_COST,
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
+  alchemyLabSlotLimit,
+  alchemyMaterialPoints,
+  customPotionSellPrice,
   parsePotionName,
 } from "@/lib/alchemy";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
@@ -44,6 +48,9 @@ export type AlchemyRecipeView = {
   perfectEffect: string | null; // mastered 일 때만 값이 있음
   adeptPerfectEffect: string | null;
   masterPerfectEffect: string | null;
+  pointCost: number;
+  requiredMaterials: { name: string; qty: number }[];
+  optionPrice: number;
 };
 
 export type AlchemyBrewingView = {
@@ -78,16 +85,15 @@ export type AlchemyView = {
   level: number;
   masterCount: number;
   recipeCount: number;
+  maxIngredients: number;
   recipes: AlchemyRecipeView[];
   brewing: AlchemyBrewingView | null;
   potions: AlchemyPotionView[];
   accelerators: AlchemyAcceleratorView[];
 };
 
-type LifeItemLike = { name: string; qty: number; sourceKind?: "낚시" | "채집" | "채광" };
+type LifeItemLike = { name: string; qty: number; rank?: number; sourceKind?: "낚시" | "채집" | "채광" };
 type PotEntry = { name: string; qty: number };
-
-const POT_TYPE_MAX = 5; // 재료 종류 칸 수 — 모든 레시피가 5종 이하
 
 const RANK_STYLE: Record<string, { chip: string; ring: string; label: string }> = {
   R1: { chip: "bg-emerald-50 text-emerald-600", ring: "border-emerald-200", label: "★☆☆" },
@@ -108,6 +114,13 @@ function sortedRanks(ranks: string[]): string[] {
   return [...new Set(ranks.filter(Boolean))].sort(
     (a, b) => rankOrder(a) - rankOrder(b) || a.localeCompare(b, "ko"),
   );
+}
+
+function rankFromNote(note: string | null | undefined): number | null {
+  const match = (note ?? "").match(/R\s*(\d+)/i);
+  if (!match) return null;
+  const rank = Number(match[1]);
+  return Number.isFinite(rank) ? rank : null;
 }
 
 function StateLine({ state }: { state: AlchemyState }) {
@@ -200,11 +213,12 @@ export default function AlchemyLab({
   alchemy: AlchemyView;
   inventoryItems: SheetInventoryItem[];
   lifeItems: LifeItemLike[];
-  storageItems?: SheetInventoryItem[];
+  storageItems?: (SheetInventoryItem & { sourceKind?: string })[];
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"brew" | "book" | "sell">("brew");
   const [pot, setPot] = useState<PotEntry[]>([]);
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [minutes, setMinutes] = useState(7);
   const [now, setNow] = useState(() => Date.now());
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -262,14 +276,30 @@ export default function AlchemyLab({
     return (name: string) => counts.get(name.trim()) ?? 0;
   }, [inventoryItems, lifeItems, storageItems]);
 
-  // 재료 후보 — 레시피에 등장하는 재료만
+  const materialRanks = useMemo(() => {
+    const ranks = new Map<string, number>();
+    for (const item of lifeItems) {
+      const rank = item.rank ?? rankFromNote(null);
+      if (rank != null) ranks.set(item.name.trim(), rank);
+    }
+    for (const item of storageItems ?? []) {
+      if (item.sourceKind !== "낚시" && item.sourceKind !== "채집" && item.sourceKind !== "채광") continue;
+      const rank = rankFromNote(item.effect);
+      if (rank != null) ranks.set(item.name.trim(), rank);
+    }
+    return ranks;
+  }, [lifeItems, storageItems]);
+
+  const materialPointOf = (name: string) => alchemyMaterialPoints(materialRanks.get(name.trim()) ?? 0);
+
+  // 재료 후보 — 연금 포인트가 붙는 생활 재료만
   const drawerNames = useMemo(() => {
     const names = new Set<string>();
-    for (const recipe of alchemy.recipes) {
-      for (const ingredient of recipe.ingredientList) names.add(ingredient.name);
+    for (const [name, rank] of materialRanks) {
+      if (alchemyMaterialPoints(rank) > 0) names.add(name);
     }
     return names;
-  }, [alchemy.recipes]);
+  }, [materialRanks]);
 
   // 재료 팝업 소스 — 가방별 탭 (휴대품은 등급 붙은 포션도 기본 이름으로 합산)
   const pickerSources = useMemo<PickerSource[]>(() => {

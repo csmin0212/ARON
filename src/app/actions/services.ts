@@ -29,14 +29,19 @@ import {
   rollPerkOptions,
 } from "@/lib/lifeSkillPerks";
 import {
+  ALCHEMY_BASE_POTION_NAME,
   BREW_AP_COST,
   BREW_MAX_MINUTES,
   BREW_MIN_MINUTES,
   WEAK_PRICE_MULT,
   alchemyAcceleratorEffect,
   alchemyAcceleratorMinutes,
+  alchemyLabSlotLimit,
+  alchemyMaterialPoints,
   brewHint,
   buildPotionName,
+  buildCustomPotionName,
+  customPotionSellPrice,
   judgeBrew,
   mergePotionPerfectEffect,
   parsePendingBrew,
@@ -1577,6 +1582,41 @@ async function consumeBrewIngredient(
   }
 }
 
+async function alchemyIngredientPoints(name: string): Promise<number | null> {
+  await loadLifeItems();
+  for (const kind of ["채집", "낚시", "채광"] as const) {
+    const item = findLifeSkillItem(kind, name);
+    if (item) return alchemyMaterialPoints(item.rank);
+  }
+  return null;
+}
+
+function selectedOptionIds(formData: FormData): string[] {
+  return [
+    ...new Set(
+      formData
+        .getAll("optionId")
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function optionPointCost(option: { skillExp: number }): number {
+  return Math.max(0, option.skillExp);
+}
+
+function optionRequiredMaterials(option: { ingredientsJson: string }): { name: string; qty: number }[] {
+  return parseRecipeIngredients(option.ingredientsJson).filter((ingredient) => ingredient.qty > 0);
+}
+
+function optionEffectLine(option: { name: string; effect: string | null; duration: string | null }): string {
+  const effect = option.effect?.trim();
+  const duration = option.duration?.trim();
+  if (!effect && !duration) return option.name;
+  return `${option.name}: ${effect ?? ""}${duration ? ` (${duration})` : ""}`.trim();
+}
+
 export async function startBrew(_prev: AlchemyState, formData: FormData): Promise<AlchemyState> {
   const ctx = await currentSheet();
   if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
@@ -1601,11 +1641,22 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   const life = parseLifeState(sheet?.lifeJson);
   const storageIngredients = await loadStorageIngredients(ctx.userId);
 
-  // 두 가지 진입로 — ① 레시피 탭(recipeId): 완벽 제조로 최적 시간을 익힌 포션만,
-  // 최적 시간으로 바로 가마에 올린다. ② 가마(재료 조합 + 시간): 요리처럼 조합을 맞춰 실험.
+  // 두 가지 진입로 — ① 구형 recipeId: 하위호환. ② 새 가마: 재료 포인트 안에서 옵션 선택.
   const recipeId = String(formData.get("recipeId") ?? "").trim();
   let recipe: Awaited<ReturnType<typeof prisma.alchemyRecipe.findFirst>>;
   let minutes: number;
+  let customBrew:
+    | {
+        optionIds: string[];
+        ingredients: { name: string; qty: number }[];
+        resultName: string;
+        effect: string;
+        price: number;
+        weight: number;
+        availablePoints: number;
+        spentPoints: number;
+      }
+    | null = null;
   if (recipeId) {
     recipe = await prisma.alchemyRecipe.findUnique({ where: { id: recipeId } });
     if (!recipe) return { error: "포션 목록에 없는 레시피예요." };
@@ -1619,16 +1670,63 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
       return { error: `제조 시간은 ${BREW_MIN_MINUTES}~${BREW_MAX_MINUTES}분 사이로 정해주세요.` };
     }
     const potIngredients = ingredientsFromForm(formData);
-    if (potIngredients.length === 0) return { error: "재료를 하나 이상 넣어주세요." };
-    const recipes = await prisma.alchemyRecipe.findMany({ orderBy: { order: "asc" } });
-    const key = ingredientKey(potIngredients);
-    recipe =
-      recipes.find((item) => ingredientKey(parseRecipeIngredients(item.ingredientsJson)) === key) ??
-      null;
-    // 조합 불일치는 아무것도 소모하지 않는다 — 연금술의 수수께끼는 조합이 아니라 '시간'.
-    if (!recipe) {
-      return { error: "가마가 부글거리기만 한다… 조합이 맞지 않아요. (재료는 소모되지 않았어요)" };
+    const totalIngredients = potIngredients.reduce((sum, ingredient) => sum + ingredient.qty, 0);
+    const maxIngredients = alchemyLabSlotLimit(lab.tier);
+    if (totalIngredients <= 0) return { error: "재료를 하나 이상 넣어주세요." };
+    if (totalIngredients > maxIngredients) {
+      return { error: `이 연금술 테이블에는 재료를 최대 ${maxIngredients}개까지만 넣을 수 있어요.` };
     }
+    const stacked = potIngredients.find((ingredient) => ingredient.qty > 1);
+    if (stacked) return { error: `${stacked.name}은(는) 한 칸에 1개만 넣을 수 있어요.` };
+
+    const optionIds = selectedOptionIds(formData);
+    if (optionIds.length === 0) return { error: "포션에 넣을 옵션을 하나 이상 선택해주세요." };
+    const options = await prisma.alchemyRecipe.findMany({
+      where: { id: { in: optionIds } },
+      orderBy: { order: "asc" },
+    });
+    if (options.length !== optionIds.length) return { error: "존재하지 않는 연금 옵션이 포함되어 있어요." };
+
+    let availablePoints = 0;
+    for (const ingredient of potIngredients) {
+      const points = await alchemyIngredientPoints(ingredient.name);
+      if (points == null) return { error: `${ingredient.name}은(는) 연금 재료로 등록되어 있지 않아요.` };
+      if (points <= 0) return { error: `${ingredient.name}은(는) 연금 포인트가 없습니다.` };
+      availablePoints += points;
+    }
+    const spentPoints = options.reduce((sum, option) => sum + optionPointCost(option), 0);
+    if (spentPoints > availablePoints) {
+      return { error: `연금 포인트가 부족합니다. (${spentPoints}/${availablePoints})` };
+    }
+
+    for (const option of options) {
+      for (const required of optionRequiredMaterials(option)) {
+        const included = potIngredients.find((ingredient) => ingredient.name === required.name)?.qty ?? 0;
+        if (included < required.qty) {
+          return { error: `${option.name} 옵션은 ${required.name} 재료가 필요합니다.` };
+        }
+      }
+    }
+
+    const price = options.reduce((sum, option) => sum + Math.max(0, option.sellPrice), 0);
+    const resultName = buildCustomPotionName(options.map((option) => option.name));
+    const effectLines = [
+      ...options.map(optionEffectLine),
+      `재료 ${potIngredients.map((ingredient) => ingredient.name).join(", ")}`,
+      `연금 포인트 ${spentPoints}/${availablePoints}`,
+      `판매가 ${price.toLocaleString()}G`,
+    ];
+    customBrew = {
+      optionIds,
+      ingredients: potIngredients,
+      resultName,
+      effect: effectLines.join("\n"),
+      price,
+      weight: 1,
+      availablePoints,
+      spentPoints,
+    };
+    recipe = null;
   }
 
   const fresh = regenFatigue(ctx.ap, ctx.apResetAt);
@@ -1636,7 +1734,7 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     return { error: `피로도가 부족합니다. (${fresh.value}/${BREW_AP_COST})` };
   }
 
-  const ingredients = parseRecipeIngredients(recipe.ingredientsJson);
+  const ingredients = customBrew?.ingredients ?? parseRecipeIngredients(recipe.ingredientsJson);
   for (const ingredient of ingredients) {
     const have = availableBrewQty(ctx.inv, life, storageIngredients, ingredient.name);
     if (have < ingredient.qty) {
@@ -1659,7 +1757,13 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
   const now = Date.now();
   const pending = {
-    recipeId: recipe.id,
+    recipeId: recipe?.id ?? `custom:${now}`,
+    optionIds: customBrew?.optionIds,
+    ingredientNames: customBrew?.ingredients.map((ingredient) => ingredient.name),
+    resultName: customBrew?.resultName,
+    effect: customBrew?.effect,
+    price: customBrew?.price,
+    weight: customBrew?.weight,
     minutes,
     startedAt: now,
     readyAt: now + minutes * 60_000,
@@ -1677,7 +1781,9 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
   revalidatePath("/world");
   return {
-    ok: `⚗️ ${recipe.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
+    ok: customBrew
+      ? `⚗️ ${customBrew.resultName} 제조 시작! 포인트 ${customBrew.spentPoints}/${customBrew.availablePoints}. ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`
+      : `⚗️ ${recipe.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
   };
 }
 
@@ -1722,6 +1828,45 @@ export async function collectBrew(): Promise<AlchemyState> {
   if (now < pending.readyAt) {
     const left = Math.ceil((pending.readyAt - now) / 60_000);
     return { error: `아직 끓는 중이에요. 약 ${left}분 남았어요.` };
+  }
+
+  if (pending.resultName && pending.effect) {
+    const inv = addInvItem(
+      ctx.inv,
+      {
+        name: pending.resultName,
+        effect: pending.effect,
+        weight: pending.weight ?? 1,
+      },
+      1,
+    );
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    const overflow = inventoryWeightOverflowMessage(inv);
+    if (overflow) return { error: overflow };
+
+    const achStats = bumpStat(sheet?.achStatsJson, "연금성공횟수");
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          pendingBrewJson: null,
+          achStatsJson: achStats,
+        },
+      }),
+      incrementDbInventory(ctx.userId, pending.resultName, 1),
+    ]);
+    void appendSheetItem(ctx.tab, pending.resultName, 1, {
+      effect: pending.effect,
+      weight: pending.weight ?? 1,
+    });
+    await checkAndGrant(ctx.userId);
+
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return {
+      ok: `⚗️ ${pending.resultName} x1 완성. 판매가 ${(pending.price ?? customPotionSellPrice(pending.effect) ?? 0).toLocaleString()}G`,
+    };
   }
 
   const recipe = await prisma.alchemyRecipe.findUnique({ where: { id: pending.recipeId } });
@@ -1899,7 +2044,7 @@ export async function sellPotion(_prev: AlchemyState, formData: FormData): Promi
   if (!itemName) return { error: "판매할 포션이 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
 
-  const unitPrice = await potionSellPrice(itemName);
+  const unitPrice = await potionSellPrice(itemName, findInvItem(ctx.inv, itemName)?.effect);
   if (!unitPrice) return { error: "포션 판매가를 찾지 못했습니다." };
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);

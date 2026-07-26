@@ -91,8 +91,11 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { parseCookedName } from "@/lib/auction";
 import {
+  ALCHEMY_BASE_POTION_NAME,
   WEAK_PRICE_MULT,
   alchemyAcceleratorMinutes,
+  alchemyLabSlotLimit,
+  customPotionSellPrice,
   parsePendingBrew,
   parsePotionName,
 } from "@/lib/alchemy";
@@ -526,6 +529,7 @@ export default async function WorldPage() {
     life.bags[kind].items.map((item) => ({
       sourceKind: kind,
       name: item.name,
+      rank: item.rank,
       effect: `R${item.rank} · ${item.text}`,
       weight: item.weight,
       qty: item.qty,
@@ -1004,6 +1008,9 @@ export default async function WorldPage() {
       perfectEffect: mastered ? recipe.perfectEffect : null,
       adeptPerfectEffect: mastered ? recipe.perfectEffect : null,
       masterPerfectEffect: null,
+      pointCost: Math.max(0, recipe.skillExp),
+      requiredMaterials: ingredientList,
+      optionPrice: Math.max(0, recipe.sellPrice),
     };
   });
   const potionPrice = new Map(alchemyRecipes.map((recipe) => [recipe.resultName, recipe.sellPrice]));
@@ -1013,6 +1020,10 @@ export default async function WorldPage() {
         .map((item) => {
           const raw = item.name.trim();
           const { base, modifier, grade } = parsePotionName(raw);
+          if (base === ALCHEMY_BASE_POTION_NAME || base.startsWith(`${ALCHEMY_BASE_POTION_NAME} (`)) {
+            const unitPrice = customPotionSellPrice(item.effect);
+            return unitPrice != null ? { name: raw, qty: item.qty, unitPrice, effect: item.effect } : null;
+          }
           if (!potionPrice.has(base)) return null;
           const acceleratorMinutes = alchemyAcceleratorMinutes(raw, item.effect);
           const basePrice = Math.round((potionPrice.get(base) ?? 1) * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
@@ -1058,6 +1069,7 @@ export default async function WorldPage() {
     level: alchemyLevel(life),
     masterCount: alchemyMasterCount(life),
     recipeCount: alchemyRecipes.length,
+    maxIngredients: alchemyLabSlotLimit(alchemyLab?.tier ?? 1),
     recipes: alchemyRecipeViews,
     brewing,
     potions: potionsForSale,

@@ -7,6 +7,8 @@
 export const BREW_AP_COST = 10;
 export const BREW_MIN_MINUTES = 1;
 export const BREW_MAX_MINUTES = 30;
+export const ALCHEMY_BASE_POTION_NAME = "조제 포션";
+export const ALCHEMY_OPTION_PRICE_PATTERN = /판매가\s*([0-9,]+)\s*G/;
 
 export type BrewModifier = "완벽한" | "약한" | null;
 
@@ -76,6 +78,34 @@ export function parsePotionName(raw: string): {
 export function alchemyGradeInfo(grade: string | null): { priceMult: number } | null {
   if (!grade) return null;
   return ALCHEMY_GRADE_INFO[grade] ?? null;
+}
+
+export function alchemyMaterialPoints(rank: number): number {
+  if (rank >= 5) return 25;
+  if (rank === 4) return 10;
+  if (rank === 3) return 5;
+  if (rank === 2) return 3;
+  if (rank === 1) return 1;
+  return 0;
+}
+
+export function alchemyLabSlotLimit(tier: number | null | undefined): number {
+  if ((tier ?? 0) >= 3) return 5;
+  if ((tier ?? 0) >= 2) return 4;
+  return 3;
+}
+
+export function buildCustomPotionName(optionNames: string[]): string {
+  const labels = optionNames.map((name) => name.trim()).filter(Boolean);
+  if (labels.length === 0) return ALCHEMY_BASE_POTION_NAME;
+  return `${ALCHEMY_BASE_POTION_NAME} (${labels.join(", ")})`;
+}
+
+export function customPotionSellPrice(effectText?: string | null): number | null {
+  const match = (effectText ?? "").match(ALCHEMY_OPTION_PRICE_PATTERN);
+  if (!match) return null;
+  const price = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(price) && price > 0 ? price : null;
 }
 
 export function alchemyAcceleratorMinutes(
@@ -185,6 +215,12 @@ export function mergePotionPerfectEffect(
 // 진행 중인 제조 상태 (CharacterSheet.pendingBrewJson)
 export type PendingBrew = {
   recipeId: string;
+  optionIds?: string[];
+  ingredientNames?: string[];
+  resultName?: string;
+  effect?: string;
+  price?: number;
+  weight?: number;
   minutes: number;
   startedAt: number; // epoch ms
   readyAt: number; // epoch ms
@@ -203,6 +239,16 @@ export function parsePendingBrew(json: string | null | undefined): PendingBrew |
     }
     return {
       recipeId: v.recipeId,
+      optionIds: Array.isArray(v.optionIds)
+        ? v.optionIds.map((item) => String(item ?? "").trim()).filter(Boolean)
+        : undefined,
+      ingredientNames: Array.isArray(v.ingredientNames)
+        ? v.ingredientNames.map((item) => String(item ?? "").trim()).filter(Boolean)
+        : undefined,
+      resultName: typeof v.resultName === "string" ? v.resultName : undefined,
+      effect: typeof v.effect === "string" ? v.effect : undefined,
+      price: typeof v.price === "number" && Number.isFinite(v.price) ? v.price : undefined,
+      weight: typeof v.weight === "number" && Number.isFinite(v.weight) ? v.weight : undefined,
       minutes: v.minutes,
       startedAt: typeof v.startedAt === "number" ? v.startedAt : v.readyAt - v.minutes * 60_000,
       readyAt: v.readyAt,

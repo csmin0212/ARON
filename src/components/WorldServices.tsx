@@ -226,6 +226,7 @@ export type StorageItemView = SheetInventoryItem & {
 
 export type LifeStorageItemView = SheetInventoryItem & {
   sourceKind: "낚시" | "채집" | "채광";
+  rank?: number;
 };
 
 export type LifeShopView = {
