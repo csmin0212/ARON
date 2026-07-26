@@ -680,10 +680,10 @@ export function parseRecipesGrid(g: string[][]): RecipeRow[] {
 }
 
 // ── 포션(연금술) 탭 ──
-// 새 형식: 옵션ID | 이름 | 분류 | 필요포인트 | 필요재료 | 효과 | 판매가 | 태그 | 공개
+// 새 형식: 옵션ID | 이름 | 분류 | 필요포인트 | 필요재료 | 효과 | 판매가 | 공개 | 지속 | 중복가능 | 중복증가
 // 하위호환: 포션ID | 이름 | 분류 | 등급 | 필요시설 | 재료 | 결과 | 효과 | ...
 export function parsePotionsGrid(g: string[][]): PotionRow[] {
-  const optionHeader = findHeader(g, ["이름", "포인트"], {
+  const optionAliases = {
     옵션ID: "id",
     포션ID: "id",
     레시피ID: "id",
@@ -720,7 +720,13 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
     "중복시 증가": "repeatPointStep",
     중복포인트증가: "repeatPointStep",
     "중복 포인트 증가": "repeatPointStep",
-  });
+  };
+  const optionHeader =
+    findHeader(g, ["이름", "필요포인트"], optionAliases) ??
+    findHeader(g, ["이름", "필요 포인트"], optionAliases) ??
+    findHeader(g, ["이름", "연금포인트"], optionAliases) ??
+    findHeader(g, ["이름", "연금 포인트"], optionAliases) ??
+    findHeader(g, ["이름", "포인트"], optionAliases);
   if (optionHeader) {
     const rows: PotionRow[] = [];
     const seen = new Set<string>();
@@ -752,7 +758,7 @@ export function parsePotionsGrid(g: string[][]): PotionRow[] {
         duration: at(g, r, optionHeader.col.duration) || null,
         skillExp: pointCost,
         tags,
-        sellPrice: num(at(g, r, optionHeader.col.sellPrice)) ?? 0,
+        sellPrice: num(at(g, r, optionHeader.col.sellPrice)) ?? pointCost * 5,
         weight: num(at(g, r, optionHeader.col.weight)) ?? 1,
         isPublic: /^(y|yes|true|1|공개)$/i.test(publicRaw),
         bestMinutes: 5,
