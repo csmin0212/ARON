@@ -112,13 +112,6 @@ function StateLine({ state }: { state: AlchemyState }) {
   );
 }
 
-function formatClock(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 // 끓는 가마 — CSS 애니메이션 연출
 function Cauldron({ boiling }: { boiling: boolean }) {
   return (
@@ -186,7 +179,6 @@ export default function AlchemyLab({
   const [pot, setPot] = useState<PotEntry[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [customName, setCustomName] = useState("");
-  const [now, setNow] = useState(() => Date.now());
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const [startState, startAction, startPending] = useActionState<AlchemyState, FormData>(
@@ -201,13 +193,6 @@ export default function AlchemyLab({
     cancelBrew,
     undefined,
   );
-
-  // 1초 시계 — 끓는 동안 카운트다운
-  useEffect(() => {
-    if (!alchemy.brewing) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [alchemy.brewing]);
 
   useEffect(() => {
     if (pot.length === 0) {
@@ -362,10 +347,6 @@ export default function AlchemyLab({
   const potSlots = Array.from({ length: maxIngredients }, (_, i) => pot[i] ?? null);
 
   const brewing = alchemy.brewing;
-  const remainMs = brewing ? brewing.readyAt - now : 0;
-  const ready = brewing ? remainMs <= 0 : false;
-  const totalMs = brewing ? Math.max(1, brewing.readyAt - brewing.startedAt) : 1;
-  const progress = brewing ? Math.min(100, Math.max(0, ((totalMs - remainMs) / totalMs) * 100)) : 0;
 
   return (
     <div
@@ -438,31 +419,21 @@ export default function AlchemyLab({
           <StateLine state={collectState} />
           <StateLine state={cancelState} />
 
-          {/* ── 가마: 끓는 중 ── */}
+          {/* ── 가마: 완성 ── */}
           {brewing && (
             <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50 to-fuchsia-50 p-5 text-center dark:from-violet-950/40 dark:to-fuchsia-950/30">
-              <Cauldron boiling={!ready} />
+              <Cauldron boiling={false} />
               <p className="mt-2 text-lg font-extrabold text-content">
-                {ready ? "✨ 완성! 가마를 열어보세요" : `${brewing.recipeName} 끓는 중…`}
+                ✨ {brewing.recipeName} 완성!
               </p>
-              <p
-                className={`mt-3 font-mono text-4xl font-black tabular-nums ${
-                  ready ? "text-emerald-500" : "text-violet-600 dark:text-violet-300"
-                }`}
-              >
-                {ready ? "00:00" : formatClock(remainMs)}
+              <p className="mt-1 text-sm font-bold text-violet-600 dark:text-violet-300">
+                가마를 열어 수령하세요.
               </p>
-              <div className="mx-auto mt-3 h-2.5 max-w-sm overflow-hidden rounded-full bg-surface">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <form action={collectAction}>
                   <button
                     type="submit"
-                    disabled={!ready || collectPending}
+                    disabled={collectPending}
                     className="rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-6 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:opacity-90 disabled:opacity-40"
                   >
                     {collectPending ? "여는 중…" : "⚗️ 가마 열기"}

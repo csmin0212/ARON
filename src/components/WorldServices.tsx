@@ -287,8 +287,8 @@ export type BlackMarketView = {
     id: string;
     name: string;
     price: number;
-    level: number;
-    rank: string;
+    optionLabel: string;
+    optionNames: string[];
     total: number;
     unlocked: number;
   }[];
@@ -2320,7 +2320,7 @@ function AlchemyBookShop({
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-extrabold text-content">{book.name}</span>
                       <span className="mt-0.5 block text-[11px] text-faint">
-                        {book.level}레벨 전체 레시피 해금 · {book.unlocked}/{book.total}
+                        {book.optionLabel} 옵션 해금 · {book.unlocked}/{book.total}
                       </span>
                     </span>
                     <span className="shrink-0 text-xs font-black text-amber-500">

@@ -175,9 +175,34 @@ const FOOD_ITEMS = [
 ] as const;
 
 const ALCHEMY_BOOK_ITEMS = [
-  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 3000, rank: "R1", level: 1 },
-  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 10000, rank: "R2", level: 2 },
-  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 30000, rank: "R3", level: 3 },
+  {
+    id: "alchemy_special_recipe_1",
+    name: "특별한 레시피 1",
+    price: 2000,
+    optionLabel: "페이트 회복 +1",
+    optionNames: ["페이트 회복 +1"],
+  },
+  {
+    id: "alchemy_special_recipe_2",
+    name: "특별한 레시피 2",
+    price: 2000,
+    optionLabel: "피로도 회복 +20",
+    optionNames: ["피로도 회복 +20"],
+  },
+  {
+    id: "alchemy_special_recipe_3",
+    name: "특별한 레시피 3",
+    price: 2000,
+    optionLabel: "HP 50%(소숫점 올림) 회복",
+    optionNames: ["HP 50%(소숫점 올림) 회복", "HP 50% 회복"],
+  },
+  {
+    id: "alchemy_special_recipe_4",
+    name: "특별한 레시피 4",
+    price: 2000,
+    optionLabel: "MP 50%(소숫점 올림) 회복",
+    optionNames: ["MP 50%(소숫점 올림) 회복", "MP 50% 회복"],
+  },
 ] as const;
 
 type LifeShopProduct =
@@ -1291,22 +1316,22 @@ export async function buyAlchemyBook(
     select: { lifeJson: true },
   });
   const life = parseLifeState(sheet?.lifeJson);
-  const recipes = await prisma.alchemyRecipe.findMany({
-    where: { rank: product.rank },
-    select: { id: true },
-    orderBy: { order: "asc" },
+  const recipe = await prisma.alchemyRecipe.findFirst({
+    where: {
+      OR: product.optionNames.flatMap((name) => [{ id: name }, { name }]),
+    },
+    select: { id: true, name: true },
   });
-  if (recipes.length === 0) {
-    return { error: `${product.level}레벨 연금술 레시피가 아직 동기화되지 않았습니다.` };
+  if (!recipe) {
+    return { error: `${product.optionLabel} 옵션이 아직 동기화되지 않았습니다.` };
   }
 
   const known = new Set(life.alchemyPerfect);
-  const newRecipeIds = recipes.map((recipe) => recipe.id).filter((id) => !known.has(id));
-  if (newRecipeIds.length === 0) {
-    return { error: `${product.level}레벨 연금술 레시피는 이미 전부 열려 있습니다.` };
+  if (known.has(recipe.id)) {
+    return { error: `${recipe.name} 옵션은 이미 열려 있습니다.` };
   }
 
-  life.alchemyPerfect = [...life.alchemyPerfect, ...newRecipeIds];
+  life.alchemyPerfect = [...life.alchemyPerfect, recipe.id];
   const nextGold = currentGold - product.price;
   const inv = ctx.inv;
   inv.gold = `${nextGold}G`;
@@ -1325,14 +1350,14 @@ export async function buyAlchemyBook(
   if (ctx.locationId) {
     await postSystem(
       ctx.locationId,
-      `📚 ${ctx.nickname}님이 ${product.name}을 읽고 ${product.level}레벨 연금술 레시피 ${newRecipeIds.length}개를 익혔습니다.`,
+      `📚 ${ctx.nickname}님이 ${product.name}을 읽고 ${recipe.name} 옵션을 익혔습니다.`,
     );
   }
 
   revalidatePath("/world");
   revalidatePath("/profile");
   return {
-    ok: `${product.name} 구매 완료. ${product.level}레벨 연금술 레시피 ${newRecipeIds.length}개가 열렸습니다.`,
+    ok: `${product.name} 구매 완료. ${recipe.name} 옵션이 열렸습니다.`,
   };
 }
 
@@ -1673,29 +1698,91 @@ function conciseAlchemyOptionEffect(
   copies = 1,
 ): string | null {
   const raw = option.effect?.trim();
-  if (!raw) return option.duration ? `${option.duration} 지속` : null;
-  const effect = scaleAlchemyOptionEffect(raw, copies)
+  if (!raw) return option.duration ? alchemyDurationText(option) : null;
+  const scaled = scaleAlchemyOptionEffect(raw, copies);
+  const action = alchemyActionText(scaled);
+  const duration = alchemyDurationText(option, scaled);
+  const effect = scaled
     .replace(/마이너\s*액션\s*,?\s*/g, "")
     .replace(/메이저\s*액션\s*,?\s*/g, "")
     .replace(/소모품[.。]?/g, "")
-    .replace(/사용자(?:의|에게)?\s*/g, "")
+    .replace(/30\s*분\s*(?:동안\s*)?지속[.。]?/g, "")
+    .replace(/장면\s*종료\s*시\s*까지\s*지속[.。]?/g, "")
+    .replace(/장면\s*종료시까지\s*지속[.。]?/g, "")
+    .replace(/장면이\s*종료될\s*때까지\s*지속[.。]?/g, "")
     .replace(/【(HP|MP)】/g, "$1")
     .replace(/\[(\d+\s*D)\]/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
 
+  const percentRecovery = effect.match(/\b(HP|MP)\s*(?:를|을)?\s*(\d+)\s*%(?:\s*\(([^)]*)\))?\s*회복/i);
+  if (percentRecovery) {
+    const rounding = percentRecovery[3]?.trim() ? `(${percentRecovery[3].trim()})` : "";
+    return [
+      action,
+      `${percentRecovery[1].toUpperCase()}를 ${percentRecovery[2]}%${rounding} 회복합니다.`,
+      duration,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const fateRecovery = effect.match(/페이트\s*(?:를|을)?\s*(?:회복\s*)?\+?\s*(\d+)\s*(?:점)?\s*(?:회복|충전)?/i);
+  if (fateRecovery) {
+    return [action, `페이트를 ${fateRecovery[1]}점 회복합니다.`, duration].filter(Boolean).join(" ");
+  }
+
   const recovery = effect.match(/\b(HP|MP)\s*(?:를|을)?\s*(\d+\s*D(?:\s*\+\s*\d+)?|\d+)\s*점?\s*회복/i);
-  if (recovery) return `${recovery[1].toUpperCase()}를 ${recovery[2].replace(/\s+/g, "")}점 회복합니다.`;
+  if (recovery) {
+    return [action, `${recovery[1].toUpperCase()}를 ${recovery[2].replace(/\s+/g, "")}점 회복합니다.`, duration]
+      .filter(Boolean)
+      .join(" ");
+  }
 
   const apRecovery = effect.match(/(?:피로도|스태미나|AP)\s*(?:를|을)?\s*(\d+\s*D(?:\s*\+\s*\d+)?|\d+)\s*점?\s*(?:회복|충전)/i);
-  if (apRecovery) return `피로도를 ${apRecovery[1].replace(/\s+/g, "")}점 회복합니다.`;
+  if (apRecovery) {
+    return [action, `피로도를 ${apRecovery[1].replace(/\s+/g, "")}점 회복합니다.`, duration]
+      .filter(Boolean)
+      .join(" ");
+  }
 
   const normalized = effect
     .replace(/한다[.。]?/g, "합니다.")
     .replace(/회복한다[.。]?/g, "회복합니다.")
     .replace(/[.。]\s*$/g, "");
   if (!normalized) return null;
-  return `${normalized}.`;
+  return [action, `${normalized}.`, duration].filter(Boolean).join(" ");
+}
+
+function alchemyActionText(effect: string): string | null {
+  const hasMinor = /마이너\s*액션/.test(effect);
+  const hasMajor = /메이저\s*액션/.test(effect);
+  if (hasMinor && hasMajor) return "마이너 액션, 메이저 액션.";
+  if (hasMinor) return "마이너 액션.";
+  if (hasMajor) return "메이저 액션.";
+  return null;
+}
+
+function alchemyDurationKind(option: { effect: string | null; duration: string | null }): "thirty" | "scene" | "none" {
+  const source = `${option.duration ?? ""} ${option.effect ?? ""}`;
+  if (/30\s*분/.test(source)) return "thirty";
+  if (/장면\s*종료\s*시?\s*까지|장면\s*종료시까지|장면이\s*종료될\s*때까지/.test(source)) return "scene";
+  return "none";
+}
+
+function alchemyDurationText(
+  option: { effect: string | null; duration: string | null },
+  effect = option.effect ?? "",
+): string | null {
+  const source = `${option.duration ?? ""} ${effect}`;
+  const minute = source.match(/(\d+)\s*분/);
+  if (minute) return `${minute[1]}분 동안 지속.`;
+  if (/장면\s*종료\s*시?\s*까지|장면\s*종료시까지|장면이\s*종료될\s*때까지/.test(source)) {
+    return "장면 종료시까지 지속.";
+  }
+  const duration = option.duration?.trim();
+  if (!duration) return null;
+  return /동안|지속/.test(duration) ? `${duration.replace(/[.。]\s*$/g, "")}.` : `${duration} 지속.`;
 }
 
 function selectedOptionCopyIndexes<T extends { id: string }>(options: T[]): number[] {
@@ -1821,12 +1908,19 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     const customNameResult = sanitizePotionCustomName(String(formData.get("customName") ?? ""));
     if (typeof customNameResult !== "string") return customNameResult;
     const optionRows = await prisma.alchemyRecipe.findMany({
-      where: { id: { in: uniqueOptionIds }, isPublic: true },
+      where: {
+        id: { in: uniqueOptionIds },
+        OR: [{ isPublic: true }, { id: { in: life.alchemyPerfect } }],
+      },
       orderBy: { order: "asc" },
     });
-    if (optionRows.length !== uniqueOptionIds.length) return { error: "존재하지 않거나 공개되지 않은 연금 옵션이 포함되어 있어요." };
+    if (optionRows.length !== uniqueOptionIds.length) return { error: "존재하지 않거나 아직 해금하지 않은 연금 옵션이 포함되어 있어요." };
     const optionById = new Map(optionRows.map((option) => [option.id, option]));
     const options = optionIds.map((id) => optionById.get(id)).filter((option): option is NonNullable<typeof option> => !!option);
+    const durationKinds = options.map(alchemyDurationKind);
+    if (durationKinds.includes("thirty") && durationKinds.some((kind) => kind !== "thirty")) {
+      return { error: "30분 지속 옵션은 30분 지속 옵션끼리만 조합할 수 있어요." };
+    }
     const optionCounts = new Map<string, number>();
     for (const option of options) optionCounts.set(option.id, (optionCounts.get(option.id) ?? 0) + 1);
     for (const option of optionRows) {
@@ -1931,10 +2025,9 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
   });
 
   revalidatePath("/world");
+  if (customBrew) return undefined;
   return {
-    ok: customBrew
-      ? `⚗️ ${customBrew.resultName} 조제 완료! 포인트 ${customBrew.spentPoints}/${customBrew.availablePoints}. 가마를 열어 수령하세요. 피로도 -${BREW_AP_COST}`
-      : `⚗️ ${recipe!.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
+    ok: `⚗️ ${recipe!.name} 제조 시작! ${minutes}분 뒤에 가마를 열 수 있어요. 피로도 -${BREW_AP_COST}`,
   };
 }
 
@@ -2315,7 +2408,8 @@ function parseBuffDurationMinutes(effect: string): number | null {
 // '원하는 능력/모든 능력'은 '모든'으로 저장. "세션 버프: ..." 형식은 세션 쪽에서 처리.
 function parseStatBuff(effect: string): { label: string; amount: number } | null {
   if (/세션\s*버프/.test(effect)) return null;
-  const match = effect.match(
+  const cleanEffect = effect.replace(/[【】]/g, "");
+  const match = cleanEffect.match(
     /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|마술|무기\s*공격|무기\s*공격\s*대미지|마법\s*공격\s*대미지|물리\s*방어력|마법\s*방어력|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정(?:의)?\s*)?(?:달성치(?:에)?\s*)?(?:에\s*)?\+(\d+)(?:\s*(?:증가|버프))?/,
   );
   if (!match) return null;
@@ -2345,6 +2439,32 @@ function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number 
     if (amount > 0) out.push({ resource, amount });
   }
   return out;
+}
+
+function parsePercentRecovery(
+  effect: string,
+  hpMax: number | null | undefined,
+  mpMax: number | null | undefined,
+): { resource: "HP" | "MP"; amount: number }[] {
+  const out: { resource: "HP" | "MP"; amount: number }[] = [];
+  const re = /\b(HP|MP)\s*(?:를|을)?\s*(\d+)\s*%(?:\s*\([^)]*\))?\s*회복/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(effect))) {
+    const resource = m[1].toUpperCase() as "HP" | "MP";
+    const max = resource === "HP" ? hpMax : mpMax;
+    const pct = Number.parseInt(m[2], 10);
+    if (max != null && Number.isFinite(pct) && pct > 0) {
+      out.push({ resource, amount: Math.max(1, Math.ceil((max * pct) / 100)) });
+    }
+  }
+  return out;
+}
+
+function parseFateRecovery(effect: string): number {
+  const match = effect.match(/페이트\s*(?:를|을)?\s*(?:회복\s*)?\+?\s*(\d+)\s*(?:점)?\s*(?:회복|충전)?/i);
+  if (!match) return 0;
+  const amount = Number.parseInt(match[1], 10);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
 
 // 피로도(AP) 회복량 — "피로도 [2D] 회복", "피로도 50 회복". 순수 아이템(요리 아님)에서만 적용해
@@ -2582,6 +2702,7 @@ export async function useCookingItem(
       curMp: true,
       hp: true,
       mp: true,
+      fate: true,
       dungeonWeek: true,
       dungeonRuns: true,
     },
@@ -2607,21 +2728,34 @@ export async function useCookingItem(
   const lifeLuck = parseLifeLuck(rawEffect);
   const sessionBuff = parseSessionBuff(rawEffect);
   const statBuff = parseStatBuff(rawEffect);
-  const recovery = parseRecovery(rawEffect);
+  const recovery = [
+    ...parseRecovery(rawEffect),
+    ...parsePercentRecovery(rawEffect, sheet.hp, sheet.mp),
+  ];
   const dungeonRunRecovery = parseDungeonRunRecovery(rawEffect);
   const apRecovery = parseApRecovery(rawEffect);
+  const fateRecovery = parseFateRecovery(rawEffect);
   const potionDurationMinutes = isCustomAlchemyPotion ? parseBuffDurationMinutes(rawEffect) : null;
   const timedPotionLifeLuck = potionDurationMinutes && lifeLuck ? lifeLuck : null;
   const timedPotionStat = potionDurationMinutes && statBuff ? statBuff : null;
 
-  if (isCustomAlchemyPotion && apRecovery <= 0 && !timedPotionLifeLuck && !timedPotionStat) {
-    return { error: "피로도 회복 또는 지속 버프형 포션만 월드에서 바로 사용할 수 있어요." };
+  if (
+    isCustomAlchemyPotion &&
+    apRecovery <= 0 &&
+    fateRecovery <= 0 &&
+    recovery.length === 0 &&
+    !timedPotionLifeLuck &&
+    !timedPotionStat
+  ) {
+    return { error: "회복 또는 지속 버프형 포션만 월드에서 바로 사용할 수 있어요." };
   }
 
-  if (isCustomAlchemyPotion && (timedPotionLifeLuck || timedPotionStat || recovery.length > 0)) {
+  if (isCustomAlchemyPotion && (timedPotionLifeLuck || timedPotionStat || recovery.length > 0 || apRecovery > 0 || fateRecovery > 0)) {
     const gains: string[] = [];
     let curHp = sheet.curHp ?? sheet.hp ?? 0;
     let curMp = sheet.curMp ?? sheet.mp ?? 0;
+    let fate = sheet.fate ?? 0;
+    let apPatch: { ap: number; apResetAt: Date } | null = null;
     for (const rec of recovery) {
       if (rec.resource === "HP") {
         const before = curHp;
@@ -2632,6 +2766,17 @@ export async function useCookingItem(
         curMp = sheet.mp != null ? Math.min(sheet.mp, curMp + rec.amount) : curMp + rec.amount;
         gains.push(`MP +${curMp - before}`);
       }
+    }
+    if (fateRecovery > 0) {
+      const before = fate;
+      fate += fateRecovery;
+      gains.push(`페이트 +${fate - before}`);
+    }
+    if (apRecovery > 0) {
+      const freshAp = regenFatigue(sheet.ap, sheet.apResetAt);
+      const newAp = Math.min(FATIGUE_MAX, freshAp.value + apRecovery);
+      apPatch = { ap: newAp, apResetAt: freshAp.at };
+      gains.push(`피로도 +${newAp - freshAp.value}`);
     }
 
     const buffLines: string[] = [];
@@ -2726,6 +2871,8 @@ export async function useCookingItem(
       lifeJson: JSON.stringify(life),
       achStatsJson: bumpStat(sheet.achStatsJson, "연금포션사용"),
       ...(recovery.length > 0 ? { curHp, curMp } : {}),
+      ...(fateRecovery > 0 ? { fate } : {}),
+      ...(apPatch ?? {}),
     };
     await Promise.all([
       prisma.characterSheet.update({

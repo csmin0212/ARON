@@ -153,9 +153,34 @@ export const metadata = { title: "월드 · 아리안로드 온라인 갤러리"
 const STORAGE_UPGRADE_STEP = 10;
 const storageUpgradeCost = (maxWeight: number) => Math.max(1000, Math.max(0, maxWeight) * 100);
 const ALCHEMY_BOOKS = [
-  { id: "alchemy_book_basic", name: "초급 연금술 책", price: 3000, rank: "R1", level: 1 },
-  { id: "alchemy_book_intermediate", name: "중급 연금술 책", price: 10000, rank: "R2", level: 2 },
-  { id: "alchemy_book_advanced", name: "상급 연금술 책", price: 30000, rank: "R3", level: 3 },
+  {
+    id: "alchemy_special_recipe_1",
+    name: "특별한 레시피 1",
+    price: 2000,
+    optionLabel: "페이트 회복 +1",
+    optionNames: ["페이트 회복 +1"],
+  },
+  {
+    id: "alchemy_special_recipe_2",
+    name: "특별한 레시피 2",
+    price: 2000,
+    optionLabel: "피로도 회복 +20",
+    optionNames: ["피로도 회복 +20"],
+  },
+  {
+    id: "alchemy_special_recipe_3",
+    name: "특별한 레시피 3",
+    price: 2000,
+    optionLabel: "HP 50%(소숫점 올림) 회복",
+    optionNames: ["HP 50%(소숫점 올림) 회복", "HP 50% 회복"],
+  },
+  {
+    id: "alchemy_special_recipe_4",
+    name: "특별한 레시피 4",
+    price: 2000,
+    optionLabel: "MP 50%(소숫점 올림) 회복",
+    optionNames: ["MP 50%(소숫점 올림) 회복", "MP 50% 회복"],
+  },
 ] as const;
 
 function ApBar({ ap, nextRegenMin }: { ap: number; nextRegenMin: number | null }) {
@@ -975,7 +1000,10 @@ export default async function WorldPage() {
   const alchemyLab = ownedAlchemyLab(housingState);
   const alchemyEnabled = atMyHome && alchemyLab != null;
   const alchemyRecipes = alchemyEnabled || canAlchemyBookShop ? await getAlchemyRecipes() : [];
-  const visibleAlchemyRecipes = alchemyRecipes.filter((recipe) => recipe.isPublic);
+  const unlockedAlchemyRecipeIds = new Set(life.alchemyPerfect);
+  const visibleAlchemyRecipes = alchemyRecipes.filter(
+    (recipe) => recipe.isPublic || unlockedAlchemyRecipeIds.has(recipe.id),
+  );
   const alchemyRecipeViews: AlchemyRecipeView[] = visibleAlchemyRecipes.map((recipe) => {
     const ingredientList = parseRecipeIngredients(recipe.ingredientsJson).map((ingredient) => ({
       name: ingredient.name,
@@ -1083,7 +1111,6 @@ export default async function WorldPage() {
     potions: potionsForSale,
     accelerators: alchemyAccelerators,
   };
-  const unlockedAlchemyRecipeIds = new Set(life.alchemyPerfect);
   const blackMarketQuest = await loadBlackMarketQuestState(user.id, sheet);
   const blackMarketExchange = await loadBlackMarketExchangeState(user.id, sheet);
   const blackMarketStock = await ensureBlackMarketStock();
@@ -1150,11 +1177,15 @@ export default async function WorldPage() {
       };
     }),
     books: ALCHEMY_BOOKS.map((book) => {
-      const recipes = visibleAlchemyRecipes.filter((recipe) => recipe.rank === book.rank);
+      const recipe = alchemyRecipes.find(
+        (candidate) =>
+          book.optionNames.some((name) => name === candidate.id || name === candidate.name),
+      );
       return {
         ...book,
-        total: recipes.length,
-        unlocked: recipes.filter((recipe) => unlockedAlchemyRecipeIds.has(recipe.id)).length,
+        optionNames: [...book.optionNames],
+        total: recipe ? 1 : 0,
+        unlocked: recipe && unlockedAlchemyRecipeIds.has(recipe.id) ? 1 : 0,
       };
     }),
   };
