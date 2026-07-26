@@ -73,6 +73,7 @@ type Props = {
   canHousing: boolean;
   canGacha: boolean;
   canBlackMarket: boolean;
+  canAlchemyBookShop: boolean;
   cooking: CookingView;
   alchemy: AlchemyView;
   blackMarket: BlackMarketView;
@@ -2264,10 +2265,12 @@ const FOOD_PRODUCTS = [
 ] as const;
 
 function AlchemyBookShop({
-  blackMarket,
+  gold,
+  books,
   onClose,
 }: {
-  blackMarket: BlackMarketView;
+  gold: number;
+  books: BlackMarketView["books"];
   onClose: () => void;
 }) {
   const [state, action, pending] = useActionState<MarketState, FormData>(
@@ -2284,25 +2287,25 @@ function AlchemyBookShop({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="연금술 서적상"
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-violet-950/20 bg-surface shadow-2xl"
+        aria-label="오두막 서가"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-emerald-950/20 bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-line bg-gradient-to-r from-zinc-950 via-violet-950 to-zinc-950 px-5 py-4 text-white">
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-200">
-            Back Alley
+        <div className="border-b border-line bg-gradient-to-r from-stone-950 via-emerald-950 to-stone-950 px-5 py-4 text-white">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-200">
+            Hidden Shelf
           </p>
           <h3 className="mt-1 flex items-center justify-between gap-3 text-2xl font-extrabold">
-            <span>📚 연금술 서적상</span>
+            <span>🏚️ 오두막 서가</span>
             <span className="text-sm font-bold text-amber-200">
-              {blackMarket.gold.toLocaleString()}G
+              {gold.toLocaleString()}G
             </span>
           </h3>
         </div>
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <MarketStateLine state={state} />
           <div className="grid gap-2">
-            {blackMarket.books.map((book) => {
+            {books.map((book) => {
               const complete = book.total > 0 && book.unlocked >= book.total;
               return (
                 <form key={book.id} action={action}>
@@ -2310,7 +2313,7 @@ function AlchemyBookShop({
                   <button
                     type="submit"
                     disabled={pending || complete || book.total === 0}
-                    className="flex w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-55 dark:hover:bg-violet-950/40"
+                    className="flex w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3.5 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-55 dark:hover:bg-emerald-950/40"
                   >
                     <span className="text-xl">📖</span>
                     <span className="min-w-0 flex-1">
@@ -3600,6 +3603,7 @@ export default function WorldServices({
   canHousing,
   canGacha,
   canBlackMarket,
+  canAlchemyBookShop,
   cooking,
   alchemy,
   blackMarket,
@@ -3629,7 +3633,7 @@ export default function WorldServices({
   const [foodMarketOpen, setFoodMarketOpen] = useState(false);
   const [cookingOpen, setCookingOpen] = useState(false);
   const [alchemyOpen, setAlchemyOpen] = useState(false);
-  const [blackMarketOpen, setBlackMarketOpen] = useState(false);
+  const [alchemyBookOpen, setAlchemyBookOpen] = useState(false);
   const [blackDealerOpen, setBlackDealerOpen] = useState(false);
   const [wanderingMerchantOpen, setWanderingMerchantOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -3696,7 +3700,7 @@ export default function WorldServices({
     return () => clearInterval(timer);
   }, [alchemy.brewing, wanderingMerchant.active]);
 
-  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !merchantVisible && !weeklyIncome) return null;
+  if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !canAlchemyBookShop && !merchantVisible && !weeklyIncome) return null;
 
   function closeForge() {
     setOpen(false);
@@ -3788,6 +3792,21 @@ export default function WorldServices({
               )}
             </button>
           )}
+          {canAlchemyBookShop && (
+            <button
+              type="button"
+              onClick={() => setAlchemyBookOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-stone-50 px-3.5 py-3 text-left transition hover:border-emerald-300 hover:from-emerald-100 hover:to-stone-100 dark:from-emerald-950/40 dark:to-stone-950/30"
+            >
+              <span className="text-xl">📚</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-content">오두막 서가</span>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                  연금술 레시피 해금
+                </span>
+              </span>
+            </button>
+          )}
           {canGacha && (
             <button
               type="button"
@@ -3823,32 +3842,19 @@ export default function WorldServices({
             </button>
           )}
           {canBlackMarket && (
-            <>
-              <button
-                type="button"
-                onClick={() => setBlackDealerOpen(true)}
-                className="flex w-full items-center gap-3 rounded-2xl border border-zinc-800/20 bg-gradient-to-r from-zinc-950 to-violet-950 px-3.5 py-3 text-left text-white shadow-sm transition hover:border-violet-400"
-              >
-                <span className="text-xl">🕯️</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-extrabold">암상인</span>
-                  <span className="text-[11px] text-violet-100">
-                    일일 의뢰 · 희귀 자원 · 코인 {blackMarket.coins.toLocaleString()}개
-                  </span>
+            <button
+              type="button"
+              onClick={() => setBlackDealerOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-zinc-800/20 bg-gradient-to-r from-zinc-950 to-violet-950 px-3.5 py-3 text-left text-white shadow-sm transition hover:border-violet-400"
+            >
+              <span className="text-xl">🕯️</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold">암상인</span>
+                <span className="text-[11px] text-violet-100">
+                  일일 의뢰 · 희귀 자원 · 코인 {blackMarket.coins.toLocaleString()}개
                 </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBlackMarketOpen(true)}
-                className="flex w-full items-center gap-3 rounded-2xl border border-zinc-800/20 bg-gradient-to-r from-zinc-950 to-violet-950 px-3.5 py-3 text-left text-white shadow-sm transition hover:border-violet-400"
-              >
-                <span className="text-xl">📚</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-extrabold">연금술 서적상</span>
-                  <span className="text-[11px] text-violet-100">초급 · 중급 · 상급 레시피 해금</span>
-                </span>
-              </button>
-            </>
+              </span>
+            </button>
           )}
           {canStorage && (
             <button
@@ -4050,10 +4056,11 @@ export default function WorldServices({
 
       {foodMarketOpen && <FoodMarket onClose={() => setFoodMarketOpen(false)} />}
 
-      {blackMarketOpen && (
+      {alchemyBookOpen && (
         <AlchemyBookShop
-          blackMarket={blackMarket}
-          onClose={() => setBlackMarketOpen(false)}
+          gold={blackMarket.gold}
+          books={blackMarket.books}
+          onClose={() => setAlchemyBookOpen(false)}
         />
       )}
 

@@ -140,7 +140,7 @@ async function canUseBlackMarket(locationId: string | null): Promise<boolean> {
   const source = [location?.id ?? "", location?.name ?? "", ...actions.flatMap((a) => [a.kind, a.label ?? ""])]
     .join(" ")
     .toLowerCase();
-  return ["암상인", "암시장", "뒷골목", "연금술 책", "black market", "back alley"].some((keyword) =>
+  return ["암상인", "암시장", "뒷골목", "black market", "back alley"].some((keyword) =>
     source.includes(keyword.toLowerCase()),
   );
 }

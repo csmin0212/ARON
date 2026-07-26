@@ -38,7 +38,11 @@ import {
 } from "@/lib/auction";
 import { auctionSlots, normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { detectForgeSlot } from "@/lib/forge";
-import { profitAdjustedSellPrice, recipeIngredientCostFromJson } from "@/lib/qualityPricing";
+import {
+  potionSellPrice,
+  profitAdjustedSellPrice,
+  recipeIngredientCostFromJson,
+} from "@/lib/qualityPricing";
 
 export type AuctionResult = { ok?: string; error?: string };
 
@@ -234,6 +238,9 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
 
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind) return lifeSkillSellPrice(lifeKind, raw);
+
+  const potionPrice = await potionSellPrice(raw);
+  if (potionPrice != null) return potionPrice;
 
   const { base, grade } = parseCookedName(name);
   const recipe = await prisma.cookingRecipe.findFirst({

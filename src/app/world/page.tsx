@@ -732,10 +732,10 @@ export default async function WorldPage() {
   const canBlackMarket = hasServiceKeyword(here, locActions, [
     "암시장",
     "뒷골목",
-    "연금술 책",
     "black market",
     "back alley",
   ]);
+  const canAlchemyBookShop = [here.id, here.name].some((value) => value.includes("오두막"));
   const canStorage =
     atMyHome || canGuild || hasServiceKeyword(here, locActions, ["창고", "보관", "storage", "warehouse"]);
   const canInn = hasServiceKeyword(here, locActions, ["여관", "숙소", "inn"]);
@@ -967,7 +967,7 @@ export default async function WorldPage() {
   // ── 연금술 — 본인 집 + 연금술 공방 가구가 있을 때만 ──
   const alchemyLab = ownedAlchemyLab(housingState);
   const alchemyEnabled = atMyHome && alchemyLab != null;
-  const alchemyRecipes = alchemyEnabled || canBlackMarket ? await getAlchemyRecipes() : [];
+  const alchemyRecipes = alchemyEnabled || canAlchemyBookShop ? await getAlchemyRecipes() : [];
   const alchemyRecipeViews: AlchemyRecipeView[] = alchemyRecipes.map((recipe) => {
     const ingredientList = parseRecipeIngredients(recipe.ingredientsJson).map((ingredient) => ({
       name: ingredient.name,
@@ -1513,6 +1513,7 @@ export default async function WorldPage() {
             canHousing={canHousing}
             canGacha={here.id === "대상야영지"}
             canBlackMarket={canBlackMarket}
+            canAlchemyBookShop={canAlchemyBookShop}
             cooking={cooking}
             alchemy={alchemy}
             blackMarket={blackMarket}

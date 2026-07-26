@@ -52,7 +52,11 @@ import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
-import { profitAdjustedSellPrice, recipeIngredientCostFromJson } from "@/lib/qualityPricing";
+import {
+  potionSellPrice,
+  profitAdjustedSellPrice,
+  recipeIngredientCostFromJson,
+} from "@/lib/qualityPricing";
 import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
 import { FATIGUE_MAX, dungeonWeekKey, regenFatigue, restedTodayKst } from "@/lib/world";
 import { buildWeeklyIncomeEntries, parseWeeklyIncomeState } from "@/lib/weeklyIncome";
@@ -521,17 +525,12 @@ async function canUsePublicKitchen(locationId: string | null): Promise<boolean> 
 
 async function canUseAlchemyBookShop(locationId: string | null): Promise<boolean> {
   if (!locationId) return false;
-  const [location, actions] = await Promise.all([
-    prisma.location.findUnique({ where: { id: locationId }, select: { id: true, name: true } }),
-    prisma.locationAction.findMany({
-      where: { locationId },
-      select: { kind: true, label: true },
-    }),
-  ]);
-  const source = [location?.id ?? "", location?.name ?? "", ...actions.flatMap((a) => [a.kind, a.label ?? ""])]
-    .join(" ")
-    .toLowerCase();
-  return ["암시장", "뒷골목", "연금술 책", "black market", "back alley"].some((keyword) =>
+  const location = await prisma.location.findUnique({
+    where: { id: locationId },
+    select: { id: true, name: true },
+  });
+  const source = `${location?.id ?? ""} ${location?.name ?? ""}`.toLowerCase();
+  return ["오두막", "alchemy hut", "cottage", "hut"].some((keyword) =>
     source.includes(keyword.toLowerCase()),
   );
 }
@@ -1238,7 +1237,7 @@ export async function buyAlchemyBook(
   const ctx = await currentSheet();
   if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
   if (!(await canUseAlchemyBookShop(ctx.locationId))) {
-    return { error: "연금술 책은 뒷골목에서만 구입할 수 있습니다." };
+    return { error: "연금술 책은 오두막에서만 구입할 수 있습니다." };
   }
 
   const product = alchemyBookProduct(String(formData.get("productId") ?? ""));
@@ -1900,22 +1899,8 @@ export async function sellPotion(_prev: AlchemyState, formData: FormData): Promi
   if (!itemName) return { error: "판매할 포션이 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
 
-  const { base, modifier, grade } = parsePotionName(itemName);
-  const recipe = await prisma.alchemyRecipe.findFirst({
-    where: { resultName: base },
-    select: { sellPrice: true, ingredientsJson: true },
-  });
-  if (!recipe) return { error: "포션 판매가를 찾지 못했습니다." };
-  const acceleratorMinutes = alchemyAcceleratorMinutes(itemName);
-  const potionBasePrice = Math.round(recipe.sellPrice * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
-  const unitPrice =
-    acceleratorMinutes != null
-      ? Math.round((recipe.sellPrice * acceleratorMinutes) / 10)
-      : profitAdjustedSellPrice(
-          potionBasePrice,
-          await recipeIngredientCostFromJson(recipe.ingredientsJson),
-          grade,
-        );
+  const unitPrice = await potionSellPrice(itemName);
+  if (!unitPrice) return { error: "포션 판매가를 찾지 못했습니다." };
 
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const gain = unitPrice * qty;

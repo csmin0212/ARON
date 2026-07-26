@@ -1,6 +1,11 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import {
+  WEAK_PRICE_MULT,
+  alchemyAcceleratorMinutes,
+  parsePotionName,
+} from "@/lib/alchemy";
 import { lifeSkillItemKind, lifeSkillSellPrice } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 
@@ -104,6 +109,30 @@ export async function recipeIngredientCost(ingredients: RecipeIngredient[]): Pro
 
 export async function recipeIngredientCostFromJson(value: string | null | undefined): Promise<number> {
   return recipeIngredientCost(parseRecipeIngredientsForCost(value));
+}
+
+export async function potionSellPrice(
+  rawName: string,
+  effectText?: string | null,
+): Promise<number | null> {
+  const { base, modifier, grade } = parsePotionName(rawName);
+  const recipe = await prisma.alchemyRecipe.findFirst({
+    where: { resultName: base },
+    select: { sellPrice: true, ingredientsJson: true },
+  });
+  if (!recipe) return null;
+
+  const acceleratorMinutes = alchemyAcceleratorMinutes(rawName, effectText);
+  if (acceleratorMinutes != null) {
+    return Math.round((recipe.sellPrice * acceleratorMinutes) / 10);
+  }
+
+  const baseSellPrice = Math.round(recipe.sellPrice * (modifier === "약한" ? WEAK_PRICE_MULT : 1));
+  return profitAdjustedSellPrice(
+    baseSellPrice,
+    await recipeIngredientCostFromJson(recipe.ingredientsJson),
+    grade,
+  );
 }
 
 export async function recipeCostMap<T extends { resultName: string; ingredientsJson: string | null }>(
