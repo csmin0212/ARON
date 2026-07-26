@@ -33,6 +33,7 @@ import {
   ALCHEMY_OPTION_LIMIT,
   BREW_AP_COST,
   WEAK_PRICE_MULT,
+  ALCHEMY_CUSTOM_POTION_MARKER,
   alchemyAcceleratorEffect,
   alchemyAcceleratorMinutes,
   alchemyLabSlotLimit,
@@ -567,6 +568,35 @@ function consumeLifeItem(life: ReturnType<typeof parseLifeState>, name: string, 
     }
     life.bags[kind].items = life.bags[kind].items.filter((item) => item.qty > 0);
   }
+  return qty - remaining;
+}
+
+function lifeItemQtyOfKind(
+  life: ReturnType<typeof parseLifeState>,
+  kind: LifeSkillKind,
+  name: string,
+): number {
+  const target = name.trim();
+  return life.bags[kind].items
+    .filter((item) => item.name.trim() === target)
+    .reduce((sum, item) => sum + Math.max(0, item.qty), 0);
+}
+
+function consumeLifeItemOfKind(
+  life: ReturnType<typeof parseLifeState>,
+  kind: LifeSkillKind,
+  name: string,
+  qty: number,
+): number {
+  const target = name.trim();
+  let remaining = qty;
+  for (const item of life.bags[kind].items) {
+    if (item.name.trim() !== target || remaining <= 0) continue;
+    const used = Math.min(item.qty, remaining);
+    item.qty -= used;
+    remaining -= used;
+  }
+  life.bags[kind].items = life.bags[kind].items.filter((item) => item.qty > 0);
   return qty - remaining;
 }
 
@@ -1561,7 +1591,7 @@ function availableBrewQty(
   name: string,
 ): number {
   const invQty = matchingPotionNames(inv, name).reduce((sum, n) => sum + itemQty(inv, n), 0);
-  return invQty + lifeItemQty(life, name) + storageBrewItemQty(storage, name);
+  return invQty + lifeItemQtyOfKind(life, "채집", name) + storageBrewItemQty(storage, name);
 }
 
 async function consumeBrewIngredient(
@@ -1572,7 +1602,7 @@ async function consumeBrewIngredient(
   name: string,
   qty: number,
 ): Promise<void> {
-  let remaining = qty - consumeLifeItem(life, name, qty);
+  let remaining = qty - consumeLifeItemOfKind(life, "채집", name, qty);
   for (const variant of matchingPotionNames(inv, name)) {
     if (remaining <= 0) return;
     const used = Math.min(itemQty(inv, variant), remaining);
@@ -1596,10 +1626,8 @@ async function consumeBrewIngredient(
 
 async function alchemyIngredientPoints(name: string): Promise<number | null> {
   await loadLifeItems();
-  for (const kind of ["채집", "낚시", "채광"] as const) {
-    const item = findLifeSkillItem(kind, name);
-    if (item) return alchemyMaterialPointsForItem(name, item.rank);
-  }
+  const item = findLifeSkillItem("채집", name);
+  if (item) return alchemyMaterialPointsForItem(name, item.rank);
   return null;
 }
 
@@ -1640,17 +1668,34 @@ function scaleAlchemyOptionEffect(effect: string, copies: number): string {
   return effect.replace(/([+＋])\s*(\d+)/g, (_m, sign: string, value: string) => `${sign}${Number(value) * copies}`);
 }
 
-function optionEffectLine(
-  option: { name: string; effect: string | null; duration: string | null },
+function conciseAlchemyOptionEffect(
+  option: { effect: string | null; duration: string | null },
   copies = 1,
-): string {
-  const effect = option.effect?.trim();
-  const duration = option.duration?.trim();
-  const name = copies > 1 ? `${option.name} x${copies}` : option.name;
-  if (!effect && !duration) return name;
-  return `${name}: ${effect ? scaleAlchemyOptionEffect(effect, copies) : ""}${
-    duration ? ` (${duration})` : ""
-  }`.trim();
+): string | null {
+  const raw = option.effect?.trim();
+  if (!raw) return option.duration ? `${option.duration} 지속` : null;
+  const effect = scaleAlchemyOptionEffect(raw, copies)
+    .replace(/마이너\s*액션\s*,?\s*/g, "")
+    .replace(/메이저\s*액션\s*,?\s*/g, "")
+    .replace(/소모품[.。]?/g, "")
+    .replace(/사용자(?:의|에게)?\s*/g, "")
+    .replace(/【(HP|MP)】/g, "$1")
+    .replace(/\[(\d+\s*D)\]/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const recovery = effect.match(/\b(HP|MP)\s*(?:를|을)?\s*(\d+\s*D(?:\s*\+\s*\d+)?|\d+)\s*점?\s*회복/i);
+  if (recovery) return `${recovery[1].toUpperCase()}를 ${recovery[2].replace(/\s+/g, "")}점 회복합니다.`;
+
+  const apRecovery = effect.match(/(?:피로도|스태미나|AP)\s*(?:를|을)?\s*(\d+\s*D(?:\s*\+\s*\d+)?|\d+)\s*점?\s*(?:회복|충전)/i);
+  if (apRecovery) return `피로도를 ${apRecovery[1].replace(/\s+/g, "")}점 회복합니다.`;
+
+  const normalized = effect
+    .replace(/한다[.。]?/g, "합니다.")
+    .replace(/회복한다[.。]?/g, "회복합니다.")
+    .replace(/[.。]\s*$/g, "");
+  if (!normalized) return null;
+  return `${normalized}.`;
 }
 
 function selectedOptionCopyIndexes<T extends { id: string }>(options: T[]): number[] {
@@ -1668,13 +1713,27 @@ function optionCopyCounts<T extends { id: string }>(options: T[]): Map<string, n
   return counts;
 }
 
-function groupedOptionEffectLines<T extends { id: string; name: string; effect: string | null; duration: string | null }>(
+function groupedConciseAlchemyEffectLines<T extends { id: string; effect: string | null; duration: string | null }>(
   options: T[],
 ): string[] {
   const byId = new Map<string, T>();
   for (const option of options) if (!byId.has(option.id)) byId.set(option.id, option);
   const counts = optionCopyCounts(options);
-  return [...byId.values()].map((option) => optionEffectLine(option, counts.get(option.id) ?? 1));
+  const lines = [...byId.values()]
+    .map((option) => conciseAlchemyOptionEffect(option, counts.get(option.id) ?? 1))
+    .filter((line): line is string => Boolean(line));
+  return lines.length > 0 ? [...lines, "소모품."] : ["소모품."];
+}
+
+function customAlchemyEffectText<T extends { id: string; effect: string | null; duration: string | null }>(
+  options: T[],
+  price: number,
+): string {
+  return [
+    ...groupedConciseAlchemyEffectLines(options),
+    ALCHEMY_CUSTOM_POTION_MARKER,
+    `판매가 ${price.toLocaleString()}G`,
+  ].join("\n");
 }
 
 function addRandomMasteryOptionCopies<T extends { id: string; name: string; tags: string | null }>(
@@ -1803,17 +1862,11 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
     const price = options.reduce((sum, option) => sum + Math.max(0, option.sellPrice), 0);
     const resultName = customNameResult || buildCustomPotionName(options.map((option) => option.name));
-    const effectLines = [
-      ...groupedOptionEffectLines(options),
-      `재료 ${potIngredients.map((ingredient) => ingredient.name).join(", ")}`,
-      `연금 포인트 ${spentPoints}/${availablePoints}`,
-      `판매가 ${price.toLocaleString()}G`,
-    ];
     customBrew = {
       optionIds,
       ingredients: potIngredients,
       resultName,
-      effect: effectLines.join("\n"),
+      effect: customAlchemyEffectText(options, price),
       price,
       weight: 1,
       availablePoints,
@@ -1957,18 +2010,7 @@ export async function collectBrew(): Promise<AlchemyState> {
         resultName = pending.customName
           ? `${pending.customName}${grade ? ` [${grade}]` : ""}`
           : buildCustomPotionName(finalOptions.map((option) => option.name), grade);
-        effect = [
-          grade ? `✨${grade} — 숙련 보너스 옵션 +${bonusNames.length}` : "",
-          ...groupedOptionEffectLines(finalOptions),
-          pending.ingredientNames?.length ? `재료 ${pending.ingredientNames.join(", ")}` : "",
-          pending.spentPoints != null && pending.availablePoints != null
-            ? `연금 포인트 ${pending.spentPoints}/${pending.availablePoints}`
-            : "",
-          bonusNames.length > 0 ? `숙련 보너스 ${bonusNames.join(", ")}` : "",
-          `판매가 ${price.toLocaleString()}G`,
-        ]
-          .filter(Boolean)
-          .join("\n");
+        effect = customAlchemyEffectText(finalOptions, price);
         const gainedExp =
           pending.spentPoints ??
           baseOptions.reduce((sum, option) => sum + Math.max(1, option.skillExp), 0);
@@ -2294,7 +2336,7 @@ function rollD6(n: number): number {
 function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number }[] {
   const out: { resource: "HP" | "MP"; amount: number }[] = [];
   // "HP [2D] 회복", "HP 1D회복", "HP [2D]+1 회복", "MP 3 회복" 모두 처리
-  const re = /\b(HP|MP)\s*(?:\[(\d+)\s*D\]|(\d+)\s*D)(?:\s*\+\s*(\d+))?\s*점?\s*회복|\b(HP|MP)\s*(\d+)\s*점?\s*회복/gi;
+  const re = /\b(HP|MP)\s*(?:를|을)?\s*(?:\[(\d+)\s*D\]|(\d+)\s*D)(?:\s*\+\s*(\d+))?\s*점?\s*회복|\b(HP|MP)\s*(?:를|을)?\s*(\d+)\s*점?\s*회복/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(effect))) {
     const resource = (m[1] ?? m[5]).toUpperCase() as "HP" | "MP";
@@ -2308,10 +2350,11 @@ function parseRecovery(effect: string): { resource: "HP" | "MP"; amount: number 
 // 피로도(AP) 회복량 — "피로도 [2D] 회복", "피로도 50 회복". 순수 아이템(요리 아님)에서만 적용해
 // 음식으로 AP 상한을 우회하는 밸런스 붕괴를 막는다. GM이 우편/던전으로 배포하는 회복제 전용.
 function parseApRecovery(effect: string): number {
-  const m = effect.match(/(?:피로도|스태미나|AP)\s*(?:\[(\d+)\s*D\](?:\s*\+\s*(\d+))?|(\d+))\s*점?\s*(?:회복|충전)/i);
+  const m = effect.match(/(?:피로도|스태미나|AP)\s*(?:를|을)?\s*(?:\[(\d+)\s*D\](?:\s*\+\s*(\d+))?|(\d+)\s*D(?:\s*\+\s*(\d+))?|(\d+))\s*점?\s*(?:회복|충전)/i);
   if (!m) return 0;
   if (m[1]) return rollD6(Number(m[1])) + (m[2] ? Number(m[2]) : 0);
-  return Number(m[3] ?? 0);
+  if (m[3]) return rollD6(Number(m[3])) + (m[4] ? Number(m[4]) : 0);
+  return Number(m[5] ?? 0);
 }
 
 function parseDungeonRunRecovery(effect: string): number {
@@ -2566,9 +2609,14 @@ export async function useCookingItem(
   const statBuff = parseStatBuff(rawEffect);
   const recovery = parseRecovery(rawEffect);
   const dungeonRunRecovery = parseDungeonRunRecovery(rawEffect);
+  const apRecovery = parseApRecovery(rawEffect);
   const potionDurationMinutes = isCustomAlchemyPotion ? parseBuffDurationMinutes(rawEffect) : null;
   const timedPotionLifeLuck = potionDurationMinutes && lifeLuck ? lifeLuck : null;
   const timedPotionStat = potionDurationMinutes && statBuff ? statBuff : null;
+
+  if (isCustomAlchemyPotion && apRecovery <= 0 && !timedPotionLifeLuck && !timedPotionStat) {
+    return { error: "피로도 회복 또는 지속 버프형 포션만 월드에서 바로 사용할 수 있어요." };
+  }
 
   if (isCustomAlchemyPotion && (timedPotionLifeLuck || timedPotionStat || recovery.length > 0)) {
     const gains: string[] = [];
@@ -2844,9 +2892,9 @@ export async function useCookingItem(
       decrementDbInventory(ctx.userId, itemName, 1),
     ]);
     void pushInventoryToSheet(ctx.tab, inv);
-  } else if (!recipe && parseApRecovery(rawEffect) > 0) {
+  } else if (!recipe && apRecovery > 0) {
     // 피로도 회복제 — 요리가 아닌 순수 아이템(효과 "피로도 N 회복")만. 요리로는 AP 회복 불가.
-    const heal = parseApRecovery(rawEffect);
+    const heal = apRecovery;
     const fresh = regenFatigue(sheet.ap, sheet.apResetAt);
     const newAp = Math.min(FATIGUE_MAX, fresh.value + heal);
     ok = `${itemName}을 사용했습니다. 피로도 +${newAp - fresh.value} (${fresh.value} → ${newAp}/${FATIGUE_MAX})`;

@@ -219,11 +219,12 @@ export default function AlchemyLab({
   const materialRanks = useMemo(() => {
     const ranks = new Map<string, number>();
     for (const item of lifeItems) {
+      if (item.sourceKind !== "채집") continue;
       const rank = item.rank ?? rankFromNote(null);
       if (rank != null) ranks.set(item.name.trim(), rank);
     }
     for (const item of storageItems ?? []) {
-      if (item.sourceKind !== "낚시" && item.sourceKind !== "채집" && item.sourceKind !== "채광") continue;
+      if (item.sourceKind !== "채집") continue;
       const rank = rankFromNote(item.effect);
       if (rank != null) ranks.set(item.name.trim(), rank);
     }
@@ -271,7 +272,7 @@ export default function AlchemyLab({
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
-    const byKind = (kind: "채집" | "낚시" | "채광") => {
+    const byKind = (kind: "채집") => {
       const merged = new Map<string, number>();
       for (const item of lifeItems) {
         if (item.sourceKind !== kind || item.qty <= 0) continue;
@@ -292,8 +293,6 @@ export default function AlchemyLab({
       { key: "inv", label: "휴대품", emoji: "🎒", items: bagItems },
       { key: "storage", label: "창고", emoji: "📦", items: storedItems },
       { key: "gather", label: "채집", emoji: "🌿", items: byKind("채집") },
-      { key: "fish", label: "낚시", emoji: "🎣", items: byKind("낚시") },
-      { key: "mine", label: "채광", emoji: "⛏️", items: byKind("채광") },
     ];
   }, [inventoryItems, lifeItems, storageItems, drawerNames, materialRanks]);
 
@@ -571,9 +570,6 @@ export default function AlchemyLab({
                 >
                   🧪 포션 효과 지정
                 </button>
-                <p className="mt-1.5 text-center text-[10px] text-faint">
-                  한 칸에는 재료 1개만 들어갑니다.
-                </p>
               </section>
             </>
           )}

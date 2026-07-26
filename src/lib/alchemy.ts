@@ -8,6 +8,7 @@ export const BREW_AP_COST = 10;
 export const BREW_MIN_MINUTES = 1;
 export const BREW_MAX_MINUTES = 30;
 export const ALCHEMY_BASE_POTION_NAME = "조제 포션";
+export const ALCHEMY_CUSTOM_POTION_MARKER = "연금술 조제 포션";
 export const ALCHEMY_OPTION_PRICE_PATTERN = /판매가\s*([0-9,]+)\s*G/;
 export const ALCHEMY_OPTION_LIMIT = 3;
 
@@ -126,7 +127,9 @@ export function customAlchemyBonusCopies(grade: CustomAlchemyGrade | null): numb
 }
 
 export function customPotionSellPrice(effectText?: string | null): number | null {
-  const match = (effectText ?? "").match(ALCHEMY_OPTION_PRICE_PATTERN);
+  const text = effectText ?? "";
+  if (!text.includes(ALCHEMY_CUSTOM_POTION_MARKER) && !text.includes("연금 포인트")) return null;
+  const match = text.match(ALCHEMY_OPTION_PRICE_PATTERN);
   if (!match) return null;
   const price = Number(match[1].replace(/,/g, ""));
   return Number.isFinite(price) && price > 0 ? price : null;

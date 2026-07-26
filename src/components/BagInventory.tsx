@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { useCookingItem, type CookingState } from "@/app/actions/services";
 import { useSkillBook, type SkillBookState } from "@/app/actions/skills";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
+import { ALCHEMY_CUSTOM_POTION_MARKER, customPotionSellPrice } from "@/lib/alchemy";
 
 export type LifeBagPocket = {
   name: string;
@@ -57,9 +58,39 @@ function canUseItem(item: SheetInventoryItem): boolean {
   }
   const effect = item.effect ?? "";
   if (effect.includes("아무도 없는 곳에서 열어보자")) return true;
+  const isCustomAlchemyPotion = customPotionSellPrice(effect) != null;
+  if (isCustomAlchemyPotion) {
+    const hasDuration = /\d+\s*분/.test(effect);
+    const hasLifeLuck = /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+/.test(effect);
+    const hasStatBuff =
+      /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?/.test(effect);
+    const hasApRecovery =
+      /(?:피로도|스태미나|AP)\s*(?:를|을)?\s*(?:\[\d+\s*D\]|\d+\s*D|\d+)\s*점?\s*(?:회복|충전)/i.test(effect);
+    return hasApRecovery || (hasDuration && (hasLifeLuck || hasStatBuff));
+  }
   // 행운·판정(월드 30분 버프)·세션 버프·HP/MP 회복·피로도 회복·던전 횟수 회복
   // useCookingItem이 처리하는 효과들.
   return /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+|(?:근력|재주|민첩|지력|감지|정신|행운|명중|회피|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?|세션\s*버프|시나리오\s*종료\s*시\s*까지\s*지속|\d+\s*분\s*지속|(HP|MP)[^가-힣]*회복|피로도\s*(?:\[\d+\s*D\]|\d+)[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(effect);
+}
+
+function displayEffect(effect: string | null | undefined): string {
+  const text = (effect ?? "").trim();
+  if (!text) return "아직 등록된 효과가 없어요.";
+  const visible = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        line !== ALCHEMY_CUSTOM_POTION_MARKER &&
+        !/^판매가\s*[\d,]+\s*G$/i.test(line) &&
+        !/^연금 포인트\b/.test(line) &&
+        !/^재료\s/.test(line) &&
+        !/^숙련 보너스\b/.test(line),
+    )
+    .join("\n")
+    .trim();
+  return visible || "아직 등록된 효과가 없어요.";
 }
 
 function isLifeResetBlessing(item: SheetInventoryItem): boolean {
@@ -159,7 +190,7 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
                     <p className="truncate text-xs font-extrabold text-content">{item.name}</p>
                     {item.effect && (
                       <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-faint">
-                        {item.effect}
+                        {displayEffect(item.effect)}
                       </p>
                     )}
                   </div>
@@ -209,7 +240,7 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
               <div className="rounded-2xl border border-line px-3 py-3">
                 <p className="mb-1 text-[11px] font-bold text-faint">상세 효과</p>
                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-content">
-                  {selected.effect || "아직 등록된 효과가 없어요."}
+                  {displayEffect(selected.effect)}
                 </p>
                 {(() => {
                   // 효과문 속 [태그] → 룰 사전 설명
