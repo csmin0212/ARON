@@ -8,14 +8,19 @@ export default function AraconPicker({
   compact = false,
   variant = "text",
   align = "right",
+  placement = "bottom",
 }: {
   onPick: (token: string) => void;
   compact?: boolean;
   variant?: "text" | "icon";
   align?: "left" | "right";
+  placement?: "top" | "bottom";
 }) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<0 | 1>(0);
   const isIcon = variant === "icon";
+  const visibleAracons = ARACONS.slice(tab * 16, tab * 16 + 16);
+  const placementClass = placement === "top" ? "bottom-full mb-2" : "mt-2";
 
   return (
     <div className="relative">
@@ -34,19 +39,28 @@ export default function AraconPicker({
       </button>
       {open && (
         <div
-          className={`absolute z-30 mt-2 rounded-2xl border border-line bg-surface p-2 shadow-xl ${
+          className={`absolute z-30 rounded-2xl border border-line bg-surface p-2 shadow-xl ${placementClass} ${
             align === "right" ? "right-0" : "left-0"
           } ${compact ? "w-72" : "w-80"}`}
         >
-          <div
-            className={`mb-2 border-b border-line px-1 pb-1.5 text-[11px] font-extrabold text-muted ${
-              isIcon ? "sr-only" : ""
-            }`}
-          >
-            아라콘
+          <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-subtle p-1">
+            {(["아라콘1", "아라콘2"] as const).map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setTab(index as 0 | 1)}
+                className={`rounded-lg px-2 py-1.5 text-xs font-extrabold transition ${
+                  tab === index
+                    ? "bg-surface text-brand-600 shadow-sm"
+                    : "text-faint hover:bg-surface/70 hover:text-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            {ARACONS.map((item) => (
+            {visibleAracons.map((item) => (
               <button
                 key={item.id}
                 type="button"

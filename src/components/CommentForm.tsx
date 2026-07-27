@@ -103,7 +103,7 @@ export default function CommentForm({
         </div>
 
         <div className="flex items-center gap-2 border-l border-line pl-2">
-          <AraconPicker onPick={insertAracon} compact align="right" />
+          <AraconPicker onPick={insertAracon} compact align="right" placement="top" />
           <button
             type="submit"
             disabled={pending || content.trim().length === 0}
