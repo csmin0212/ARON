@@ -16,8 +16,15 @@ import {
 // trade.ts 의 TRADE_SOURCE_SEP 과 동일해야 함 ("use server" 파일의 값은 클라에서 못 가져옴)
 const SOURCE_SEP = "~@~";
 const SOURCE_EMOJI: Record<TradeSource, string> = { basic: "🎒", 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
-const offerRef = (source: TradeSource | undefined, name: string) =>
-  `${source ?? "basic"}${SOURCE_SEP}${name}`;
+const offerRef = (
+  source: TradeSource | undefined,
+  name: string,
+  effect?: string | null,
+  weight?: number | null,
+) =>
+  `${source ?? "basic"}${SOURCE_SEP}${encodeURIComponent(name)}${SOURCE_SEP}${encodeURIComponent(
+    effect ?? "",
+  )}${SOURCE_SEP}${weight ?? ""}`;
 
 type OfferableItem = {
   name: string;
@@ -118,6 +125,71 @@ function OfferSide({ side, mine }: { side: SideView; mine: boolean }) {
   );
 }
 
+function OfferItemRow({
+  row,
+  offerableItems,
+  disabled,
+}: {
+  row: TradeSideItem | null;
+  offerableItems: OfferableItem[];
+  disabled: boolean;
+}) {
+  const initialRef = row ? offerRef(row.source, row.name, row.effect, row.weight) : "";
+  const [selectedRef, setSelectedRef] = useState(initialRef);
+  const selectedItem = offerableItems.find(
+    (item) => offerRef(item.source, item.name, item.effect, item.weight) === selectedRef,
+  );
+  const maxQty = selectedItem?.qty ?? row?.qty ?? 1;
+  const [qty, setQty] = useState(Math.min(row?.qty ?? 1, maxQty));
+  const clampedQty = Math.max(1, Math.min(maxQty, qty));
+
+  return (
+    <div className="grid gap-2 rounded-2xl border border-line bg-canvas p-2 sm:grid-cols-[minmax(0,1fr)_112px]">
+      <label className="min-w-0 space-y-1">
+        <span className="sr-only">거래 아이템</span>
+        <select
+          name="itemName"
+          value={selectedRef}
+          onChange={(event) => setSelectedRef(event.target.value)}
+          disabled={disabled}
+          className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content disabled:opacity-60"
+        >
+          <option value="">비우기</option>
+          {selectedRef && !selectedItem && row && (
+            <option value={selectedRef}>
+              {SOURCE_EMOJI[row.source ?? "basic"]} {row.name} x{row.qty}
+            </option>
+          )}
+          {offerableItems.map((item) => (
+            <option
+              key={`${item.source}-${item.name}-${item.effect ?? ""}-${item.weight ?? ""}`}
+              value={offerRef(item.source, item.name, item.effect, item.weight)}
+            >
+              {SOURCE_EMOJI[item.source]} {item.name} x{item.qty}
+            </option>
+          ))}
+        </select>
+        <p className="truncate px-1 text-[11px] font-bold text-faint">
+          {selectedItem ? `선택 가능 ${selectedItem.qty}개` : "아이템을 선택하세요"}
+        </p>
+      </label>
+      <label className="space-y-1">
+        <span className="block px-1 text-[11px] font-bold text-faint">수량</span>
+        <input
+          type="number"
+          name="itemQty"
+          min={1}
+          max={maxQty}
+          value={clampedQty}
+          onChange={(event) => setQty(Math.max(1, Math.min(maxQty, Number(event.target.value) || 1)))}
+          disabled={disabled || !selectedRef}
+          className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content disabled:opacity-60"
+        />
+      </label>
+    </div>
+  );
+}
+
 function OfferEditor({
   tradeId,
   offerableItems,
@@ -168,32 +240,7 @@ function OfferEditor({
         <div className="space-y-2">
           <p className="text-xs font-bold text-faint">올릴 아이템</p>
           {rows.map((row, index) => (
-            <div key={index} className="grid gap-2 sm:grid-cols-[1fr_90px]">
-              <select
-                name="itemName"
-                defaultValue={row ? offerRef(row.source, row.name) : ""}
-                disabled={disabled}
-                className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm font-semibold text-content disabled:opacity-60"
-              >
-                <option value="">비우기</option>
-                {offerableItems.map((item) => (
-                  <option
-                    key={`${index}-${item.source}-${item.name}-${item.effect ?? ""}-${item.weight ?? ""}`}
-                    value={offerRef(item.source, item.name)}
-                  >
-                    {SOURCE_EMOJI[item.source]} {item.name} x{item.qty}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                name="itemQty"
-                min={1}
-                defaultValue={row?.qty ?? 1}
-                disabled={disabled}
-                className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm font-semibold text-content disabled:opacity-60"
-              />
-            </div>
+            <OfferItemRow key={index} row={row} offerableItems={offerableItems} disabled={disabled} />
           ))}
         </div>
 

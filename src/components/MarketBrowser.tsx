@@ -232,9 +232,10 @@ function SellRow({ item }: { item: SellableItem }) {
   const [price, setPrice] = useState(item.floor || 1);
   const [qty, setQty] = useState(1);
   const below = price < item.floor;
-  const canInstant = item.floor > 0;
-  const canList = item.floor > 0 && !below;
   const categoryLabel = normalizeAuctionCategory(item.category);
+  const isLifeBagItem = categoryLabel === "어획물" || categoryLabel === "채집물" || categoryLabel === "광석";
+  const canInstant = item.floor > 0 || isLifeBagItem;
+  const canList = item.floor > 0 && !below;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">

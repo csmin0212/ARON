@@ -70,15 +70,35 @@ function removeFromLifeBag(life: LifeState, kind: LifeSkillKind, name: string, q
   life.bags[kind].items = life.bags[kind].items.filter((i) => i.qty > 0);
 }
 
-function availableQty(pool: Pool, source: TradeSource, name: string): number {
-  return source === "basic" ? itemQty(pool.inv, name) : lifeBagQty(pool.life, source, name);
+function decodeOfferPart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
-function parseOfferRef(raw: string): { source: TradeSource; name: string } {
-  const i = raw.indexOf(TRADE_SOURCE_SEP);
-  if (i < 0) return { source: "basic", name: raw.trim() };
-  const src = raw.slice(0, i);
-  return { source: isLifeKind(src) ? src : "basic", name: raw.slice(i + TRADE_SOURCE_SEP.length).trim() };
+function parseOfferRef(raw: string): {
+  source: TradeSource;
+  name: string;
+  effect?: string | null;
+  weight?: number | null;
+  exact: boolean;
+} {
+  const parts = raw.split(TRADE_SOURCE_SEP);
+  if (parts.length < 2) return { source: "basic", name: raw.trim(), exact: false };
+  const source = isLifeKind(parts[0]) ? parts[0] : "basic";
+  if (parts.length >= 4) {
+    const weight = parts[3] === "" ? null : Number(parts[3]);
+    return {
+      source,
+      name: decodeOfferPart(parts[1]).trim(),
+      effect: parts[2] === "" ? null : decodeOfferPart(parts[2]),
+      weight: Number.isFinite(weight) ? weight : null,
+      exact: true,
+    };
+  }
+  return { source, name: raw.slice(parts[0].length + TRADE_SOURCE_SEP.length).trim(), exact: false };
 }
 
 const PENDING = "PENDING";
@@ -114,28 +134,55 @@ function nonNegativeInt(value: FormDataEntryValue | null): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-function itemQty(inv: SheetInventory, name: string): number {
-  const target = name.trim();
-  return inv.items
-    .filter((item) => item.name.trim() === target)
-    .reduce((total, item) => total + Math.max(0, item.qty), 0);
-}
-
 function firstItem(inv: SheetInventory, name: string): SheetInventoryItem | null {
   const target = name.trim();
   return inv.items.find((item) => item.name.trim() === target && item.qty > 0) ?? null;
 }
 
-function consumeItem(inv: SheetInventory, name: string, qty: number): SheetInventory {
-  const target = name.trim();
-  let remaining = qty;
-  for (const item of inv.items) {
-    if (remaining <= 0 || item.name.trim() !== target) continue;
-    const used = Math.min(Math.max(0, item.qty), remaining);
-    item.qty -= used;
+function firstTradeItem(inv: SheetInventory, ref: ReturnType<typeof parseOfferRef>): SheetInventoryItem | null {
+  const target = ref.name.trim();
+  if (ref.exact) {
+    const exact = inv.items.find(
+      (item) =>
+        item.name.trim() === target &&
+        item.qty > 0 &&
+        (item.effect ?? null) === (ref.effect ?? null) &&
+        (item.weight ?? null) === (ref.weight ?? null),
+    );
+    if (exact) return exact;
+  }
+  return firstItem(inv, ref.name);
+}
+
+function tradeItemQty(inv: SheetInventory, item: TradeSideItem): number {
+  const target = item.name.trim();
+  return inv.items
+    .filter(
+      (entry) =>
+        entry.name.trim() === target &&
+        (entry.effect ?? null) === (item.effect ?? null) &&
+        (entry.weight ?? null) === (item.weight ?? null),
+    )
+    .reduce((total, entry) => total + Math.max(0, entry.qty), 0);
+}
+
+function consumeTradeItem(inv: SheetInventory, item: TradeSideItem): SheetInventory {
+  const target = item.name.trim();
+  let remaining = item.qty;
+  for (const entry of inv.items) {
+    if (
+      remaining <= 0 ||
+      entry.name.trim() !== target ||
+      (entry.effect ?? null) !== (item.effect ?? null) ||
+      (entry.weight ?? null) !== (item.weight ?? null)
+    ) {
+      continue;
+    }
+    const used = Math.min(Math.max(0, entry.qty), remaining);
+    entry.qty -= used;
     remaining -= used;
   }
-  inv.items = inv.items.filter((item) => item.qty > 0);
+  inv.items = inv.items.filter((entry) => entry.qty > 0);
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   return inv;
 }
@@ -194,7 +241,7 @@ function readOfferItems(pool: Pool, formData: FormData): TradeSideItem[] {
     let effect: string | null = null;
     let weight: number | null = null;
     if (ref.source === "basic") {
-      const found = firstItem(pool.inv, ref.name);
+      const found = firstTradeItem(pool.inv, ref);
       if (!found) continue;
       effect = found.effect;
       weight = found.weight;
@@ -205,7 +252,7 @@ function readOfferItems(pool: Pool, formData: FormData): TradeSideItem[] {
       weight = lifeItem.weight;
     }
     const item = { name: ref.name, effect, weight };
-    const key = `${item.name}\u0000${item.effect ?? ""}\u0000${item.weight ?? ""}`;
+    const key = `${ref.source}\u0000${item.name}\u0000${item.effect ?? ""}\u0000${item.weight ?? ""}`;
     const existing = byKey.get(key);
     if (existing) existing.qty += qty;
     else byKey.set(key, { name: item.name, effect: item.effect, weight: item.weight, qty, source: ref.source });
@@ -215,15 +262,18 @@ function readOfferItems(pool: Pool, formData: FormData): TradeSideItem[] {
 }
 
 function validateSide(pool: Pool, items: TradeSideItem[]): string | null {
-  const needed = new Map<string, { source: TradeSource; name: string; qty: number }>();
+  const needed = new Map<string, TradeSideItem>();
   for (const item of items) {
     const source = item.source ?? "basic";
-    const prev = needed.get(`${source} ${item.name}`);
+    const key = `${source}\u0000${item.name}\u0000${item.effect ?? ""}\u0000${item.weight ?? ""}`;
+    const prev = needed.get(key);
     if (prev) prev.qty += item.qty;
-    else needed.set(`${source} ${item.name}`, { source, name: item.name, qty: item.qty });
+    else needed.set(key, { ...item, source });
   }
-  for (const { source, name, qty } of needed.values()) {
-    if (availableQty(pool, source, name) < qty) return `${name} 수량이 부족합니다.`;
+  for (const item of needed.values()) {
+    const source = item.source ?? "basic";
+    const available = source === "basic" ? tradeItemQty(pool.inv, item) : lifeBagQty(pool.life, source, item.name);
+    if (available < item.qty) return `${item.name} 수량이 부족합니다.`;
   }
   return null;
 }
@@ -474,7 +524,7 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const removeOffered = (pool: Pool, items: TradeSideItem[]) => {
     for (const item of items) {
       const source = item.source ?? "basic";
-      if (source === "basic") consumeItem(pool.inv, item.name, item.qty);
+      if (source === "basic") consumeTradeItem(pool.inv, item);
       else removeFromLifeBag(pool.life, source, item.name, item.qty);
     }
   };

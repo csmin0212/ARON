@@ -61,12 +61,13 @@ import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
+import { inventoryEquipmentSlot, isEquipmentLikeInventoryItem } from "@/lib/itemUse";
 import {
   potionSellPrice,
   profitAdjustedSellPrice,
   recipeIngredientCostFromJson,
 } from "@/lib/qualityPricing";
-import { TIER_LABEL, detectForgeSlot, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
+import { TIER_LABEL, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
 import { FATIGUE_MAX, dungeonWeekKey, regenFatigue, restedTodayKst } from "@/lib/world";
 import { buildWeeklyIncomeEntries, parseWeeklyIncomeState } from "@/lib/weeklyIncome";
 import { postSystem } from "@/lib/play";
@@ -2725,13 +2726,18 @@ export async function useCookingItem(
     };
   }
 
+  const inventoryItem = findInvItem(ctx.inv, itemName);
+  if (inventoryItem && isEquipmentLikeInventoryItem(inventoryItem)) {
+    return { error: "장비류 아이템은 사용하기로 소비할 수 없어요." };
+  }
+
   const { base, grade } = parseCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
     select: { effect: true, duration: true, tags: true },
   });
   const gradeBonus = gradeInfo(grade)?.effectBonus ?? 0;
-  const baseEffect = recipe?.effect || findInvItem(ctx.inv, itemName)?.effect || "";
+  const baseEffect = recipe?.effect || inventoryItem?.effect || "";
   // 등급(고품질·명품)이면 효과 수치를 등급 보너스만큼 강화해 적용.
   const rawEffect = gradeBonus > 0 && recipe?.effect ? enhanceEffectText(baseEffect, gradeBonus) : baseEffect;
   if (!rawEffect || base === FAILED_DISH.name) {
@@ -3895,6 +3901,9 @@ export async function upgradeWeapon(
   const weaponLevel = Math.max(1, Math.min(4, Number(formData.get("level") ?? 1) || 1));
   const weapon = findInvItem(ctx.inv, weaponName);
   if (!weapon || weapon.qty <= 0) return { error: "강화할 무기를 인벤토리에서 찾지 못했습니다." };
+  if (inventoryEquipmentSlot(weapon) !== "weapon") {
+    return { error: "무기만 강화할 수 있어요." };
+  }
   const nextEnhancement = enhancementLevel(weapon.name) + 1;
   const materialName = materialForEnhancement(nextEnhancement);
   if (nextEnhancement > 4) {
@@ -3991,8 +4000,8 @@ export async function reforgeItem(_prev: ServiceState, formData: FormData): Prom
   const item = findInvItem(ctx.inv, itemName);
   if (!item || item.qty <= 0) return { error: "수식어를 부여할 장비를 찾지 못했습니다." };
 
-  const slot = detectForgeSlot(`${item.name} ${item.effect ?? ""}`);
-  if (!slot) return { error: "무기·방어구만 수식어 리롤이 가능해요." };
+  const slot = inventoryEquipmentSlot(item);
+  if (slot !== "weapon" && slot !== "armor") return { error: "무기·방어구만 수식어 리롤이 가능해요." };
   if (itemQty(ctx.inv, STEEL_FRAGMENT) < 1) {
     return { error: `${STEEL_FRAGMENT}이 부족합니다. (${itemQty(ctx.inv, STEEL_FRAGMENT)}/1)` };
   }

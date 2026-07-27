@@ -5,6 +5,7 @@ import { useCookingItem, type CookingState } from "@/app/actions/services";
 import { useSkillBook, type SkillBookState } from "@/app/actions/skills";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 import { ALCHEMY_CUSTOM_POTION_MARKER, customPotionSellPrice } from "@/lib/alchemy";
+import { isEquipmentLikeInventoryItem } from "@/lib/itemUse";
 
 export type LifeBagPocket = {
   name: string;
@@ -59,6 +60,7 @@ function canUseItem(item: SheetInventoryItem): boolean {
   }
   const effect = item.effect ?? "";
   if (effect.includes("아무도 없는 곳에서 열어보자")) return true;
+  if (isEquipmentLikeInventoryItem(item)) return false;
   const isCustomAlchemyPotion = customPotionSellPrice(effect) != null;
   if (isCustomAlchemyPotion) {
     const hasDuration = /\d+\s*분/.test(effect);

@@ -60,7 +60,7 @@ import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge
 import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
-import { detectForgeSlot } from "@/lib/forge";
+import { inventoryEquipmentSlot } from "@/lib/itemUse";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -322,25 +322,6 @@ export type WanderingMerchantStockView = NonNullable<
 >["stock"][number];
 
 const GEM_NAMES =["루비", "에메랄드", "사파이어", "토파즈", "다이아몬드"];
-const WEAPON_HINTS = [
-  "검",
-  "도",
-  "창",
-  "활",
-  "단검",
-  "도끼",
-  "메이스",
-  "해머",
-  "완드",
-  "스태프",
-  "지팡이",
-  "소드",
-  "블레이드",
-  "보우",
-  "랜스",
-  "액스",
-];
-
 function mergeItems(items: SheetInventoryItem[]): SheetInventoryItem[] {
   const byName = new Map<string, SheetInventoryItem>();
   for (const item of items) {
@@ -361,8 +342,7 @@ function isGem(item: SheetInventoryItem): boolean {
 function isWeapon(item: SheetInventoryItem): boolean {
   if (item.name.trim() === "강철 파편") return false;
   if (item.name.includes("파편") || isGem(item)) return false;
-  const source = `${item.name} ${item.effect ?? ""}`;
-  return WEAPON_HINTS.some((hint) => source.includes(hint));
+  return inventoryEquipmentSlot(item) === "weapon";
 }
 
 function itemTags(name: string): string[] {
@@ -3720,10 +3700,11 @@ export default function WorldServices({
   const enchantableWeapons = weapons.filter((w) => !isEnchanted(w) && !isEnhanced(w));
   // 수식어 리롤 대상: 무기 또는 방어구 (강철 파편·보석 제외)
   const forgeables = items.filter(
-    (it) =>
-      !isGem(it) &&
-      !it.name.includes("파편") &&
-      detectForgeSlot(`${it.name} ${it.effect ?? ""}`) !== null,
+    (it) => {
+      if (isGem(it) || it.name.includes("파편")) return false;
+      const slot = inventoryEquipmentSlot(it);
+      return slot === "weapon" || slot === "armor";
+    },
   );
   const gems = items.filter(isGem);
   const steelCount = countOf(items, "강철 파편");

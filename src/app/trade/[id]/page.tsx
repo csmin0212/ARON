@@ -47,9 +47,10 @@ function offerableItems(
   const byName = new Map<string, OfferableItem>();
   for (const item of inv.items) {
     if (!item.name || item.qty <= 0) continue;
-    const existing = byName.get(item.name);
+    const key = `${item.name}\u0000${item.effect ?? ""}\u0000${item.weight ?? ""}`;
+    const existing = byName.get(key);
     if (existing) existing.qty += item.qty;
-    else byName.set(item.name, { name: item.name, qty: item.qty, effect: item.effect, weight: item.weight, source: "basic" });
+    else byName.set(key, { name: item.name, qty: item.qty, effect: item.effect, weight: item.weight, source: "basic" });
   }
   out.push(...[...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "ko")));
 
