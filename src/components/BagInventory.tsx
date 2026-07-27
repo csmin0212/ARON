@@ -53,6 +53,7 @@ function canUseItem(item: SheetInventoryItem): boolean {
   const compactName = normalizedItemName(item.name);
   if (compactName === "의문의양피지") return true;
   if (compactName === "종이가든병") return true;
+  if (compactName === "랜덤박스") return true;
   if (compactName === "망각의물약" || compactName === "변화의물약" || compactName === "망각의축복") {
     return true;
   }

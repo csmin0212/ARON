@@ -2558,6 +2558,10 @@ function isMessageBottle(name: string): boolean {
   return normalizedConsumableName(name) === MESSAGE_BOTTLE_NAME.replace(/\s+/g, "");
 }
 
+function isRandomBox(name: string): boolean {
+  return normalizedConsumableName(name) === "랜덤박스";
+}
+
 export async function useCookingItem(
   _prev: CookingState,
   formData: FormData,
@@ -2569,6 +2573,23 @@ export async function useCookingItem(
   const itemName = String(formData.get("itemName") ?? "").trim();
   if (!itemName) return { error: "사용할 요리가 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < 1) return { error: `${itemName}을 보유하고 있지 않습니다.` };
+
+  if (isRandomBox(itemName)) {
+    const roll = Math.floor(Math.random() * 400) + 1;
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: { invJson: JSON.stringify(inv) },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+    revalidatePath("/world");
+    revalidatePath("/profile");
+    return { ok: `랜덤박스 결과: ${roll}\n해당 번호를 GM에게 DM으로 보내주세요.` };
+  }
 
   if (isMysteryParchment(itemName)) {
     const inv = consumeInvItem(ctx.inv, itemName, 1);
