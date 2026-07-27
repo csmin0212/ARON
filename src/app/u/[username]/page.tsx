@@ -257,6 +257,7 @@ export default async function CharacterPage({
     badge: a.badge,
     secret: a.secret,
     rewardTitle: a.rewardTitle,
+    rewardFame: a.rewardFame,
     earned: earnedSet.has(a.id),
   }));
 

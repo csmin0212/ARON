@@ -11,6 +11,7 @@ export type AchView = {
   badge: string | null;
   secret: boolean;
   rewardTitle: string | null;
+  rewardFame: number;
   earned: boolean;
 };
 
@@ -148,6 +149,11 @@ export default function AchievementBook({
                         {a.earned && a.rewardTitle && (
                           <p className="mt-0.5 text-[11px] font-semibold text-brand-600">
                             칭호 「{a.rewardTitle}」
+                          </p>
+                        )}
+                        {a.earned && a.rewardFame > 0 && (
+                          <p className="mt-0.5 text-[11px] font-semibold text-amber-600">
+                            명성 +{a.rewardFame}
                           </p>
                         )}
                       </div>
