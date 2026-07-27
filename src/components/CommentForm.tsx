@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createComment, type CommentState } from "@/app/actions/comments";
+import AraconPicker from "./AraconPicker";
 
 const smallInput =
   "rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
@@ -21,27 +22,38 @@ export default function CommentForm({
   onSuccess?: () => void;
   autoFocus?: boolean;
 }) {
+  const [content, setContent] = useState("");
   const [state, formAction, pending] = useActionState<CommentState, FormData>(
-    createComment,
+    async (prev, formData) => {
+      const nextState = await createComment(prev, formData);
+      if (nextState?.ok) {
+        setContent("");
+        onSuccess?.();
+      }
+      return nextState;
+    },
     undefined,
   );
-  const [content, setContent] = useState("");
   const [asAnon, setAsAnon] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (state?.ok) {
-      setContent("");
-      onSuccess?.();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
 
   useEffect(() => {
     if (autoFocus) taRef.current?.focus();
   }, [autoFocus]);
 
   const showAnon = !isLoggedIn || asAnon;
+
+  function insertAracon(token: string) {
+    const el = taRef.current;
+    const start = el?.selectionStart ?? content.length;
+    const end = el?.selectionEnd ?? start;
+    const next = `${content.slice(0, start)}${token}${content.slice(end)}`;
+    setContent(next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
 
   return (
     <form
@@ -90,13 +102,16 @@ export default function CommentForm({
           )}
         </div>
 
-        <button
-          type="submit"
-          disabled={pending || content.trim().length === 0}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-50"
-        >
-          {pending ? "등록 중…" : "등록"}
-        </button>
+        <div className="flex items-center gap-2 border-l border-line pl-2">
+          <AraconPicker onPick={insertAracon} compact align="right" />
+          <button
+            type="submit"
+            disabled={pending || content.trim().length === 0}
+            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-50"
+          >
+            {pending ? "등록 중…" : "등록"}
+          </button>
+        </div>
       </div>
 
       {state?.error && (

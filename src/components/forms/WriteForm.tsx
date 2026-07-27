@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPost, updatePost, type FormState } from "@/app/actions/posts";
 import { CATEGORIES } from "@/lib/categories";
+import AraconPicker from "@/components/AraconPicker";
 
 type UploadedImage = { id: number; url: string };
 
@@ -37,10 +38,12 @@ export default function WriteForm({
   );
   const [asAnon, setAsAnon] = useState(!isLoggedIn);
   const [category, setCategory] = useState(initial?.category ?? "GENERAL");
+  const [content, setContent] = useState(initial?.content ?? "");
   const [images, setImages] = useState<UploadedImage[]>(initial?.images ?? []);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -70,6 +73,18 @@ export default function WriteForm({
 
   function removeImage(id: number) {
     setImages((prev) => prev.filter((img) => img.id !== id));
+  }
+
+  function insertAracon(token: string) {
+    const el = contentRef.current;
+    const start = el?.selectionStart ?? content.length;
+    const end = el?.selectionEnd ?? start;
+    const next = `${content.slice(0, start)}${token}${content.slice(end)}`;
+    setContent(next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
   }
 
   // 새 글: 익명 옵션에 따라 익명 필드. 수정 글: 익명 글이면 비밀번호로 인증.
@@ -165,9 +180,11 @@ export default function WriteForm({
       <div>
         <label className="mb-1.5 block text-sm font-semibold text-content">내용</label>
         <textarea
+          ref={contentRef}
           name="content"
           rows={12}
-          defaultValue={initial?.content}
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
           className={`${inputCls} resize-y leading-relaxed`}
           placeholder={isTrade ? "매물 설명, 거래 방식 등을 적어주세요." : "내용을 입력하세요. 꿀팁 공유 ㄱㄱ"}
         />
@@ -286,6 +303,9 @@ export default function WriteForm({
         >
           취소
         </button>
+        <div className="flex items-center gap-2 border-l border-line pl-2">
+          <AraconPicker onPick={insertAracon} compact align="right" />
+        </div>
         <button
           type="submit"
           disabled={pending}

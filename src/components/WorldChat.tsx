@@ -14,6 +14,9 @@ import { discoverByKeyword } from "@/app/actions/world";
 import { useWorldSync } from "./WorldSyncProvider";
 import { getPreset, isImageUrl } from "@/lib/avatars";
 import { formatFullDate, formatTime } from "@/lib/format";
+import { araconHtml } from "@/lib/aracon";
+import AraconContent from "./AraconContent";
+import AraconPicker from "./AraconPicker";
 
 type ChatMessage = {
   id: number;
@@ -231,6 +234,18 @@ export default function WorldChat({
     }
   }
 
+  function insertAracon(token: string) {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? input.length;
+    const end = el?.selectionEnd ?? start;
+    const next = `${input.slice(0, start)}${token}${input.slice(end)}`;
+    setInput(next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
+
   // 비밀 키워드 조사 — 채팅에 남기지 않고 본인에게만 결과를 알려준다.
   async function probe(e: React.FormEvent) {
     e.preventDefault();
@@ -268,7 +283,7 @@ export default function WorldChat({
         if (m.system)
           return `<p class="sys">— ${esc(m.content)} <span class="t">(${time})</span></p>`;
         const who = esc(m.user?.nickname ?? "?");
-        return `<div class="msg">${avatarForLog(m.user)}<div class="msg-body"><p class="name"><b>${who}</b> <span class="t">${time}</span></p><p class="text">${esc(m.content)}</p></div></div>`;
+        return `<div class="msg">${avatarForLog(m.user)}<div class="msg-body"><p class="name"><b>${who}</b> <span class="t">${time}</span></p><p class="text">${araconHtml(m.content, esc)}</p></div></div>`;
       })
       .join("\n");
     w.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -283,6 +298,7 @@ export default function WorldChat({
   .name{margin:0 0 2px}
   .text{margin:0;white-space:pre-wrap}
   .av{width:34px;height:34px;border-radius:999px;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;background:#eef1f7;border:1px solid #d9deea;font-weight:700}
+  .aracon{width:72px;height:72px;object-fit:contain;vertical-align:middle;margin:0 2px}
   .emoji{font-size:19px}
   .fallback{font-size:14px;color:#555}
   .sys{color:#7a7f93;font-size:13px;font-style:italic}
@@ -356,7 +372,7 @@ ${body}
                       : "rounded-tl-sm bg-subtle text-content"
                   }`}
                 >
-                  {m.content}
+                  <AraconContent text={m.content} size="md" />
                 </p>
               </div>
             </div>
@@ -408,6 +424,7 @@ ${body}
         {notice && <p className="mb-2 px-1 text-xs font-medium text-violet-500">🔮 {notice}</p>}
 
         <div className="flex gap-2">
+          <AraconPicker onPick={insertAracon} compact variant="icon" align="left" />
           <input
             ref={inputRef}
             value={input}

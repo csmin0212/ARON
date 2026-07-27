@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import Avatar from "./Avatar";
 import CommentForm from "./CommentForm";
+import AraconContent from "./AraconContent";
 import { deleteComment } from "@/app/actions/comments";
 import { formatFullDate } from "@/lib/format";
 
@@ -107,7 +108,7 @@ function Node({
               node.isDeleted ? "italic text-faint2" : "text-content"
             }`}
           >
-            {node.content}
+            <AraconContent text={node.content} size="sm" />
           </p>
 
           {!node.isDeleted && (

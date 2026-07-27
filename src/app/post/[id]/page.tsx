@@ -13,6 +13,7 @@ import TradeStatusButton from "@/components/TradeStatusButton";
 import CommentThread, { type CommentNode } from "@/components/CommentThread";
 import CommentForm from "@/components/CommentForm";
 import PostActions from "@/components/PostActions";
+import AraconContent from "@/components/AraconContent";
 import { profileHrefForPersonaSnapshot } from "@/lib/gmNpc";
 
 export async function generateMetadata({
@@ -228,7 +229,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
         )}
 
         <div className="post-content px-5 py-7 text-[15px] text-content sm:px-7">
-          {post.content}
+          <AraconContent text={post.content} size="md" />
         </div>
 
         {images.length > 0 && (

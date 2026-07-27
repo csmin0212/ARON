@@ -345,7 +345,7 @@ export default function CraftingForge({
                         <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>{def.rarity}</span>
                       </p>
                       <p className="text-[10px] text-faint">
-                        보유 {have} · {lockedByExtraSlot ? "확장 슬롯은 [재료]만" : used ? (def.craftEffect ?? "-") : "???"}
+                        보유 {have} · {lockedByExtraSlot ? "확장 슬롯은 특수 재료만" : used ? (def.craftEffect ?? "-") : "???"}
                       </p>
                     </button>
                   );
