@@ -229,13 +229,12 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
 function SellRow({ item }: { item: SellableItem }) {
   const [listState, listAction, listPending] = useActionState<AuctionState, FormData>(listOnAuction, undefined);
   const [sellState, sellAction, sellPending] = useActionState<AuctionState, FormData>(instantSell, undefined);
-  const [price, setPrice] = useState(item.floor || 1);
+  const [price, setPrice] = useState(Math.max(0, item.floor));
   const [qty, setQty] = useState(1);
   const below = price < item.floor;
   const categoryLabel = normalizeAuctionCategory(item.category);
-  const isLifeBagItem = categoryLabel === "어획물" || categoryLabel === "채집물" || categoryLabel === "광석";
-  const canInstant = item.floor > 0 || isLifeBagItem;
-  const canList = item.floor > 0 && !below;
+  const canInstant = item.floor >= 0;
+  const canList = item.floor >= 0 && !below;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">
@@ -290,7 +289,7 @@ function SellRow({ item }: { item: SellableItem }) {
           <input
             type="number"
             name="unitPrice"
-            min={item.floor || 1}
+            min={Math.max(0, item.floor)}
             value={price}
             onChange={(e) => setPrice(Math.max(0, Number(e.target.value) || 0))}
             className={`w-24 rounded-lg border bg-surface px-2 py-1.5 text-sm font-semibold outline-none ${
@@ -304,7 +303,7 @@ function SellRow({ item }: { item: SellableItem }) {
           disabled={listPending || !canList}
           className="flex-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {listPending ? "등록 중..." : item.floor <= 0 ? "거래 불가" : below ? "하한 미만" : "위탁등록"}
+          {listPending ? "등록 중..." : below ? "하한 미만" : "위탁등록"}
         </button>
       </form>
       <StateLine state={sellState} />

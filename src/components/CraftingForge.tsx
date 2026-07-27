@@ -9,6 +9,8 @@ import {
   craftFeeRange,
   CRAFT_CATEGORIES,
   MAX_MAJORS,
+  MAX_MINORS,
+  isCraftMinorMaterial,
   minorSlotsFor,
   type CraftGroup,
 } from "@/lib/weaponCraft";
@@ -162,9 +164,13 @@ export default function CraftingForge({
   }
 
   function toggleMinor(name: string) {
-    setMinorSel((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : prev.length < maxMinors ? [...prev, name] : prev,
-    );
+    setMinorSel((prev) => {
+      if (prev.includes(name)) return prev.filter((n) => n !== name);
+      const item = defs.get(name)?.def;
+      if (!item || prev.length >= maxMinors) return prev;
+      if (prev.length >= MAX_MINORS && !isCraftMinorMaterial(item)) return prev;
+      return [...prev, name];
+    });
   }
 
   async function craft() {
@@ -301,7 +307,7 @@ export default function CraftingForge({
             )}
           </section>
 
-          {/* 마이너 광물 */}
+          {/* 마이너 재료 */}
           <section className="rounded-2xl border border-line bg-subtle p-4">
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-extrabold text-content">💎 마이너 재료</h4>
@@ -311,18 +317,27 @@ export default function CraftingForge({
               마이너 재료를 넣으면 결과가 매직 아이템으로 표기된다.
             </p>
             {minorsOwned.length === 0 ? (
-              <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">가진 마이너 광물이 없다.</p>
+              <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">가진 마이너 재료가 없다.</p>
             ) : (
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {minorsOwned.map(({ def, have, used }) => {
                   const active = minorSel.includes(def.name);
+                  const lockedByExtraSlot =
+                    !active && minorSel.length >= MAX_MINORS && !isCraftMinorMaterial(def);
+                  const lockedByFull = !active && minorSel.length >= maxMinors;
+                  const disabled = lockedByExtraSlot || lockedByFull;
                   return (
                     <button
                       key={def.name}
                       type="button"
                       onClick={() => toggleMinor(def.name)}
+                      disabled={disabled}
                       className={`rounded-xl border px-3 py-2 text-left transition ${
-                        active ? "border-violet-400 bg-violet-50" : "border-line bg-surface hover:border-violet-200"
+                        active
+                          ? "border-violet-400 bg-violet-50"
+                          : disabled
+                            ? "border-line bg-surface opacity-45"
+                            : "border-line bg-surface hover:border-violet-200"
                       }`}
                     >
                       <p className="truncate text-xs font-extrabold text-content">
@@ -330,7 +345,7 @@ export default function CraftingForge({
                         <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>{def.rarity}</span>
                       </p>
                       <p className="text-[10px] text-faint">
-                        보유 {have} · {used ? (def.craftEffect ?? "-") : "???"}
+                        보유 {have} · {lockedByExtraSlot ? "확장 슬롯은 [재료]만" : used ? (def.craftEffect ?? "-") : "???"}
                       </p>
                     </button>
                   );

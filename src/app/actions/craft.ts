@@ -235,7 +235,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   const seenMinor = new Set<string>();
   for (const name of minorsRaw) {
     const key = name.trim();
-    if (seenMinor.has(key)) return { error: "같은 마이너 광물은 1개씩만 넣을 수 있어요." };
+    if (seenMinor.has(key)) return { error: "같은 마이너 재료는 1개씩만 넣을 수 있어요." };
     seenMinor.add(key);
     const item = pool.get(key);
     if (!item) return { error: `${key}은(는) 알 수 없는 광물이에요.` };
@@ -403,7 +403,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     for (const lv of smithLevelUps) {
       await postSystem(
         sheet.locationId,
-        `🆙 ${user.nickname}님의 대장 레벨이 ${lv}이 되었다!${lv === 10 || lv === 25 ? " 마이너 슬롯이 늘어났다! 🔥" : ""}`,
+        `🆙 ${user.nickname}님의 대장 레벨이 ${lv}이 되었다!${lv === 15 || lv === 25 ? " 마이너 슬롯이 늘어났다! 🔥" : ""}`,
       );
     }
   }

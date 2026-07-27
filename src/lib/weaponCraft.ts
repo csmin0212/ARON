@@ -3,7 +3,8 @@
 // - 무엇을 만들지 토글(종별) → 메이저 광물 투입 개수 = 장비 레벨(1~5)
 // - 기준 스탯 = 공식 룰북 시트의 (종별, 레벨) 평균 — BASELINE 표
 // - 메이저 보정: 투입 광물 제작효과의 개수 가중평균(질 좋은 광물 섞을수록 소폭 상향)
-// - 마이너(최대 2): 제작효과 수치 합산 + [태그] 부여
+// - 마이너(기본 최대 2): 제작효과 수치 합산 + [태그] 부여
+//   Lv15/25 확장 슬롯(3~4번째)은 광물이 아닌 [재료]만 허용.
 // - 등급(고품질/명품/장인작): 확률 롤 — 요리 등급 체계와 동일 문법.
 //   생산 클래스 원칙 "상한은 평등, 기대값은 이점": 블랙스미스는 확률이 유리, 최대치는 동일.
 
@@ -43,11 +44,15 @@ export const CRAFT_BLACKSMITH_FEE_RATE = 0.8;
 export const CRAFT_SELL_PRICE_RATE = 0.4;
 export const CRAFT_MAX_NET_GOLD_PER_CRAFT = 40;
 
-// 대장 숙련 레벨 → 마이너 슬롯 수 (Lv10에 3칸, Lv25에 4칸)
+// 대장 숙련 레벨 → 마이너 슬롯 수 (Lv15에 3칸, Lv25에 4칸)
 export function minorSlotsFor(smithLevel: number): number {
   if (smithLevel >= 25) return 4;
-  if (smithLevel >= 10) return 3;
+  if (smithLevel >= 15) return 3;
   return MAX_MINORS;
+}
+
+export function isCraftMinorMaterial(item: LifeSkillItem): boolean {
+  return item.rarity.trim() === "재료";
 }
 
 // 제작 피로도 — 하루 300 기준 5회 제작으로 제한
@@ -418,7 +423,12 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     return { error: "메이저 광물은 한 종류만 넣을 수 있어요. 같은 광물 수량으로 장비 레벨을 올려주세요." };
   }
   for (const m of input.minors) {
-    if ((m.craftRole ?? "") !== "마이너") return { error: `${m.name}은(는) 마이너 광물이 아니에요.` };
+    if ((m.craftRole ?? "") !== "마이너") return { error: `${m.name}은(는) 마이너 재료가 아니에요.` };
+  }
+  for (const [index, m] of input.minors.entries()) {
+    if (index >= MAX_MINORS && !isCraftMinorMaterial(m)) {
+      return { error: "3번째와 4번째 마이너 슬롯에는 [재료]만 넣을 수 있어요." };
+    }
   }
 
   const rows = BASELINE[category.key];

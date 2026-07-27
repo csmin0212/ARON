@@ -79,6 +79,7 @@ export function isAuctionSource(value: string): value is AuctionSource {
 
 // 등록 수수료(총 호가 기준). 최소 1골드.
 export function listingFee(unitPrice: number, quantity: number): number {
+  if (unitPrice <= 0 || quantity <= 0) return 0;
   return Math.max(1, Math.floor(unitPrice * quantity * LISTING_FEE_RATE));
 }
 
