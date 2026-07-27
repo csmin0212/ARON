@@ -94,7 +94,8 @@ export function alchemyMaterialPoints(rank: number): number {
 
 export function alchemyMaterialPointsForItem(name: string, rank: number): number {
   const normalized = name.trim().replace(/\s+/g, "");
-  if (rank === 2 && (normalized === "시프의요깃거리" || normalized === "백양초")) return 4;
+  if (rank === 1 && (normalized === "붉은허브" || normalized === "푸른허브")) return 4;
+  if (rank === 2 && (normalized === "시프의요깃거리" || normalized === "백양초")) return 6;
   return alchemyMaterialPoints(rank);
 }
 
