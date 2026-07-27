@@ -21,7 +21,7 @@ import {
   lifeSkillSellPrice,
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
-import { isNonSellable } from "@/lib/shop";
+import { isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
 import { isSkillBookItem } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
@@ -260,6 +260,9 @@ export async function resolveFloor(
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind) return lifeSkillSellPrice(lifeKind, raw);
 
+  const specialMaterialPrice = specialMaterialSellPrice(raw);
+  if (specialMaterialPrice != null) return specialMaterialPrice;
+
   const potionPrice = await potionSellPrice(raw, effect);
   if (potionPrice != null) return potionPrice;
 
@@ -323,6 +326,7 @@ export async function resolveCategory(
   if (cat === "음식") return "요리";
   if (["소모품", "포션"].includes(cat)) return "포션";
   if (["재료", "보석"].includes(cat)) return "재료";
+  if (specialMaterialSellPrice(raw) != null) return "재료";
   const forgeSlot = detectForgeSlot(`${raw}\n${effect ?? ""}`);
   if (forgeSlot === "weapon") return "무기";
   if (forgeSlot === "armor") return "방어구";
@@ -482,7 +486,9 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
   const raw: { source: AuctionSource; name: string; qty: number; effect: string | null; weight: number | null; rank: number | null; text: string | null }[] = [];
   for (const i of inv.items) {
     if (i.qty <= 0) continue;
-    raw.push({ source: "basic", name: i.name.trim(), qty: i.qty, effect: i.effect, weight: i.weight, rank: null, text: null });
+    const name = i.name.trim();
+    if (isNonSellable(name)) continue;
+    raw.push({ source: "basic", name, qty: i.qty, effect: i.effect, weight: i.weight, rank: null, text: null });
   }
   for (const kind of ["낚시", "채집", "채광"] as const) {
     for (const i of life.bags[kind].items) {

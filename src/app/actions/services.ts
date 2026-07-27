@@ -59,7 +59,7 @@ import {
 } from "@/lib/lifeSkillData";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
-import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable } from "@/lib/shop";
+import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import {
   potionSellPrice,
@@ -3199,19 +3199,23 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
   if (!itemName) return { error: "판매할 재료가 올바르지 않습니다." };
   if (isNonSellable(itemName)) return { error: "이 물건은 매입하지 않아요." };
 
-  const item = await prisma.item.findFirst({
-    where: {
-      name: itemName,
-      sellPrice: { gt: 0 },
-      category: { in: SELLABLE_MATERIAL_CATEGORIES },
-    },
-    select: { sellPrice: true },
-  });
-  if (!item?.sellPrice) return { error: "이곳에서 매입하지 않는 물건입니다." };
+  const specialPrice = specialMaterialSellPrice(itemName);
+  const item = specialPrice == null
+    ? await prisma.item.findFirst({
+        where: {
+          name: itemName,
+          sellPrice: { gt: 0 },
+          category: { in: SELLABLE_MATERIAL_CATEGORIES },
+        },
+        select: { sellPrice: true },
+      })
+    : null;
+  const sellPrice = specialPrice ?? item?.sellPrice ?? 0;
+  if (sellPrice <= 0) return { error: "이곳에서 매입하지 않는 물건입니다." };
 
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
 
-  const gain = item.sellPrice * qty;
+  const gain = sellPrice * qty;
   // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
   const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
   const nextGold = currentGold + gain;

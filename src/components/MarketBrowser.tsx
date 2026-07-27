@@ -232,7 +232,8 @@ function SellRow({ item }: { item: SellableItem }) {
   const [price, setPrice] = useState(item.floor || 1);
   const [qty, setQty] = useState(1);
   const below = price < item.floor;
-  const canInstant = item.floor >= 0;
+  const canInstant = item.floor > 0;
+  const canList = item.floor > 0 && !below;
   const categoryLabel = normalizeAuctionCategory(item.category);
 
   return (
@@ -299,10 +300,10 @@ function SellRow({ item }: { item: SellableItem }) {
         </label>
         <button
           type="submit"
-          disabled={listPending || below}
+          disabled={listPending || !canList}
           className="flex-1 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-brand-700 disabled:opacity-50"
         >
-          {listPending ? "등록 중..." : below ? "하한 미만" : "위탁등록"}
+          {listPending ? "등록 중..." : item.floor <= 0 ? "거래 불가" : below ? "하한 미만" : "위탁등록"}
         </button>
       </form>
       <StateLine state={sellState} />
