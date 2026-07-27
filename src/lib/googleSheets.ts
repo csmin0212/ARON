@@ -485,6 +485,35 @@ export async function appendSheetFormula(
   }
 }
 
+export async function appendSheetFame(tab: string | null, delta: number): Promise<boolean> {
+  if (!tab || delta === 0) return false;
+  try {
+    const cells = ["O10", "O9"];
+    const formulas = await Promise.all(
+      cells.map(async (cellName) => ({
+        cellName,
+        value: await getCellFormula(`${quoteSheet(tab)}!${cellName}`),
+      })),
+    );
+    const target =
+      formulas.find((entry) => entry.value?.startsWith("=") || parseNumber(entry.value ?? "") != null) ??
+      formulas[0];
+    if (!target?.cellName || target.value == null) return false;
+
+    let next: string;
+    if (target.value.startsWith("=")) {
+      next = `${target.value}+${delta}`;
+    } else {
+      const current = parseNumber(target.value) ?? 0;
+      next = String(current + delta);
+    }
+    return updateValues(`${quoteSheet(tab)}!${target.cellName}`, [[next]]);
+  } catch (error) {
+    console.warn("Failed to append sheet fame", error);
+    return false;
+  }
+}
+
 // ── 능력 기본치 성장 (길드 뒷마당 단련) ──
 // 시트마다 표 위치가 조금씩 달라도 안전하도록, charsheet.ts 리더와 '똑같은' 방식으로
 // 【능력 기본치】 헤더를 찾아 그 기준 셀에 +N 을 붙인다(수식 보존). 리더가 읽는 바로 그 칸이므로

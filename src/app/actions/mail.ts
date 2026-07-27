@@ -325,6 +325,33 @@ export async function markAllMailRead(): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+const DELETABLE_MAIL_WHERE = {
+  OR: [
+    { claimedAt: { not: null } },
+    {
+      AND: [
+        { gold: { lte: 0 } },
+        { OR: [{ itemName: null }, { itemName: "" }, { itemQty: { lte: 0 } }] },
+        { OR: [{ cardSkin: null }, { cardSkin: "" }] },
+      ],
+    },
+  ],
+};
+
+export async function deleteAllMail(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  await prisma.mail.deleteMany({
+    where: {
+      recipientId: user.id,
+      ...DELETABLE_MAIL_WHERE,
+    },
+  });
+  revalidatePath("/mail");
+  revalidatePath("/", "layout");
+}
+
 // 우편 삭제 — 미수령 첨부가 남아 있으면 거부(보상 분실 방지)
 export async function deleteMail(formData: FormData): Promise<void> {
   const user = await getCurrentUser();
@@ -333,7 +360,8 @@ export async function deleteMail(formData: FormData): Promise<void> {
   if (!id) return;
   const mail = await prisma.mail.findUnique({ where: { id } });
   if (!mail || mail.recipientId !== user.id) return;
-  const unclaimed = !mail.claimedAt && (mail.gold > 0 || (!!mail.itemName && mail.itemQty > 0));
+  const unclaimed =
+    !mail.claimedAt && (mail.gold > 0 || (!!mail.itemName && mail.itemQty > 0) || !!mail.cardSkin);
   if (unclaimed) return; // 첨부를 먼저 수령해야 삭제 가능
   await prisma.mail.delete({ where: { id } });
   revalidatePath("/mail");

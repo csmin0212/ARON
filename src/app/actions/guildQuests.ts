@@ -8,6 +8,7 @@ import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { parseLifeState, type LifeState } from "@/lib/lifeSkillPerks";
 import type { LifeSkillKind } from "@/lib/lifeSkillData";
 import {
+  appendSheetFame,
   appendSheetItem,
   pushInventoryToSheet,
   inventoryWeightTotal,
@@ -276,10 +277,18 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
       gold: `${nextGold}G`,
       ...(fameDelta > 0 ? { fame: totalFameForRank(sheet.adventurerRank, sheet.fame) + fameDelta } : {}),
       // 과거 카운터명(길드의뢰완료횟수)도 같이 올려 기존 누적치와 이어지게 한다
-      achStatsJson: bumpStat(bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"), "의뢰완료횟수"),
+      achStatsJson:
+        fameDelta > 0
+          ? bumpStat(
+              bumpStat(bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"), "의뢰완료횟수"),
+              "명성:주간의뢰보상",
+              fameDelta,
+            )
+          : bumpStat(bumpStat(sheet.achStatsJson, "길드의뢰완료횟수"), "의뢰완료횟수"),
     },
   });
   void enqueueSheetGoldSync(user.id);
+  if (fameDelta > 0) void appendSheetFame(sheet.sheetTab, fameDelta);
   if (sheetPushNeeded) void pushInventoryToSheet(sheet.sheetTab, inv);
   void checkAndGrant(user.id);
 

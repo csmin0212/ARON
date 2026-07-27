@@ -3,8 +3,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatFullDate } from "@/lib/format";
 import { CARD_STYLE_MAP, type ProfileCardStyle } from "@/lib/profileCard";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import {
   claimMail,
+  deleteAllMail,
   deleteMail,
   markAllMailRead,
   markMailRead,
@@ -27,6 +29,11 @@ export default async function MailPage({
     take: 100,
   });
   const unread = mails.filter((m) => !m.readAt).length;
+  const deletableCount = mails.filter(
+    (m) =>
+      m.claimedAt ||
+      (m.gold <= 0 && (!m.itemName || m.itemQty <= 0) && !m.cardSkin),
+  ).length;
 
   return (
     <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
@@ -39,13 +46,25 @@ export default async function MailPage({
               GM 우편과 경매장 보관품을 수령합니다.
             </p>
           </div>
-          {unread > 0 && (
-            <form action={markAllMailRead}>
-              <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-brand-700">
-                모두 읽음
-              </button>
-            </form>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {unread > 0 && (
+              <form action={markAllMailRead}>
+                <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-brand-700">
+                  모두 읽음
+                </button>
+              </form>
+            )}
+            {deletableCount > 0 && (
+              <form action={deleteAllMail}>
+                <ConfirmSubmitButton
+                  message="수령 완료했거나 첨부가 없는 우편을 모두 삭제할까요? 미수령 첨부 우편은 보존됩니다."
+                  className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-extrabold text-rose-600 transition hover:bg-rose-100"
+                >
+                  전체 삭제
+                </ConfirmSubmitButton>
+              </form>
+            )}
+          </div>
         </div>
       </section>
 

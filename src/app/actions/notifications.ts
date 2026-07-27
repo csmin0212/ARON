@@ -16,6 +16,17 @@ export async function markAllNotificationsRead(): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+export async function deleteAllNotifications(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  await prisma.notification.deleteMany({
+    where: { userId: user.id },
+  });
+  revalidatePath("/notifications");
+  revalidatePath("/", "layout");
+}
+
 export async function markNotificationRead(formData: FormData): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;

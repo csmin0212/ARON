@@ -10,6 +10,7 @@ import {
 } from "./lifeSkillPerks";
 import { parseHousingState } from "./housing";
 import { totalFameForRank } from "./adventurerRank";
+import { appendSheetFame } from "./googleSheets";
 
 // ── 누적 카운터 / 방문 집합 헬퍼 (호출부에서 시트 업데이트에 사용) ──
 function parseStrArr(json: string | null | undefined): string[] {
@@ -576,8 +577,12 @@ export async function checkAndGrant(
   if (fameGain > 0) {
     await prisma.characterSheet.updateMany({
       where: { userId },
-      data: { fame: { increment: fameGain } },
+      data: {
+        fame: { increment: fameGain },
+        achStatsJson: bumpStat(sheet?.achStatsJson, "명성:업적보상", fameGain),
+      },
     });
+    void appendSheetFame(sheet?.sheetTab ?? null, fameGain);
   }
 
   return granted.map((a) => ({

@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatFullDate } from "@/lib/format";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import {
+  deleteAllNotifications,
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/app/actions/notifications";
@@ -32,13 +34,25 @@ export default async function NotificationsPage() {
               거래 요청, 거래 대화, 확정 상태 같은 기록을 확인합니다.
             </p>
           </div>
-          {unread > 0 && (
-            <form action={markAllNotificationsRead}>
-              <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-brand-700">
-                모두 읽음
-              </button>
-            </form>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {unread > 0 && (
+              <form action={markAllNotificationsRead}>
+                <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-brand-700">
+                  모두 읽음
+                </button>
+              </form>
+            )}
+            {notifications.length > 0 && (
+              <form action={deleteAllNotifications}>
+                <ConfirmSubmitButton
+                  message="알림을 모두 삭제할까요?"
+                  className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-extrabold text-rose-600 transition hover:bg-rose-100"
+                >
+                  전체 삭제
+                </ConfirmSubmitButton>
+              </form>
+            )}
+          </div>
         </div>
       </section>
 
