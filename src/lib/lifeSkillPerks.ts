@@ -92,6 +92,18 @@ export type LifeBag = {
   items: LifeBagItem[];
 };
 
+function isLifeLuckStatLeak(buff: CookingStatBuff, lifeLuckBuffs: CookingLifeLuckBuff[] = []): boolean {
+  if (buff.label !== "행운") return false;
+  if (
+    lifeLuckBuffs.some(
+      (lifeBuff) => lifeBuff.source === buff.source && lifeBuff.amount === buff.amount,
+    )
+  ) {
+    return true;
+  }
+  return buff.label === "행운" && /(?:낚시|채집|채광)\s*행운/.test(buff.source);
+}
+
 export const RARITY_COLORS: Record<PerkRarity, string> = {
   일반: "text-muted",
   레어: "text-sky-500",
@@ -303,6 +315,18 @@ export function parseLifeState(json: string | null | undefined): LifeState {
   if (!json) return withDerivedAlchemyLevel(structuredClone(EMPTY));
   try {
     const v = JSON.parse(json) as Partial<LifeState>;
+    const now = Date.now();
+    const lifeLuck = Array.isArray(v.cookingBuffs?.lifeLuck)
+      ? v.cookingBuffs.lifeLuck.filter(
+          (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > now,
+        )
+      : [];
+    const potionLifeLuck = Array.isArray(v.cookingBuffs?.potionLifeLuck)
+      ? v.cookingBuffs.potionLifeLuck.filter(
+          (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > now,
+        )
+      : [];
+    const allLifeLuckBuffs = [...lifeLuck, ...potionLifeLuck];
     return withDerivedAlchemyLevel({
       fishing: v.fishing ?? { exp: 0, level: 1 },
       plant: v.plant ?? { exp: 0, level: 1 },
@@ -337,29 +361,31 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       },
       cookingBuffs: {
         // 만료된 버프는 읽는 시점에 걸러낸다 — 다음 저장 때 상태에서도 사라짐.
-        lifeLuck: Array.isArray(v.cookingBuffs?.lifeLuck)
-          ? v.cookingBuffs.lifeLuck.filter(
-              (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
-            )
-          : [],
-        potionLifeLuck: Array.isArray(v.cookingBuffs?.potionLifeLuck)
-          ? v.cookingBuffs.potionLifeLuck.filter(
-              (buff) => buff && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
-            )
-          : [],
+        lifeLuck,
+        potionLifeLuck,
         session: Array.isArray(v.cookingBuffs?.session)
           ? v.cookingBuffs.session.filter((buff) => buff && buff.source && buff.effect)
           : [],
         stat: Array.isArray(v.cookingBuffs?.stat)
           ? v.cookingBuffs.stat.filter(
               (buff) =>
-                buff && buff.label && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
+                buff &&
+                buff.label &&
+                buff.amount > 0 &&
+                buff.until &&
+                Date.parse(buff.until) > now &&
+                !isLifeLuckStatLeak(buff, allLifeLuckBuffs),
             )
           : [],
         potionStat: Array.isArray(v.cookingBuffs?.potionStat)
           ? v.cookingBuffs.potionStat.filter(
               (buff) =>
-                buff && buff.label && buff.amount > 0 && buff.until && Date.parse(buff.until) > Date.now(),
+                buff &&
+                buff.label &&
+                buff.amount > 0 &&
+                buff.until &&
+                Date.parse(buff.until) > now &&
+                !isLifeLuckStatLeak(buff, allLifeLuckBuffs),
             )
           : [],
       },

@@ -2408,7 +2408,12 @@ function parseBuffDurationMinutes(effect: string): number | null {
 // '원하는 능력/모든 능력'은 '모든'으로 저장. "세션 버프: ..." 형식은 세션 쪽에서 처리.
 function parseStatBuff(effect: string): { label: string; amount: number } | null {
   if (/세션\s*버프/.test(effect)) return null;
-  const cleanEffect = effect.replace(/[【】]/g, "");
+  const cleanEffect = effect
+    .replace(/[【】]/g, "")
+    .replace(
+      /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+(?:\s*(?:증가|버프))?/g,
+      "",
+    );
   const match = cleanEffect.match(
     /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|마술|무기\s*공격|무기\s*공격\s*대미지|마법\s*공격\s*대미지|물리\s*방어력|마법\s*방어력|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정(?:의)?\s*)?(?:달성치(?:에)?\s*)?(?:에\s*)?\+(\d+)(?:\s*(?:증가|버프))?/,
   );

@@ -62,8 +62,12 @@ function canUseItem(item: SheetInventoryItem): boolean {
   if (isCustomAlchemyPotion) {
     const hasDuration = /\d+\s*분/.test(effect);
     const hasLifeLuck = /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+/.test(effect);
+    const effectWithoutLifeLuck = effect.replace(
+      /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+(?:\s*(?:증가|버프))?/g,
+      "",
+    );
     const hasStatBuff =
-      /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?/.test(effect);
+      /(근력|재주|민첩|지력|감지|정신|행운|명중|회피|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?/.test(effectWithoutLifeLuck);
     const hasApRecovery =
       /(?:피로도|스태미나|AP)\s*(?:를|을)?\s*(?:\[\d+\s*D\]|\d+\s*D|\d+)\s*점?\s*(?:회복|충전)/i.test(effect);
     const hasRecovery =
