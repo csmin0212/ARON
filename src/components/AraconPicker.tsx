@@ -39,7 +39,7 @@ export default function AraconPicker({
       </button>
       {open && (
         <div
-          className={`absolute z-30 rounded-2xl border border-line bg-surface p-2 shadow-xl ${placementClass} ${
+          className={`absolute z-[100] max-h-[70vh] overflow-y-auto rounded-2xl border border-line bg-surface p-2 shadow-xl ${placementClass} ${
             align === "right" ? "right-0" : "left-0"
           } ${compact ? "w-72" : "w-80"}`}
         >
