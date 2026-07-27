@@ -8,6 +8,7 @@ import {
   lifeBagLimit,
   lifeBagWeight,
   PERK_EVERY,
+  productionExpForNext,
   RARITY_COLORS,
   type LifeState,
   type LifeBag,
@@ -338,7 +339,10 @@ export default function LifeSkillPanel({
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         {SKILL_META.map(({ kind, emoji, key }) => {
           const prog = life[key];
-          const need = expForNext(prog.level);
+          const need =
+            key === "cooking" || key === "smithing" || key === "alchemy"
+              ? productionExpForNext(key, prog.level)
+              : expForNext(prog.level);
           const pct = Math.min(100, Math.round((prog.exp / need) * 100));
           return (
             <div key={kind} className="rounded-2xl border border-line bg-subtle/50 p-4">

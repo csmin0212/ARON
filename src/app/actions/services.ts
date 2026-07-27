@@ -1387,12 +1387,17 @@ function rollCookGrade(level: number, isChushi: boolean, highGradeMultiplier = 1
   return null;
 }
 
-function rollCustomAlchemyGrade(level: number): "고품질" | "명품" | "네이밍" | null {
+function rollCustomAlchemyGrade(
+  level: number,
+  highGradeMultiplier = 1,
+): "고품질" | "명품" | "네이밍" | null {
   const r = Math.random() * 100;
   const { signature, master, hq } = cookGradeRates(level, false);
+  const boostedMaster = master * highGradeMultiplier;
+  const boostedHq = hq * highGradeMultiplier;
   if (r < signature) return "네이밍";
-  if (r < signature + master) return "명품";
-  if (r < signature + master + hq) return "고품질";
+  if (r < signature + boostedMaster) return "명품";
+  if (r < signature + boostedMaster + boostedHq) return "고품질";
   return null;
 }
 
@@ -2095,7 +2100,10 @@ export async function collectBrew(): Promise<AlchemyState> {
 
       if (baseOptions.length === pending.optionIds.length) {
         const life = parseLifeState(sheet?.lifeJson);
-        const grade = rollCustomAlchemyGrade(life.alchemy.level);
+        const grade = rollCustomAlchemyGrade(
+          life.alchemy.level,
+          dailyGradeEventMultiplier("alchemy"),
+        );
         customGrade = grade;
         const { options: finalOptions, bonusNames } = addRandomMasteryOptionCopies(
           baseOptions,

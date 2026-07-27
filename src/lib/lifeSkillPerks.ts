@@ -198,6 +198,21 @@ export function expForNext(level: number): number {
   return Math.round(20 * Math.pow(level, 1.6));
 }
 
+export type ProductionSkillKind = "cooking" | "smithing" | "alchemy";
+
+const PRODUCTION_EXP_MULTIPLIER: Record<ProductionSkillKind, { early: number; late: number }> = {
+  cooking: { early: 1, late: 1.45 },
+  smithing: { early: 1, late: 1.45 },
+  alchemy: { early: 1.2, late: 2.95 },
+};
+
+export function productionExpForNext(kind: ProductionSkillKind, level: number): number {
+  const base = expForNext(level);
+  const multiplier =
+    level >= 20 ? PRODUCTION_EXP_MULTIPLIER[kind].late : PRODUCTION_EXP_MULTIPLIER[kind].early;
+  return Math.max(1, Math.round(base * multiplier));
+}
+
 // 특성은 Lv4부터 3레벨마다 선택 (4·7·10·13…)
 export const PERK_EVERY = 3;
 
@@ -558,8 +573,8 @@ export function applyCookingExp(state: LifeState, gained: number): number[] {
   const prog = state.cooking;
   prog.exp += gained;
   const leveled: number[] = [];
-  while (prog.exp >= expForNext(prog.level)) {
-    prog.exp -= expForNext(prog.level);
+  while (prog.exp >= productionExpForNext("cooking", prog.level)) {
+    prog.exp -= productionExpForNext("cooking", prog.level);
     prog.level += 1;
     leveled.push(prog.level);
   }
@@ -635,8 +650,8 @@ export function applyAlchemyExp(state: LifeState, gained: number): number[] {
   const prog = state.alchemy;
   prog.exp += Math.max(0, gained);
   const leveled: number[] = [];
-  while (prog.exp >= expForNext(prog.level)) {
-    prog.exp -= expForNext(prog.level);
+  while (prog.exp >= productionExpForNext("alchemy", prog.level)) {
+    prog.exp -= productionExpForNext("alchemy", prog.level);
     prog.level += 1;
     leveled.push(prog.level);
   }
@@ -649,8 +664,8 @@ export function applySmithingExp(state: LifeState, gained: number): number[] {
   const prog = state.smithing;
   prog.exp += gained;
   const leveled: number[] = [];
-  while (prog.exp >= expForNext(prog.level)) {
-    prog.exp -= expForNext(prog.level);
+  while (prog.exp >= productionExpForNext("smithing", prog.level)) {
+    prog.exp -= productionExpForNext("smithing", prog.level);
     prog.level += 1;
     leveled.push(prog.level);
   }

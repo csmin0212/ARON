@@ -58,7 +58,7 @@ export function craftApCost(level: number): number {
 
 // 제작 숙련도 — 기준가 비례 (좋은 광물·높은 레벨일수록 많이)
 export function craftSmithExp(basePrice: number): number {
-  return Math.max(5, Math.round(basePrice * 0.1));
+  return Math.max(5, Math.round(basePrice * 0.14));
 }
 
 // 제작 스탯 — 무기: hit/atk, 방어구: dodge/pdef/mdef. price는 기준가(수수료·판매가 산정용).

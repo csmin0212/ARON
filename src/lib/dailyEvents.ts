@@ -1,5 +1,5 @@
 export type DailyLifeEventKind = "낚시" | "채집" | "채광";
-export type DailyCraftEventKind = "cooking" | "crafting";
+export type DailyCraftEventKind = "cooking" | "crafting" | "alchemy";
 
 type DailyEventDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -36,12 +36,13 @@ export function dailyGradeEventMultiplier(kind: DailyCraftEventKind, now = new D
   if (day === 0) return 1.5;
   if (kind === "cooking" && day === 4) return 1.5;
   if (kind === "crafting" && day === 5) return 1.5;
+  if (kind === "alchemy" && day === 6) return 1.5;
   return 1;
 }
 
 export function dailyAlchemyDoubleChance(now = new Date()): number {
-  const day = kstDay(now);
-  return day === 0 || day === 6 ? 0.1 : 0;
+  void now;
+  return 0;
 }
 
 export function rollDailyAlchemyDouble(now = new Date(), rand: () => number = Math.random): boolean {
@@ -70,5 +71,5 @@ export function dailyEventBuffs(now = new Date()): { icon: string; label: string
   if (day === 5) {
     return [{ icon: "⚒️", label: "금요일 이벤트: 제작 고품질·명품 확률 50% 증가", until }];
   }
-  return [{ icon: "⚗️", label: "토요일 이벤트: 연금술 10% 확률로 포션 2배 생성", until }];
+  return [{ icon: "⚗️", label: "토요일 이벤트: 포션 고품질·명품 확률 50% 증가", until }];
 }

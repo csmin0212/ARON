@@ -84,10 +84,10 @@ import {
   ALCHEMY_MASTER_MASTERY,
   alchemyLevel,
   alchemyMasteryRank,
-  expForNext,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
+  productionExpForNext,
 } from "@/lib/lifeSkillPerks";
 import { parseCookedName } from "@/lib/auction";
 import {
@@ -1101,7 +1101,7 @@ export default async function WorldPage() {
     gold: housing.gold,
     level: alchemyLevel(life),
     exp: life.alchemy.exp,
-    nextExp: expForNext(life.alchemy.level),
+    nextExp: productionExpForNext("alchemy", life.alchemy.level),
     recipeCount: visibleAlchemyRecipes.length,
     maxIngredients: alchemyLabSlotLimit(alchemyLab?.tier ?? 1),
     recipes: alchemyRecipeViews,
