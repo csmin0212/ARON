@@ -9,7 +9,6 @@ const J = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } 
 const num = (v) => { const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10); return Number.isNaN(n) ? null : n; };
 const RANK_ORDER = { D: 1, C: 2, B: 3, A: 4, S: 5 };
 const TIER_ORDER = { small: 1, standard: 2, luxury: 3 };
-const ADEPT = 60, MASTER = 300;
 
 (async () => {
   const [achs, users, lifeItems, locs] = await Promise.all([
@@ -37,9 +36,6 @@ const ADEPT = 60, MASTER = 300;
     const bags = life.bags ?? {};
     const coll = life.collection ?? {};
     const counts = life.catchCounts ?? {};
-    const mastery = life.alchemyMastery ?? {};
-    const masterCnt = Object.values(mastery).filter(v => v >= MASTER).length;
-    const adeptCnt = Object.values(mastery).filter(v => v >= ADEPT).length;
     const lvl = (k) => life[k]?.level ?? 1;
     const prefixCnt = (p) => Object.entries(stats).filter(([k, v]) => k.startsWith(p) && v > 0).length;
     const maxSame = (k) => Math.max(0, ...Object.values(counts[k] ?? {}));
@@ -65,9 +61,8 @@ const ADEPT = 60, MASTER = 300;
         case "채광레벨": return n != null && lvl("mining") >= n;
         case "요리레벨": case "요리숙련레벨": return n != null && lvl("cooking") >= n;
         case "대장레벨": case "대장간레벨": case "제작레벨": return n != null && lvl("smithing") >= n;
-        case "연금술레벨": case "연금레벨": return n != null && (1 + masterCnt) >= n;
-        case "연금장인수": case "연금명품수": return n != null && masterCnt >= n;
-        case "연금숙련포션수": case "연금고급수": return n != null && adeptCnt >= n;
+        case "연금술레벨": case "연금레벨": return n != null && lvl("alchemy") >= n;
+        case "연금장인수": case "연금명품수": case "연금숙련포션수": case "연금고급수": case "연금완벽횟수": return false;
         case "제작광물종류수": return n != null && prefixCnt("제작광물:") >= n;
         case "낚시도감등록수": return n != null && (coll.낚시 ?? []).length >= n;
         case "채집도감등록수": return n != null && (coll.채집 ?? []).length >= n;
@@ -104,6 +99,7 @@ const ADEPT = 60, MASTER = 300;
         case "게시글작성수": case "댓글작성수": case "추천횟수": return null; // DB count — 별도
         case "요리등급": { if (n != null) return (stats.요리최고등급 ?? 0) >= n; const s = `${a.condValue ?? ""}${a.desc ?? ""}${a.name}`; const made = stats.요리최고제작등급 ?? 0; if (/장인|서명작/.test(s)) return made >= 3; if (/걸작|명품/.test(s)) return made >= 2; if (/희귀|고품질/.test(s)) return made >= 1; return false; }
         case "제작등급": { const made = stats.제작최고제작등급 ?? 0; if (n != null) return made >= n; const s = `${a.desc ?? ""}${a.name}`; if (/장인/.test(s)) return made >= 3; if (/명품|걸작/.test(s)) return made >= 2; if (/고품질|희귀/.test(s)) return made >= 1; return false; }
+        case "연금등급": case "연금제작등급": case "연금품질": { const made = stats.연금최고제작등급 ?? 0; if (n != null) return made >= n; const s = `${a.condValue ?? ""}${a.desc ?? ""}${a.name}`; if (/네이밍|이름/.test(s)) return made >= 3; if (/명품/.test(s)) return made >= 2; if (/고품질|희귀/.test(s)) return made >= 1; return false; }
         case "요리태그": { const s = `${a.condValue ?? ""} ${a.desc ?? ""} ${a.name}`; const raw = (a.condValue ?? "").trim() || (/(물고기|생선|어획)/.test(s) ? "생선" : /(채집|약초|나물)/.test(s) ? "채집" : null); if (!raw) return false; const alias = { 물고기: "생선", 어획물: "생선", 채집물: "채집", 약초: "채집" }; return (stats[`요리태그:${alias[raw] ?? raw}`] ?? 0) > 0; }
         case "대표배지장착": { const goal = n ?? 1; return goal <= 1 ? !!sheet.user.equippedBadge : prefixCnt("배지장착:") >= goal; }
         case "생활장비보유": return null; // 도구명 유추 — 수동

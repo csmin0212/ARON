@@ -2,7 +2,7 @@
 
 // 연금술 공방 — 재료의 연금 포인트로 포션 효과를 설계하는 집 가구 시설.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useActionState } from "react";
 import {
   cancelBrew,
@@ -80,7 +80,6 @@ export type AlchemyView = {
   level: number;
   exp: number;
   nextExp: number;
-  masterCount: number;
   recipeCount: number;
   maxIngredients: number;
   recipes: AlchemyRecipeView[];
@@ -194,13 +193,6 @@ export default function AlchemyLab({
     undefined,
   );
 
-  useEffect(() => {
-    if (pot.length === 0) {
-      setStep("materials");
-      setSelectedOptionIds([]);
-    }
-  }, [pot.length]);
-
   const materialRanks = useMemo(() => {
     const ranks = new Map<string, number>();
     for (const item of lifeItems) {
@@ -216,8 +208,10 @@ export default function AlchemyLab({
     return ranks;
   }, [lifeItems, storageItems]);
 
-  const materialPointOf = (name: string) =>
-    alchemyMaterialPointsForItem(name, materialRanks.get(name.trim()) ?? 0);
+  const materialPointOf = useMemo(
+    () => (name: string) => alchemyMaterialPointsForItem(name, materialRanks.get(name.trim()) ?? 0),
+    [materialRanks],
+  );
 
   // 재료 후보 — 연금 포인트가 붙는 생활 재료만
   const drawerNames = useMemo(() => {
@@ -279,9 +273,12 @@ export default function AlchemyLab({
       { key: "storage", label: "창고", emoji: "📦", items: storedItems },
       { key: "gather", label: "채집", emoji: "🌿", items: byKind("채집") },
     ];
-  }, [inventoryItems, lifeItems, storageItems, drawerNames, materialRanks]);
+  }, [inventoryItems, lifeItems, storageItems, drawerNames, materialRanks, materialPointOf]);
 
   const takeFromPot = (name: string) => {
+    if (pot.length <= 1 && pot.some((entry) => entry.name === name)) {
+      setSelectedOptionIds([]);
+    }
     setPot((prev) =>
       prev
         .map((entry) => (entry.name === name ? { ...entry, qty: entry.qty - 1 } : entry))
@@ -345,6 +342,7 @@ export default function AlchemyLab({
   const potUnits = pot.map((entry) => entry.name);
   const maxIngredients = alchemy.maxIngredients ?? alchemyLabSlotLimit(alchemy.labTier);
   const potSlots = Array.from({ length: maxIngredients }, (_, i) => pot[i] ?? null);
+  const activeStep = pot.length === 0 ? "materials" : step;
 
   const brewing = alchemy.brewing;
 
@@ -403,7 +401,7 @@ export default function AlchemyLab({
                 }}
                 disabled={item.key === "effects" && pot.length === 0}
                 className={`rounded-t-xl px-4 py-2 text-sm font-extrabold transition ${
-                  step === item.key
+                  activeStep === item.key
                     ? "bg-surface text-content shadow-sm"
                     : "text-violet-100 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                 }`}
@@ -460,7 +458,7 @@ export default function AlchemyLab({
           )}
 
           {/* ── 가마: 조합 ── */}
-          {!brewing && step === "materials" && (
+          {!brewing && activeStep === "materials" && (
             <>
               <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
                 <div className="mb-2 flex items-center justify-between">
@@ -545,7 +543,7 @@ export default function AlchemyLab({
             </>
           )}
 
-          {!brewing && step === "effects" && (
+          {!brewing && activeStep === "effects" && (
             <>
               <section className="rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent p-3 dark:from-violet-950/30">
                 <div className="grid gap-2 sm:grid-cols-3">

@@ -5,7 +5,6 @@ import { getActiveItems } from "./lifeSkillData";
 import { loadLifeItems } from "./lifeSkillLoader";
 import {
   alchemyLevel,
-  alchemyMasterCount,
   lifeBagWeight,
   parseLifeState,
 } from "./lifeSkillPerks";
@@ -219,8 +218,7 @@ export async function checkAndGrant(
   const plantAreaCount = countStatPrefix(stats, "채집지역:");
   const mineAreaCount = countStatPrefix(stats, "채광지역:");
   const craftMineralKinds = countStatPrefix(stats, "제작광물:");
-  // 연금술 — 조제 포션은 life.alchemy 레벨, 구형 포션별 장인도는 호환용으로만 유지.
-  const alchemyMasters = alchemyMasterCount(life);
+  // 연금술 — 새 조제 시스템은 life.alchemy 레벨과 조제 등급/횟수 카운터를 기준으로 판정한다.
   const alchemyLv = alchemyLevel(life);
 
   // 방문 토큰 (id + 정규화 이름) — 장소방문/히든장소방문/지역그룹방문/층전체방문용
@@ -339,11 +337,11 @@ export async function checkAndGrant(
       case "연금술레벨":
       case "연금레벨":
         return n != null && alchemyLv >= n;
-      case "연금장인수":
-      case "연금명품수":
-        return n != null && alchemyMasters >= n;
       case "연금숙련포션수":
       case "연금고급수":
+      case "연금장인수":
+      case "연금명품수":
+      case "연금완벽횟수":
         return false;
       case "연금등급":
       case "연금제작등급":

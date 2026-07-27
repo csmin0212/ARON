@@ -2079,6 +2079,7 @@ export async function collectBrew(): Promise<AlchemyState> {
     let effect = pending.effect;
     let price = pending.price ?? customPotionSellPrice(pending.effect) ?? 0;
     let lifeForUpdate: ReturnType<typeof parseLifeState> | null = null;
+    let customGrade: "고품질" | "명품" | "네이밍" | null = null;
     const masteryNotes: string[] = [];
 
     if (pending.optionIds && pending.optionIds.length > 0) {
@@ -2095,6 +2096,7 @@ export async function collectBrew(): Promise<AlchemyState> {
       if (baseOptions.length === pending.optionIds.length) {
         const life = parseLifeState(sheet?.lifeJson);
         const grade = rollCustomAlchemyGrade(life.alchemy.level);
+        customGrade = grade;
         const { options: finalOptions, bonusNames } = addRandomMasteryOptionCopies(
           baseOptions,
           customAlchemyBonusCopies(grade),
@@ -2134,12 +2136,11 @@ export async function collectBrew(): Promise<AlchemyState> {
       명품: 2,
       네이밍: 3,
     };
-    const customGradeMatch = effect.match(/✨(고품질|명품|네이밍)/);
-    if (customGradeMatch) {
+    if (customGrade) {
       achStats = setMaxStat(
         achStats,
         "연금최고제작등급",
-        customGradeNumber[customGradeMatch[1] as "고품질" | "명품" | "네이밍"],
+        customGradeNumber[customGrade],
       );
     }
     await Promise.all([

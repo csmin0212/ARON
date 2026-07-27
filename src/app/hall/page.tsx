@@ -1,8 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import {
-  alchemyMasterCount,
-  parseLifeState,
-} from "@/lib/lifeSkillPerks";
+import { parseLifeState } from "@/lib/lifeSkillPerks";
 import { getAlchemyRecipes, getCookingRecipes } from "@/lib/gameCatalog";
 import { collectionItems } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
@@ -32,8 +29,7 @@ type Row = {
   smithingLv: number;
   smithingExp: number;
   alchemyLv: number;
-  alchemyScore: number;
-  alchemyMasters: number;
+  alchemyExp: number;
   fame: number;
   rank: string;
   collectionFound: number;
@@ -148,11 +144,6 @@ export default async function HallPage() {
       life.alchemyPerfect.includes(recipe.id),
     ).length;
     const collectionFound = lifeCollectionFound + cookingFound + potionFound;
-    const alchemyScore = Object.values(life.alchemyMastery).reduce(
-      (sum, exp) => sum + Math.max(0, exp),
-      0,
-    );
-    const alchemyMasters = alchemyMasterCount(life);
     return {
       username: s.user.username,
       nickname: s.user.nickname,
@@ -169,8 +160,7 @@ export default async function HallPage() {
       smithingLv: life.smithing.level,
       smithingExp: life.smithing.exp,
       alchemyLv: life.alchemy.level,
-      alchemyScore,
-      alchemyMasters,
+      alchemyExp: life.alchemy.exp,
       fame: totalFameForRank(s.adventurerRank, s.fame),
       rank: s.adventurerRank,
       collectionFound,
@@ -221,8 +211,8 @@ export default async function HallPage() {
       key: "alchemy",
       label: "연금술",
       icon: "⚗️",
-      score: (r) => r.alchemyLv * 1e9 + r.alchemyScore,
-      value: (r) => `Lv.${r.alchemyLv} · 장인 ${r.alchemyMasters}개`,
+      score: (r) => r.alchemyLv * 1e9 + r.alchemyExp,
+      value: (r) => `Lv.${r.alchemyLv}`,
     }),
     category(rows, meUsername, {
       key: "fame",
