@@ -142,6 +142,23 @@ function lifeBagQty(life: LifeState, kind: LifeSkillKind, name: string): number 
     .reduce((s, i) => s + Math.max(0, i.qty), 0);
 }
 
+function firstLifeBagItem(
+  life: LifeState,
+  kind: LifeSkillKind,
+  name: string,
+): { name: string; effect: string; weight: number; rank: number; text: string } | null {
+  const t = name.trim();
+  const item = life.bags[kind].items.find((i) => i.name.trim() === t && i.qty > 0);
+  if (!item) return null;
+  return {
+    name: item.name,
+    effect: `R${item.rank} · ${item.text}`,
+    weight: item.weight,
+    rank: item.rank,
+    text: item.text,
+  };
+}
+
 function removeLifeBagItem(
   life: LifeState,
   kind: LifeSkillKind,
@@ -230,7 +247,11 @@ async function incrementDbInventory(userId: string, itemName: string, qty: numbe
 }
 
 // ── 하한가·카테고리 판정 ──
-export async function resolveFloor(name: string, source: AuctionSource): Promise<number> {
+export async function resolveFloor(
+  name: string,
+  source: AuctionSource,
+  effect?: string | null,
+): Promise<number> {
   await loadLifeItems();
   // 어획물/약초는 raw 이름으로 먼저 판정 (예: "바다의 전령"이 장인작 파싱과 충돌하지 않도록).
   const raw = name.trim();
@@ -239,7 +260,7 @@ export async function resolveFloor(name: string, source: AuctionSource): Promise
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind) return lifeSkillSellPrice(lifeKind, raw);
 
-  const potionPrice = await potionSellPrice(raw);
+  const potionPrice = await potionSellPrice(raw, effect);
   if (potionPrice != null) return potionPrice;
 
   const { base, grade } = parseCookedName(name);
@@ -473,7 +494,7 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
   const out: SellableItem[] = [];
   for (const r of raw) {
     const [floor, category] = await Promise.all([
-      resolveFloor(r.name, r.source),
+      resolveFloor(r.name, r.source, r.effect),
       resolveCategory(r.name, r.source, r.effect),
     ]);
     out.push({ ...r, floor, category });
@@ -645,11 +666,6 @@ export async function createListingCore(
     return { error: `동시 등록은 ${slots}개까지예요. (현재 ${activeCount}개) 기존 등록을 팔거나 회수한 뒤 올려주세요.` };
   }
 
-  const floor = await resolveFloor(name, source);
-  if (unitPrice < floor) {
-    return { error: `즉시매각 하한(${floor.toLocaleString()}G)보다 낮게는 올릴 수 없어요.` };
-  }
-
   // 보유 확인 + 스냅샷 확보
   let meta: AuctionItemMeta;
   if (source === "basic") {
@@ -657,12 +673,16 @@ export async function createListingCore(
     if (isNonSellable(name)) return { error: "이 물건은 거래할 수 없어요." };
     const ref = firstInvItem(actor.inv, name);
     meta = { effect: ref?.effect ?? null, weight: ref?.weight ?? null, rank: null, text: null, source };
-    consumeInvItem(actor.inv, name, qty);
-    await decrementDbInventory(userId, name, qty);
   } else {
-    const removed = removeLifeBagItem(actor.life, source, name, qty);
-    if (!removed) return { error: `${name} 수량이 부족합니다.` };
-    meta = { effect: removed.effect, weight: removed.weight, rank: removed.rank, text: removed.text, source };
+    if (lifeBagQty(actor.life, source, name) < qty) return { error: `${name} 수량이 부족합니다.` };
+    const ref = firstLifeBagItem(actor.life, source, name);
+    if (!ref) return { error: `${name} 수량이 부족합니다.` };
+    meta = { effect: ref.effect, weight: ref.weight, rank: ref.rank, text: ref.text, source };
+  }
+
+  const floor = await resolveFloor(name, source, meta.effect);
+  if (unitPrice < floor) {
+    return { error: `즉시매각 하한(${floor.toLocaleString()}G)보다 낮게는 올릴 수 없어요.` };
   }
 
   // S랭크 특혜 — 등록 수수료 면제
@@ -670,6 +690,14 @@ export async function createListingCore(
   if (actor.curGold < fee) return { error: `등록 수수료가 부족합니다. (${fee.toLocaleString()}G 필요)` };
   const nextGold = actor.curGold - fee;
   const category = await resolveCategory(name, source, meta.effect);
+
+  if (source === "basic") {
+    consumeInvItem(actor.inv, name, qty);
+    await decrementDbInventory(userId, name, qty);
+  } else {
+    const removed = removeLifeBagItem(actor.life, source, name, qty);
+    if (!removed) return { error: `${name} 수량이 부족합니다.` };
+  }
 
   await prisma.characterSheet.update({
     where: { userId },
@@ -804,15 +832,22 @@ export async function instantSellCore(
   const actor = await loadActorSheet(userId);
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
 
-  const floor = await resolveFloor(name, source);
-
-  let isBasic = false;
+  let effect: string | null = null;
   if (source === "basic") {
     if (isNonSellable(name)) return { error: "이 물건은 매입하지 않아요." };
     if (itemQty(actor.inv, name) < qty) return { error: `${name} 수량이 부족합니다.` };
+    effect = firstInvItem(actor.inv, name)?.effect ?? null;
+  } else {
+    if (lifeBagQty(actor.life, source, name) < qty) return { error: `${name} 수량이 부족합니다.` };
+    const ref = firstLifeBagItem(actor.life, source, name);
+    if (!ref) return { error: `${name} 수량이 부족합니다.` };
+    effect = ref.effect;
+  }
+
+  const floor = await resolveFloor(name, source, effect);
+  if (source === "basic") {
     consumeInvItem(actor.inv, name, qty);
     await decrementDbInventory(userId, name, qty);
-    isBasic = true;
   } else {
     const removed = removeLifeBagItem(actor.life, source, name, qty);
     if (!removed) return { error: `${name} 수량이 부족합니다.` };
@@ -830,7 +865,7 @@ export async function instantSellCore(
     },
   });
   void enqueueSheetGoldSync(actor.userId);
-  if (isBasic) void pushInventoryToSheet(actor.tab, actor.inv);
+  if (source === "basic") void pushInventoryToSheet(actor.tab, actor.inv);
 
   return { ok: `${name} x${qty} 즉시매각 완료. +${gain.toLocaleString()}G` };
 }

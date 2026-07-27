@@ -1156,6 +1156,53 @@ const LIFE_SHOP_PRODUCTS = [
   { id: "mithril_pick", kind: "채광", group: "도구", name: "미스릴 곡괭이", price: 7000, note: "채광 장비 2단계" },
 ] as const;
 
+type LifeShopProductView = (typeof LIFE_SHOP_PRODUCTS)[number];
+
+function lifeShopBagWeight(item: LifeShopProductView): number {
+  const match = item.name.match(/(\d+)\s*칸/);
+  return match ? Number(match[1]) : 0;
+}
+
+function lifeShopToolTier(toolName: string): number {
+  if (toolName === "고급 낚싯대" || toolName === "장인의 채집 도구" || toolName === "미스릴 곡괭이") return 2;
+  if (toolName === "좋은 낚싯대" || toolName === "숙련 채집 도구" || toolName === "철 곡괭이") return 1;
+  return 0;
+}
+
+function lifeShopProductTier(item: LifeShopProductView): number {
+  if (item.id === "master_rod" || item.id === "master_sickle" || item.id === "mithril_pick") return 2;
+  return 1;
+}
+
+function lifeShopOwnedPrice(item: LifeShopProductView, lifeShop: LifeShopView): number {
+  if (item.group === "가방") {
+    const maxWeight = lifeShop.bags[item.kind].maxWeight;
+    return LIFE_SHOP_PRODUCTS.find(
+      (product) => product.group === "가방" && product.kind === item.kind && lifeShopBagWeight(product) === maxWeight,
+    )?.price ?? 0;
+  }
+  const tier = lifeShopToolTier(lifeShop.tools[item.kind]);
+  return LIFE_SHOP_PRODUCTS.find(
+    (product) => product.group === "도구" && product.kind === item.kind && lifeShopProductTier(product) === tier,
+  )?.price ?? 0;
+}
+
+function lifeShopPurchaseInfo(item: LifeShopProductView, lifeShop: LifeShopView) {
+  const currentValue =
+    item.group === "가방"
+      ? lifeShop.bags[item.kind].maxWeight
+      : lifeShopToolTier(lifeShop.tools[item.kind]);
+  const targetValue = item.group === "가방" ? lifeShopBagWeight(item) : lifeShopProductTier(item);
+  const ownedOrSurpassed = currentValue >= targetValue;
+  const refund = ownedOrSurpassed ? 0 : Math.floor(lifeShopOwnedPrice(item, lifeShop) / 2);
+  return {
+    ownedOrSurpassed,
+    refund,
+    netPrice: Math.max(0, item.price - refund),
+    statusLabel: currentValue > targetValue ? "상위 보유" : "보유중",
+  };
+}
+
 function LifeGearShop({
   lifeShop,
   onClose,
@@ -1223,25 +1270,33 @@ function LifeGearShop({
               <h4 className="mb-2 text-sm font-extrabold text-content">{group}</h4>
               <div className="grid gap-2 sm:grid-cols-2">
                 {LIFE_SHOP_PRODUCTS.filter((item) => item.group === group && item.kind === kindTab).map(
-                  (item) => (
-                    <form key={item.id} action={action}>
-                      <input type="hidden" name="productId" value={item.id} />
-                      <button
-                        type="submit"
-                        disabled={pending}
-                        className="flex h-full w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
-                      >
-                        <span className="text-xl">{kindEmoji[item.kind]}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-extrabold text-content">{item.name}</span>
-                          <span className="mt-0.5 block text-[11px] text-faint">{item.note}</span>
-                        </span>
-                        <span className="shrink-0 text-xs font-black text-emerald-500">
-                          {item.price.toLocaleString()}G
-                        </span>
-                      </button>
-                    </form>
-                  ),
+                  (item) => {
+                    const info = lifeShopPurchaseInfo(item, lifeShop);
+                    return (
+                      <form key={item.id} action={action}>
+                        <input type="hidden" name="productId" value={item.id} />
+                        <button
+                          type="submit"
+                          disabled={pending || info.ownedOrSurpassed}
+                          className="flex h-full w-full items-start gap-3 rounded-2xl border border-line bg-subtle px-3 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50"
+                        >
+                          <span className="text-xl">{kindEmoji[item.kind]}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-extrabold text-content">{item.name}</span>
+                            <span className="mt-0.5 block text-[11px] text-faint">{item.note}</span>
+                            {info.refund > 0 && (
+                              <span className="mt-1 block text-[11px] font-bold text-emerald-500">
+                                기존 {info.refund.toLocaleString()}G 환급
+                              </span>
+                            )}
+                          </span>
+                          <span className="shrink-0 text-right text-xs font-black text-emerald-500">
+                            {info.ownedOrSurpassed ? info.statusLabel : `${info.netPrice.toLocaleString()}G`}
+                          </span>
+                        </button>
+                      </form>
+                    );
+                  },
                 )}
               </div>
             </section>
@@ -3694,11 +3749,17 @@ export default function WorldServices({
   const alchemyReady = !!alchemy.brewing && nowMs >= alchemy.brewing.readyAt;
 
   useEffect(() => {
-    setMounted(true);
-    setNowMs(Date.now());
-    if (!alchemy.brewing && !wanderingMerchant.active) return;
-    const timer = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(timer);
+    const updateNow = () => setNowMs(Date.now());
+    const initial = window.setTimeout(() => {
+      setMounted(true);
+      updateNow();
+    }, 0);
+    if (!alchemy.brewing && !wanderingMerchant.active) return () => window.clearTimeout(initial);
+    const timer = window.setInterval(updateNow, 1000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
   }, [alchemy.brewing, wanderingMerchant.active]);
 
   if (!canForge && !canGuild && !canGuildBackyard && !canMarket && !canStorage && !canInn && !canHousing && !cooking.enabled && !alchemy.enabled && !canGacha && !canBlackMarket && !canAlchemyBookShop && !merchantVisible && !weeklyIncome) return null;

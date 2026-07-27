@@ -463,6 +463,20 @@ function lifeShopProduct(productId: string): LifeShopProduct | null {
   return LIFE_SHOP_ITEMS.find((item) => item.id === productId) ?? null;
 }
 
+function lifeShopBagPrice(kind: LifeSkillKind, maxWeight: number): number {
+  const product = LIFE_SHOP_ITEMS.find(
+    (item) => item.type === "bag" && item.kind === kind && item.maxWeight === maxWeight,
+  );
+  return product?.price ?? 0;
+}
+
+function lifeShopToolPrice(kind: LifeSkillKind, tier: number): number {
+  const product = LIFE_SHOP_ITEMS.find(
+    (item) => item.type === "tool" && item.kind === kind && item.tier === tier,
+  );
+  return product?.price ?? 0;
+}
+
 function foodProduct(productId: string) {
   return FOOD_ITEMS.find((item) => item.id === productId) ?? null;
 }
@@ -3805,23 +3819,22 @@ export async function buyLifeGear(
   const product = lifeShopProduct(String(formData.get("productId") ?? ""));
   if (!product) return { error: "판매 목록에 없는 물품입니다." };
 
-  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
-  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
-  if (currentGold < product.price) {
-    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${product.price.toLocaleString()}G)` };
-  }
-
   const sheet = await prisma.characterSheet.findUnique({
     where: { userId: ctx.userId },
     select: { lifeJson: true },
   });
   const life = parseLifeState(sheet?.lifeJson);
+  let refund = 0;
+  let replacedName: string | null = null;
 
   if (product.type === "bag") {
     const bag = life.bags[product.kind];
     if (bag.maxWeight >= product.maxWeight) {
       return { error: `이미 ${product.maxWeight}칸 이상의 ${product.kind} 가방을 보유 중입니다.` };
     }
+    const oldPrice = lifeShopBagPrice(product.kind, bag.maxWeight);
+    refund = Math.floor(oldPrice / 2);
+    replacedName = oldPrice > 0 ? bag.name : null;
     bag.name = product.name;
     bag.maxWeight = product.maxWeight;
   } else {
@@ -3829,10 +3842,20 @@ export async function buyLifeGear(
     if (currentTier >= product.tier) {
       return { error: `이미 같은 등급 이상의 ${product.kind} 장비를 보유 중입니다.` };
     }
+    const oldPrice = lifeShopToolPrice(product.kind, currentTier);
+    refund = Math.floor(oldPrice / 2);
+    replacedName = oldPrice > 0 ? life.tools[product.kind] : null;
     life.tools[product.kind] = product.name;
   }
 
-  const nextGold = currentGold - product.price;
+  // 골드 단일 기준 = curGold (DB). 시트/invJson은 표시·연동용 미러.
+  const currentGold = ctx.curGold ?? (parseGoldToInt(ctx.inv.gold) || 0);
+  const netPrice = Math.max(0, product.price - refund);
+  if (currentGold < netPrice) {
+    return { error: `골드가 부족합니다. (${currentGold.toLocaleString()}G/${netPrice.toLocaleString()}G, 기존 장비 매각금 포함)` };
+  }
+
+  const nextGold = currentGold - netPrice;
   // 표시 골드는 invJson 캐시에서 읽으므로, 여기도 함께 갱신해야 화면에 즉시 반영됨.
   const inv = ctx.inv;
   inv.gold = `${nextGold}G`;
@@ -3849,7 +3872,11 @@ export async function buyLifeGear(
 
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: `${product.name} 구매 완료. 남은 골드 ${nextGold.toLocaleString()}G` };
+  return {
+    ok: replacedName
+      ? `${replacedName}을(를) ${refund.toLocaleString()}G에 판매하고 ${product.name}(으)로 교체했어요. 남은 골드 ${nextGold.toLocaleString()}G`
+      : `${product.name} 구매 완료. 남은 골드 ${nextGold.toLocaleString()}G`,
+  };
 }
 
 export async function upgradeWeapon(
