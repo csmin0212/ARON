@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { usePolling } from "@/lib/usePolling";
 import {
   cancelTradeOffer,
@@ -12,6 +12,8 @@ import {
   type TradeSideItem,
   type TradeSource,
 } from "@/app/actions/trade";
+import AraconContent from "./AraconContent";
+import AraconPicker from "./AraconPicker";
 
 // trade.ts 의 TRADE_SOURCE_SEP 과 동일해야 함 ("use server" 파일의 값은 클라에서 못 가져옴)
 const SOURCE_SEP = "~@~";
@@ -292,6 +294,27 @@ function ChatPanel({
   disabled: boolean;
 }) {
   const [state, action, pending] = useActionState(sendTradeMessage, {});
+  const [content, setContent] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!state.ok) return;
+    const timeoutId = window.setTimeout(() => setContent(""), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [state.ok, state.message]);
+
+  function insertAracon(token: string) {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? content.length;
+    const end = el?.selectionEnd ?? start;
+    const next = `${content.slice(0, start)}${token}${content.slice(end)}`;
+    setContent(next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
+
   return (
     <section className="rounded-3xl border border-line bg-surface shadow-sm">
       <div className="border-b border-line px-5 py-4">
@@ -310,7 +333,9 @@ function ChatPanel({
                   <p className="text-sm font-extrabold text-content">{message.nickname}</p>
                   <p className="text-[11px] font-bold text-faint">{message.createdAt}</p>
                 </div>
-                <p className="whitespace-pre-wrap text-sm text-muted">{message.content}</p>
+                <div className="whitespace-pre-wrap text-sm text-muted">
+                  <AraconContent text={message.content} size="sm" />
+                </div>
               </div>
             ),
           )
@@ -322,15 +347,19 @@ function ChatPanel({
         <input type="hidden" name="tradeId" value={tradeId} />
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             name="content"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
             maxLength={500}
             disabled={disabled}
             placeholder="거래 내용을 이야기해보세요."
             className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm font-semibold text-content disabled:opacity-60"
           />
+          {!disabled && <AraconPicker onPick={insertAracon} compact align="right" placement="top" />}
           <button
             type="submit"
-            disabled={disabled || pending}
+            disabled={disabled || pending || content.trim().length === 0}
             className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-brand-700 disabled:opacity-60"
           >
             전송
