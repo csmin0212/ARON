@@ -190,7 +190,7 @@ export async function startGathering(): Promise<GatherStart> {
   if (ap < apCost) return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
 
   const level = progressOf(life, GATHER).level;
-  const levelBase = baseWeightsFor(level);
+  const levelBase = baseWeightsFor(level, GATHER);
   const regionBase = pool.weights
     ? pool.weights.map((w, rank) => (levelBase[rank] > 0 ? w : 0))
     : levelBase;

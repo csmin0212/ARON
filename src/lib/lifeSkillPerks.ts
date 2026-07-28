@@ -228,9 +228,17 @@ export const LEVEL_BANDS: { min: number; max: number; weights: number[] }[] = [
   { min: 61, max: 999, weights: [10, 30, 30, 25, 4, 1] }, // Lv61+: 5성까지
 ];
 
-export function baseWeightsFor(level: number): number[] {
+const KIND_WEIGHT_ADJUSTMENTS: Partial<Record<LifeSkillKind, number[]>> = {
+  채집: [-2.9, 2, 0.8, 0.1, 0, 0],
+  낚시: [-2.8, 2, 0.7, 0.1, 0, 0],
+};
+
+export function baseWeightsFor(level: number, kind?: LifeSkillKind): number[] {
   const band = LEVEL_BANDS.find((b) => level >= b.min && level <= b.max);
-  return [...(band ?? LEVEL_BANDS[LEVEL_BANDS.length - 1]).weights];
+  const weights = [...(band ?? LEVEL_BANDS[LEVEL_BANDS.length - 1]).weights];
+  const adjustment = kind ? KIND_WEIGHT_ADJUSTMENTS[kind] : undefined;
+  if (!adjustment) return weights;
+  return weights.map((weight, rank) => Math.max(0, weight + (adjustment[rank] ?? 0)));
 }
 
 // ── 상태 파싱/직렬화 ──

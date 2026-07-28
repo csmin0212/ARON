@@ -286,7 +286,7 @@ export async function runActionCommand(
       const mods = lifeMods!;
       const activeLife = life!;
       const level = progressOf(activeLife, lifeSkillKind).level;
-      const levelBase = baseWeightsFor(level);
+      const levelBase = baseWeightsFor(level, lifeSkillKind);
       const regionBase = locationPool.weights
         ? locationPool.weights.map((weight, rank) => (levelBase[rank] > 0 ? weight : 0))
         : levelBase;

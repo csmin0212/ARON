@@ -215,7 +215,7 @@ export async function startFishing(): Promise<FishingStart> {
     return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
   }
   const level = progressOf(life, FISH).level;
-  const levelBase = baseWeightsFor(level);
+  const levelBase = baseWeightsFor(level, FISH);
   const regionBase = pool.weights
     ? pool.weights.map((w, rank) => (levelBase[rank] > 0 ? w : 0))
     : levelBase;
