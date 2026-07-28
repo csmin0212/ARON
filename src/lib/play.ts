@@ -489,7 +489,8 @@ export async function tryKeywordSpeech(
 
     const dice = rollDice(2);
     const total = dice[0] + dice[1] + mod;
-    const success = total >= dc;
+    const critical = dice[0] === 6 && dice[1] === 6;
+    const success = critical || total >= dc;
     // 판정 굴림은 개인 기록에만 남기고(공개 채팅 X), AP 차감.
     await Promise.all([
       prisma.roll.create({
@@ -509,7 +510,7 @@ export async function tryKeywordSpeech(
       }),
     ]);
 
-    const rollText = diceText(dice, mod, total, dc);
+    const rollText = `${diceText(dice, mod, total, dc)}${critical ? " 크리티컬!" : ""}`;
     if (success) {
       await discover();
       return { notice: `${rollText} 성공! ${foundText}`, found: true };
