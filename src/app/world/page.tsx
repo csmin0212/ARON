@@ -484,21 +484,18 @@ export default async function WorldPage() {
   // 스킬북 — 서버가 정상 지급한 토큰을 보유한 것만 "사용" 대상 (시트 위조 차단)
   const skillBookTokens = await prisma.inventoryEntry.findMany({
     where: { userId: user.id, meta: SKILLBOOK_META, qty: { gt: 0 } },
-    select: { itemId: true },
+    select: { itemId: true, qty: true },
   });
   const tokenItemIds = [...new Set(skillBookTokens.map((t) => t.itemId))];
-  const skillBookNames = tokenItemIds.length
-    ? [
-        ...new Set(
-          (
-            await prisma.item.findMany({
-              where: { id: { in: tokenItemIds } },
-              select: { name: true },
-            })
-          ).map((it) => it.name),
-        ),
-      ]
+  const skillBookItems = tokenItemIds.length
+    ? await prisma.item.findMany({
+        where: { id: { in: tokenItemIds } },
+        select: { id: true, name: true, desc: true, weight: true },
+      })
     : [];
+  const skillBookNames = [
+    ...new Set([...tokenItemIds, ...skillBookItems.map((item) => item.name)]),
+  ];
 
   const sheetInventory = parseSheetInventory(sheet.invJson);
   const rawBagItems: SheetInventoryItem[] =
@@ -510,7 +507,23 @@ export default async function WorldPage() {
           weight: itemCatalog.get(e.itemId)?.weight ?? null,
           qty: e.qty,
         }));
-  const bagItems = rawBagItems.filter((item) => !lifeSkillItemKind(item.name));
+  const rawBagItemNames = new Set(rawBagItems.map((item) => item.name.trim()));
+  const tokenOnlySkillBookItems = tokenItemIds.flatMap<SheetInventoryItem>((itemId) => {
+      const item = skillBookItems.find((entry) => entry.id === itemId);
+      const name = item?.name ?? itemId;
+      if (rawBagItemNames.has(name) || rawBagItemNames.has(itemId)) return [];
+      const qty = skillBookTokens
+        .filter((token) => token.itemId === itemId)
+        .reduce((sum, token) => sum + Math.max(0, token.qty), 0);
+      if (qty <= 0) return [];
+      return [{
+        name,
+        effect: item?.desc ?? null,
+        weight: item?.weight ?? 1,
+        qty,
+      }];
+    });
+  const bagItems = [...rawBagItems, ...tokenOnlySkillBookItems].filter((item) => !lifeSkillItemKind(item.name));
   const bagGold =
     sheet.curGold != null
       ? `${sheet.curGold.toLocaleString()}G`

@@ -22,7 +22,12 @@ import {
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
 import { isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
-import { isSkillBookItem } from "@/lib/skillbook";
+import {
+  consumeSkillBookTokens,
+  grantSkillBookToken,
+  isSkillBookItem,
+  skillBookTokenItemIds,
+} from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
   auctionCategoryOrder,
@@ -644,6 +649,8 @@ async function persistReturnItemToSeller(
   });
   if (!plan.syncBasicInventory) return;
   await incrementDbInventory(sellerId, name, qty);
+  const skillBookIds = await skillBookTokenItemIds(name);
+  if (skillBookIds[0]) await grantSkillBookToken(sellerId, skillBookIds[0], qty);
   void pushInventoryToSheet(plan.sheetTab, plan.inv);
 }
 
@@ -696,6 +703,12 @@ export async function createListingCore(
   if (actor.curGold < fee) return { error: `등록 수수료가 부족합니다. (${fee.toLocaleString()}G 필요)` };
   const nextGold = actor.curGold - fee;
   const category = await resolveCategory(name, source, meta.effect);
+  if (source === "basic" && category === "스킬북") {
+    const consumed = await consumeSkillBookTokens(userId, name, qty);
+    if (!consumed) {
+      return { error: `${name}의 정상 지급 기록이 부족해서 등록할 수 없어요.` };
+    }
+  }
 
   if (source === "basic") {
     consumeInvItem(actor.inv, name, qty);
@@ -851,6 +864,13 @@ export async function instantSellCore(
   }
 
   const floor = await resolveFloor(name, source, effect);
+  const category = await resolveCategory(name, source, effect);
+  if (source === "basic" && category === "스킬북") {
+    const consumed = await consumeSkillBookTokens(userId, name, qty);
+    if (!consumed) {
+      return { error: `${name}의 정상 지급 기록이 부족해서 매각할 수 없어요.` };
+    }
+  }
   if (source === "basic") {
     consumeInvItem(actor.inv, name, qty);
     await decrementDbInventory(userId, name, qty);

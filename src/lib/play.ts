@@ -18,6 +18,7 @@ import {
 import { enqueueSheetGoldSync } from "./sheetGoldSync";
 import { bumpStat, checkAndGrant } from "./achievements";
 import { loadLifeItems } from "./lifeSkillLoader";
+import { grantSkillBookToken, isSkillBookItem } from "./skillbook";
 import {
   lifeSkillCategory,
   lifeSkillExpGain,
@@ -376,7 +377,9 @@ export async function runActionCommand(
         const item = await prisma.item.findFirst({
           where: { OR: [{ id: drop.item }, { name: drop.item }] },
         });
-        await addItem(userId, item?.id ?? drop.item, drop.qty);
+        const itemId = item?.id ?? drop.item;
+        await addItem(userId, itemId, drop.qty);
+        if (await isSkillBookItem(itemId)) await grantSkillBookToken(userId, itemId, drop.qty);
         const itemName = item?.name ?? drop.item;
         const effect = item?.desc ?? null;
         const weight = item?.weight ?? 1;

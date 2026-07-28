@@ -232,6 +232,17 @@ export async function buyBlackMarketItem(
     };
   }
 
+  const meta = parseMeta(listing.meta);
+  let skillBookItem:
+    | {
+        id: string;
+        name: string;
+        effect: string | null;
+        weight: number | null;
+        inv: SheetInventory;
+      }
+    | null = null;
+
   const life = parseLifeState(sheet.lifeJson);
   if (listing.kind !== "스킬북") {
     const kind = listing.kind as LifeSkillKind;
@@ -245,6 +256,18 @@ export async function buyBlackMarketItem(
     }
     addLifeBagItem(life, kind, item);
     recordCollection(life, kind, item.name);
+  } else {
+    const item = await prisma.item.findFirst({
+      where: { OR: [{ id: listing.itemName }, { name: listing.itemName }] },
+      select: { id: true, name: true, desc: true, weight: true },
+    });
+    const name = item?.name ?? listing.itemName;
+    const effect = item?.desc ?? (meta.skillName ? `${meta.skillName} 스킬을 습득할 수 있는 스킬북.` : null);
+    const weight = item?.weight ?? 1;
+    const inv = addInvItem(parseInv(sheet.invJson), { name, effect, weight }, 1);
+    const overflow = inventoryWeightOverflowMessage(inv);
+    if (overflow) return { error: overflow };
+    skillBookItem = { id: item?.id ?? listing.itemName, name, effect, weight, inv };
   }
 
   let result: "ok" | "sold-out";
@@ -260,14 +283,18 @@ export async function buyBlackMarketItem(
         where: { userId: user.id, blackMarketCoins: { gte: listing.price } },
         data: {
           blackMarketCoins: { decrement: listing.price },
-          ...(listing.kind !== "스킬북" ? { lifeJson: JSON.stringify(life) } : {}),
+          ...(listing.kind !== "스킬북"
+            ? { lifeJson: JSON.stringify(life) }
+            : skillBookItem
+              ? { invJson: JSON.stringify(skillBookItem.inv) }
+              : {}),
         },
       });
       if (paid.count !== 1) throw new Error("coin-shortage");
 
       if (listing.kind === "스킬북") {
         const existing = await tx.inventoryEntry.findFirst({
-          where: { userId: user.id, itemId: listing.itemName, meta: SKILLBOOK_META },
+          where: { userId: user.id, itemId: skillBookItem?.id ?? listing.itemName, meta: SKILLBOOK_META },
         });
         if (existing) {
           await tx.inventoryEntry.update({
@@ -276,7 +303,7 @@ export async function buyBlackMarketItem(
           });
         } else {
           await tx.inventoryEntry.create({
-            data: { userId: user.id, itemId: listing.itemName, qty: 1, meta: SKILLBOOK_META },
+            data: { userId: user.id, itemId: skillBookItem?.id ?? listing.itemName, qty: 1, meta: SKILLBOOK_META },
           });
         }
       }
@@ -290,9 +317,14 @@ export async function buyBlackMarketItem(
   }
 
   if (result === "sold-out") return { error: "방금 매진되었습니다." };
+  if (skillBookItem) {
+    void appendSheetItem(sheet.sheetTab, skillBookItem.name, 1, {
+      effect: skillBookItem.effect,
+      weight: skillBookItem.weight ?? undefined,
+    });
+  }
   revalidatePath("/world");
   revalidatePath("/profile");
-  const meta = parseMeta(listing.meta);
   return {
     ok: `${meta.skillName ?? listing.itemName} 구매 완료. 암상인 코인 -${listing.price}`,
   };

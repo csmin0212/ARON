@@ -22,6 +22,7 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
+import { skillBookTokenItemIds, skillBookTokenQty, transferSkillBookTokens } from "@/lib/skillbook";
 
 export type TradeActionState = {
   ok?: boolean;
@@ -278,6 +279,27 @@ function validateSide(pool: Pool, items: TradeSideItem[]): string | null {
   return null;
 }
 
+async function validateSkillBookTokens(userId: string, items: TradeSideItem[]): Promise<string | null> {
+  const needed = new Map<string, { name: string; qty: number }>();
+  for (const item of items) {
+    if ((item.source ?? "basic") !== "basic") continue;
+    const tokenIds = await skillBookTokenItemIds(item.name);
+    if (tokenIds.length === 0) continue;
+    const key = tokenIds.join("\u0000");
+    const existing = needed.get(key);
+    if (existing) existing.qty += item.qty;
+    else needed.set(key, { name: item.name, qty: item.qty });
+  }
+
+  for (const item of needed.values()) {
+    const have = await skillBookTokenQty(userId, item.name);
+    if (have < item.qty) {
+      return `${item.name}의 정상 지급 기록이 부족합니다. (보유 ${have} / 필요 ${item.qty})`;
+    }
+  }
+  return null;
+}
+
 async function decrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
   const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
   if (!item) return;
@@ -447,6 +469,8 @@ export async function updateTradeOffer(
   const items = readOfferItems(pool, formData);
   const invalid = validateSide(pool, items);
   if (invalid) return { ok: false, message: invalid };
+  const invalidSkillBook = await validateSkillBookTokens(me.id, items);
+  if (invalidSkillBook) return { ok: false, message: invalidSkillBook };
 
   const side = sideKey(trade, me.id);
   await prisma.tradeOffer.update({
@@ -517,6 +541,10 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   if (fromInvalid) return { ok: false, message: `${trade.fromUser.nickname}: ${fromInvalid}` };
   const toInvalid = validateSide(toPool, toItems);
   if (toInvalid) return { ok: false, message: `${trade.toUser.nickname}: ${toInvalid}` };
+  const fromSkillBookInvalid = await validateSkillBookTokens(trade.fromUserId, fromItems);
+  if (fromSkillBookInvalid) return { ok: false, message: `${trade.fromUser.nickname}: ${fromSkillBookInvalid}` };
+  const toSkillBookInvalid = await validateSkillBookTokens(trade.toUserId, toItems);
+  if (toSkillBookInvalid) return { ok: false, message: `${trade.toUser.nickname}: ${toSkillBookInvalid}` };
 
   await loadLifeItems();
 
@@ -614,10 +642,12 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   for (const item of fromItems) {
     if ((item.source ?? "basic") === "basic") await decrementDbInventory(trade.fromUserId, item.name, item.qty);
     if (!destinationLifeBag(item)) await incrementDbInventory(trade.toUserId, item.name, item.qty, item);
+    await transferSkillBookTokens(trade.fromUserId, trade.toUserId, item.name, item.qty);
   }
   for (const item of toItems) {
     if ((item.source ?? "basic") === "basic") await decrementDbInventory(trade.toUserId, item.name, item.qty);
     if (!destinationLifeBag(item)) await incrementDbInventory(trade.fromUserId, item.name, item.qty, item);
+    await transferSkillBookTokens(trade.toUserId, trade.fromUserId, item.name, item.qty);
   }
 
   await Promise.all([

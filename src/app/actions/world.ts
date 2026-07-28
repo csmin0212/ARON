@@ -31,6 +31,7 @@ import {
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
+import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 import {
   homeLocationId,
   houseOption,
@@ -187,8 +188,10 @@ async function grantEventRewards(
       where: { OR: [{ id: reward.item }, { name: reward.item }] },
       select: { id: true, name: true, desc: true, weight: true },
     });
+    const itemId = item?.id ?? reward.item;
     const itemName = item?.name ?? reward.item;
     await incrementDbItem(userId, itemName, reward.qty);
+    if (await isSkillBookItem(itemId)) await grantSkillBookToken(userId, itemId, reward.qty);
     addInvSnapshotItem(inv, { name: itemName, effect: item?.desc ?? null, weight: item?.weight ?? null }, reward.qty);
     void appendSheetItem(latest.sheetTab, itemName, reward.qty, {
       effect: item?.desc ?? null,
