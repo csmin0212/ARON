@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import {
   inventoryWeightTotal,
@@ -23,10 +24,12 @@ import {
 } from "@/lib/lifeSkillData";
 import { isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
 import {
-  consumeSkillBookTokens,
-  grantSkillBookToken,
+  consumeSkillBookTokensInTransaction,
+  grantSkillBookTokenInTransaction,
   isSkillBookItem,
+  SKILLBOOK_META,
   skillBookTokenItemIds,
+  skillBookTokenQty,
 } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
@@ -222,6 +225,24 @@ function addLifeBagItems(
 }
 
 // ── DB 인벤 미러 ──
+async function decrementDbInventoryInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  itemName: string,
+  qty: number,
+): Promise<void> {
+  const item = await tx.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
+  if (!item) return;
+  const existing = await tx.inventoryEntry.findFirst({
+    where: { userId, itemId: item.id, meta: null },
+  });
+  if (!existing) return;
+  await tx.inventoryEntry.update({
+    where: { id: existing.id },
+    data: { qty: Math.max(0, existing.qty - qty) },
+  });
+}
+
 async function decrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
   const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
   if (!item) return;
@@ -235,20 +256,25 @@ async function decrementDbInventory(userId: string, itemName: string, qty: numbe
   });
 }
 
-async function incrementDbInventory(userId: string, itemName: string, qty: number): Promise<void> {
-  const item = await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
+async function incrementDbInventoryInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  itemName: string,
+  qty: number,
+): Promise<void> {
+  const item = await tx.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } });
   if (!item) return;
-  const existing = await prisma.inventoryEntry.findFirst({
+  const existing = await tx.inventoryEntry.findFirst({
     where: { userId, itemId: item.id, meta: null },
   });
   if (existing) {
-    await prisma.inventoryEntry.update({
+    await tx.inventoryEntry.update({
       where: { id: existing.id },
       data: { qty: existing.qty + qty },
     });
     return;
   }
-  await prisma.inventoryEntry.create({ data: { userId, itemId: item.id, qty } });
+  await tx.inventoryEntry.create({ data: { userId, itemId: item.id, qty } });
 }
 
 // ── 하한가·카테고리 판정 ──
@@ -489,11 +515,44 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
   const { inv, life } = await restoreLifeItemsFromBasicInventory(userId, sheet);
 
   const raw: { source: AuctionSource; name: string; qty: number; effect: string | null; weight: number | null; rank: number | null; text: string | null }[] = [];
+  const rawBasicNames = new Set<string>();
   for (const i of inv.items) {
     if (i.qty <= 0) continue;
     const name = i.name.trim();
     if (isNonSellable(name)) continue;
+    rawBasicNames.add(name);
     raw.push({ source: "basic", name, qty: i.qty, effect: i.effect, weight: i.weight, rank: null, text: null });
+  }
+  const skillBookTokens = await prisma.inventoryEntry.findMany({
+    where: { userId, meta: SKILLBOOK_META, qty: { gt: 0 } },
+    select: { itemId: true, qty: true },
+  });
+  const tokenQtyById = new Map<string, number>();
+  for (const token of skillBookTokens) {
+    tokenQtyById.set(token.itemId, (tokenQtyById.get(token.itemId) ?? 0) + Math.max(0, token.qty));
+  }
+  const tokenItemIds = [...tokenQtyById.keys()];
+  const tokenItems = tokenItemIds.length
+    ? await prisma.item.findMany({
+        where: { id: { in: tokenItemIds } },
+        select: { id: true, name: true, desc: true, weight: true },
+      })
+    : [];
+  for (const itemId of tokenItemIds) {
+    const item = tokenItems.find((entry) => entry.id === itemId);
+    const name = item?.name ?? itemId;
+    if (rawBasicNames.has(name.trim()) || rawBasicNames.has(itemId.trim())) continue;
+    const qty = tokenQtyById.get(itemId) ?? 0;
+    if (qty <= 0) continue;
+    raw.push({
+      source: "basic",
+      name,
+      qty,
+      effect: item?.desc ?? null,
+      weight: item?.weight ?? 1,
+      rank: null,
+      text: null,
+    });
   }
   for (const kind of ["낚시", "채집", "채광"] as const) {
     for (const i of life.bags[kind].items) {
@@ -508,7 +567,12 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
       resolveFloor(r.name, r.source, r.effect),
       resolveCategory(r.name, r.source, r.effect),
     ]);
-    out.push({ ...r, floor, category });
+    let qty = r.qty;
+    if (r.source === "basic" && category === "스킬북") {
+      qty = Math.min(qty, await skillBookTokenQty(userId, r.name));
+      if (qty <= 0) continue;
+    }
+    out.push({ ...r, qty, floor, category });
   }
   return out.sort(
     (a, b) =>
@@ -643,14 +707,17 @@ async function persistReturnItemToSeller(
   qty: number,
   plan: ReturnItemPlan,
 ): Promise<void> {
-  await prisma.characterSheet.update({
-    where: { userId: sellerId },
-    data: { invJson: JSON.stringify(plan.inv), lifeJson: JSON.stringify(plan.life) },
+  const skillBookIds = await skillBookTokenItemIds(name);
+  await prisma.$transaction(async (tx) => {
+    await tx.characterSheet.update({
+      where: { userId: sellerId },
+      data: { invJson: JSON.stringify(plan.inv), lifeJson: JSON.stringify(plan.life) },
+    });
+    if (!plan.syncBasicInventory) return;
+    await incrementDbInventoryInTransaction(tx, sellerId, name, qty);
+    if (skillBookIds[0]) await grantSkillBookTokenInTransaction(tx, sellerId, skillBookIds[0], qty);
   });
   if (!plan.syncBasicInventory) return;
-  await incrementDbInventory(sellerId, name, qty);
-  const skillBookIds = await skillBookTokenItemIds(name);
-  if (skillBookIds[0]) await grantSkillBookToken(sellerId, skillBookIds[0], qty);
   void pushInventoryToSheet(plan.sheetTab, plan.inv);
 }
 
@@ -681,16 +748,35 @@ export async function createListingCore(
 
   // 보유 확인 + 스냅샷 확보
   let meta: AuctionItemMeta;
+  let category: AuctionCategory;
   if (source === "basic") {
-    if (itemQty(actor.inv, name) < qty) return { error: `${name} 수량이 부족합니다.` };
     if (isNonSellable(name)) return { error: "이 물건은 거래할 수 없어요." };
     const ref = firstInvItem(actor.inv, name);
-    meta = { effect: ref?.effect ?? null, weight: ref?.weight ?? null, rank: null, text: null, source };
+    category = await resolveCategory(name, source, ref?.effect);
+    if (category === "스킬북") {
+      const tokenQty = await skillBookTokenQty(userId, name);
+      if (tokenQty < qty) return { error: `${name}의 정상 지급 기록이 부족해서 등록할 수 없어요.` };
+      const item = await prisma.item.findFirst({
+        where: { OR: [{ id: name }, { name }] },
+        select: { desc: true, weight: true },
+      });
+      meta = {
+        effect: ref?.effect ?? item?.desc ?? null,
+        weight: ref?.weight ?? item?.weight ?? 1,
+        rank: null,
+        text: null,
+        source,
+      };
+    } else {
+      if (itemQty(actor.inv, name) < qty) return { error: `${name} 수량이 부족합니다.` };
+      meta = { effect: ref?.effect ?? null, weight: ref?.weight ?? null, rank: null, text: null, source };
+    }
   } else {
     if (lifeBagQty(actor.life, source, name) < qty) return { error: `${name} 수량이 부족합니다.` };
     const ref = firstLifeBagItem(actor.life, source, name);
     if (!ref) return { error: `${name} 수량이 부족합니다.` };
     meta = { effect: ref.effect, weight: ref.weight, rank: ref.rank, text: ref.text, source };
+    category = await resolveCategory(name, source, meta.effect);
   }
 
   const floor = await resolveFloor(name, source, meta.effect);
@@ -702,44 +788,46 @@ export async function createListingCore(
   const fee = rankAtLeast(actor.rank, "S") ? 0 : listingFee(unitPrice, qty);
   if (actor.curGold < fee) return { error: `등록 수수료가 부족합니다. (${fee.toLocaleString()}G 필요)` };
   const nextGold = actor.curGold - fee;
-  const category = await resolveCategory(name, source, meta.effect);
-  if (source === "basic" && category === "스킬북") {
-    const consumed = await consumeSkillBookTokens(userId, name, qty);
-    if (!consumed) {
-      return { error: `${name}의 정상 지급 기록이 부족해서 등록할 수 없어요.` };
-    }
-  }
+  const isSkillBookListing = source === "basic" && category === "스킬북";
 
   if (source === "basic") {
     consumeInvItem(actor.inv, name, qty);
-    await decrementDbInventory(userId, name, qty);
   } else {
     const removed = removeLifeBagItem(actor.life, source, name, qty);
     if (!removed) return { error: `${name} 수량이 부족합니다.` };
   }
 
-  await prisma.characterSheet.update({
-    where: { userId },
-    data: {
-      invJson: JSON.stringify(actor.inv),
-      lifeJson: JSON.stringify(actor.life),
-      curGold: nextGold,
-      gold: `${nextGold}G`,
-    },
+  const txResult = await prisma.$transaction(async (tx) => {
+    if (isSkillBookListing) {
+      const consumed = await consumeSkillBookTokensInTransaction(tx, userId, name, qty);
+      if (!consumed) return { error: `${name}의 정상 지급 기록이 부족해서 등록할 수 없어요.` };
+    }
+    if (source === "basic") await decrementDbInventoryInTransaction(tx, userId, name, qty);
+    await tx.characterSheet.update({
+      where: { userId },
+      data: {
+        invJson: JSON.stringify(actor.inv),
+        lifeJson: JSON.stringify(actor.life),
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+      },
+    });
+    await tx.auctionListing.create({
+      data: {
+        sellerId: userId,
+        category,
+        itemName: name,
+        itemMeta: JSON.stringify(meta),
+        quantity: qty,
+        unitPrice,
+        floor,
+        feePaid: fee,
+        expiresAt: listingExpiry(),
+      },
+    });
+    return {};
   });
-  await prisma.auctionListing.create({
-    data: {
-      sellerId: userId,
-      category,
-      itemName: name,
-      itemMeta: JSON.stringify(meta),
-      quantity: qty,
-      unitPrice,
-      floor,
-      feePaid: fee,
-      expiresAt: listingExpiry(),
-    },
-  });
+  if (txResult.error) return { error: txResult.error };
   void enqueueSheetGoldSync(actor.userId);
   void pushInventoryToSheet(actor.tab, actor.inv);
 
@@ -852,28 +940,35 @@ export async function instantSellCore(
   if (!actor) return { error: "캐릭터 시트 연동이 필요합니다." };
 
   let effect: string | null = null;
+  let category: AuctionCategory;
   if (source === "basic") {
     if (isNonSellable(name)) return { error: "이 물건은 매입하지 않아요." };
-    if (itemQty(actor.inv, name) < qty) return { error: `${name} 수량이 부족합니다.` };
-    effect = firstInvItem(actor.inv, name)?.effect ?? null;
+    const ref = firstInvItem(actor.inv, name);
+    category = await resolveCategory(name, source, ref?.effect);
+    if (category === "스킬북") {
+      const tokenQty = await skillBookTokenQty(userId, name);
+      if (tokenQty < qty) return { error: `${name}의 정상 지급 기록이 부족해서 매각할 수 없어요.` };
+      const item = await prisma.item.findFirst({
+        where: { OR: [{ id: name }, { name }] },
+        select: { desc: true },
+      });
+      effect = ref?.effect ?? item?.desc ?? null;
+    } else {
+      if (itemQty(actor.inv, name) < qty) return { error: `${name} 수량이 부족합니다.` };
+      effect = ref?.effect ?? null;
+    }
   } else {
     if (lifeBagQty(actor.life, source, name) < qty) return { error: `${name} 수량이 부족합니다.` };
     const ref = firstLifeBagItem(actor.life, source, name);
     if (!ref) return { error: `${name} 수량이 부족합니다.` };
     effect = ref.effect;
+    category = await resolveCategory(name, source, effect);
   }
 
   const floor = await resolveFloor(name, source, effect);
-  const category = await resolveCategory(name, source, effect);
-  if (source === "basic" && category === "스킬북") {
-    const consumed = await consumeSkillBookTokens(userId, name, qty);
-    if (!consumed) {
-      return { error: `${name}의 정상 지급 기록이 부족해서 매각할 수 없어요.` };
-    }
-  }
+  const isSkillBookSale = source === "basic" && category === "스킬북";
   if (source === "basic") {
     consumeInvItem(actor.inv, name, qty);
-    await decrementDbInventory(userId, name, qty);
   } else {
     const removed = removeLifeBagItem(actor.life, source, name, qty);
     if (!removed) return { error: `${name} 수량이 부족합니다.` };
@@ -881,15 +976,24 @@ export async function instantSellCore(
 
   const gain = floor * qty;
   const nextGold = actor.curGold + gain;
-  await prisma.characterSheet.update({
-    where: { userId },
-    data: {
-      invJson: JSON.stringify(actor.inv),
-      lifeJson: JSON.stringify(actor.life),
-      curGold: nextGold,
-      gold: `${nextGold}G`,
-    },
+  const txResult = await prisma.$transaction(async (tx) => {
+    if (isSkillBookSale) {
+      const consumed = await consumeSkillBookTokensInTransaction(tx, userId, name, qty);
+      if (!consumed) return { error: `${name}의 정상 지급 기록이 부족해서 매각할 수 없어요.` };
+    }
+    if (source === "basic") await decrementDbInventoryInTransaction(tx, userId, name, qty);
+    await tx.characterSheet.update({
+      where: { userId },
+      data: {
+        invJson: JSON.stringify(actor.inv),
+        lifeJson: JSON.stringify(actor.life),
+        curGold: nextGold,
+        gold: `${nextGold}G`,
+      },
+    });
+    return {};
   });
+  if (txResult.error) return { error: txResult.error };
   void enqueueSheetGoldSync(actor.userId);
   if (source === "basic") void pushInventoryToSheet(actor.tab, actor.inv);
 

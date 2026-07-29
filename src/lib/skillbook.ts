@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "./prisma";
 
 // 서버가 정상 지급한 스킬북만 기록하는 토큰.
@@ -19,16 +20,26 @@ export async function isSkillBookItem(itemId: string): Promise<boolean> {
 // 스킬북 토큰 지급 (던전 드랍 등 서버 경로에서만 호출)
 export async function grantSkillBookToken(userId: string, itemId: string, qty = 1): Promise<void> {
   if (qty <= 0) return;
-  const existing = await prisma.inventoryEntry.findFirst({
+  await grantSkillBookTokenInTransaction(prisma, userId, itemId, qty);
+}
+
+export async function grantSkillBookTokenInTransaction(
+  tx: Prisma.TransactionClient | typeof prisma,
+  userId: string,
+  itemId: string,
+  qty = 1,
+): Promise<void> {
+  if (qty <= 0) return;
+  const existing = await tx.inventoryEntry.findFirst({
     where: { userId, itemId, meta: SKILLBOOK_META },
   });
   if (existing) {
-    await prisma.inventoryEntry.update({
+    await tx.inventoryEntry.update({
       where: { id: existing.id },
       data: { qty: existing.qty + qty },
     });
   } else {
-    await prisma.inventoryEntry.create({ data: { userId, itemId, qty, meta: SKILLBOOK_META } });
+    await tx.inventoryEntry.create({ data: { userId, itemId, qty, meta: SKILLBOOK_META } });
   }
 }
 
@@ -65,7 +76,28 @@ export async function consumeSkillBookTokens(
   if (qty <= 0) return true;
   const itemIds = await skillBookTokenItemIds(itemNameOrId);
   if (itemIds.length === 0) return true;
-  const tokens = await prisma.inventoryEntry.findMany({
+  return prisma.$transaction((tx) => consumeSkillBookTokenIdsInTransaction(tx, userId, itemIds, qty));
+}
+
+export async function consumeSkillBookTokensInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  itemNameOrId: string,
+  qty: number,
+): Promise<boolean> {
+  if (qty <= 0) return true;
+  const itemIds = await skillBookTokenItemIds(itemNameOrId);
+  if (itemIds.length === 0) return true;
+  return consumeSkillBookTokenIdsInTransaction(tx, userId, itemIds, qty);
+}
+
+async function consumeSkillBookTokenIdsInTransaction(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  itemIds: string[],
+  qty: number,
+): Promise<boolean> {
+  const tokens = await tx.inventoryEntry.findMany({
     where: { userId, itemId: { in: itemIds }, meta: SKILLBOOK_META, qty: { gt: 0 } },
     orderBy: { updatedAt: "asc" },
   });
@@ -73,16 +105,16 @@ export async function consumeSkillBookTokens(
   if (total < qty) return false;
 
   let remaining = qty;
-  await prisma.$transaction(
-    tokens.flatMap((token) => {
-      if (remaining <= 0) return [];
-      const take = Math.min(token.qty, remaining);
-      remaining -= take;
-      return token.qty > take
-        ? [prisma.inventoryEntry.update({ where: { id: token.id }, data: { qty: token.qty - take } })]
-        : [prisma.inventoryEntry.delete({ where: { id: token.id } })];
-    }),
-  );
+  for (const token of tokens) {
+    if (remaining <= 0) break;
+    const take = Math.min(token.qty, remaining);
+    remaining -= take;
+    if (token.qty > take) {
+      await tx.inventoryEntry.update({ where: { id: token.id }, data: { qty: token.qty - take } });
+    } else {
+      await tx.inventoryEntry.delete({ where: { id: token.id } });
+    }
+  }
   return true;
 }
 
