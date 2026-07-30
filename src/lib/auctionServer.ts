@@ -47,6 +47,7 @@ import {
 import { auctionSlots, normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { detectForgeSlot } from "@/lib/forge";
 import { inventoryEquipmentSlot } from "@/lib/itemUse";
+import { craftSerialOf } from "@/lib/weaponCraft";
 import {
   potionSellPrice,
   profitAdjustedSellPrice,
@@ -315,14 +316,26 @@ export async function resolveFloor(
   // 판매가가 비어 있으면 구매가의 50%로 폴백 — 시트에 구매가만 적어도 팔 수 있다.
   // (장비 판매가는 구매가의 1/2이 원칙이므로 폴백도 같은 비율)
   if (!isNonSellable(raw)) {
-    const item = await prisma.item.findFirst({
-      where: { OR: [{ id: raw }, { name: raw }] },
-      select: { sellPrice: true, buyPrice: true },
-    });
+    const item = await findItemByNameOrSerial(raw, { sellPrice: true, buyPrice: true });
     if (item?.sellPrice && item.sellPrice > 0) return item.sellPrice;
     if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.floor(item.buyPrice * 0.5));
   }
   return 0;
+}
+
+// 이름으로 도감 행을 찾되, 못 찾으면 제작품 고유번호(#7K2F)로 한 번 더 찾는다.
+// 대장간 수식어 리롤은 이름 앞에 '예리한' 같은 접두어를 붙여서 이름이 통째로 달라지는데,
+// 고유번호는 끝에 그대로 남으므로 그걸로 원본 행을 되짚을 수 있다.
+async function findItemByNameOrSerial<S extends Record<string, boolean>>(
+  raw: string,
+  select: S,
+): Promise<Record<string, number | null> | null> {
+  const exact = await prisma.item.findFirst({ where: { OR: [{ id: raw }, { name: raw }] }, select });
+  if (exact) return exact as Record<string, number | null>;
+  const serial = craftSerialOf(raw);
+  if (!serial) return null;
+  const bySerial = await prisma.item.findFirst({ where: { id: { endsWith: ` #${serial}` } }, select });
+  return (bySerial as Record<string, number | null> | null) ?? null;
 }
 
 export async function resolveCategory(
@@ -353,7 +366,17 @@ export async function resolveCategory(
     where: { OR: [{ id: raw }, { name: raw }] },
     select: { category: true },
   });
-  const cat = item?.category ?? "";
+  const cat =
+    item?.category ??
+    (await (async () => {
+      const serial = craftSerialOf(raw);
+      if (!serial) return "";
+      const bySerial = await prisma.item.findFirst({
+        where: { id: { endsWith: ` #${serial}` } },
+        select: { category: true },
+      });
+      return bySerial?.category ?? "";
+    })());
   if (cat === "무기") return "무기";
   if (["방어구", "갑옷", "방패"].includes(cat)) return "방어구";
   if (cat === "장신구") return "장신구";
@@ -1003,9 +1026,37 @@ export async function instantSellCore(
   });
   if (txResult.error) return { error: txResult.error };
   void enqueueSheetGoldSync(actor.userId);
-  if (source === "basic") void pushInventoryToSheet(actor.tab, actor.inv);
+  if (source === "basic") {
+    void pushInventoryToSheet(actor.tab, actor.inv);
+    void forgetSoldCraftedItem(name).catch(() => {});
+  }
 
   return { ok: `${name} x${qty} 즉시매각 완료. +${gain.toLocaleString()}G` };
+}
+
+// 제작품을 상점에 즉시매각하면 도감 행도 지운다.
+// 제작품은 제작 건마다 도감에 한 줄씩 쌓이는데, 팔았다는 건 더 이상 필요 없다는 뜻이라
+// 아무도 안 들고 있으면 남겨둘 이유가 없다. 옛 제작품(고유번호 없던 시절)도 이렇게 자연 소멸한다.
+//
+// 시트에서 온 아이템(아이언 너클·다이아몬드 원석 등)은 절대 지우면 안 되므로
+// '제작품임'이 확실한 두 근거만 인정한다 — 고유번호(#7K2F) 또는 설명의 "제작: " 서명.
+async function forgetSoldCraftedItem(itemName: string): Promise<void> {
+  const raw = itemName.trim();
+  const item = await prisma.item.findFirst({
+    where: { OR: [{ id: raw }, { name: raw }] },
+    select: { id: true, desc: true },
+  });
+  if (!item) return;
+  const isCrafted = craftSerialOf(item.id) != null || (item.desc ?? "").includes("제작: ");
+  if (!isCrafted) return;
+
+  const stillHeld = await prisma.inventoryEntry.findFirst({
+    where: { itemId: item.id, qty: { gt: 0 } },
+    select: { id: true },
+  });
+  if (stillHeld) return;
+
+  await prisma.item.delete({ where: { id: item.id } });
 }
 
 export async function cancelListingCore(userId: string, listingId: string): Promise<AuctionResult> {

@@ -61,7 +61,11 @@ import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
-import { inventoryEquipmentSlot, isEquipmentLikeInventoryItem } from "@/lib/itemUse";
+import {
+  equipmentLevelOf,
+  inventoryEquipmentSlot,
+  isEquipmentLikeInventoryItem,
+} from "@/lib/itemUse";
 import {
   potionSellPrice,
   profitAdjustedSellPrice,
@@ -120,7 +124,6 @@ export type AlchemyState = { error?: string; ok?: string } | undefined;
 export type GuildState = { error?: string; ok?: string } | undefined;
 
 const STEEL_FRAGMENT = "강철 파편";
-const MOON_FRAGMENT = "달의 파편";
 const COOKING_AP_COST = 10;
 const STORAGE_UPGRADE_STEP = 10;
 const FAILED_DISH = {
@@ -418,9 +421,8 @@ function setEnhancementTag(itemName: string, level: number): string {
   return `${baseName}(${[nextTag, ...tags].join(", ")})`;
 }
 
-function materialForEnhancement(level: number): string {
-  return level === 1 ? STEEL_FRAGMENT : MOON_FRAGMENT;
-}
+// 무기 강화 재료는 강철 파편으로 통일.
+// 달의 파편은 Lv6~10 장비 제작 전용 재료로 역할을 옮겼다 (강화에는 쓰지 않는다).
 
 async function currentSheet(): Promise<{
   userId: string;
@@ -3898,14 +3900,19 @@ export async function upgradeWeapon(
   if (!ctx.invFromSheet) return { error: "구글 시트 쓰기 설정을 먼저 확인해주세요." };
 
   const weaponName = String(formData.get("weaponName") ?? "").trim();
-  const weaponLevel = Math.max(1, Math.min(4, Number(formData.get("level") ?? 1) || 1));
   const weapon = findInvItem(ctx.inv, weaponName);
-  if (!weapon || weapon.qty <= 0) return { error: "강화할 무기를 인벤토리에서 찾지 못했습니다." };
-  if (inventoryEquipmentSlot(weapon) !== "weapon") {
-    return { error: "무기만 강화할 수 있어요." };
+  if (!weapon || weapon.qty <= 0) return { error: "강화할 장비를 인벤토리에서 찾지 못했습니다." };
+  const slot = inventoryEquipmentSlot(weapon);
+  if (slot !== "weapon" && slot !== "armor") {
+    return { error: "무기·방어구만 강화할 수 있어요." };
+  }
+  // 소모량은 장비 자신의 레벨에서 읽는다 — 플레이어가 고르지 않는다.
+  const weaponLevel = equipmentLevelOf(weapon);
+  if (weaponLevel == null) {
+    return { error: "이 장비의 레벨 표기(Lv○)를 찾지 못했어요. 시트 효과·해설을 확인해주세요." };
   }
   const nextEnhancement = enhancementLevel(weapon.name) + 1;
-  const materialName = materialForEnhancement(nextEnhancement);
+  const materialName = STEEL_FRAGMENT;
   if (nextEnhancement > 4) {
     return { error: "현재는 +4까지만 강화할 수 있습니다." };
   }
@@ -3914,11 +3921,13 @@ export async function upgradeWeapon(
   }
 
   const nextWeight = (weapon.weight ?? 0) + weaponLevel;
+  // 무기는 공격력, 방어구는 물리 방어력이 오른다 (제작 등급 보너스와 같은 사상).
+  const gainLabel = slot === "weapon" ? "공격력" : "물리 방어력";
   // 효과가 비어 있으면 아이템 탭 기본 설명을 먼저 채워 시트 효과·해설에도 보존되게 한다.
   const baseEffect = weapon.effect ?? (await lookupItemDesc(weapon.name));
   const nextEffect = appendEffect(
     baseEffect,
-    `무기 강화 +${nextEnhancement}: 공격력 +${weaponLevel}, 중량 +${weaponLevel}`,
+    `장비 강화 +${nextEnhancement}: ${gainLabel} +${weaponLevel}, 중량 +${weaponLevel}`,
   );
   const nextName = setEnhancementTag(weapon.name, nextEnhancement);
 
@@ -3937,7 +3946,7 @@ export async function upgradeWeapon(
     await postSystem(ctx.locationId, `⚒️ ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 강화.`);
   }
   revalidatePath("/world");
-  return { ok: `${nextName} 강화 완료. 공격력 +${weaponLevel}, 중량 +${weaponLevel}` };
+  return { ok: `${nextName} 강화 완료. ${gainLabel} +${weaponLevel}, 중량 +${weaponLevel}` };
 }
 
 export async function enchantWeapon(

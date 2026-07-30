@@ -30,7 +30,9 @@ import {
   isBlacksmithClass,
   itemAsCraftMinor,
   minorSlotsFor,
+  randomCraftSerial,
   rollCraftGrade,
+  withCraftSerial,
   type CraftGradeKey,
 } from "@/lib/weaponCraft";
 
@@ -177,8 +179,20 @@ function sanitizeCustomName(raw: string): string | { error: string } {
   if (!name) return "";
   if (name.length < 2 || name.length > 20) return { error: "장비 이름은 2~20자로 지어주세요." };
   if (/고품질|명품|장인/.test(name)) return { error: "등급 표기(고품질/명품/장인)는 이름에 쓸 수 없어요." };
-  if (/[\n\r,，"<>]/.test(name)) return { error: "이름에 쓸 수 없는 문자가 있어요." };
+  // '#'는 제작품 고유번호 표시라 이름에 못 쓴다 — 직접 적어서 남의 제작품 행세를 막는다.
+  if (/[\n\r,，"<>#]/.test(name)) return { error: "이름에 쓸 수 없는 문자가 있어요." };
   return name;
+}
+
+// 아직 안 쓰인 고유번호를 붙인다. Item.id 가 제작 건마다 달라지는 게 목적이므로
+// 이미 있는 id 면 다시 뽑고, 그래도 겹치면 자릿수를 늘려 확실히 피한다.
+async function assignCraftSerial(baseName: string): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const candidate = withCraftSerial(baseName, randomCraftSerial());
+    const taken = await prisma.item.findUnique({ where: { id: candidate }, select: { id: true } });
+    if (!taken) return candidate;
+  }
+  return withCraftSerial(baseName, `${randomCraftSerial()}${randomCraftSerial().slice(0, 2)}`);
 }
 
 export async function craftEquipment(formData: FormData): Promise<CraftResult> {
@@ -287,7 +301,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   const sellPrice = craftSellPrice(preview.materialValue, fee, grade);
 
   const stats = applyGradeBonus(preview.stats, preview.group, grade);
-  const name = craftResultName(preview, grade, user.nickname, customName);
+  const name = await assignCraftSerial(craftResultName(preview, grade, user.nickname, customName));
 
   const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
   const statText =

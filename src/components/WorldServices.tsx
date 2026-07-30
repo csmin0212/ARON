@@ -60,7 +60,7 @@ import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge
 import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
-import { inventoryEquipmentSlot } from "@/lib/itemUse";
+import { equipmentLevelOf, inventoryEquipmentSlot } from "@/lib/itemUse";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -343,6 +343,13 @@ function isWeapon(item: SheetInventoryItem): boolean {
   if (item.name.trim() === "강철 파편") return false;
   if (item.name.includes("파편") || isGem(item)) return false;
   return inventoryEquipmentSlot(item) === "weapon";
+}
+
+// 강화 대상: 무기·방어구 (파편·보석 제외). 소모량은 장비 레벨에서 자동으로 나온다.
+function isUpgradable(item: SheetInventoryItem): boolean {
+  if (item.name.includes("파편") || isGem(item)) return false;
+  const slot = inventoryEquipmentSlot(item);
+  return slot === "weapon" || slot === "armor";
 }
 
 function itemTags(name: string): string[] {
@@ -3696,6 +3703,13 @@ export default function WorldServices({
 
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const weapons = items.filter(isWeapon);
+  // 강화 — 대상은 무기·방어구, 소모량은 고른 장비의 레벨에서 바로 계산해 보여준다.
+  const upgradables = useMemo(() => items.filter(isUpgradable), [items]);
+  const [upgradeTarget, setUpgradeTarget] = useState("");
+  const upgradeItem =
+    upgradables.find((it) => it.name === upgradeTarget) ?? upgradables[0] ?? null;
+  const upgradeCost = upgradeItem ? equipmentLevelOf(upgradeItem) : null;
+  const upgradeSlot = upgradeItem ? inventoryEquipmentSlot(upgradeItem) : null;
   // 인첸트 대상: 강화(+N)·인첸트가 안 된 깨끗한 무기만
   const enchantableWeapons = weapons.filter((w) => !isEnchanted(w) && !isEnhanced(w));
   // 수식어 리롤 대상: 무기 또는 방어구 (강철 파편·보석 제외)
@@ -3764,7 +3778,7 @@ export default function WorldServices({
               <span className="text-xl">⚒️</span>
               <span className="min-w-0">
                 <span className="block text-sm font-extrabold text-content">대장간</span>
-                <span className="text-[11px] text-faint">장비 제작 · 무기 강화 · 마법 제련 · 수식어</span>
+                <span className="text-[11px] text-faint">장비 제작 · 장비 강화 · 마법 제련 · 수식어</span>
               </span>
             </button>
           )}
@@ -4212,7 +4226,7 @@ export default function WorldServices({
                   <ForgeChoice
                     tone="fire"
                     icon="⚔️"
-                    title="무기 강화"
+                    title="장비 강화"
                     onClick={() => setForgeMode("weapon")}
                   />
                   <ForgeChoice
@@ -4252,55 +4266,49 @@ export default function WorldServices({
 
                   {forgeMode === "weapon" ? (
                     <form action={upgradeAction} className="space-y-3">
-                      <h4 className="text-lg font-black text-amber-100">무기 강화</h4>
+                      <h4 className="text-lg font-black text-amber-100">장비 강화</h4>
                       <StateLine state={upgradeState} />
                       <label className="block">
-                        <span className="mb-1 block text-xs font-bold text-stone-400">무기</span>
+                        <span className="mb-1 block text-xs font-bold text-stone-400">
+                          무기 · 방어구
+                        </span>
                         <select
                           name="weaponName"
+                          value={upgradeTarget}
+                          onChange={(e) => setUpgradeTarget(e.target.value)}
                           className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2.5 text-sm font-semibold text-stone-100 outline-none focus:border-amber-400"
                         >
-                          {weapons.map((item) => (
+                          {upgradables.map((item) => (
                             <option key={item.name} value={item.name}>
                               {item.name}
                             </option>
                           ))}
                         </select>
                       </label>
-                      <div>
-                        <span className="mb-1 block text-xs font-bold text-stone-400">
-                          무기 레벨
-                        </span>
-                        <div className="grid grid-cols-4 gap-1 rounded-2xl bg-stone-900 p-1">
-                          {[1, 2, 3, 4].map((level) => (
-                            <label key={level} className="cursor-pointer">
-                              <input
-                                type="radio"
-                                name="level"
-                                value={level}
-                                defaultChecked={level === 1}
-                                className="peer sr-only"
-                              />
-                              <span className="block rounded-xl px-2 py-2 text-center text-sm font-black text-stone-400 transition peer-checked:bg-amber-600 peer-checked:text-white">
-                                Lv.{level}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                        <p className="mt-2 text-xs font-semibold text-amber-100/75">
-                          선택한 무기 레벨만큼 재료를 소모합니다. +1은 강철 파편, +2부터는
-                          달의 파편을 사용합니다.
+                      {upgradeCost != null ? (
+                        <p className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2.5 text-xs font-bold text-amber-100/85">
+                          Lv{upgradeCost} 장비 — 강철 파편{" "}
+                          <b className="text-amber-200">{upgradeCost}</b>개 소모 ·{" "}
+                          {upgradeSlot === "armor" ? "물리 방어력" : "공격력"} +{upgradeCost} · 중량
+                          +{upgradeCost}
                         </p>
-                      </div>
-                      {weapons.length === 0 && (
+                      ) : (
+                        upgradables.length > 0 && (
+                          <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-2.5 text-xs font-bold text-stone-400">
+                            이 장비의 레벨 표기(Lv○)를 찾지 못했어요. 시트 효과·해설을
+                            확인해주세요.
+                          </p>
+                        )
+                      )}
+                      {upgradables.length === 0 && (
                         <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-3 text-sm text-stone-400">
-                          인벤토리에서 무기 후보를 찾지 못했어요. 장비 중인 무기는 시트
+                          인벤토리에서 무기·방어구를 찾지 못했어요. 장비 중인 것은 시트
                           휴대품에 넣은 뒤 동기화해주세요.
                         </p>
                       )}
                       <button
                         type="submit"
-                        disabled={upgradePending || weapons.length === 0}
+                        disabled={upgradePending || upgradables.length === 0 || upgradeCost == null}
                         className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-amber-500 disabled:opacity-50"
                       >
                         {upgradePending ? "강화 중..." : "강화 적용"}

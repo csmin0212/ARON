@@ -68,3 +68,18 @@ export function inventoryEquipmentSlot(item: SheetInventoryItem): InventoryEquip
 export function isEquipmentLikeInventoryItem(item: SheetInventoryItem): boolean {
   return inventoryEquipmentSlot(item) !== null;
 }
+
+// 장비 레벨 — 효과문 첫머리의 "Lv3 장검 · 한손", "Lv1 방어구 · 몸통" 표기에서 읽는다.
+// 시트 장비(아이템 탭 설명)와 제작품(effectText) 모두 이 표기를 갖고 있어서,
+// 강화 소모량을 플레이어가 직접 고르지 않고 장비에서 바로 뽑아낼 수 있다.
+// 표기가 없으면 null — 호출부에서 "레벨을 못 읽었다"고 안내한다.
+const EQUIPMENT_LEVEL_PATTERN = /Lv\s*(\d+)/;
+export const EQUIPMENT_LEVEL_MAX = 10;
+
+export function equipmentLevelOf(item: Pick<SheetInventoryItem, "name" | "effect">): number | null {
+  const match = EQUIPMENT_LEVEL_PATTERN.exec(`${item.name}\n${item.effect ?? ""}`);
+  if (!match) return null;
+  const level = parseInt(match[1], 10);
+  if (!Number.isFinite(level) || level < 1) return null;
+  return Math.min(EQUIPMENT_LEVEL_MAX, level);
+}

@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { MASTER_SHEET_ID, fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
 import { adventurerRankFromFame, totalFameForRank } from "@/lib/adventurerRank";
+import { craftSerialOf } from "@/lib/weaponCraft";
 import {
   pushInventoryToSheet,
   readSheetEquipment,
@@ -33,20 +34,28 @@ async function fillItemCatalogDetails(inventory: SheetInventory): Promise<boolea
     keys.add(item.name.trim());
     keys.add(baseItemName(item.name));
   }
+  // 제작품은 이름이 겹쳐도 고유번호(#7K2F)로 자기 행만 찾아야 한다.
+  // 이 조회가 시트 효과 칸이 빈 휴대품을 도감 설명으로 채우는 자리라,
+  // 이름만으로 찾으면 남이 만든 동명 제작품의 효과가 붙어버린다.
+  const serials = [...new Set(targets.map((item) => craftSerialOf(item.name)).filter(Boolean))];
   const catalog = await prisma.item.findMany({
-    where: { OR: [{ id: { in: [...keys] } }, { name: { in: [...keys] } }] },
+    where: {
+      OR: [
+        { id: { in: [...keys] } },
+        { name: { in: [...keys] } },
+        ...serials.map((serial) => ({ id: { endsWith: ` #${serial}` } })),
+      ],
+    },
     select: { id: true, name: true, desc: true, weight: true },
   });
   const descByKey = new Map<string, string>();
   const weightByKey = new Map<string, number>();
   for (const entry of catalog) {
-    if (entry.desc) {
-      if (!descByKey.has(entry.id)) descByKey.set(entry.id, entry.desc);
-      if (!descByKey.has(entry.name)) descByKey.set(entry.name, entry.desc);
-    }
-    if (entry.weight != null) {
-      if (!weightByKey.has(entry.id)) weightByKey.set(entry.id, entry.weight);
-      if (!weightByKey.has(entry.name)) weightByKey.set(entry.name, entry.weight);
+    const serial = craftSerialOf(entry.id);
+    const entryKeys = serial ? [entry.id, entry.name, `#${serial}`] : [entry.id, entry.name];
+    for (const key of entryKeys) {
+      if (entry.desc && !descByKey.has(key)) descByKey.set(key, entry.desc);
+      if (entry.weight != null && !weightByKey.has(key)) weightByKey.set(key, entry.weight);
     }
   }
 
@@ -54,12 +63,18 @@ async function fillItemCatalogDetails(inventory: SheetInventory): Promise<boolea
   for (const item of targets) {
     const key = item.name.trim();
     const baseKey = baseItemName(item.name);
-    const desc = descByKey.get(key) ?? descByKey.get(baseKey);
+    // 고유번호가 있으면 이름 폴백(baseKey)보다 먼저 본다 — 수식어가 앞에 붙어 이름이
+    // 달라져도 자기 행을 찾고, 이름만 같은 남의 제작품으로 새지 않는다.
+    const serial = craftSerialOf(item.name);
+    const lookup = <T>(map: Map<string, T>): T | undefined =>
+      map.get(key) ?? (serial ? map.get(`#${serial}`) : undefined) ?? map.get(baseKey);
+
+    const desc = lookup(descByKey);
     if (!item.effect && desc) {
       item.effect = desc;
       changed = true;
     }
-    const weight = weightByKey.get(key) ?? weightByKey.get(baseKey);
+    const weight = lookup(weightByKey);
     if (item.weight == null && weight != null) {
       item.weight = weight;
       changed = true;

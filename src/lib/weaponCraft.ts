@@ -158,6 +158,42 @@ export function isCraftMinorMaterial(item: LifeSkillItem): boolean {
   return EXTRA_MINOR_MATERIAL_SET.has(item.name.normalize("NFKC").replace(/\s+/g, ""));
 }
 
+// ── 제작품 고유 시리얼 ──
+// 제작할 때마다 "아무개의 미스릴 롱소드 #7K2F"처럼 이름 끝에 붙는 고유 번호.
+//
+// 왜 이름 칸이냐 — 휴대품 칸과 장비 칸을 오갈 때 플레이어가 손으로 옮기는데,
+// 반드시 따라다니는 칸이 이름 하나뿐이다. 효과 칸에 넣으면 '이름만 옮기는' 바로 그
+// 상황에서 같이 사라져서, 이름으로 도감을 뒤지다 동명이인 제작품의 효과·가격이 붙는다.
+//
+// 시리얼이 붙으면 Item.id가 제작 건마다 고유해지므로
+//  - 같은 이름 다른 효과가 서로 덮어쓰지 않고
+//  - 비싼 재료로 만든 것의 매입가를 싼 것이 물려받지 않으며
+//  - 커스텀 이름이 기존 도감 아이템(아이언 너클 등)의 행을 침범하지 않는다.
+// 헷갈리는 글자(0·O·1·I)는 뺐다 — 플레이어가 손으로 옮겨 적는 값이라서.
+const SERIAL_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const CRAFT_SERIAL_PATTERN = /\s*#([0-9A-Z]{4,6})$/;
+
+export function craftSerialOf(name: string): string | null {
+  const m = CRAFT_SERIAL_PATTERN.exec(name.trim());
+  return m ? m[1] : null;
+}
+
+export function stripCraftSerial(name: string): string {
+  return name.trim().replace(CRAFT_SERIAL_PATTERN, "").trim();
+}
+
+export function withCraftSerial(name: string, serial: string): string {
+  return `${stripCraftSerial(name)} #${serial}`;
+}
+
+export function randomCraftSerial(rand: () => number = Math.random): string {
+  let out = "";
+  for (let i = 0; i < 4; i++) {
+    out += SERIAL_ALPHABET[Math.floor(rand() * SERIAL_ALPHABET.length)];
+  }
+  return out;
+}
+
 // 제작 피로도 — 메이저 광물 개수(=장비 레벨)에 비례
 export function craftApCost(level: number): number {
   return CRAFT_AP_PER_LEVEL * Math.max(1, level);
