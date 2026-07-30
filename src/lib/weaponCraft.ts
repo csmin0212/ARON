@@ -7,8 +7,17 @@
 //   Lv15/25 확장 슬롯(3~4번째)은 지정된 특수 재료만 허용.
 // - 등급(고품질/명품/장인작): 확률 롤 — 요리 등급 체계와 동일 문법.
 //   생산 클래스 원칙 "상한은 평등, 기대값은 이점": 블랙스미스는 확률이 유리, 최대치는 동일.
+//
+// 경제 규칙 (2026-07 개편)
+//   피로도 = 20 × 레벨(메이저 개수)          — '몇 개 넣었나'
+//   재료가치 M = Σ(투입 재료를 그냥 팔 때의 값) — '무엇을 넣었나'(성급이 여기 반영)
+//   세공비 F   = 기준가 × 25%                  — 장비 자체의 손품값, 판매가에 얹혀 회수
+//   순이익 T   = M × 마진 × 등급배율
+//   판매가 S   = M + F + T   →  S - F - M = T
+// 광물 성급은 공식에 직접 안 들어간다. 재료가치를 타고 들어오므로 4·5성 데이터를
+// 조정하면 별도 수정 없이 따라온다.
 
-import type { LifeSkillItem } from "./lifeSkillData";
+import { lifeSkillMarketPrice, type LifeSkillItem } from "./lifeSkillData";
 
 export type CraftGroup = "무기" | "방어구";
 
@@ -38,11 +47,18 @@ export const CRAFT_CATEGORIES: CraftCategory[] = [
 
 export const MAX_MAJORS = 5; // 메이저 투입 상한 = 최대 레벨
 export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
-export const CRAFT_AP_COST = 60;
-export const CRAFT_BASE_FEE_RATE = 0.25;
+
+// 피로도는 '몇 개 넣었나'(=장비 레벨)로만 정해진다. 광물 성급은 재료가치로 들어간다.
+export const CRAFT_AP_PER_LEVEL = 20; // Lv1 20 ~ Lv5 100
+// 숙련도는 피로도에 정비례(평탄형). 종별·레벨·성급 무관하게 AP당 같은 속도.
+// 1.4 = 하루 240AP(6분당 1 회복)를 제작에 다 쓰면 대장 Lv30까지 약 197일,
+// 재료를 직접 채광해가며 하면 약 344일 — 목표치 반년~1년 안.
+export const CRAFT_SMITH_EXP_PER_AP = 1.4;
+// 가공 마진 — 순이익 = 재료가치 × 마진 × 등급배율.
+// 1.0(본전)에서 시작해 등급 확률로 올라간다: 대장 Lv1 기대 1.014 → Lv30 1.137 → Lv50 1.25.
+export const CRAFT_MARGIN = 1.0;
+export const CRAFT_BASE_FEE_RATE = 0.25; // 세공비 = 기준가 × 25% (판매가에 그대로 얹혀 회수됨)
 export const CRAFT_BLACKSMITH_FEE_RATE = 0.8;
-export const CRAFT_SELL_PRICE_RATE = 0.4;
-export const CRAFT_MAX_NET_GOLD_PER_CRAFT = 40;
 
 // 대장 숙련 레벨 → 마이너 슬롯 수 (Lv15에 3칸, Lv25에 4칸)
 export function minorSlotsFor(smithLevel: number): number {
@@ -142,15 +158,33 @@ export function isCraftMinorMaterial(item: LifeSkillItem): boolean {
   return EXTRA_MINOR_MATERIAL_SET.has(item.name.normalize("NFKC").replace(/\s+/g, ""));
 }
 
-// 제작 피로도 — 하루 300 기준 5회 제작으로 제한
+// 제작 피로도 — 메이저 광물 개수(=장비 레벨)에 비례
 export function craftApCost(level: number): number {
-  void level;
-  return CRAFT_AP_COST;
+  return CRAFT_AP_PER_LEVEL * Math.max(1, level);
 }
 
-// 제작 숙련도 — 기준가 비례 (좋은 광물·높은 레벨일수록 많이)
-export function craftSmithExp(basePrice: number): number {
-  return Math.max(5, Math.round(basePrice * 0.14));
+// 제작 숙련도 — 소모한 피로도에 정비례.
+// (기준가 비례였을 땐 전신Lv5만 반복하면 38일, 단검Lv1만 만들면 7년으로 70배 편차가 났다)
+export function craftSmithExp(level: number): number {
+  return Math.max(1, Math.round(craftApCost(level) * CRAFT_SMITH_EXP_PER_AP));
+}
+
+// 재료 1종의 가치 = 그 재료를 그냥 팔았을 때 받는 골드.
+// 이게 어긋나면 '가공해서 팔면 그냥 파는 것보다 이득'이라는 전제가 깨지므로,
+// 매각 경로와 반드시 같은 함수(lifeSkillMarketPrice)를 통과시킨다.
+// 아이템 탭 드롭품(itemAsCraftMinor, no=0)은 광물이 아니라 sellPrice 그대로 쓴다.
+export function craftMaterialUnitValue(item: LifeSkillItem): number {
+  return item.no > 0 ? lifeSkillMarketPrice("채광", item) : Math.max(0, Math.round(item.price));
+}
+
+// 투입한 재료 전체의 가치 (메이저 개수분 + 마이너 각 1개)
+export function craftMaterialValue(
+  majors: { item: LifeSkillItem; qty: number }[],
+  minors: LifeSkillItem[],
+): number {
+  const major = majors.reduce((sum, m) => sum + craftMaterialUnitValue(m.item) * m.qty, 0);
+  const minor = minors.reduce((sum, m) => sum + craftMaterialUnitValue(m), 0);
+  return Math.round(major + minor);
 }
 
 // 제작 스탯 — 무기: hit/atk, 방어구: dodge/pdef/mdef. price는 기준가(수수료·판매가 산정용).
@@ -347,31 +381,32 @@ export const CRAFT_GRADES: Record<CraftGradeKey, { bonus: number; priceMult: num
   장인: { bonus: 3, priceMult: 2 },
 };
 
-export function craftSellPrice(basePrice: number, grade: CraftGradeKey | null): number {
-  const baseSellPrice = Math.round(basePrice * CRAFT_SELL_PRICE_RATE);
-  if (!grade) return Math.max(1, baseSellPrice);
-  const profit = Math.max(0, baseSellPrice - craftBaseFee(basePrice));
-  return Math.max(1, baseSellPrice + Math.ceil(profit * (CRAFT_GRADES[grade].priceMult - 1)));
+// 순이익 — 투입한 재료를 그냥 팔았을 때의 값에 가공 마진과 등급 배율을 곱한 것.
+// 일반 등급이면 딱 본전(재료가치만큼 더 번다), 등급이 붙는 만큼이 대장장이의 실력값.
+export function craftProfit(materialValue: number, grade: CraftGradeKey | null): number {
+  const mult = CRAFT_MARGIN * (grade ? CRAFT_GRADES[grade].priceMult : 1);
+  return Math.max(1, Math.round(materialValue * mult));
 }
 
+// 상점 매입가(=Item.sellPrice) = 재료가치 + 세공비 + 순이익.
+// 세공비가 판매가에 얹혀 있으므로 제작자는 낸 수수료를 팔 때 그대로 회수한다.
+export function craftSellPrice(
+  materialValue: number,
+  fee: number,
+  grade: CraftGradeKey | null,
+): number {
+  return Math.max(1, materialValue + fee + craftProfit(materialValue, grade));
+}
+
+// 세공비 — 장비 자체의 손품값. 종별·레벨(기준가)에만 반응하고 광물과는 무관.
 export function craftBaseFee(basePrice: number): number {
-  return Math.max(20, Math.round(basePrice * CRAFT_BASE_FEE_RATE));
+  return Math.max(10, Math.round(basePrice * CRAFT_BASE_FEE_RATE));
 }
 
-export function craftFee(baseFee: number, sellPrice: number, isBlacksmith: boolean): number {
-  const classFee = isBlacksmith ? Math.round(baseFee * CRAFT_BLACKSMITH_FEE_RATE) : baseFee;
-  const resaleGuardFee = Math.max(0, sellPrice - CRAFT_MAX_NET_GOLD_PER_CRAFT);
-  return Math.max(10, classFee, resaleGuardFee);
-}
-
-export function craftFeeRange(
-  baseFee: number,
-  basePrice: number,
-  isBlacksmith: boolean,
-): { min: number; max: number } {
-  const grades: (CraftGradeKey | null)[] = [null, "고품질", "명품", "장인"];
-  const fees = grades.map((grade) => craftFee(baseFee, craftSellPrice(basePrice, grade), isBlacksmith));
-  return { min: Math.min(...fees), max: Math.max(...fees) };
+// 블랙스미스는 선불 부담이 20% 가볍다. 판매가도 실제 낸 수수료로 계산되므로
+// 순이익 자체는 동일하고, 클래스 이점은 등급 확률(craftGradeRates) 쪽에 있다.
+export function craftFee(baseFee: number, isBlacksmith: boolean): number {
+  return Math.max(10, isBlacksmith ? Math.round(baseFee * CRAFT_BLACKSMITH_FEE_RATE) : baseFee);
 }
 
 export type CraftGradeRates = { signature: number; master: number; hq: number };
@@ -453,7 +488,8 @@ export type CraftPreview = {
   stats: CraftStats;
   tags: string[];
   extras: string[];
-  basePrice: number; // 기준가 — 수수료·판매가 산정
+  basePrice: number; // 기준가 — 세공비 산정 (종별·레벨만 반영)
+  materialValue: number; // 투입 재료를 그냥 팔았을 때의 값 — 판매가·순이익의 기준
   fee: number; // 제작 수수료 (블랙스미스 할인 전)
   weight: number; // 장비 중량 — 종류/레벨 기준 중량 + 메이저 광물 평균 중량 보정
   isMagic: boolean; // 마이너 재료가 들어간 매직 아이템 여부
@@ -557,10 +593,11 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   const repMajor = [...majors].sort((a, b) => b.qty - a.qty || b.item.rank - a.item.rank)[0];
   const majorRep = repMajor.item.name.replace(/\s*(광석|원석|조각)$/, "");
 
-  // 광물 질 반영 기준가 — 메이저 평균 등급이 높을수록 가치 상승
-  const avgRank = majors.reduce((s, m) => s + m.item.rank * m.qty, 0) / level;
-  const basePrice = Math.round(base.price * (1 + Math.max(0, avgRank - 2) * 0.25));
+  // 기준가는 장비 자체의 세공값(종별·레벨)만 나타낸다.
+  // 광물의 질은 재료가치(materialValue)로 판매가·순이익에 직접 반영되므로 여기서 또 곱하지 않는다.
+  const basePrice = base.price;
   const fee = craftBaseFee(basePrice);
+  const materialValue = craftMaterialValue(majors, input.minors);
 
   // 중량 — 장비 기준 중량에 메이저 광물 평균 중량을 반영한다.
   const avgMajorWeight = majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) / level;
@@ -594,6 +631,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     tags: tagList,
     extras,
     basePrice,
+    materialValue,
     fee,
     weight,
     isMagic,

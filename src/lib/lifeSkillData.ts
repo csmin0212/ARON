@@ -284,44 +284,19 @@ export function lifeSkillSellPrice(kind: LifeSkillKind, name: string): number {
   return item ? lifeSkillMarketPrice(kind, item) : 0;
 }
 
-function clampPrice(value: number, min: number, max: number): number {
-  if (value <= 0) return min;
-  return Math.max(min, Math.min(max, value));
-}
-
-// 종류별 판매가 배율 — 초반(Lv1~30) 세 채널을 피로도 300당 ~200골드로 맞춘 값.
-// 낚시·채집은 AP10(30회), 채광은 AP15(20회)라 채광 배율을 높여 AP 핸디캡을 상쇄한다.
-const PLANT_SELL_MULT = 0.85; // 채집 ~218
-const FISH_SELL_MULT = 0.9; // 낚시 ~202 (기존 1.24에서 하향)
-const MINERAL_SELL_MULT = 1.25; // 채광 ~205 (AP15 보정 위해 1.0에서 상향)
-
+// 시트 판매가 = 플레이어가 실제로 받는 금액. 배율도 등급 밴딩도 없다.
+//
+// 예전에는 여기서 낚시 ×0.9 / 채집 밴딩+×0.85 / 채광 ×1.25를 곱했다. 채광이 1회 15AP고
+// 낚시·채집이 10AP라, 시트값 그대로면 채광만 300AP당 40% 손해였기 때문이다.
+// 그 보정은 2026-07 시트 판매가에 직접 녹여 넣었다(물고기·채집·광물 탭 전체 재계산).
+// 시트 값과 실제 지급액이 어긋나면 이걸 기준으로 짜는 다른 데이터(요리 원가, 장비 제작
+// 재료가치)가 전부 함께 어긋나므로, 시트 하나만 보면 되게 통일한 것.
+//
+// 밸런스를 바꾸려면 코드가 아니라 시트 판매가를 고칠 것. 채널 간 균형은
+// 300AP(하루치) 기대 수입으로 본다 — Lv1~30 기준 낚시 243 / 채집 217 / 채광 221.
 export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): number {
-  if (kind === "낚시") return Math.round(item.price * FISH_SELL_MULT);
-  if (kind === "채광") return Math.round(item.price * MINERAL_SELL_MULT);
-  let banded: number;
-  switch (item.rank) {
-    case 0:
-      banded = Math.min(item.price, 5);
-      break;
-    case 1:
-      banded = clampPrice(item.price, 3, 10);
-      break;
-    case 2:
-      banded = clampPrice(item.price, 7, 18);
-      break;
-    case 3:
-      banded = clampPrice(item.price, 20, 35);
-      break;
-    case 4:
-      banded = clampPrice(item.price, 400, 750);
-      break;
-    case 5:
-      banded = clampPrice(item.price, 2000, 3500);
-      break;
-    default:
-      banded = item.price;
-  }
-  return Math.round(banded * PLANT_SELL_MULT);
+  void kind;
+  return Math.max(0, Math.round(item.price));
 }
 
 // 낚시 exp 배율 — 낚시 어종 exp가 채집보다 낮아, 레벨링 속도를 맞추기 위해 보정.

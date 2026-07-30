@@ -15,16 +15,24 @@ const ACCESSORY_EQUIPMENT_NAME_PATTERN =
 const EQUIPMENT_SLOT_PATTERN =
   /(?:^|\s|[·,])(?:한손|양손|머리|몸통|보조|장신구|무기|방어구|갑옷|방패)(?=$|\s|[·,])/;
 
-const CRAFT_CATEGORY_PATTERN =
-  /(?:^|\n)\s*Lv\s*\d+\s+(?:단검|장검|양손검|도끼|메이스|창|채찍|카타나|활|방패|몸통|머리|보조|장신구)\b/;
+// 한글 뒤에는 \b(단어 경계)가 절대 서지 않는다 — \w가 ASCII만 인정하기 때문.
+// 예전엔 여기에 \b가 붙어 있어서 이 패턴이 한 번도 매치되지 않았다(사실상 죽은 분기).
+// 경계는 문자열 끝이나 구분자(공백·중점·쉼표·줄바꿈)로 직접 확인한다.
+const CRAFT_CATEGORY_BOUNDARY = "(?=$|[\\s·,])";
+const CRAFT_CATEGORY_NAMES = "단검|장검|양손검|도끼|메이스|창|채찍|카타나|활|방패|몸통|머리|보조|장신구";
+const CRAFT_CATEGORY_PATTERN = new RegExp(
+  `(?:^|\\n)\\s*Lv\\s*\\d+\\s+(?:${CRAFT_CATEGORY_NAMES})${CRAFT_CATEGORY_BOUNDARY}`,
+);
 
 const EQUIPMENT_STAT_PATTERN =
   /(?:명중|공격력|회피|물리\s*방어력|마법\s*방어력|물방|마방|행동|이동력|이동\s*수정|사거리|중량)\s*[+-]\s*\d+/;
 
+const CRAFT_CATEGORY_CAPTURE = new RegExp(
+  `(?:^|\\n)\\s*Lv\\s*\\d+\\s+(${CRAFT_CATEGORY_NAMES})${CRAFT_CATEGORY_BOUNDARY}`,
+);
+
 function craftedCategorySlot(text: string): InventoryEquipmentSlot | null {
-  const match = text.match(
-    /(?:^|\n)\s*Lv\s*\d+\s+(단검|장검|양손검|도끼|메이스|창|채찍|카타나|활|방패|몸통|머리|보조|장신구)\b/,
-  );
+  const match = text.match(CRAFT_CATEGORY_CAPTURE);
   if (!match) return null;
   const category = match[1];
   if (category === "장신구") return "accessory";
@@ -44,9 +52,12 @@ export function inventoryEquipmentSlot(item: SheetInventoryItem): InventoryEquip
   const effect = item.effect ?? "";
   const text = `${name}\n${effect}`;
 
+  // "Lv1 장신구", "Lv3 장검" 같은 카테고리 표기가 가장 확실한 근거라 제일 먼저 본다.
+  // 소모품 판정보다 앞이어야 한다 — 장신구 효과문에 흔한 'HP를 회복' 같은 문구가
+  // CONSUMABLE_TEXT_PATTERN에 걸려 장비가 아닌 것으로 새는 걸 막는다(성인·재배 세트 등).
+  if (CRAFT_CATEGORY_PATTERN.test(text)) return craftedCategorySlot(text);
   if (CONSUMABLE_TEXT_PATTERN.test(text)) return null;
   if (LIFE_EQUIPMENT_NAME_PATTERN.test(name)) return "life";
-  if (CRAFT_CATEGORY_PATTERN.test(text)) return craftedCategorySlot(text);
   if (ACCESSORY_EQUIPMENT_NAME_PATTERN.test(name) && EQUIPMENT_STAT_PATTERN.test(text)) return "accessory";
   const forgeSlot = detectForgeSlot(text);
   if (forgeSlot !== null) return forgeSlot;

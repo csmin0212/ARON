@@ -21,6 +21,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   요리: "🍳",
   무기: "⚔️",
   방어구: "🛡️",
+  장신구: "💍",
   포션: "⚗️",
   재료: "💎",
   스킬북: "📘",

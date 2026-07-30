@@ -18,6 +18,7 @@ export const AUCTION_CATEGORIES = [
   "요리",
   "무기",
   "방어구",
+  "장신구",
   "포션",
   "재료",
   "스킬북",
@@ -33,6 +34,7 @@ export function normalizeAuctionCategory(category: string | null | undefined): A
   if (value === "채광") return "광석";
   if (value === "소비" || value === "소모품") return "포션";
   if (value === "갑옷" || value === "방패") return "방어구";
+  if (value === "악세서리" || value === "액세서리") return "장신구";
   if (AUCTION_CATEGORY_SET.has(value)) return value as AuctionCategory;
   return "기타";
 }

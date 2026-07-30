@@ -24,7 +24,6 @@ import {
   computeCraft,
   craftApCost,
   craftFee,
-  craftFeeRange,
   craftResultName,
   craftSellPrice,
   craftSmithExp,
@@ -271,12 +270,12 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     if (have < qty) return { error: `${name}이(가) 부족해요. (보유 ${have} / 필요 ${qty})` };
   }
 
-  // 등급 롤 이후 판매가를 기준으로 수수료를 확정한다.
+  // 세공비는 등급과 무관하게 확정된다(종별·레벨 기준). 선불이므로 먼저 검사.
   const blacksmith = isBlacksmithClass(sheet.charClass);
   const curGold = sheet.curGold ?? 0;
-  const feeRange = craftFeeRange(preview.fee, preview.basePrice, blacksmith);
-  if (curGold < feeRange.max) {
-    return { error: `제작 수수료가 부족해요. (최대 ${feeRange.max.toLocaleString()}G 필요)` };
+  const fee = craftFee(preview.fee, blacksmith);
+  if (curGold < fee) {
+    return { error: `제작 수수료가 부족해요. (${fee.toLocaleString()}G 필요)` };
   }
 
   const grade = rollCraftGrade(
@@ -284,8 +283,8 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     blacksmith,
     dailyGradeEventMultiplier("crafting"),
   );
-  const sellPrice = craftSellPrice(preview.basePrice, grade);
-  const fee = craftFee(preview.fee, sellPrice, blacksmith);
+  // 판매가 = 재료가치 + 세공비 + 순이익. 등급은 순이익 쪽만 키운다.
+  const sellPrice = craftSellPrice(preview.materialValue, fee, grade);
 
   const stats = applyGradeBonus(preview.stats, preview.group, grade);
   const name = craftResultName(preview, grade, user.nickname, customName);
@@ -370,8 +369,8 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   // 제작 등급(고품질1·명품2·장인3) — '제작등급' 업적 판정용
   if (grade) achStats = setMaxStat(achStats, "제작최고제작등급", CRAFT_GRADE_NUMBER[grade] ?? 0);
 
-  // 대장 숙련 — 기준가 비례, 레벨업 시 마이너 슬롯 확장
-  const smithExp = craftSmithExp(preview.basePrice);
+  // 대장 숙련 — 소모 피로도 비례, 레벨업 시 마이너 슬롯 확장
+  const smithExp = craftSmithExp(preview.level);
   const smithLevelUps = applySmithingExp(life, smithExp);
 
   await prisma.characterSheet.update({

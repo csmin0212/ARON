@@ -6,7 +6,8 @@ import { craftEquipment, type CraftResult } from "@/app/actions/craft";
 import {
   computeCraft,
   craftApCost,
-  craftFeeRange,
+  craftFee,
+  craftSellPrice,
   CRAFT_CATEGORIES,
   MAX_MAJORS,
   MAX_MINORS,
@@ -138,13 +139,11 @@ export default function CraftingForge({
     });
   }, [category, majorQty, minorSel, defs, maxMinors, tagSlots]);
 
-  const feeRange = preview && !("error" in preview) ? craftFeeRange(preview.fee, preview.basePrice, isBlacksmith) : null;
-  const feeText = feeRange
-    ? feeRange.min === feeRange.max
-      ? feeRange.min.toLocaleString()
-      : `${feeRange.min.toLocaleString()}~${feeRange.max.toLocaleString()}`
-    : "0";
-  const requiredFee = feeRange?.max ?? 0;
+  // 세공비는 등급과 무관하게 확정값 — 팔 때 판매가에 얹혀 돌아온다.
+  const requiredFee = preview && !("error" in preview) ? craftFee(preview.fee, isBlacksmith) : 0;
+  const feeText = requiredFee.toLocaleString();
+  const expectedSellPrice =
+    preview && !("error" in preview) ? craftSellPrice(preview.materialValue, requiredFee, null) : 0;
 
   function bumpMajor(name: string, delta: number) {
     setMajorQty((prev) => {
@@ -420,7 +419,10 @@ export default function CraftingForge({
                     </div>
                     <p className="mt-2 text-[11px] font-bold text-faint">
                       수수료 {feeText}G · 피로도 {craftApCost(preview.level)} · 중량 {preview.weight}
-                      {feeRange && feeRange.min !== feeRange.max && " · 등급에 따라 추가 수수료"}
+                    </p>
+                    <p className="mt-1 text-[11px] font-bold text-faint">
+                      재료값 {preview.materialValue.toLocaleString()}G · 예상 매입가{" "}
+                      {expectedSellPrice.toLocaleString()}G 이상 · 등급이 붙으면 더 오릅니다
                     </p>
                   </div>
                 );

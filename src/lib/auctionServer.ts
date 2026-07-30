@@ -46,6 +46,7 @@ import {
 } from "@/lib/auction";
 import { auctionSlots, normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
 import { detectForgeSlot } from "@/lib/forge";
+import { inventoryEquipmentSlot } from "@/lib/itemUse";
 import {
   potionSellPrice,
   profitAdjustedSellPrice,
@@ -311,14 +312,15 @@ export async function resolveFloor(
   }
 
   // 아이템 도감의 모든 분류(포션·무기·방어구·스킬북 …)를 매입 대상으로 인정.
-  // 판매가가 비어 있으면 구매가의 40%로 폴백 — 시트에 구매가만 적어도 팔 수 있다.
+  // 판매가가 비어 있으면 구매가의 50%로 폴백 — 시트에 구매가만 적어도 팔 수 있다.
+  // (장비 판매가는 구매가의 1/2이 원칙이므로 폴백도 같은 비율)
   if (!isNonSellable(raw)) {
     const item = await prisma.item.findFirst({
       where: { OR: [{ id: raw }, { name: raw }] },
       select: { sellPrice: true, buyPrice: true },
     });
     if (item?.sellPrice && item.sellPrice > 0) return item.sellPrice;
-    if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.round(item.buyPrice * 0.4));
+    if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.floor(item.buyPrice * 0.5));
   }
   return 0;
 }
@@ -354,10 +356,16 @@ export async function resolveCategory(
   const cat = item?.category ?? "";
   if (cat === "무기") return "무기";
   if (["방어구", "갑옷", "방패"].includes(cat)) return "방어구";
+  if (cat === "장신구") return "장신구";
   if (cat === "음식") return "요리";
   if (["소모품", "포션"].includes(cat)) return "포션";
   if (["재료", "보석"].includes(cat)) return "재료";
   if (specialMaterialSellPrice(raw) != null) return "재료";
+  // 이름/효과문에 "Lv1 장신구" 표기가 있으면 장신구 — detectForgeSlot보다 먼저.
+  // ("연구 도구"의 '도'가 무기 힌트에 걸려 무기로 새는 걸 막는다)
+  if (inventoryEquipmentSlot({ name: raw, effect: effect ?? null, weight: null, qty: 1 }) === "accessory") {
+    return "장신구";
+  }
   const forgeSlot = detectForgeSlot(`${raw}\n${effect ?? ""}`);
   if (forgeSlot === "weapon") return "무기";
   if (forgeSlot === "armor") return "방어구";
