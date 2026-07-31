@@ -8,7 +8,7 @@ import { isGmUsername } from "@/lib/gm";
 import { postSystem } from "@/lib/play";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import { RIFT_CAPACITY, RIFT_EMOJI, isRiftType, riftInteriorId } from "@/lib/rift";
-import { invalidateRifts, invalidateWorldUser } from "@/lib/worldCache";
+import { invalidateLocationPeople, invalidateRifts, invalidateWorldUser } from "@/lib/worldCache";
 
 export type RiftActionState = { error?: string; ok?: string } | undefined;
 
@@ -120,6 +120,9 @@ export async function enterRift(riftId: string): Promise<RiftActionState> {
   void checkAndGrant(user.id);
   invalidateWorldUser(user.id);
   invalidateRifts();
+  // 떠난 곳·도착한 곳 접속자 캐시 (postSystem 은 메시지 캐시만 비운다)
+  invalidateLocationPeople(rift.originId);
+  invalidateLocationPeople(rift.interiorId);
   await Promise.all([
     postSystem(rift.originId, `🌀 ${user.nickname}님이 '${rift.type}' 균열에 진입합니다.`),
     postSystem(rift.interiorId, `🌀 ${user.nickname}님이 균열에 진입했다.`),
@@ -147,6 +150,8 @@ export async function exitRift(): Promise<RiftActionState> {
   });
   invalidateWorldUser(user.id);
   invalidateRifts();
+  invalidateLocationPeople(rift.interiorId);
+  invalidateLocationPeople(rift.originId);
   await Promise.all([
     postSystem(rift.interiorId, `↩️ ${user.nickname}님이 균열에서 나갔다.`),
     postSystem(rift.originId, `↩️ ${user.nickname}님이 균열에서 빠져나왔다.`),

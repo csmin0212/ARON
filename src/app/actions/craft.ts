@@ -409,14 +409,17 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
 
   if (sheet.locationId) {
     const gradeNote = grade === "장인" ? " 🌟장인의 솜씨!" : grade === "명품" ? " ✨명품 탄생!" : "";
+    const actor = { userId: user.id, actorName: user.nickname, kind: "제작" as const };
     await postSystem(
       sheet.locationId,
       `⚒️ ${user.nickname}님이 [${name}]을(를) 제작했습니다!${gradeNote}`,
+      actor,
     );
     for (const lv of smithLevelUps) {
       await postSystem(
         sheet.locationId,
         `🆙 ${user.nickname}님의 대장 레벨이 ${lv}이 되었다!${lv === 15 || lv === 25 ? " 마이너 슬롯이 늘어났다! 🔥" : ""}`,
+        actor,
       );
     }
   }

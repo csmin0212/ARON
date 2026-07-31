@@ -1470,7 +1470,9 @@ export default async function WorldPage() {
         />
       )}
 
-      <WorldSyncProvider>
+      {/* 장소가 바뀌면 통째로 리마운트 — 폴링 상태(batch·after·people)가 이전 맵 것을
+          그대로 들고 있으면, 새로 마운트된 WorldChat 이 옛 맵 대사를 다시 채워 넣는다. */}
+      <WorldSyncProvider key={here.id}>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <WorldChat

@@ -154,11 +154,13 @@ async function grantFish(
 
   const sell = lifeSkillMarketPrice(FISH, { rank: pending.rank, price: pending.price } as never);
   if (locationId) {
+    const actor = { userId: sheet.userId, actorName: nickname, kind: "낚시" as const };
     await postSystem(
       locationId,
       `🎣 ${nickname}님 — ${verb} ✨ [${pending.rarity}] ${pending.name} x1 (크기 ${pending.size}, 판매가 ${sell}G) +숙련도 ${expText}${
         firstCatch ? " 📖 도감 신규 등록!" : ` 누적 ${caughtCount}회`
       }`,
+      actor,
     );
     for (const lv of leveled) {
       const perkPrompt = isPerkChoiceLevel(lv)
@@ -167,6 +169,7 @@ async function grantFish(
       await postSystem(
         locationId,
         `🆙 ${nickname}님의 낚시 레벨이 ${lv}이 되었다!${perkPrompt}`,
+        actor,
       );
     }
   }

@@ -20,7 +20,11 @@ import {
   fetchCombatSkillsRows,
 } from "@/lib/gamedata";
 import { postSystem, tryKeywordSpeech } from "@/lib/play";
-import { invalidateWorldLocation, invalidateWorldUser } from "@/lib/worldCache";
+import {
+  invalidateLocationPeople,
+  invalidateWorldLocation,
+  invalidateWorldUser,
+} from "@/lib/worldCache";
 import { addVisited, bumpStat, checkAndGrant } from "@/lib/achievements";
 import { activeDisplayPersona } from "@/lib/gmNpc";
 import type { ActionRow, DropEntry } from "@/lib/gamedata";
@@ -361,6 +365,8 @@ export async function enterWorld(): Promise<void> {
     },
   });
   invalidateWorldUser(user.id);
+  // 도착한 곳 접속자 캐시도 비워야 다른 사람 화면에 바로 뜬다 (postSystem 은 메시지 캐시만 건드린다)
+  invalidateLocationPeople(start.id);
   await postSystem(start.id, `🌟 ${persona.name}님이 월드에 입장하셨습니다!`);
   await triggerFirstVisitEvents({ id: user.id, nickname: persona.name }, sheet, start.id);
   void checkAndGrant(user.id);
@@ -466,6 +472,8 @@ export async function enterHome(formData: FormData): Promise<void> {
     data: { locationId: homeLocationId(user.id, tier.tier), houseTier: tier.tier, enteredAt: new Date() },
   });
   invalidateWorldUser(user.id);
+  // 떠난 곳 접속자 캐시 — 안 비우면 최대 2분간 유령이 남는다
+  invalidateLocationPeople(sheet.locationId);
   await postSystem(sheet.locationId, `📤 ${persona.name}님이 자리를 떠났습니다.`);
   revalidatePath("/world");
 }
@@ -490,6 +498,7 @@ export async function leaveHome(): Promise<void> {
   });
   invalidateWorldUser(user.id);
   invalidateWorldLocation(sheet?.locationId);
+  invalidateLocationPeople(dest.id);
   await postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`);
   revalidatePath("/world");
 }

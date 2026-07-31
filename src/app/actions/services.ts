@@ -3740,6 +3740,7 @@ export async function claimWeeklyIncome(
     await postSystem(
       location.id,
       `💰 ${user.nickname}님이 [${entry.name}]으로 ${entry.amount.toLocaleString()}G를 벌었습니다!`,
+      { userId: user.id, actorName: user.nickname, kind: "거래" },
     );
   }
 
@@ -3814,6 +3815,7 @@ export async function claimAllWeeklyIncome(
     await postSystem(
       location.id,
       `💰 ${user.nickname}님이 주간 수입 ${claimable.length}건으로 ${total.toLocaleString()}G를 벌었습니다!`,
+      { userId: user.id, actorName: user.nickname, kind: "거래" },
     );
   }
 
@@ -3943,7 +3945,11 @@ export async function upgradeWeapon(
   ]);
 
   if (ctx.locationId) {
-    await postSystem(ctx.locationId, `⚒️ ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 강화.`);
+    await postSystem(ctx.locationId, `⚒️ ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 강화.`, {
+      userId: ctx.userId,
+      actorName: ctx.nickname,
+      kind: "강화",
+    });
   }
   revalidatePath("/world");
   return { ok: `${nextName} 강화 완료. ${gainLabel} +${weaponLevel}, 중량 +${weaponLevel}` };
@@ -3993,7 +3999,11 @@ export async function enchantWeapon(
   ]);
 
   if (ctx.locationId) {
-    await postSystem(ctx.locationId, `💎 ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 제련.`);
+    await postSystem(ctx.locationId, `💎 ${ctx.nickname}님이 ${weapon.name}을 ${nextName}으로 제련.`, {
+      userId: ctx.userId,
+      actorName: ctx.nickname,
+      kind: "강화",
+    });
   }
   revalidatePath("/world");
   return { ok: `${nextName} 제련 완료.` };
@@ -4033,7 +4043,11 @@ export async function reforgeItem(_prev: ServiceState, formData: FormData): Prom
   ]);
 
   if (ctx.locationId) {
-    await postSystem(ctx.locationId, `🔨 ${ctx.nickname}님이 ${base}에 '${prefix.name}' 수식어를 새겼다.`);
+    await postSystem(
+      ctx.locationId,
+      `🔨 ${ctx.nickname}님이 ${base}에 '${prefix.name}' 수식어를 새겼다.`,
+      { userId: ctx.userId, actorName: ctx.nickname, kind: "강화" },
+    );
   }
   revalidatePath("/world");
   revalidatePath("/profile");

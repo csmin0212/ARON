@@ -248,6 +248,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
       `⚔️ ${user.nickname}님의 ${dungeon.name} 도전 — 🎲 ${dice.join("+")}+${mod}=${total} (목표 ${dungeon.dc}) ${
         success ? "성공!" : "실패…"
       } 경험점 +${expGain}${success && rewards.length ? ` · ${rewards.join(", ")} 획득` : ""}`,
+      { userId: user.id, actorName: user.nickname, kind: "던전" },
     );
   }
 

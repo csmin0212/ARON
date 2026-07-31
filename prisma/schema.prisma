@@ -38,6 +38,7 @@ model User {
   sheet        CharacterSheet?
   rolls        Roll[]
   worldMsgs    WorldMessage[]
+  activityLogs ActivityLog[]
   inventory    InventoryEntry[]
   storageBox   StorageBox?
   achievements UserAchievement[]
@@ -663,6 +664,26 @@ model WorldMessage {
 
   @@index([locationId, id])
   @@index([locationId, createdAt])
+}
+
+// 활동 로그 — 대사·제작·채집 등 캐릭터가 한 일의 영구 기록.
+// WorldMessage(월드 채팅)는 조회 성능 때문에 24시간 뒤 지워지므로, 남겨야 할 것만
+// 여기에 따로 쌓는다. 맵(locationId)·캐릭터(userId)·종류(kind)로 걸러 볼 수 있게 인덱스를 건다.
+model ActivityLog {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  userId     String? // 시스템 발생분은 null
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorName  String? // 기록 당시 표시명 스냅샷 (닉 변경·NPC 페르소나 대응)
+  locationId String? // 맵
+  kind       String // 대사 | 제작 | 강화 | 채집 | 낚시 | 채광 | 요리 | 연금 | 거래 | 던전 | 이동 | 시스템 …
+  content    String // 사람이 읽는 한 줄
+  metaJson   String? // 구조화 데이터 (아이템·수량·골드·등급 등) — 나중에 집계용
+
+  @@index([createdAt])
+  @@index([locationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
 }
 
 // 주사위/판정 로그 (탐색·RP 공용 엔진)

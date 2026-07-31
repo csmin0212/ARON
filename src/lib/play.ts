@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "./prisma";
+import { logActivity, type ActivityKind } from "./activityLog";
 import { invalidateWorldMessages } from "./worldCache";
 import { getLocationActionsAt, getLocationById } from "./gameCatalog";
 import { dailyLifeEventBonus } from "./dailyEvents";
@@ -188,8 +189,15 @@ async function ensureLifeSkillItem(item: LifeSkillItem, kind: LifeSkillKind): Pr
   });
 }
 
-export async function postSystem(locationId: string, content: string): Promise<void> {
+// 시스템 메시지 — 월드 채팅(24시간 뒤 삭제)과 활동 로그(영구)에 함께 남긴다.
+// opts 를 주면 활동 로그에서 캐릭터·종류로 걸러 볼 수 있다. 안 주면 종류 '시스템'.
+export async function postSystem(
+  locationId: string,
+  content: string,
+  opts?: { userId?: string | null; actorName?: string | null; kind?: ActivityKind },
+): Promise<void> {
   await prisma.worldMessage.create({ data: { locationId, system: true, content } });
+  logActivity({ locationId, content, ...opts });
   // 이 장소의 채팅 캐시만 즉시 갱신 (접속자 캐시는 건드리지 않는다)
   invalidateWorldMessages(locationId);
 }

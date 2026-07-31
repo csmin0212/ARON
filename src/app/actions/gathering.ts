@@ -141,15 +141,17 @@ async function grant(userId: string, nickname: string, locationId: string | null
   void checkAndGrant(userId);
   const sell = lifeSkillMarketPrice(GATHER, { rank: p.rank, price: p.price } as never);
   if (originLocationId) {
+    const actor = { userId, actorName: nickname, kind: "채집" as const };
     await postSystem(
       originLocationId,
       `🌿 ${nickname}님 ${how} — [${p.rarity}] ${p.name} x1 (판매가 ${sell}G) +숙련도 ${expText}${
         first ? " 📖 도감 신규!" : ` 누적 ${count}회`
       }`,
+      actor,
     );
     for (const lv of leveled) {
       const perkPrompt = isPerkChoiceLevel(lv) ? " 캐릭터 페이지에서 특성을 선택하세요." : "";
-      await postSystem(originLocationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다!${perkPrompt}`);
+      await postSystem(originLocationId, `🆙 ${nickname}님의 채집 레벨이 ${lv}이 되었다!${perkPrompt}`, actor);
     }
   }
   return { full: false as const, sell, exp: expGained, expBase };

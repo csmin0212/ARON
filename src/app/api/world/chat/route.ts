@@ -6,6 +6,7 @@ import {
   invalidateWorldMessages,
 } from "@/lib/worldCache";
 import { runActionCommand } from "@/lib/play";
+import { logActivity } from "@/lib/activityLog";
 import { bumpStat, checkAndGrant } from "@/lib/achievements";
 import { activeDisplayPersona, displaySnapshot, profileHrefForPersonaSnapshot } from "@/lib/gmNpc";
 
@@ -134,6 +135,14 @@ export async function POST(req: Request) {
   const msg = await prisma.worldMessage.create({
     data: { locationId: sheet.locationId, userId: user.id, content, ...displaySnapshot(user) },
     include: MSG_INCLUDE,
+  });
+  // 채팅은 24시간 뒤 지워지므로 대사는 활동 로그에 따로 남긴다.
+  logActivity({
+    userId: user.id,
+    actorName: activeDisplayPersona(user).name,
+    locationId: sheet.locationId,
+    kind: "대사",
+    content,
   });
   invalidateWorldMessages(sheet.locationId);
   await prisma.characterSheet.update({
