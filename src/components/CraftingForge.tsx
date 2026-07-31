@@ -11,7 +11,11 @@ import {
   CRAFT_CATEGORIES,
   MAX_MAJORS,
   MAX_MINORS,
+  MAX_MOON_FRAGMENTS,
+  MOON_FRAGMENT,
+  MOON_TIER_BASE,
   isCraftMinorMaterial,
+  isMoonFragment,
   minorSlotsFor,
   type CraftGroup,
 } from "@/lib/weaponCraft";
@@ -121,7 +125,14 @@ export default function CraftingForge({
   const minorsOwned = minerals.filter((m) => m.def.craftRole === "마이너" && m.have > 0);
   const defs = useMemo(() => new Map(minerals.map((m) => [m.def.name, m])), [minerals]);
 
-  const totalMajors = Object.values(majorQty).reduce((s, n) => s + n, 0);
+  // 달의 파편은 레벨(티어)만 올리고, 광물이 재질을 정한다 — 상한도 따로 센다.
+  const moonQty = Object.entries(majorQty)
+    .filter(([name]) => isMoonFragment(name))
+    .reduce((s, [, n]) => s + n, 0);
+  const oreQty = Object.entries(majorQty)
+    .filter(([name]) => !isMoonFragment(name))
+    .reduce((s, [, n]) => s + n, 0);
+  const craftLevel = moonQty > 0 ? MOON_TIER_BASE + moonQty : Math.max(1, oreQty);
 
   const preview = useMemo(() => {
     // 새로고침으로 광물 목록이 바뀌었을 수 있으니 목록에 없는 선택은 무시
@@ -146,13 +157,20 @@ export default function CraftingForge({
     preview && !("error" in preview) ? craftSellPrice(preview.materialValue, requiredFee, null) : 0;
 
   function bumpMajor(name: string, delta: number) {
+    const moon = isMoonFragment(name);
     setMajorQty((prev) => {
       const have = defs.get(name)?.have ?? 0;
       const cur = prev[name] ?? 0;
-      if (delta > 0 && cur <= 0 && Object.entries(prev).some(([k, v]) => k !== name && v > 0)) {
-        return { [name]: Math.min(1, have, MAX_MAJORS) };
+      const cap = moon ? MAX_MOON_FRAGMENTS : MAX_MAJORS;
+      // 광물은 여전히 한 종류만 — 다른 광물을 올리면 기존 광물은 비운다.
+      // 달의 파편은 티어 재료라 광물과 공존한다(둘 다 남긴다).
+      if (delta > 0 && cur <= 0 && !moon) {
+        const kept = Object.fromEntries(
+          Object.entries(prev).filter(([k, v]) => v > 0 && isMoonFragment(k)),
+        );
+        return { ...kept, [name]: Math.min(1, have, cap) };
       }
-      const next = Math.max(0, Math.min(cur + delta, have, MAX_MAJORS));
+      const next = Math.max(0, Math.min(cur + delta, have, cap));
       if (next <= 0) {
         const copy = { ...prev };
         delete copy[name];
@@ -266,12 +284,12 @@ export default function CraftingForge({
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-extrabold text-content">⛏️ 메이저 광물</h4>
               <span className="text-xs font-black text-brand-600">
-                {totalMajors}/{MAX_MAJORS} → Lv{Math.max(1, totalMajors)}
+                {moonQty > 0
+                  ? `광물 ${oreQty}/${MAX_MAJORS} · ${MOON_FRAGMENT} ${moonQty}/${MAX_MOON_FRAGMENTS}`
+                  : `${oreQty}/${MAX_MAJORS}`}{" "}
+                → Lv{craftLevel}
               </span>
             </div>
-            <p className="mb-2 text-[11px] font-bold text-faint">
-              한 종류만 선택 가능 · 투입 수량이 장비 레벨이 된다.
-            </p>
             {majorsOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">
                 가진 메이저 광물이 없다. 광맥부터 찾아보자.
@@ -296,7 +314,13 @@ export default function CraftingForge({
                           className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30">−</button>
                         <span className="w-6 text-center text-sm font-black text-content">{qty}</span>
                         <button type="button" onClick={() => bumpMajor(def.name, 1)}
-                          disabled={qty >= have || (qty > 0 && totalMajors >= MAX_MAJORS)}
+                          disabled={
+                            qty >= have ||
+                            (qty > 0 &&
+                              (isMoonFragment(def.name)
+                                ? moonQty >= MAX_MOON_FRAGMENTS
+                                : oreQty >= MAX_MAJORS))
+                          }
                           className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30">＋</button>
                       </div>
                     </div>

@@ -19,6 +19,7 @@ import {
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
+import { specialMaterialSellPrice } from "@/lib/shop";
 import {
   applyGradeBonus,
   computeCraft,
@@ -30,6 +31,7 @@ import {
   isBlacksmithClass,
   itemAsCraftMinor,
   minorSlotsFor,
+  MOON_FRAGMENT,
   randomCraftSerial,
   rollCraftGrade,
   withCraftSerial,
@@ -236,6 +238,24 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   for (const it of dropMinors) {
     const key = it.name.trim();
     if (!pool.has(key)) pool.set(key, itemAsCraftMinor(it));
+  }
+  // 달의 파편 — 광물 탭이 아니라 아이템 탭에 있는 던전 산출물이라 메이저 자격을 따로 준다.
+  // 레벨(티어)만 올리고 스탯은 안 건드리므로 craftEffect 는 비워 둔다.
+  if (!pool.has(MOON_FRAGMENT)) {
+    const moon = await prisma.item.findFirst({
+      where: { OR: [{ id: MOON_FRAGMENT }, { name: MOON_FRAGMENT }] },
+      select: { name: true, sellPrice: true, desc: true, weight: true },
+    });
+    pool.set(MOON_FRAGMENT, {
+      ...itemAsCraftMinor({
+        name: MOON_FRAGMENT,
+        craftEffect: null,
+        sellPrice: moon?.sellPrice ?? specialMaterialSellPrice(MOON_FRAGMENT) ?? 0,
+        desc: moon?.desc ?? null,
+        weight: moon?.weight ?? 1,
+      }),
+      craftRole: "메이저",
+    });
   }
   const majors: { item: LifeSkillItem; qty: number }[] = [];
   for (const [name, qty] of Object.entries(majorsRaw)) {

@@ -35,10 +35,16 @@ export type CachedPerson = {
   avatar: string | null;
 };
 
-const USER_TTL = 300; // 이동 시 즉시 무효화되므로 길게
-const MSG_TTL = 60; // 메시지 작성 시 즉시 무효화
-const PEOPLE_TTL = 120; // 이동 시 즉시 무효화
-const RIFT_TTL = 60;
+// TTL 은 '태그 무효화를 놓쳤을 때의 안전망'이지 갱신 수단이 아니다.
+// 바뀌는 순간마다 revalidateTag 로 즉시 비우므로(이동·메시지·균열 입퇴장) 짧게 둘 이유가 없다.
+//
+// 짧으면 오히려 손해다 — TTL 이 만료될 때마다 DB 를 깨우고, Neon 은 마지막 쿼리 이후
+// 자동 정지 시간(기본 5분)을 다시 세므로 "아무 일도 없는데 잠들지 못하는" 상태가 이어진다.
+// 실측 하루 8.9 CU-시간 중 6 이 이렇게 깨어만 있어서 나간 값이었다.
+const USER_TTL = 900; // 이동·균열 출입 시 invalidateWorldUser
+const MSG_TTL = 300; // 채팅/시스템 메시지 작성 시 invalidateWorldMessages
+const PEOPLE_TTL = 900; // 모든 이동 경로에서 invalidateLocationPeople
+const RIFT_TTL = 300; // 균열 개설·입장·퇴장·종료 시 invalidateRifts
 
 // 내 위치·입장시각 (이동 시 invalidateWorldUser 로 갱신)
 export function getUserWorldState(uid: string) {

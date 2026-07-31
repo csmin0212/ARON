@@ -59,7 +59,8 @@ import {
   lifeSkillKindOf,
   type LocationLifeConfig,
 } from "@/lib/lifeSkillData";
-import { isBlacksmithClass, itemAsCraftMinor } from "@/lib/weaponCraft";
+import { isBlacksmithClass, itemAsCraftMinor, MOON_FRAGMENT } from "@/lib/weaponCraft";
+import { specialMaterialSellPrice } from "@/lib/shop";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SKILLBOOK_META } from "@/lib/skillbook";
@@ -447,14 +448,13 @@ export default async function WorldPage() {
 
   // 같은 장소의 다른 플레이어 — 표시엔 user 정보만 쓰므로 무거운 시트 JSON 컬럼은 가져오지 않는다
   // (붐비는 장소에서 매 로드마다 전체 시트를 전송하던 egress 폭증 원인)
-  const others = await prisma.characterSheet.findMany({
-    where: { locationId: here.id, userId: { not: user.id } },
-    select: { userId: true, user: { select: { username: true, nickname: true, avatar: true } } },
-    orderBy: { updatedAt: "desc" },
-    take: 20,
-  });
-
-  const [rawLocActions, invEntries, storageBox] = await Promise.all([
+  const [others, rawLocActions, invEntries, storageBox] = await Promise.all([
+    prisma.characterSheet.findMany({
+      where: { locationId: here.id, userId: { not: user.id } },
+      select: { userId: true, user: { select: { username: true, nickname: true, avatar: true } } },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+    }),
     getLocationActionsAt(here.id),
     prisma.inventoryEntry.findMany({
       where: { userId: user.id, qty: { gt: 0 } },
@@ -472,27 +472,24 @@ export default async function WorldPage() {
   ]);
   const locActions = dedupeLifeActions(rawLocActions);
 
-  const itemCatalog = new Map(
-    (
-      await prisma.item.findMany({
-        where: { id: { in: invEntries.map((e) => e.itemId) } },
-        select: { id: true, name: true, weight: true },
-      })
-    ).map((it) => [it.id, it]),
-  );
-
-  // 스킬북 — 서버가 정상 지급한 토큰을 보유한 것만 "사용" 대상 (시트 위조 차단)
-  const skillBookTokens = await prisma.inventoryEntry.findMany({
-    where: { userId: user.id, meta: SKILLBOOK_META, qty: { gt: 0 } },
-    select: { itemId: true, qty: true },
-  });
+  // 스킬북 토큰은 invEntries(같은 유저·qty>0 전체)의 부분집합이라 메모리에서 걸러낸다.
+  // 서버가 정상 지급한 토큰만 "사용" 대상이라는 규칙은 그대로다 (시트 위조 차단).
+  const skillBookTokens = invEntries.filter((e) => e.meta === SKILLBOOK_META);
   const tokenItemIds = [...new Set(skillBookTokens.map((t) => t.itemId))];
-  const skillBookItems = tokenItemIds.length
-    ? await prisma.item.findMany({
-        where: { id: { in: tokenItemIds } },
-        select: { id: true, name: true, desc: true, weight: true },
-      })
-    : [];
+
+  const [invItemRows, skillBookItems] = await Promise.all([
+    prisma.item.findMany({
+      where: { id: { in: invEntries.map((e) => e.itemId) } },
+      select: { id: true, name: true, weight: true },
+    }),
+    tokenItemIds.length
+      ? prisma.item.findMany({
+          where: { id: { in: tokenItemIds } },
+          select: { id: true, name: true, desc: true, weight: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const itemCatalog = new Map(invItemRows.map((it) => [it.id, it]));
   const skillBookNames = [
     ...new Set([...tokenItemIds, ...skillBookItems.map((item) => item.name)]),
   ];
@@ -626,10 +623,8 @@ export default async function WorldPage() {
             .filter((item) => item.name.trim() === offer.itemName.trim())
             .reduce((sum, item) => sum + Math.max(0, item.qty), 0)) + questStorageQty(offer),
   }));
-  const bookTokens = await prisma.inventoryEntry.findMany({
-    where: { userId: user.id, meta: SKILLBOOK_META, qty: { gt: 0 } },
-    select: { itemId: true, qty: true },
-  });
+  // 위쪽 skillBookTokens 와 완전히 같은 조회라 그대로 재사용한다 (같은 렌더에서 두 번 갈 이유가 없다)
+  const bookTokens = skillBookTokens;
   const bookSkills = bookTokens.length
     ? await prisma.combatSkill.findMany({
         where: { sourceItem: { in: bookTokens.map((token) => token.itemId) } },
@@ -750,7 +745,34 @@ export default async function WorldPage() {
       used: usedCraftMinerals.has(it.name.trim()),
     }))
     .filter((entry) => entry.have > 0);
-  const craftMinerals = [...mineralCraftViews, ...dropMinorViews];
+  // 달의 파편 — 광물 탭이 아니라 던전 산출물이지만 Lv6~10 티어를 여는 메이저다.
+  const moonHave =
+    rawBagItems
+      .filter((item) => item.name.trim() === MOON_FRAGMENT)
+      .reduce((sum, item) => sum + Math.max(0, item.qty), 0) +
+    (storageBox?.entries
+      .filter((item) => item.name.trim() === MOON_FRAGMENT)
+      .reduce((sum, item) => sum + Math.max(0, item.qty), 0) ?? 0);
+  const moonViews: CraftMineralView[] =
+    moonHave > 0
+      ? [
+          {
+            def: {
+              ...itemAsCraftMinor({
+                name: MOON_FRAGMENT,
+                craftEffect: null,
+                sellPrice: specialMaterialSellPrice(MOON_FRAGMENT) ?? 0,
+                desc: "장비 레벨을 6~10으로 끌어올린다. 넣은 개수가 곧 단계.",
+                weight: 1,
+              }),
+              craftRole: "메이저",
+            },
+            have: moonHave,
+            used: usedCraftMinerals.has(MOON_FRAGMENT),
+          },
+        ]
+      : [];
+  const craftMinerals = [...mineralCraftViews, ...moonViews, ...dropMinorViews];
   // [태그] 룰 사전 — 제작특성 탭 동기화본 (정적 카탈로그라 캐시)
   const craftTagRows = await getCraftTagRows();
   const craftTags = Object.fromEntries(craftTagRows.map((tag) => [tag.name, tag.desc]));
@@ -790,14 +812,27 @@ export default async function WorldPage() {
     restedToday: restedTodayKst(sheet.restedAt),
   };
   // ── 친구 목록 + 현재 위치 (히든 장소는 가림) ──
-  const friendRows = await prisma.friendship.findMany({
-    where: { status: "accepted", OR: [{ userId: user.id }, { friendId: user.id }] },
-    include: {
-      user: { select: { id: true, nickname: true } },
-      friend: { select: { id: true, nickname: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  // 친구·친구요청·집초대는 서로 무관하므로 한 번에 보낸다.
+  const [friendRows, friendRequestRows, houseInviteRows] = await Promise.all([
+    prisma.friendship.findMany({
+      where: { status: "accepted", OR: [{ userId: user.id }, { friendId: user.id }] },
+      include: {
+        user: { select: { id: true, nickname: true } },
+        friend: { select: { id: true, nickname: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.friendship.findMany({
+      where: { friendId: user.id, status: "pending" },
+      include: { user: { select: { nickname: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.houseInvite.findMany({
+      where: { toId: user.id },
+      include: { from: { select: { nickname: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   const friendUsers = friendRows.map((row) => (row.userId === user.id ? row.friend : row.user));
   const friendSheets = friendUsers.length
     ? await prisma.characterSheet.findMany({
@@ -831,20 +866,14 @@ export default async function WorldPage() {
     }
     return { id: f.id, nickname: f.nickname, where };
   });
-  const friendRequests = (
-    await prisma.friendship.findMany({
-      where: { friendId: user.id, status: "pending" },
-      include: { user: { select: { nickname: true } } },
-      orderBy: { createdAt: "asc" },
-    })
-  ).map((row) => ({ id: row.id, nickname: row.user.nickname }));
-  const houseInvites = (
-    await prisma.houseInvite.findMany({
-      where: { toId: user.id },
-      include: { from: { select: { nickname: true } } },
-      orderBy: { createdAt: "desc" },
-    })
-  ).map((row) => ({ id: row.id, nickname: row.from.nickname }));
+  const friendRequests = friendRequestRows.map((row) => ({
+    id: row.id,
+    nickname: row.user.nickname,
+  }));
+  const houseInvites = houseInviteRows.map((row) => ({
+    id: row.id,
+    nickname: row.from.nickname,
+  }));
 
   // ── 방명록 — 지금 서 있는 집(내 집 또는 친구 집)의 것 ──
   const guestbookHousing = atMyHome ? housingState : homeOwnerHousing;
@@ -1122,10 +1151,14 @@ export default async function WorldPage() {
     potions: potionsForSale,
     accelerators: alchemyAccelerators,
   };
-  const blackMarketQuest = await loadBlackMarketQuestState(user.id, sheet);
-  const blackMarketExchange = await loadBlackMarketExchangeState(user.id, sheet);
-  const blackMarketStock = await ensureBlackMarketStock();
-  const blackMarketPotionRows = await getBlackMarketPotionRows();
+  // 서로 의존이 없어 한 번에 보낸다 — 순서대로 기다리면 왕복 4번이 그대로 함수 실행시간이 된다.
+  const [blackMarketQuest, blackMarketExchange, blackMarketStock, blackMarketPotionRows] =
+    await Promise.all([
+      loadBlackMarketQuestState(user.id, sheet),
+      loadBlackMarketExchangeState(user.id, sheet),
+      ensureBlackMarketStock(),
+      getBlackMarketPotionRows(),
+    ]);
   const blackMarketPotionByKey = new Map(
     blackMarketPotionRows.flatMap((item) => [
       [item.id, item],
@@ -1326,31 +1359,35 @@ export default async function WorldPage() {
   let adminRifts: AdminRift[] = [];
   let adminPlayers: { userId: string; label: string }[] = [];
   if (isGm) {
-    const playerSheets = await prisma.characterSheet.findMany({
-      select: { userId: true, sheetTab: true, user: { select: { nickname: true } } },
-      orderBy: { updatedAt: "desc" },
-    });
+    const [playerSheets, locations, openRifts] = await Promise.all([
+      prisma.characterSheet.findMany({
+        select: { userId: true, sheetTab: true, user: { select: { nickname: true } } },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.location.findMany({ select: { id: true, name: true }, orderBy: { order: "asc" } }),
+      prisma.rift.findMany({ where: { status: "open" }, orderBy: { createdAt: "desc" } }),
+    ]);
     adminPlayers = playerSheets.map((s) => ({
       userId: s.userId,
       label: `${s.user.nickname} · ${s.sheetTab}`,
     }));
-    adminLocations = await prisma.location.findMany({
-      select: { id: true, name: true },
-      orderBy: { order: "asc" },
-    });
+    adminLocations = locations;
     const locName = new Map(adminLocations.map((l) => [l.id, l.name]));
-    const openRifts = await prisma.rift.findMany({
-      where: { status: "open" },
-      orderBy: { createdAt: "desc" },
-    });
-    adminRifts = await Promise.all(
-      openRifts.map(async (r) => ({
-        id: r.id,
-        type: r.type,
-        originName: locName.get(r.originId) ?? r.originId,
-        count: await prisma.riftMember.count({ where: { riftId: r.id } }),
-      })),
-    );
+    // 균열마다 count 를 따로 세면 N+1 — groupBy 한 번으로 끝낸다.
+    const memberCounts = openRifts.length
+      ? await prisma.riftMember.groupBy({
+          by: ["riftId"],
+          where: { riftId: { in: openRifts.map((r) => r.id) } },
+          _count: { _all: true },
+        })
+      : [];
+    const countByRift = new Map(memberCounts.map((c) => [c.riftId, c._count._all]));
+    adminRifts = openRifts.map((r) => ({
+      id: r.id,
+      type: r.type,
+      originName: locName.get(r.originId) ?? r.originId,
+      count: countByRift.get(r.id) ?? 0,
+    }));
   }
 
   // 적용 중인 이벤트·요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 생활 행운은 한 칩으로 합침)

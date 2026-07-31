@@ -45,11 +45,25 @@ export const CRAFT_CATEGORIES: CraftCategory[] = [
   { key: "보조", group: "방어구", emoji: "🧤" },
 ];
 
-export const MAX_MAJORS = 5; // 메이저 투입 상한 = 최대 레벨
+export const MAX_MAJORS = 5; // 일반 메이저 투입 상한 = Lv5
 export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
 
-// 피로도는 '몇 개 넣었나'(=장비 레벨)로만 정해진다. 광물 성급은 재료가치로 들어간다.
-export const CRAFT_AP_PER_LEVEL = 20; // Lv1 20 ~ Lv5 100
+// ── 달의 파편 — Lv6~10 티어 ──
+// 일반 광물로는 Lv5가 천장이다. 달의 파편을 섞으면 그 위 구간이 열리고,
+// 넣은 개수가 곧 상위 티어의 단계가 된다 (1개 Lv6 … 5개 Lv10).
+// 일반 메이저는 이때 '재질'만 정한다 — 레벨은 파편이, 스탯 방향은 광물이.
+// Lv11부터는 또 다른 재료를 쓸 예정이라 여기서 끊는다.
+export const MOON_FRAGMENT = "달의 파편";
+export const MAX_MOON_FRAGMENTS = 5;
+export const MOON_TIER_BASE = MAX_MAJORS; // 달의 파편 1개 = Lv6
+
+export function isMoonFragment(name: string): boolean {
+  return name.normalize("NFKC").replace(/\s+/g, "") === MOON_FRAGMENT.replace(/\s+/g, "");
+}
+
+// 피로도는 '그 티어에서 몇 개 넣었나'로 정해진다. 광물 성급은 재료가치로 들어간다.
+// Lv1~5는 일반 메이저 개수, Lv6~10은 달의 파편 개수가 기준이라 둘 다 20~100 범위를 쓴다.
+export const CRAFT_AP_PER_LEVEL = 20; // Lv1 20 ~ Lv5 100 / Lv6 20 ~ Lv10 100
 // 숙련도는 피로도에 정비례(평탄형). 종별·레벨·성급 무관하게 AP당 같은 속도.
 // 1.4 = 하루 240AP(6분당 1 회복)를 제작에 다 쓰면 대장 Lv30까지 약 197일,
 // 재료를 직접 채광해가며 하면 약 344일 — 목표치 반년~1년 안.
@@ -194,9 +208,12 @@ export function randomCraftSerial(rand: () => number = Math.random): string {
   return out;
 }
 
-// 제작 피로도 — 메이저 광물 개수(=장비 레벨)에 비례
+// 제작 피로도 — 그 티어에서 투입한 개수에 비례.
+// Lv1~5는 일반 메이저 개수, Lv6~10은 달의 파편 개수가 곧 단계라 레벨만으로 역산된다.
 export function craftApCost(level: number): number {
-  return CRAFT_AP_PER_LEVEL * Math.max(1, level);
+  const lv = Math.max(1, level);
+  const tierStep = lv > MOON_TIER_BASE ? lv - MOON_TIER_BASE : lv;
+  return CRAFT_AP_PER_LEVEL * tierStep;
 }
 
 // 제작 숙련도 — 소모한 피로도에 정비례.
@@ -242,6 +259,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 1, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 200, rep: "훅", part: "두손" },
     { hit: 0, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 400, rep: "바드 나우", part: "두손" },
     { hit: 1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 500, rep: "너클", part: "두손" },
+    { hit: 0, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 780, rep: "미스릴 클로", part: "두손" },
+    { hit: 0, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 1100, rep: "파타", part: "두손" },
+    { hit: 0, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 2100, rep: "가이스트 블레이드", part: "두손" },
+    { hit: 0, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 2625, rep: "골렘 펀치", part: "두손" },
+    { hit: 0, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 4200, rep: "다이아 너클", part: "두손" },
   ],
   단검: [
     { hit: 0, atk: 4, dodge: 0, pdef: 0, mdef: 0, price: 30, rep: "대거", part: "한손" },
@@ -249,6 +271,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 250, rep: "파인 대거", part: "한손" },
     { hit: 0, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 300, rep: "슈리켄", part: "한손" },
     { hit: 0, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 800, rep: "소드 브레이커", part: "한손" },
+    { hit: 0, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 1000, rep: "스틸레토", part: "한손" },
+    { hit: 0, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 1400, rep: "미스릴 대거", part: "한손" },
+    { hit: 0, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 2200, rep: "쿠크리", part: "한손" },
+    { hit: 0, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 3000, rep: "키드니 대거", part: "한손" },
+    { hit: 0, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 4800, rep: "웨폰 브레이커", part: "한손" },
   ],
   장검: [
     { hit: -1, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 150, rep: "롱소드", part: "한손" },
@@ -256,6 +283,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 300, rep: "피란기", part: "한손" },
     { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 500, rep: "파인 소드", part: "한손" },
     { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 580, rep: "펄션", part: "한손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 725, rep: "펄션", part: "한손" },
+    { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 980, rep: "미스릴 소드", part: "한손" },
+    { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 1225, rep: "글라디우스", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 1531, rep: "미스릴 펄션", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 3800, rep: "미스릴 시미터", part: "한손" },
   ],
   양손검: [
     { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 275, rep: "그레이트 소드", part: "양손" },
@@ -263,6 +295,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 640, rep: "룸파이아", part: "양손" },
     { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 800, rep: "파인 클레이모어", part: "양손" },
     { hit: -1, atk: 15, dodge: 0, pdef: 0, mdef: 0, price: 1000, rep: "플랑베르주", part: "양손" },
+    { hit: -1, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 1300, rep: "헤비 클레이모어", part: "양손" },
+    { hit: -1, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 1980, rep: "헤비 에스터크", part: "양손" },
+    { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 2800, rep: "아웃레이지", part: "양손" },
+    { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 3600, rep: "미스릴 펄스", part: "양손" },
+    { hit: -2, atk: 20, dodge: 0, pdef: 0, mdef: 0, price: 6100, rep: "미스릴 플랑베르주", part: "양손" },
   ],
   도끼: [
     { hit: -2, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 160, rep: "그레이트 액스", part: "양손" },
@@ -270,6 +307,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -2, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 510, rep: "폴 액스", part: "양손" },
     { hit: -2, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 620, rep: "헤비 핼버드", part: "양손" },
     { hit: -2, atk: 15, dodge: 0, pdef: 0, mdef: 0, price: 1000, rep: "버디슈", part: "양손" },
+    { hit: -2, atk: 15, dodge: 0, pdef: 0, mdef: 0, price: 1250, rep: "텅기", part: "양손" },
+    { hit: -2, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 2200, rep: "부치", part: "양손" },
+    { hit: -2, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 2750, rep: "미스릴 액스", part: "양손" },
+    { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 4800, rep: "네바프 액스", part: "양손" },
+    { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 6200, rep: "크레센트 액스", part: "양손" },
   ],
   타격: [
     { hit: -1, atk: 4, dodge: 0, pdef: 0, mdef: 0, price: 80, rep: "라이트 메이스", part: "한손" },
@@ -277,6 +319,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 360, rep: "모닝스타", part: "한손" },
     { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 480, rep: "파인 메이스", part: "한손" },
     { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 500, rep: "헤비 플레일", part: "한손" },
+    { hit: -1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 700, rep: "홀리 크로스", part: "한손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 875, rep: "워 픽", part: "한손" },
+    { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 1094, rep: "미스릴 해머", part: "한손" },
+    { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 1368, rep: "미스릴 픽", part: "한손" },
+    { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 2200, rep: "다이아 메이스", part: "한손" },
   ],
   창: [
     { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 140, rep: "숏 스피어", part: "한손" },
@@ -284,6 +331,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 450, rep: "헤비 스피어", part: "양손" },
     { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 590, rep: "랜시아", part: "양손" },
     { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 705, rep: "파이크", part: "한손" },
+    { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 1500, rep: "미스릴 스피어", part: "한손" },
+    { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 1875, rep: "헤비 랜스", part: "한손" },
+    { hit: -1, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 2800, rep: "풋맨즈 파이크", part: "한손" },
+    { hit: -1, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 4100, rep: "십자창", part: "한손" },
+    { hit: -1, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 5125, rep: "다이아 랜스", part: "한손" },
   ],
   채찍: [
     { hit: -2, atk: 5, dodge: 0, pdef: 0, mdef: 0, price: 30, rep: "윕", part: "한손" },
@@ -291,6 +343,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -2, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 130, rep: "헤비 윕", part: "한손" },
     { hit: -2, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 390, rep: "파인 윕", part: "한손" },
     { hit: -2, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 600, rep: "체인 대거", part: "한손" },
+    { hit: -2, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 820, rep: "와이어 윕", part: "한손" },
+    { hit: -2, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 1025, rep: "와이어 윕", part: "한손" },
+    { hit: -2, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 1800, rep: "미스릴 윕", part: "한손" },
+    { hit: -2, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 2250, rep: "미스릴 윕", part: "한손" },
+    { hit: -2, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 3000, rep: "체인 스파이크", part: "한손" },
   ],
   카타나: [
     { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 200, rep: "키쿠이치몬지", part: "한손" },
@@ -298,6 +355,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 500, rep: "마사무네", part: "한손" },
     { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 750, rep: "무라마사", part: "한손" },
     { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 1000, rep: "무라마사", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 1250, rep: "무라마사", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 1563, rep: "무라마사", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 1954, rep: "무라마사", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 2443, rep: "무라마사", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 3054, rep: "무라마사", part: "한손" },
   ],
   활: [
     { hit: -1, atk: 5, dodge: 0, pdef: 0, mdef: 0, price: 380, rep: "라이트 크로스 보우", part: "양손" },
@@ -305,6 +367,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 600, rep: "헤비 크로스 보우", part: "양손" },
     { hit: -2, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 690, rep: "파인 크로스 보우", part: "양손" },
     { hit: -2, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 980, rep: "컴보짓 보우", part: "양손" },
+    { hit: -2, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 1300, rep: "리피터", part: "양손" },
+    { hit: -2, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 1625, rep: "래피드 보우", part: "양손" },
+    { hit: -2, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 2500, rep: "아바레스트", part: "양손" },
+    { hit: -2, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 3800, rep: "헤비 컴포짓 보우", part: "양손" },
+    { hit: -2, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 6000, rep: "발리스타", part: "양손" },
   ],
   방패: [
     { hit: 0, atk: 0, dodge: -1, pdef: 3, mdef: 0, price: 100, rep: "라운드 실드", part: "한손" },
@@ -312,6 +379,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 0, dodge: -1, pdef: 5, mdef: 0, price: 400, rep: "하이 퀄리티 실드", part: "한손" },
     { hit: 0, atk: 0, dodge: -1, pdef: 6, mdef: 0, price: 650, rep: "파인 실드", part: "한손" },
     { hit: 0, atk: 0, dodge: -1, pdef: 8, mdef: 0, price: 1000, rep: "하드 실드", part: "한손" },
+    { hit: 0, atk: 0, dodge: -1, pdef: 8, mdef: 0, price: 1250, rep: "하드 실드", part: "한손" },
+    { hit: 0, atk: 0, dodge: -1, pdef: 8, mdef: 0, price: 1563, rep: "하드 실드", part: "한손" },
+    { hit: 0, atk: 0, dodge: -1, pdef: 8, mdef: 0, price: 1954, rep: "하드 실드", part: "한손" },
+    { hit: 0, atk: 0, dodge: -1, pdef: 8, mdef: 0, price: 2443, rep: "하드 실드", part: "한손" },
+    { hit: 0, atk: 0, dodge: -1, pdef: 8, mdef: 0, price: 3054, rep: "하드 실드", part: "한손" },
   ],
   몸통: [
     { hit: 0, atk: 0, dodge: 0, pdef: 3, mdef: 0, price: 100, rep: "레더 재킷", part: "몸통" },
@@ -319,6 +391,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 0, price: 400, rep: "스케일 아머", part: "몸통" },
     { hit: 0, atk: 0, dodge: 0, pdef: 8, mdef: 0, price: 650, rep: "하프 플레이트", part: "몸통" },
     { hit: 0, atk: 0, dodge: 0, pdef: 8, mdef: 0, price: 900, rep: "스니킹 슈트", part: "몸통" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 8, mdef: 1, price: 3200, rep: "플레이트 메일", part: "몸통" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 9, mdef: 1, price: 4000, rep: "퀴래스", part: "몸통" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 9, mdef: 1, price: 5200, rep: "홀리 브레스트", part: "몸통" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 10, mdef: 1, price: 6800, rep: "영은제 도마루", part: "몸통" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 10, mdef: 2, price: 8500, rep: "리플렉트 아머", part: "몸통" },
   ],
   머리: [
     { hit: 0, atk: 0, dodge: 0, pdef: 2, mdef: 0, price: 50, rep: "해적 모자", part: "머리" },
@@ -326,6 +403,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 0, dodge: 0, pdef: 3, mdef: 0, price: 200, rep: "클로스 헬름", part: "머리" },
     { hit: 0, atk: 0, dodge: 0, pdef: 4, mdef: 0, price: 400, rep: "그레이트 헬름", part: "머리" },
     { hit: 0, atk: 0, dodge: 0, pdef: 5, mdef: 0, price: 700, rep: "그랜드 헬름", part: "머리" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 5, mdef: 0, price: 1200, rep: "매지컬 햇", part: "머리" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 5, mdef: 1, price: 2900, rep: "월광의 서클릿", part: "머리" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 1, price: 3625, rep: "크리스탈 헬름", part: "머리" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 1, price: 4700, rep: "홀리 서클릿", part: "머리" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 1, price: 5875, rep: "지르코니아 헬름", part: "머리" },
   ],
   전신: [
     { hit: 0, atk: 0, dodge: -2, pdef: 9, mdef: 0, price: 400, rep: "슈트 아머", part: "전신" },
@@ -333,6 +415,11 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 0, dodge: -2, pdef: 13, mdef: 0, price: 1000, rep: "슈트 아머", part: "전신" },
     { hit: 0, atk: 0, dodge: -3, pdef: 15, mdef: 1, price: 1500, rep: "풀 플레이트", part: "전신" },
     { hit: 0, atk: 0, dodge: -3, pdef: 16, mdef: 1, price: 2000, rep: "풀 플레이트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 16, mdef: 1, price: 2500, rep: "풀 플레이트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 19, mdef: 1, price: 4800, rep: "크리스탈 슈트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 19, mdef: 1, price: 6000, rep: "크리스탈 슈트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 19, mdef: 1, price: 7500, rep: "크리스탈 슈트", part: "전신" },
+    { hit: 0, atk: 0, dodge: -3, pdef: 21, mdef: 1, price: 11200, rep: "다이아 슈트", part: "전신" },
   ],
   보조: [
     { hit: 0, atk: 0, dodge: 0, pdef: 1, mdef: 0, price: 100, rep: "포인트 아머", part: "보조" },
@@ -340,32 +427,38 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: 0, atk: 0, dodge: 0, pdef: 4, mdef: 0, price: 400, rep: "파인 포인트 아머", part: "보조" },
     { hit: 0, atk: 0, dodge: 0, pdef: 4, mdef: 0, price: 600, rep: "파인 포인트 아머", part: "보조" },
     { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 0, price: 900, rep: "가드 아머", part: "보조" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 6, mdef: 1, price: 2600, rep: "로그 망토", part: "보조" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 7, mdef: 1, price: 3800, rep: "다이아 포인트 아머", part: "보조" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 7, mdef: 2, price: 4750, rep: "매직 망토", part: "보조" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 7, mdef: 2, price: 5938, rep: "다이아 건틀릿", part: "보조" },
+    { hit: 0, atk: 0, dodge: 0, pdef: 7, mdef: 2, price: 7423, rep: "룬 포인트 아머", part: "보조" },
   ],
 };
 
 // 장비 종류별 기준 중량. 인덱스 = 레벨-1.
 // 최종 중량은 이 값에 메이저 광물 평균 중량 보정을 얹는다.
 const BASELINE_WEIGHT: Record<string, number[]> = {
-  격투: [3, 4, 5, 6, 6],
-  단검: [1, 2, 2, 2, 3],
-  장검: [6, 7, 8, 8, 8],
-  양손검: [10, 11, 12, 13, 14],
-  도끼: [11, 11, 12, 13, 14],
-  타격: [5, 7, 8, 9, 10],
-  창: [8, 10, 11, 12, 12],
-  채찍: [3, 4, 5, 6, 7],
-  카타나: [5, 6, 7, 8, 9],
-  활: [6, 7, 8, 9, 10],
-  방패: [3, 4, 5, 6, 7],
-  몸통: [5, 7, 8, 10, 9],
-  머리: [1, 1, 2, 3, 4],
-  전신: [12, 14, 16, 18, 20],
-  보조: [1, 2, 3, 4, 5],
+  격투: [3, 4, 5, 6, 6, 6, 7, 7, 7, 8],
+  단검: [1, 2, 2, 2, 3, 3, 4, 4, 5, 5],
+  장검: [6, 7, 8, 8, 8, 8, 8, 9, 9, 9],
+  양손검: [10, 11, 12, 13, 14, 14, 14, 14, 14, 15],
+  도끼: [11, 11, 12, 13, 14, 14, 14, 14, 14, 14],
+  타격: [5, 7, 8, 9, 10, 10, 10, 10, 10, 10],
+  창: [8, 10, 11, 12, 12, 13, 13, 14, 15, 15],
+  채찍: [3, 4, 5, 6, 7, 7, 7, 7, 7, 7],
+  카타나: [5, 6, 7, 8, 9, 9, 9, 9, 9, 9],
+  활: [6, 7, 8, 9, 10, 10, 10, 13, 13, 13],
+  방패: [3, 4, 5, 6, 7, 7, 7, 7, 7, 7],
+  몸통: [5, 7, 8, 10, 9, 9, 9, 10, 11, 11],
+  머리: [1, 1, 2, 3, 4, 4, 4, 5, 5, 6],
+  전신: [12, 14, 16, 18, 20, 20, 20, 20, 20, 20],
+  보조: [1, 2, 3, 4, 5, 5, 5, 5, 5, 5],
 };
 
 export function craftEquipmentWeight(categoryKey: string, level: number, avgMajorWeight: number): number {
   const weights = BASELINE_WEIGHT[categoryKey];
-  const baseWeight = weights?.[Math.min(Math.max(1, level), MAX_MAJORS) - 1] ?? Math.max(1, level);
+  const maxLevel = weights?.length ?? MAX_MAJORS;
+  const baseWeight = weights?.[Math.min(Math.max(1, level), maxLevel) - 1] ?? Math.max(1, level);
   const materialAdjustment = Math.round(avgMajorWeight - 3);
   return Math.max(1, baseWeight + materialAdjustment);
 }
@@ -568,11 +661,23 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   const category = CRAFT_CATEGORIES.find((c) => c.key === input.category);
   if (!category) return { error: "만들 장비 종류를 선택해주세요." };
 
-  const majors = input.majors.filter((m) => m.qty > 0);
-  const level = majors.reduce((sum, m) => sum + m.qty, 0);
+  const all = input.majors.filter((m) => m.qty > 0);
+  // 달의 파편은 레벨(티어)만 올리고, 일반 메이저가 재질·스탯을 정한다.
+  const moonQty = all
+    .filter((m) => isMoonFragment(m.item.name))
+    .reduce((sum, m) => sum + m.qty, 0);
+  const majors = all.filter((m) => !isMoonFragment(m.item.name));
+  const oreQty = majors.reduce((sum, m) => sum + m.qty, 0);
+  const level = moonQty > 0 ? MOON_TIER_BASE + moonQty : oreQty;
+
   const maxMinors = input.maxMinors ?? MAX_MINORS;
-  if (level < 1) return { error: "메이저 광물을 1개 이상 넣어주세요." };
-  if (level > MAX_MAJORS) return { error: `메이저 광물은 최대 ${MAX_MAJORS}개까지예요. (개수 = 장비 레벨)` };
+  if (oreQty < 1) return { error: "메이저 광물을 1개 이상 넣어주세요." };
+  if (moonQty > MAX_MOON_FRAGMENTS) {
+    return { error: `${MOON_FRAGMENT}은 최대 ${MAX_MOON_FRAGMENTS}개까지예요. (Lv10)` };
+  }
+  if (oreQty > MAX_MAJORS) {
+    return { error: `메이저 광물은 최대 ${MAX_MAJORS}개까지예요. (개수 = 장비 레벨)` };
+  }
   if (input.minors.length > maxMinors) return { error: `마이너 재료는 최대 ${maxMinors}종이에요. (대장 레벨로 확장)` };
   for (const m of majors) {
     if ((m.item.craftRole ?? "") !== "메이저") return { error: `${m.item.name}은(는) 메이저 광물이 아니에요.` };
@@ -606,12 +711,14 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     for (const t of eff.tags) tags.add(resolveSlotTag(t, category.group));
     extras.push(...eff.extras);
   }
+  // 나누는 값은 '넣은 광물 개수'다 — 레벨로 나누면 달의 파편으로 레벨만 올렸을 때
+  // 광물 효과가 6~10으로 희석돼 사라진다.
   const stats: CraftStats = {
-    hit: base.hit + Math.round(acc.hit / level),
-    atk: base.atk + Math.round(acc.atk / level),
-    dodge: base.dodge + Math.round(acc.dodge / level),
-    pdef: base.pdef + Math.round(acc.pdef / level),
-    mdef: base.mdef + Math.round(acc.mdef / level),
+    hit: base.hit + Math.round(acc.hit / oreQty),
+    atk: base.atk + Math.round(acc.atk / oreQty),
+    dodge: base.dodge + Math.round(acc.dodge / oreQty),
+    pdef: base.pdef + Math.round(acc.pdef / oreQty),
+    mdef: base.mdef + Math.round(acc.mdef / oreQty),
   };
 
   // 마이너 — 효과 합산(종류당 1개)
@@ -633,10 +740,11 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   // 광물의 질은 재료가치(materialValue)로 판매가·순이익에 직접 반영되므로 여기서 또 곱하지 않는다.
   const basePrice = base.price;
   const fee = craftBaseFee(basePrice);
-  const materialValue = craftMaterialValue(majors, input.minors);
+  // 재료가치는 달의 파편도 포함한다 — 그대로 팔았을 때의 값이 순이익의 기준이라서.
+  const materialValue = craftMaterialValue(all, input.minors);
 
   // 중량 — 장비 기준 중량에 메이저 광물 평균 중량을 반영한다.
-  const avgMajorWeight = majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) / level;
+  const avgMajorWeight = majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) / oreQty;
   const weight = craftEquipmentWeight(category.key, level, avgMajorWeight);
   const isMagic = input.minors.length > 0;
 

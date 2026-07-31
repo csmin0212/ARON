@@ -9,7 +9,11 @@ import { BLACK_MARKET_POTIONS } from "./blackMarket";
 // 동기화 액션(syncWorldMap)에서 revalidateTag(CATALOG_TAG) 로 즉시 무효화하고,
 // 그와 별개로 TTL 로도 갱신되어 캐시가 영구히 낡지 않는다.
 export const CATALOG_TAG = "game-catalog";
-const CATALOG_TTL = 300; // 초 — 동기화를 놓쳐도 최대 5분 내 반영
+// 참조 데이터(레시피·장소·아이템 도감…)는 GM 이 시트를 동기화할 때만 바뀌고,
+// 그때 revalidateTag(CATALOG_TAG) 로 전부 즉시 비운다. TTL 은 그 신호를 놓쳤을 때의 안전망일 뿐.
+// 5분이면 플레이 중 11개 캐시가 5분마다 만료돼 DB 를 깨우고, 그때마다 Neon 자동 정지 타이머가
+// 초기화돼서 영영 잠들지 못한다 — CU-시간이 거기서 샌다.
+const CATALOG_TTL = 3600; // 초 — 동기화를 놓쳐도 최대 1시간 내 반영
 
 export const getCookingRecipes = unstable_cache(
   () => prisma.cookingRecipe.findMany({ orderBy: { order: "asc" } }),

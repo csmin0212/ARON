@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
-import { usePolling } from "@/lib/usePolling";
+import { usePolling, type PollOptions } from "@/lib/usePolling";
 import type { WorldSyncPayload } from "@/app/api/world/sync/route";
 import type { ChatMessage } from "@/app/api/world/chat/route";
 import type { PresencePerson } from "@/app/api/world/presence/route";
@@ -17,12 +17,15 @@ type SyncCtx = {
   /** WorldChat 이 누적 후 마지막 id 를 알려주면 다음 폴링에 반영된다 */
   setAfter: (id: number) => void;
   /** 행동 직후 등 즉시 갱신이 필요할 때 */
-  refresh: () => Promise<void>;
+  refresh: () => Promise<boolean>;
 };
 
 const Ctx = createContext<SyncCtx | null>(null);
 
-const POLL_MS = 12000;
+// 이 간격은 '남이 보낸 메시지가 뜨기까지'만 좌우한다 (내가 한 행동은 refresh 로 즉시 반영).
+// 대화가 오갈 땐 10초, 조용해지면 60초까지 늘어나고, 2분간 조작이 없으면 아예 멈춘다.
+// RP 는 대화가 몰렸다 끊겼다 하므로 고정 간격은 대부분의 호출을 빈 응답에 쓴다.
+const POLL: PollOptions = { minMs: 10_000, maxMs: 60_000, idleMs: 2 * 60_000 };
 
 export function WorldSyncProvider({ children }: { children: ReactNode }) {
   const afterRef = useRef(0);
@@ -30,22 +33,43 @@ export function WorldSyncProvider({ children }: { children: ReactNode }) {
   const [people, setPeople] = useState<PresencePerson[] | null>(null);
   const [rift, setRift] = useState<RiftContext | null>(null);
 
-  const runSync = useCallback(async () => {
+  // 바뀐 게 있을 때만 setState 한다 — 매번 갈아끼우면 접속자 목록이 폴링마다 헛되이 다시 그려지고,
+  // 폴링 백오프도 "변화 없음"을 알 수 없어 간격을 못 늘린다.
+  const peopleKeyRef = useRef("");
+  const riftKeyRef = useRef("");
+
+  const runSync = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch(`/api/world/sync?after=${afterRef.current}`, {
         cache: "no-store",
       });
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const data = (await res.json()) as WorldSyncPayload;
-      if (data.messages?.length) setBatch(data.messages);
-      if (data.people) setPeople(data.people);
-      if (data.rift) setRift(data.rift);
+      let changed = false;
+
+      if (data.messages?.length) {
+        setBatch(data.messages);
+        changed = true;
+      }
+      const peopleKey = JSON.stringify(data.people ?? null);
+      if (data.people && peopleKey !== peopleKeyRef.current) {
+        peopleKeyRef.current = peopleKey;
+        setPeople(data.people);
+        changed = true;
+      }
+      const riftKey = JSON.stringify(data.rift ?? null);
+      if (data.rift && riftKey !== riftKeyRef.current) {
+        riftKeyRef.current = riftKey;
+        setRift(data.rift);
+        changed = true;
+      }
+      return changed;
     } catch {
-      /* 다음 폴링에서 회복 */
+      return false; /* 다음 폴링에서 회복 */
     }
   }, []);
 
-  usePolling(() => void runSync(), POLL_MS);
+  usePolling(runSync, POLL);
 
   return (
     <Ctx.Provider

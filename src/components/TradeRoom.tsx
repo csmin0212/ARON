@@ -398,20 +398,28 @@ export default function TradeRoom({
   const mine = currentUserId === live.fromSide.userId ? live.fromSide : live.toSide;
   const isOpen = live.status === "PENDING";
 
-  usePolling(() => {
-    void (async () => {
+  // 거래는 주고받는 동안만 빨라야 한다 — 상대 응답을 기다리는 정지 상태에선 20초까지 늘어난다.
+  // 스냅샷이 그대로면 setState 도 건너뛴다(폴링마다 방 전체가 다시 그려지던 것 방지).
+  const snapshotKeyRef = useRef(JSON.stringify(initialSnapshot));
+  usePolling(
+    async () => {
       try {
         const res = await fetch(`/api/trade/${encodeURIComponent(tradeId)}`, {
           cache: "no-store",
         });
-        if (!res.ok) return;
+        if (!res.ok) return false;
         const next = (await res.json()) as TradeSnapshot;
+        const key = JSON.stringify(next);
+        if (key === snapshotKeyRef.current) return false;
+        snapshotKeyRef.current = key;
         setLive(next);
+        return true;
       } catch {
-        // 다음 주기에서 다시 시도한다.
+        return false; // 다음 주기에서 다시 시도한다.
       }
-    })();
-  }, 3000);
+    },
+    { minMs: 3_000, maxMs: 20_000, idleMs: 60_000 },
+  );
 
   return (
     <div className="mx-auto max-w-5xl animate-fadeup space-y-5 py-4">
