@@ -343,7 +343,13 @@ function ChatPanel({
           <p className="text-center text-sm text-faint">아직 대화가 없어요.</p>
         )}
       </div>
-      <form action={action} className="space-y-2 border-t border-line p-4">
+      {/* 제출 직후 입력을 비운다 — 전송 버튼이 '내용 없음'으로 잠기므로 연타·엔터 두 번이 막힌다.
+          (FormData 는 이 시점에 이미 만들어져 있어 전송 내용에는 영향이 없다) */}
+      <form
+        action={action}
+        onSubmit={() => setContent("")}
+        className="space-y-2 border-t border-line p-4"
+      >
         <input type="hidden" name="tradeId" value={tradeId} />
         <div className="flex gap-2">
           <input

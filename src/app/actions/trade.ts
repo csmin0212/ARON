@@ -102,6 +102,8 @@ function parseOfferRef(raw: string): {
   return { source, name: raw.slice(parts[0].length + TRADE_SOURCE_SEP.length).trim(), exact: false };
 }
 
+// 같은 사람이 같은 내용을 이 시간 안에 또 보내면 중복 전송으로 보고 무시한다.
+const DUPLICATE_WINDOW_MS = 5_000;
 const PENDING = "PENDING";
 const ACCEPTED = "ACCEPTED";
 const CANCELLED = "CANCELLED";
@@ -721,6 +723,20 @@ export async function sendTradeMessage(
   });
   if (!trade || !isParticipant(trade, me.id)) return { ok: false, message: "대화할 수 없는 거래입니다." };
   if (trade.status !== PENDING) return { ok: false, message: "종료된 거래입니다." };
+
+  // 같은 말이 몇 초 안에 또 들어오면 중복 전송으로 본다.
+  // 버튼 연타·엔터 두 번·서버 액션 재시도 어느 쪽이든 여기서 걸린다
+  // (클라이언트 pending 가드만으로는 요청이 이미 나간 뒤의 중복을 못 막는다).
+  const recent = await prisma.tradeMessage.findFirst({
+    where: {
+      tradeId: trade.id,
+      userId: me.id,
+      content,
+      createdAt: { gt: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
+    },
+    select: { id: true },
+  });
+  if (recent) return { ok: true, message: "전송했습니다." };
 
   await prisma.tradeMessage.create({ data: { tradeId: trade.id, userId: me.id, content } });
   await notifyTradePartner(trade, me.id, {
