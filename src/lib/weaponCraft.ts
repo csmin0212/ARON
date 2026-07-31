@@ -49,9 +49,9 @@ export const MAX_MAJORS = 5; // 일반 메이저 투입 상한 = Lv5
 export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
 
 // ── 달의 파편 — Lv6~10 티어 ──
-// 일반 광물로는 Lv5가 천장이다. 달의 파편을 섞으면 그 위 구간이 열리고,
-// 넣은 개수가 곧 상위 티어의 단계가 된다 (1개 Lv6 … 5개 Lv10).
-// 일반 메이저는 이때 '재질'만 정한다 — 레벨은 파편이, 스탯 방향은 광물이.
+// 일반 광물로는 Lv5가 천장이다. 그 위로 가려면 광물을 꽉 채운 상태(5개)에서
+// 달의 파편을 얹어야 하고, 파편 개수가 곧 상위 단계가 된다 (1개 Lv6 … 5개 Lv10).
+// 광물은 이때 '재질'을 정한다 — 레벨은 파편이, 스탯 방향은 광물이.
 // Lv11부터는 또 다른 재료를 쓸 예정이라 여기서 끊는다.
 export const MOON_FRAGMENT = "달의 파편";
 export const MAX_MOON_FRAGMENTS = 5;
@@ -208,12 +208,11 @@ export function randomCraftSerial(rand: () => number = Math.random): string {
   return out;
 }
 
-// 제작 피로도 — 그 티어에서 투입한 개수에 비례.
-// Lv1~5는 일반 메이저 개수, Lv6~10은 달의 파편 개수가 곧 단계라 레벨만으로 역산된다.
+// 제작 피로도 — 투입한 '일반 광물' 개수에 비례한다.
+// Lv6~10은 광물 5개가 필수라 전부 100 고정 (달의 파편은 피로도를 더 먹지 않는다).
 export function craftApCost(level: number): number {
-  const lv = Math.max(1, level);
-  const tierStep = lv > MOON_TIER_BASE ? lv - MOON_TIER_BASE : lv;
-  return CRAFT_AP_PER_LEVEL * tierStep;
+  const oreCount = Math.min(Math.max(1, level), MAX_MAJORS);
+  return CRAFT_AP_PER_LEVEL * oreCount;
 }
 
 // 제작 숙련도 — 소모한 피로도에 정비례.
@@ -674,6 +673,12 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   if (oreQty < 1) return { error: "메이저 광물을 1개 이상 넣어주세요." };
   if (moonQty > MAX_MOON_FRAGMENTS) {
     return { error: `${MOON_FRAGMENT}은 최대 ${MAX_MOON_FRAGMENTS}개까지예요. (Lv10)` };
+  }
+  // 상위 티어는 아래 단계를 다 채운 뒤에 올라간다 — 광물 5개(Lv5)가 전제.
+  if (moonQty > 0 && oreQty < MAX_MAJORS) {
+    return {
+      error: `${MOON_FRAGMENT}을 쓰려면 메이저 광물을 ${MAX_MAJORS}개 채워야 해요. (현재 ${oreQty}개)`,
+    };
   }
   if (oreQty > MAX_MAJORS) {
     return { error: `메이저 광물은 최대 ${MAX_MAJORS}개까지예요. (개수 = 장비 레벨)` };

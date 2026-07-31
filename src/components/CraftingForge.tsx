@@ -36,18 +36,21 @@ const RANK_TONE = [
   "text-amber-500",
 ];
 
-// 메이저 광물 한 줄 — 일반 광물과 고유 광물이 같은 모양을 쓴다.
-// atCap 은 '그 분류의 상한에 닿았나'로, 일반은 5개(Lv5), 고유는 5개(Lv10)로 서로 따로 센다.
+// 메이저 광물 한 줄 — 일반 광물과 특수 광물이 같은 모양을 쓴다.
+// atCap 은 '그 분류의 상한에 닿았나'(일반 5개=Lv5, 특수 5개=Lv10)로 서로 따로 센다.
+// locked 는 아예 못 올리는 상태 — 광물 5개를 안 채웠을 때의 특수 광물이 여기 해당한다.
 function MajorRow({
   entry,
   qty,
   atCap,
+  locked,
   onBump,
   tone,
 }: {
   entry: CraftMineralView;
   qty: number;
   atCap: boolean;
+  locked?: boolean;
   onBump: (name: string, delta: number) => void;
   tone?: "amber";
 }) {
@@ -82,7 +85,7 @@ function MajorRow({
         <button
           type="button"
           onClick={() => onBump(def.name, 1)}
-          disabled={qty >= have || (qty > 0 && atCap)}
+          disabled={locked || qty >= have || (qty > 0 && atCap)}
           className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30"
         >
           ＋
@@ -177,10 +180,10 @@ export default function CraftingForge({
   const [openTag, setOpenTag] = useState<string | null>(null);
   const maxMinors = minorSlotsFor(smithLevel);
 
-  // 메이저를 둘로 나눈다 — 일반 광물(Lv1~5)과 상위 티어를 여는 고유 광물(Lv6~10).
+  // 메이저를 둘로 나눈다 — 일반 광물(Lv1~5)과 상위 티어를 여는 특수 광물(Lv6~10).
   const majors = minerals.filter((m) => m.def.craftRole === "메이저");
   const oresOwned = majors.filter((m) => !isMoonFragment(m.def.name) && m.have > 0);
-  // 고유 광물은 안 갖고 있어도 줄을 남긴다 — "어디에 넣는 건지" 보이게 하려는 것.
+  // 특수 광물은 안 갖고 있어도 줄을 남긴다 — "어디에 넣는 건지" 보이게 하려는 것.
   const uniqueRows = majors.filter((m) => isMoonFragment(m.def.name));
   const hasUnique = uniqueRows.some((m) => m.have > 0);
   const minorsOwned = minerals.filter((m) => m.def.craftRole === "마이너" && m.have > 0);
@@ -194,6 +197,8 @@ export default function CraftingForge({
     .filter(([name]) => !isMoonFragment(name))
     .reduce((s, [, n]) => s + n, 0);
   const craftLevel = moonQty > 0 ? MOON_TIER_BASE + moonQty : Math.max(1, oreQty);
+  // 광물 5개를 채우기 전엔 특수 광물을 올릴 수 없다 (Lv5 를 채운 뒤에 그 위로 간다).
+  const moonLocked = oreQty < MAX_MAJORS;
 
   const preview = useMemo(() => {
     // 새로고침으로 광물 목록이 바뀌었을 수 있으니 목록에 없는 선택은 무시
@@ -224,7 +229,7 @@ export default function CraftingForge({
       const cur = prev[name] ?? 0;
       const cap = moon ? MAX_MOON_FRAGMENTS : MAX_MAJORS;
       // 광물은 여전히 한 종류만 — 다른 광물을 올리면 기존 광물은 비운다.
-      // 달의 파편은 티어 재료라 광물과 공존한다(둘 다 남긴다).
+      // 특수 광물은 티어 재료라 광물과 공존한다(둘 다 남긴다).
       if (delta > 0 && cur <= 0 && !moon) {
         const kept = Object.fromEntries(
           Object.entries(prev).filter(([k, v]) => v > 0 && isMoonFragment(k)),
@@ -232,12 +237,19 @@ export default function CraftingForge({
         return { ...kept, [name]: Math.min(1, have, cap) };
       }
       const next = Math.max(0, Math.min(cur + delta, have, cap));
-      if (next <= 0) {
-        const copy = { ...prev };
-        delete copy[name];
-        return copy;
+      const draft = { ...prev };
+      if (next <= 0) delete draft[name];
+      else draft[name] = next;
+
+      // 광물이 5개 미만으로 내려가면 올려둔 특수 광물은 성립하지 않으니 같이 내린다.
+      // (안 그러면 '광물 3 + 파편 2' 같은 상태가 남아 제작 시 서버에서 거부당한다)
+      const ores = Object.entries(draft)
+        .filter(([k]) => !isMoonFragment(k))
+        .reduce((s, [, v]) => s + v, 0);
+      if (ores < MAX_MAJORS) {
+        for (const key of Object.keys(draft)) if (isMoonFragment(key)) delete draft[key];
       }
-      return { ...prev, [name]: next };
+      return draft;
     });
   }
 
@@ -373,10 +385,8 @@ export default function CraftingForge({
               </div>
             )}
 
-            {/* 고유 광물 — 상위 티어를 여는 특수 재료. 없어도 자리를 보여준다(어디 넣는지 알 수 있게). */}
-            <p className="mb-1.5 mt-3 text-[11px] font-bold text-amber-600">
-              고유 광물 · 넣으면 Lv6~10, 개수가 곧 단계 (일반 광물과 함께 넣는다)
-            </p>
+            {/* 특수 광물 — 상위 티어를 여는 재료. 없어도 자리를 보여준다(어디 넣는지 알 수 있게). */}
+            <p className="mb-1.5 mt-3 text-[11px] font-bold text-amber-600">특수 광물</p>
             <div className="space-y-1.5">
               {uniqueRows.map((entry) => (
                 <MajorRow
@@ -384,15 +394,22 @@ export default function CraftingForge({
                   entry={entry}
                   qty={majorQty[entry.def.name] ?? 0}
                   atCap={moonQty >= MAX_MOON_FRAGMENTS}
+                  locked={moonLocked}
                   onBump={bumpMajor}
                   tone="amber"
                 />
               ))}
             </div>
-            {!hasUnique && (
+            {!hasUnique ? (
               <p className="mt-1.5 text-center text-[11px] text-faint">
                 아직 가진 게 없다. 던전 깊은 곳에서 나온다고 한다.
               </p>
+            ) : (
+              moonLocked && (
+                <p className="mt-1.5 text-center text-[11px] font-bold text-amber-600">
+                  일반 광물을 {MAX_MAJORS}개 채우면 올릴 수 있다.
+                </p>
+              )
             )}
           </section>
 
