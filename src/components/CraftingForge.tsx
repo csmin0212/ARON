@@ -364,9 +364,7 @@ export default function CraftingForge({
               </span>
             </div>
             {/* 일반 광물 — 한 종류만, 개수가 곧 Lv1~5 */}
-            <p className="mb-1.5 text-[11px] font-bold text-faint">
-              일반 광물 · 한 종류만, 넣은 개수가 장비 레벨(1~5)
-            </p>
+            <p className="mb-1.5 text-[11px] font-bold text-faint">일반 광물</p>
             {oresOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">
                 가진 광물이 없다. 광맥부터 찾아보자.
@@ -401,13 +399,11 @@ export default function CraftingForge({
               ))}
             </div>
             {!hasUnique ? (
-              <p className="mt-1.5 text-center text-[11px] text-faint">
-                아직 가진 게 없다. 던전 깊은 곳에서 나온다고 한다.
-              </p>
+              <p className="mt-1.5 text-center text-[11px] text-faint">보유 없음</p>
             ) : (
               moonLocked && (
                 <p className="mt-1.5 text-center text-[11px] font-bold text-amber-600">
-                  일반 광물을 {MAX_MAJORS}개 채우면 올릴 수 있다.
+                  일반 광물 {MAX_MAJORS}개 필요
                 </p>
               )
             )}
@@ -528,8 +524,8 @@ export default function CraftingForge({
                       수수료 {feeText}G · 피로도 {craftApCost(preview.level)} · 중량 {preview.weight}
                     </p>
                     <p className="mt-1 text-[11px] font-bold text-faint">
-                      재료값 {preview.materialValue.toLocaleString()}G · 예상 매입가{" "}
-                      {expectedSellPrice.toLocaleString()}G 이상 · 등급이 붙으면 더 오릅니다
+                      재료값 {preview.materialValue.toLocaleString()}G · 매입가{" "}
+                      {expectedSellPrice.toLocaleString()}G~
                     </p>
                   </div>
                 );

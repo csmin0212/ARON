@@ -124,8 +124,8 @@ export async function enterRift(riftId: string): Promise<RiftActionState> {
   invalidateLocationPeople(rift.originId);
   invalidateLocationPeople(rift.interiorId);
   await Promise.all([
-    postSystem(rift.originId, `🌀 ${user.nickname}님이 '${rift.type}' 균열에 진입합니다.`),
-    postSystem(rift.interiorId, `🌀 ${user.nickname}님이 균열에 진입했다.`),
+    postSystem(rift.originId, `🌀 ${user.nickname}님이 '${rift.type}' 균열에 진입합니다.`, { userId: user.id, actorName: user.nickname, kind: "이동" }),
+    postSystem(rift.interiorId, `🌀 ${user.nickname}님이 균열에 진입했다.`, { userId: user.id, actorName: user.nickname, kind: "이동" }),
   ]);
   revalidatePath("/world");
   return { ok: "균열에 진입했어요." };
@@ -153,8 +153,8 @@ export async function exitRift(): Promise<RiftActionState> {
   invalidateLocationPeople(rift.interiorId);
   invalidateLocationPeople(rift.originId);
   await Promise.all([
-    postSystem(rift.interiorId, `↩️ ${user.nickname}님이 균열에서 나갔다.`),
-    postSystem(rift.originId, `↩️ ${user.nickname}님이 균열에서 빠져나왔다.`),
+    postSystem(rift.interiorId, `↩️ ${user.nickname}님이 균열에서 나갔다.`, { userId: user.id, actorName: user.nickname, kind: "이동" }),
+    postSystem(rift.originId, `↩️ ${user.nickname}님이 균열에서 빠져나왔다.`, { userId: user.id, actorName: user.nickname, kind: "이동" }),
   ]);
   revalidatePath("/world");
   return { ok: "균열에서 나왔어요." };

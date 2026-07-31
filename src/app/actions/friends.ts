@@ -261,9 +261,9 @@ export async function respondHouseInvite(
     prisma.riftMember.deleteMany({ where: { userId: user.id } }),
   ]);
   if (!isHomeLocationId(mySheet.locationId)) {
-    await postSystem(mySheet.locationId, `📤 ${user.nickname}님이 자리를 떠났습니다.`);
+    await postSystem(mySheet.locationId, `📤 ${user.nickname}님이 자리를 떠났습니다.`, { userId: user.id, actorName: user.nickname, kind: "이동" });
   }
-  await postSystem(dest, `📥 ${user.nickname}님이 놀러 왔습니다!`);
+  await postSystem(dest, `📥 ${user.nickname}님이 놀러 왔습니다!`, { userId: user.id, actorName: user.nickname, kind: "이동" });
   revalidatePath("/world");
   return { ok: `${invite.from.nickname}님의 집에 놀러 왔어요!` };
 }

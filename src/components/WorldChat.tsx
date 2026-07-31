@@ -23,6 +23,7 @@ type ChatMessage = {
   content: string;
   createdAt: string;
   system: boolean;
+  kind?: string | null;
   user: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
 };
 
@@ -78,6 +79,7 @@ export default function WorldChat({
     syncRef.current = sync;
   }, [sync]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [tab, setTab] = useState<"world" | "system">("world");
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +99,12 @@ export default function WorldChat({
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState("");
   const [probing, setProbing] = useState(false);
+
+  // 월드 = 캐릭터 대사 + 등장·퇴장(kind "이동"), 시스템 = 나머지 시스템 메시지
+  const isWorldMessage = (m: ChatMessage) => !m.system || m.kind === "이동";
+  const worldMessages = messages.filter(isWorldMessage);
+  const systemMessages = messages.filter((m) => !isWorldMessage(m));
+  const shown = tab === "world" ? worldMessages : systemMessages;
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current;
@@ -124,6 +132,11 @@ export default function WorldChat({
   useEffect(() => {
     if (sync?.batch?.length) append(sync.batch);
   }, [sync?.batch, append]);
+
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    requestAnimationFrame(scrollToBottom);
+  }, [tab, scrollToBottom]);
 
   async function beginFishing() {
     if (busy) return;
@@ -270,14 +283,14 @@ export default function WorldChat({
     }
   }
 
-  // 보이는 로그를 인쇄용 창으로 → PDF 저장
+  // 보이는 로그를 인쇄용 창으로 → PDF 저장 (지금 보고 있는 탭만)
   function exportLog() {
     const w = window.open("", "_blank");
     if (!w) return;
     void fetch("/api/world/log-save", { method: "POST" }).catch(() => {}); // 업적 카운터
 
     const esc = escapeHtml;
-    const body = messages
+    const body = shown
       .map((m) => {
         const time = formatFullDate(m.createdAt);
         if (m.system)
@@ -304,8 +317,8 @@ export default function WorldChat({
   .sys{color:#7a7f93;font-size:13px;font-style:italic}
   .t{color:#aaa;font-size:11px;font-weight:normal}
 </style></head><body>
-<h1>📜 ${esc(locationName)} — 기록</h1>
-<div class="meta">아리안로드 온라인 · ${formatFullDate(new Date())} 내보냄 · ${messages.length}개 메시지</div>
+<h1>📜 ${esc(locationName)} — ${tab === "world" ? "월드" : "시스템"} 기록</h1>
+<div class="meta">아리안로드 온라인 · ${formatFullDate(new Date())} 내보냄 · ${shown.length}개 메시지</div>
 ${body}
 </body></html>`);
     w.document.close();
@@ -319,17 +332,31 @@ ${body}
         <h2 className="min-w-0 truncate text-sm font-extrabold text-content">
           💬 {locationName} 채팅
         </h2>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden text-[11px] text-faint sm:inline">진입 이후의 대화만 보여요</span>
+        <button
+          onClick={exportLog}
+          disabled={shown.length === 0}
+          className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:bg-subtle disabled:opacity-40"
+        >
+          📄 로그 저장
+        </button>
+      </div>
+
+      <div className="flex gap-1 border-b border-line px-3 py-2">
+        {([
+          ["world", "월드", worldMessages.length],
+          ["system", "시스템", systemMessages.length],
+        ] as const).map(([key, label, count]) => (
           <button
-            onClick={exportLog}
-            disabled={messages.length === 0}
-            className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:bg-subtle disabled:opacity-40"
-            title="보이는 로그를 PDF로 저장"
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              tab === key ? "bg-brand-500 text-white" : "text-muted hover:bg-subtle"
+            }`}
           >
-            📄 로그 저장
+            {label} {count > 0 && <span className="opacity-70">{count}</span>}
           </button>
-        </div>
+        ))}
       </div>
 
       {/* 메시지 목록 */}
@@ -341,12 +368,12 @@ ${body}
         }}
         className="flex-1 space-y-3 overflow-y-auto px-5 py-4"
       >
-        {messages.length === 0 && (
+        {shown.length === 0 && (
           <p className="py-10 text-center text-sm text-faint">
-            아직 대화가 없어요. 첫 마디를 건네보세요!
+            {tab === "world" ? "아직 대화가 없어요." : "아직 기록이 없어요."}
           </p>
         )}
-        {messages.map((m) => {
+        {shown.map((m) => {
           if (m.system) {
             return (
               <p key={m.id} className="text-center text-xs font-medium text-faint">

@@ -41,6 +41,7 @@ export async function GET(req: Request): Promise<Response> {
       content: m.content,
       createdAt: m.createdAt,
       system: m.system,
+      kind: m.kind,
       user: m.user,
     }));
 

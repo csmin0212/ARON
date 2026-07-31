@@ -659,6 +659,7 @@ model WorldMessage {
   authorName String? // 작성 당시 표시명 스냅샷 (GM NPC 페르소나 포함)
   authorAvatar String? // 작성 당시 아바타 스냅샷
   system     Boolean  @default(false)
+  kind       String? // 시스템 메시지 분류 — "이동"이면 월드 채팅(등장·퇴장), 그 외는 시스템 채팅
   content    String
   createdAt  DateTime @default(now())
 

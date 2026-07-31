@@ -15,6 +15,7 @@ export type ChatMessage = {
   content: string;
   createdAt: string;
   system: boolean;
+  kind: string | null;
   user: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
 };
 
@@ -35,6 +36,7 @@ type RawMsg = {
   content: string;
   createdAt: Date;
   system: boolean;
+  kind: string | null;
   authorName: string | null;
   authorAvatar: string | null;
   user: {
@@ -52,6 +54,7 @@ function serialize(m: RawMsg): ChatMessage {
     content: m.content,
     createdAt: m.createdAt.toISOString(),
     system: m.system,
+    kind: m.kind,
     user: m.user
       ? {
           username: m.user.username,
@@ -83,6 +86,7 @@ export async function GET(req: Request) {
       content: m.content,
       createdAt: m.createdAt,
       system: m.system,
+      kind: m.kind,
       user: m.user,
     }));
 

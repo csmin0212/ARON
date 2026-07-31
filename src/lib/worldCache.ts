@@ -25,6 +25,7 @@ export type CachedMessage = {
   createdAt: string; // ISO
   createdAtMs: number;
   system: boolean;
+  kind: string | null; // "이동"이면 월드 채팅(등장·퇴장), 그 외 시스템 메시지는 시스템 채팅
   user: { username: string; nickname: string; avatar: string | null; profileHref?: string | null } | null;
 };
 
@@ -78,6 +79,7 @@ export function getRecentMessages(locationId: string) {
           content: true,
           createdAt: true,
           system: true,
+          kind: true,
           authorName: true,
           authorAvatar: true,
           user: {
@@ -97,6 +99,7 @@ export function getRecentMessages(locationId: string) {
         createdAt: m.createdAt.toISOString(),
         createdAtMs: m.createdAt.getTime(),
         system: m.system,
+        kind: m.kind,
         user: m.user
           ? {
               username: m.user.username,

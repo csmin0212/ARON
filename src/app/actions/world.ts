@@ -367,7 +367,7 @@ export async function enterWorld(): Promise<void> {
   invalidateWorldUser(user.id);
   // 도착한 곳 접속자 캐시도 비워야 다른 사람 화면에 바로 뜬다 (postSystem 은 메시지 캐시만 건드린다)
   invalidateLocationPeople(start.id);
-  await postSystem(start.id, `🌟 ${persona.name}님이 월드에 입장하셨습니다!`);
+  await postSystem(start.id, `🌟 ${persona.name}님이 월드에 입장하셨습니다!`, { userId: user.id, actorName: persona.name, kind: "이동" });
   await triggerFirstVisitEvents({ id: user.id, nickname: persona.name }, sheet, start.id);
   void checkAndGrant(user.id);
   revalidatePath("/world");
@@ -429,8 +429,8 @@ export async function moveTo(formData: FormData): Promise<void> {
   await prisma.riftMember.deleteMany({ where: { userId: user.id } });
   // 퇴장/입장 알림 (목적지는 노출하지 않음 — 히든 보호)
   await Promise.all([
-    postSystem(here.id, `📤 ${persona.name}님이 자리를 떠났습니다.`),
-    postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`),
+    postSystem(here.id, `📤 ${persona.name}님이 자리를 떠났습니다.`, { userId: user.id, actorName: persona.name, kind: "이동" }),
+    postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`, { userId: user.id, actorName: persona.name, kind: "이동" }),
   ]);
   await triggerFirstVisitEvents({ id: user.id, nickname: persona.name }, sheet, target);
   revalidatePath("/world");
@@ -474,7 +474,7 @@ export async function enterHome(formData: FormData): Promise<void> {
   invalidateWorldUser(user.id);
   // 떠난 곳 접속자 캐시 — 안 비우면 최대 2분간 유령이 남는다
   invalidateLocationPeople(sheet.locationId);
-  await postSystem(sheet.locationId, `📤 ${persona.name}님이 자리를 떠났습니다.`);
+  await postSystem(sheet.locationId, `📤 ${persona.name}님이 자리를 떠났습니다.`, { userId: user.id, actorName: persona.name, kind: "이동" });
   revalidatePath("/world");
 }
 
@@ -499,7 +499,7 @@ export async function leaveHome(): Promise<void> {
   invalidateWorldUser(user.id);
   invalidateWorldLocation(sheet?.locationId);
   invalidateLocationPeople(dest.id);
-  await postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`);
+  await postSystem(dest.id, `📥 ${persona.name}님이 입장하셨습니다!`, { userId: user.id, actorName: persona.name, kind: "이동" });
   revalidatePath("/world");
 }
 
