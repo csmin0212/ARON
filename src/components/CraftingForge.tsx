@@ -36,6 +36,62 @@ const RANK_TONE = [
   "text-amber-500",
 ];
 
+// 메이저 광물 한 줄 — 일반 광물과 고유 광물이 같은 모양을 쓴다.
+// atCap 은 '그 분류의 상한에 닿았나'로, 일반은 5개(Lv5), 고유는 5개(Lv10)로 서로 따로 센다.
+function MajorRow({
+  entry,
+  qty,
+  atCap,
+  onBump,
+  tone,
+}: {
+  entry: CraftMineralView;
+  qty: number;
+  atCap: boolean;
+  onBump: (name: string, delta: number) => void;
+  tone?: "amber";
+}) {
+  const { def, have, used } = entry;
+  return (
+    <div
+      className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 ${
+        tone === "amber" ? "bg-amber-50 ring-1 ring-amber-200" : "bg-surface"
+      }`}
+    >
+      <div className="min-w-0">
+        <p className="truncate text-xs font-extrabold text-content">
+          {def.name}{" "}
+          <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>
+            {def.rarity}
+          </span>
+        </p>
+        <p className="text-[10px] text-faint">
+          보유 {have} · {used ? (def.craftEffect ?? "-") : "???"}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onBump(def.name, -1)}
+          disabled={qty <= 0}
+          className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30"
+        >
+          −
+        </button>
+        <span className="w-6 text-center text-sm font-black text-content">{qty}</span>
+        <button
+          type="button"
+          onClick={() => onBump(def.name, 1)}
+          disabled={qty >= have || (qty > 0 && atCap)}
+          className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30"
+        >
+          ＋
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ResultModal({ result, onClose }: { result: CraftResult; onClose: () => void }) {
   const ok = !("error" in result);
   const grade = ok ? result.grade : null;
@@ -121,7 +177,12 @@ export default function CraftingForge({
   const [openTag, setOpenTag] = useState<string | null>(null);
   const maxMinors = minorSlotsFor(smithLevel);
 
-  const majorsOwned = minerals.filter((m) => m.def.craftRole === "메이저" && m.have > 0);
+  // 메이저를 둘로 나눈다 — 일반 광물(Lv1~5)과 상위 티어를 여는 고유 광물(Lv6~10).
+  const majors = minerals.filter((m) => m.def.craftRole === "메이저");
+  const oresOwned = majors.filter((m) => !isMoonFragment(m.def.name) && m.have > 0);
+  // 고유 광물은 안 갖고 있어도 줄을 남긴다 — "어디에 넣는 건지" 보이게 하려는 것.
+  const uniqueRows = majors.filter((m) => isMoonFragment(m.def.name));
+  const hasUnique = uniqueRows.some((m) => m.have > 0);
   const minorsOwned = minerals.filter((m) => m.def.craftRole === "마이너" && m.have > 0);
   const defs = useMemo(() => new Map(minerals.map((m) => [m.def.name, m])), [minerals]);
 
@@ -290,43 +351,48 @@ export default function CraftingForge({
                 → Lv{craftLevel}
               </span>
             </div>
-            {majorsOwned.length === 0 ? (
+            {/* 일반 광물 — 한 종류만, 개수가 곧 Lv1~5 */}
+            <p className="mb-1.5 text-[11px] font-bold text-faint">
+              일반 광물 · 한 종류만, 넣은 개수가 장비 레벨(1~5)
+            </p>
+            {oresOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">
-                가진 메이저 광물이 없다. 광맥부터 찾아보자.
+                가진 광물이 없다. 광맥부터 찾아보자.
               </p>
             ) : (
               <div className="space-y-1.5">
-                {majorsOwned.map(({ def, have, used }) => {
-                  const qty = majorQty[def.name] ?? 0;
-                  return (
-                    <div key={def.name} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-extrabold text-content">
-                          {def.name}{" "}
-                          <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>{def.rarity}</span>
-                        </p>
-                        <p className="text-[10px] text-faint">
-                          보유 {have} · {used ? (def.craftEffect ?? "-") : "???"}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button type="button" onClick={() => bumpMajor(def.name, -1)} disabled={qty <= 0}
-                          className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30">−</button>
-                        <span className="w-6 text-center text-sm font-black text-content">{qty}</span>
-                        <button type="button" onClick={() => bumpMajor(def.name, 1)}
-                          disabled={
-                            qty >= have ||
-                            (qty > 0 &&
-                              (isMoonFragment(def.name)
-                                ? moonQty >= MAX_MOON_FRAGMENTS
-                                : oreQty >= MAX_MAJORS))
-                          }
-                          className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30">＋</button>
-                      </div>
-                    </div>
-                  );
-                })}
+                {oresOwned.map((entry) => (
+                  <MajorRow
+                    key={entry.def.name}
+                    entry={entry}
+                    qty={majorQty[entry.def.name] ?? 0}
+                    atCap={oreQty >= MAX_MAJORS}
+                    onBump={bumpMajor}
+                  />
+                ))}
               </div>
+            )}
+
+            {/* 고유 광물 — 상위 티어를 여는 특수 재료. 없어도 자리를 보여준다(어디 넣는지 알 수 있게). */}
+            <p className="mb-1.5 mt-3 text-[11px] font-bold text-amber-600">
+              고유 광물 · 넣으면 Lv6~10, 개수가 곧 단계 (일반 광물과 함께 넣는다)
+            </p>
+            <div className="space-y-1.5">
+              {uniqueRows.map((entry) => (
+                <MajorRow
+                  key={entry.def.name}
+                  entry={entry}
+                  qty={majorQty[entry.def.name] ?? 0}
+                  atCap={moonQty >= MAX_MOON_FRAGMENTS}
+                  onBump={bumpMajor}
+                  tone="amber"
+                />
+              ))}
+            </div>
+            {!hasUnique && (
+              <p className="mt-1.5 text-center text-[11px] text-faint">
+                아직 가진 게 없다. 던전 깊은 곳에서 나온다고 한다.
+              </p>
             )}
           </section>
 

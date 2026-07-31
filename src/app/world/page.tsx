@@ -753,25 +753,22 @@ export default async function WorldPage() {
     (storageBox?.entries
       .filter((item) => item.name.trim() === MOON_FRAGMENT)
       .reduce((sum, item) => sum + Math.max(0, item.qty), 0) ?? 0);
-  const moonViews: CraftMineralView[] =
-    moonHave > 0
-      ? [
-          {
-            def: {
-              ...itemAsCraftMinor({
-                name: MOON_FRAGMENT,
-                craftEffect: null,
-                sellPrice: specialMaterialSellPrice(MOON_FRAGMENT) ?? 0,
-                desc: "장비 레벨을 6~10으로 끌어올린다. 넣은 개수가 곧 단계.",
-                weight: 1,
-              }),
-              craftRole: "메이저",
-            },
-            have: moonHave,
-            used: usedCraftMinerals.has(MOON_FRAGMENT),
-          },
-        ]
-      : [];
+  const moonViews: CraftMineralView[] = [
+    {
+      def: {
+        ...itemAsCraftMinor({
+          name: MOON_FRAGMENT,
+          craftEffect: null,
+          sellPrice: specialMaterialSellPrice(MOON_FRAGMENT) ?? 0,
+          desc: "장비 레벨을 6~10으로 끌어올린다. 넣은 개수가 곧 단계.",
+          weight: 1,
+        }),
+        craftRole: "메이저",
+      },
+      have: moonHave,
+      used: usedCraftMinerals.has(MOON_FRAGMENT),
+    },
+  ];
   const craftMinerals = [...mineralCraftViews, ...moonViews, ...dropMinorViews];
   // [태그] 룰 사전 — 제작특성 탭 동기화본 (정적 카탈로그라 캐시)
   const craftTagRows = await getCraftTagRows();
