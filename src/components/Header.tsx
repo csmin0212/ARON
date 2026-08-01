@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logout } from "@/app/actions/auth";
+import { isGmUsername } from "@/lib/gm";
 import Avatar from "./Avatar";
 import ThemeControls from "./ThemeControls";
 import MobileNav from "./MobileNav";
@@ -60,6 +61,14 @@ export default async function Header() {
 
           {user ? (
             <div className="flex items-center gap-2">
+              {isGmUsername(user.username) && (
+                <Link
+                  href="/admin/logs"
+                  className="hidden rounded-lg border border-line bg-surface px-2.5 py-2 text-xs font-black text-muted transition hover:bg-subtle hover:text-content sm:inline-block"
+                >
+                  로그
+                </Link>
+              )}
               <Link
                 href="/mail"
                 className="relative grid h-10 w-10 place-items-center rounded-full text-lg transition hover:bg-subtle-hover"

@@ -23,6 +23,7 @@ import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 import { CARD_STYLE_MAP, parseOwnedSkins, type ProfileCardStyle } from "@/lib/profileCard";
+import { storageWeightBonus } from "@/lib/adventurerRank";
 
 export type MailState = { ok?: string; error?: string } | undefined;
 
@@ -49,6 +50,79 @@ async function incDbItem(userId: string, name: string, qty: number): Promise<voi
   } else {
     await prisma.inventoryEntry.create({ data: { userId, itemId: item.id, qty } });
   }
+}
+
+async function storageBox(userId: string): Promise<{ id: string; maxWeight: number }> {
+  return prisma.storageBox.upsert({
+    where: { userId },
+    update: {},
+    create: { userId, maxWeight: 30 },
+    select: { id: true, maxWeight: true },
+  });
+}
+
+async function storageWeight(boxId: string): Promise<number> {
+  const entries = await prisma.storageEntry.findMany({
+    where: { boxId, qty: { gt: 0 } },
+    select: { weight: true, qty: true },
+  });
+  return entries.reduce((sum, item) => sum + (item.weight ?? 0) * Math.max(0, item.qty), 0);
+}
+
+async function addStorageItem(
+  userId: string,
+  adventurerRank: string | null | undefined,
+  item: {
+    sourceKind: LifeSkillKind;
+    name: string;
+    effect: string | null;
+    weight: number;
+    rank: number;
+    text: string;
+    qty: number;
+  },
+): Promise<{ ok: true } | { error: string }> {
+  const box = await storageBox(userId);
+  const usedWeight = await storageWeight(box.id);
+  const movingWeight = item.weight * item.qty;
+  const limit = box.maxWeight + storageWeightBonus(adventurerRank);
+  if (usedWeight + movingWeight > limit) {
+    return { error: `창고 중량이 부족합니다. (${usedWeight + movingWeight}/${limit})` };
+  }
+
+  const existing = await prisma.storageEntry.findFirst({
+    where: {
+      boxId: box.id,
+      sourceKind: item.sourceKind,
+      name: item.name,
+      effect: item.effect,
+      weight: item.weight,
+      rank: item.rank,
+      text: item.text,
+    },
+  });
+
+  if (existing) {
+    await prisma.storageEntry.update({
+      where: { id: existing.id },
+      data: { qty: existing.qty + item.qty },
+    });
+  } else {
+    await prisma.storageEntry.create({
+      data: {
+        boxId: box.id,
+        sourceKind: item.sourceKind,
+        name: item.name,
+        effect: item.effect,
+        weight: item.weight,
+        rank: item.rank,
+        text: item.text,
+        qty: item.qty,
+      },
+    });
+  }
+
+  return { ok: true };
 }
 
 type MailItemMeta = {
@@ -227,20 +301,38 @@ export async function claimMail(formData: FormData): Promise<void> {
           const curWeight = lifeBagWeight(bag);
           const nextWeight = curWeight + weight * mail.itemQty;
           const maxWeight = lifeBagLimit(life, bagKind);
+          const rank = meta.rank ?? effectSnapshot.rank ?? lifeItem?.rank ?? 0;
+          const text = meta.text ?? effectSnapshot.text ?? lifeItem?.text ?? effect ?? "";
           if (nextWeight > maxWeight && nextWeight > curWeight) {
-            await releaseClaimAndError(id, user.id, `${bag.name} 중량이 부족합니다. (${nextWeight}/${maxWeight})`);
-          }
-          addLifeBagItems(
-            life,
-            bagKind,
-            {
+            const stored = await addStorageItem(user.id, sheet.adventurerRank, {
+              sourceKind: bagKind,
               name: itemName,
+              effect: `R${rank} · ${text}`,
               weight,
-              rank: meta.rank ?? effectSnapshot.rank ?? lifeItem?.rank ?? 0,
-              text: meta.text ?? effectSnapshot.text ?? lifeItem?.text ?? effect ?? "",
-            },
-            mail.itemQty,
-          );
+              rank,
+              text,
+              qty: mail.itemQty,
+            });
+            if ("error" in stored) {
+              await releaseClaimAndError(
+                id,
+                user.id,
+                `${bag.name}과 창고 중량이 부족합니다. (${nextWeight}/${maxWeight} · ${stored.error})`,
+              );
+            }
+          } else {
+            addLifeBagItems(
+              life,
+              bagKind,
+              {
+                name: itemName,
+                weight,
+                rank,
+                text,
+              },
+              mail.itemQty,
+            );
+          }
           recordCollection(life, bagKind, itemName);
         } else {
           const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;

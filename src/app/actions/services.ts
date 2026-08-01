@@ -19,6 +19,7 @@ import {
   ALCHEMY_MASTER_MASTERY,
   applyAlchemyExp,
   applyCookingExp,
+  applyExp,
   alchemyMasterySuffix,
   recordAlchemyCraft,
   isPerkChoiceLevel,
@@ -2513,6 +2514,15 @@ function parseDungeonRunRecovery(effect: string): number {
   return m ? Math.max(0, Number.parseInt(m[1], 10) || 0) : 0;
 }
 
+function parseLifeSkillExpPotion(effect: string): { kind: LifeSkillKind; amount: number } | null {
+  const m = effect.match(
+    /(낚시|채집|채광)\s*숙련도(?:를|을)?\s*(\d+)\s*(?:상승|증가|획득|올린다|올려준다)/,
+  );
+  if (!m) return null;
+  const amount = Number.parseInt(m[2], 10);
+  return Number.isFinite(amount) && amount > 0 ? { kind: m[1] as LifeSkillKind, amount } : null;
+}
+
 function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
   return match ? Number.parseInt(match[1], 10) || 0 : 0;
@@ -2792,6 +2802,7 @@ export async function useCookingItem(
   const dungeonRunRecovery = parseDungeonRunRecovery(rawEffect);
   const apRecovery = parseApRecovery(rawEffect);
   const fateRecovery = parseFateRecovery(rawEffect);
+  const lifeSkillExpPotion = parseLifeSkillExpPotion(rawEffect);
   const potionDurationMinutes = isCustomAlchemyPotion ? parseBuffDurationMinutes(rawEffect) : null;
   const timedPotionLifeLuck = potionDurationMinutes && lifeLuck ? lifeLuck : null;
   const timedPotionStat = potionDurationMinutes && statBuff ? statBuff : null;
@@ -2801,6 +2812,7 @@ export async function useCookingItem(
     apRecovery <= 0 &&
     fateRecovery <= 0 &&
     recovery.length === 0 &&
+    !lifeSkillExpPotion &&
     !timedPotionLifeLuck &&
     !timedPotionStat
   ) {
@@ -2941,6 +2953,47 @@ export async function useCookingItem(
     void pushInventoryToSheet(ctx.tab, inv);
   } else if (isCustomAlchemyPotion && lifeLuck) {
     return { error: "생활 행운 포션은 '30분' 같은 지속 옵션이 있어야 월드에서 사용할 수 있어요." };
+  } else if (lifeSkillExpPotion) {
+    const prog = progressOf(life, lifeSkillExpPotion.kind);
+    const beforeLevel = prog.level;
+    const beforeExp = prog.exp;
+    const leveled = applyExp(
+      life,
+      lifeSkillExpPotion.kind,
+      lifeSkillExpPotion.amount,
+      await fetchLifeSkillCatalog(),
+    );
+    const after = progressOf(life, lifeSkillExpPotion.kind);
+    const levelText =
+      leveled.length > 0
+        ? `, Lv.${beforeLevel} → Lv.${after.level}`
+        : `, 숙련도 ${beforeExp} → ${after.exp}`;
+    const perkText = leveled.some(isPerkChoiceLevel)
+      ? " 특성 선택지가 열렸어요. 캐릭터 페이지에서 선택해주세요."
+      : "";
+    ok = `${itemName}을 사용했습니다. ${lifeSkillExpPotion.kind} 숙련도 +${lifeSkillExpPotion.amount}${levelText}.${perkText}`;
+
+    const inv = consumeInvItem(ctx.inv, itemName, 1);
+    inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+    await Promise.all([
+      prisma.characterSheet.update({
+        where: { userId: ctx.userId },
+        data: {
+          invJson: JSON.stringify(inv),
+          lifeJson: JSON.stringify(life),
+          achStatsJson: bumpStat(sheet.achStatsJson, "생활숙련도물약사용"),
+        },
+      }),
+      decrementDbInventory(ctx.userId, itemName, 1),
+    ]);
+    void pushInventoryToSheet(ctx.tab, inv);
+    if (ctx.locationId && leveled.length > 0) {
+      await postSystem(
+        ctx.locationId,
+        `🧪 ${ctx.nickname}님이 ${itemName}을 사용해 ${lifeSkillExpPotion.kind} Lv.${after.level}이 되었습니다.${perkText}`,
+        { userId: ctx.userId, actorName: ctx.nickname, kind: lifeSkillExpPotion.kind },
+      );
+    }
   } else if (lifeLuck) {
     const until = new Date(now.getTime() + 30 * 60 * 1000);
     // 같은 종류엔 행운 버프 1개만 — 가장 높은 수치가 남는다.

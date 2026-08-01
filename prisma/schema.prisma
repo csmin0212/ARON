@@ -687,6 +687,20 @@ model ActivityLog {
   @@index([kind, createdAt])
 }
 
+// 서버 로그 — console.warn/error 등 운영자가 읽어야 할 앱 내부 로그.
+// 실제 테이블은 src/lib/serverLog.ts 에서 lazy-create 되며, GM 전용 /admin/logs 에서 조회한다.
+model ServerLog {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  level     String
+  scope     String?
+  message   String
+  metaJson  String?
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+}
+
 // 주사위/판정 로그 (탐색·RP 공용 엔진)
 model Roll {
   id        String   @id @default(cuid())
