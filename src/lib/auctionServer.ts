@@ -36,6 +36,7 @@ import {
   auctionCategoryOrder,
   listingExpiry,
   listingFee,
+  AUCTION_SENDER,
   netProceeds,
   normalizeAuctionCategory,
   parseAuctionMeta,
@@ -629,7 +630,7 @@ export async function cleanupExpiredListings(): Promise<void> {
     await prisma.mail.create({
       data: {
         recipientId: listing.sellerId,
-        senderName: "경매장",
+        senderName: AUCTION_SENDER,
         subject: "경매 만료 반송",
         body: `${listing.itemName} x${listing.quantity}이(가) 기한 내 팔리지 않아 반송되었습니다. 첨부를 수령해주세요. 수령 전까지는 경매장을 이용할 수 없어요.`,
         itemName: listing.itemName,
@@ -654,7 +655,7 @@ async function unclaimedAuctionMailError(userId: string): Promise<string | null>
   const pending = await prisma.mail.findFirst({
     where: {
       recipientId: userId,
-      senderName: "경매장",
+      senderName: AUCTION_SENDER,
       subject: "경매 만료 반송",
       claimedAt: null,
       itemQty: { gt: 0 },
@@ -919,7 +920,7 @@ export async function buyListingCore(
   await prisma.mail.create({
     data: {
       recipientId: buyerId,
-      senderName: "경매장",
+      senderName: AUCTION_SENDER,
       subject: "경매 구매 보관",
       body: `${listing.itemName} x${qty} 구매가 완료되었습니다. 우편함에서 수령하면 알맞은 가방으로 이동합니다.`,
       itemName: listing.itemName,

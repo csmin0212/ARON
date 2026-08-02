@@ -24,6 +24,7 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 import { CARD_STYLE_MAP, parseOwnedSkins, type ProfileCardStyle } from "@/lib/profileCard";
 import { storageWeightBonus } from "@/lib/adventurerRank";
+import { AUCTION_SENDER } from "@/lib/auction";
 
 export type MailState = { ok?: string; error?: string } | undefined;
 
@@ -73,7 +74,7 @@ async function addStorageItem(
   userId: string,
   adventurerRank: string | null | undefined,
   item: {
-    sourceKind: LifeSkillKind;
+    sourceKind: LifeSkillKind | null; // null = 휴대품
     name: string;
     effect: string | null;
     weight: number;
@@ -270,6 +271,7 @@ export async function claimMail(formData: FormData): Promise<void> {
       const inv = parseInv(sheet.invJson);
       const life = parseLifeState(sheet.lifeJson);
       let curGold = sheet.curGold ?? 0;
+      let storedToBox = false;
 
       if (mail.gold > 0) {
         curGold += mail.gold;
@@ -337,25 +339,59 @@ export async function claimMail(formData: FormData): Promise<void> {
         } else {
           const curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight ?? 0;
           const nextWeight = curWeight + weight * mail.itemQty;
-          if (inv.maxWeight != null && nextWeight > inv.maxWeight && nextWeight > curWeight) {
+          const bagFull =
+            inv.maxWeight != null && nextWeight > inv.maxWeight && nextWeight > curWeight;
+          // 경매장에서 온 것만 가방이 꽉 찼을 때 창고로 흘린다.
+          // 채집·낚시·채광 등 다른 경로는 가방이 차면 그대로 막히는 게 맞다.
+          if (bagFull && mail.senderName === AUCTION_SENDER) {
+            const stored = await addStorageItem(user.id, sheet.adventurerRank, {
+              sourceKind: null,
+              name: itemName,
+              effect,
+              weight,
+              rank: meta.rank ?? 0,
+              text: meta.text ?? "",
+              qty: mail.itemQty,
+            });
+            if ("error" in stored) {
+              await releaseClaimAndError(
+                id,
+                user.id,
+                `가방·창고 중량이 부족합니다. (${nextWeight}/${inv.maxWeight} · ${stored.error})`,
+              );
+            }
+            storedToBox = true;
+            // 가방이 아니라 창고로 갔다는 걸 알려야 한다 — 안 그러면 사라진 줄 안다.
+            await prisma.notification.create({
+              data: {
+                userId: user.id,
+                kind: "auction",
+                title: "창고 보관",
+                body: `가방이 가득 차서 ${itemName} x${mail.itemQty}을(를) 창고에 넣었어요.`,
+                href: "/world",
+              },
+            });
+          } else if (bagFull) {
             await releaseClaimAndError(id, user.id, `가방 중량이 부족합니다. (${nextWeight}/${inv.maxWeight})`);
           }
-          const found = inv.items.find((i) => i.name.trim() === itemName.trim());
-          if (found) {
-            found.qty += mail.itemQty;
-            if (!found.effect && effect) found.effect = effect;
-            found.weight ??= weight;
-          } else {
-            inv.items.push({ name: itemName, effect, weight, qty: mail.itemQty });
+          if (!storedToBox) {
+            const found = inv.items.find((i) => i.name.trim() === itemName.trim());
+            if (found) {
+              found.qty += mail.itemQty;
+              if (!found.effect && effect) found.effect = effect;
+              found.weight ??= weight;
+            } else {
+              inv.items.push({ name: itemName, effect, weight, qty: mail.itemQty });
+            }
+            inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+            void appendSheetItem(sheet.sheetTab, itemName, mail.itemQty, {
+              effect,
+              weight,
+            });
+            await incDbItem(user.id, catalog?.id ?? mail.itemName, mail.itemQty);
+            const bookId = catalog?.id ?? mail.itemName;
+            if (await isSkillBookItem(bookId)) await grantSkillBookToken(user.id, bookId, mail.itemQty);
           }
-          inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
-          void appendSheetItem(sheet.sheetTab, itemName, mail.itemQty, {
-            effect,
-            weight,
-          });
-          await incDbItem(user.id, catalog?.id ?? mail.itemName, mail.itemQty);
-          const bookId = catalog?.id ?? mail.itemName;
-          if (await isSkillBookItem(bookId)) await grantSkillBookToken(user.id, bookId, mail.itemQty);
         }
 
         await prisma.characterSheet.update({

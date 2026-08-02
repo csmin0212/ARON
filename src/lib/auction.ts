@@ -4,6 +4,9 @@
 import type { LifeSkillKind } from "./lifeSkillData";
 
 // 등록 후 유효 기간(일). 지나면 판매자에게 반송.
+// 경매장이 보내는 우편의 발신자명. 이 이름이면 수령 시 가방이 꽉 찼을 때 창고로 넘긴다.
+export const AUCTION_SENDER = "경매장";
+
 export const LISTING_DAYS = 3;
 // 판매 성사 시 떼는 수수료(골드 싱크). 판매자 수령액 = 판매가 − 수수료.
 export const COMMISSION_RATE = 0.05;
