@@ -512,8 +512,14 @@ function HousingProductionFacility({
     redeemHousingProduction,
     undefined,
   );
+  const [activeTab, setActiveTab] = useState<"view" | "stock" | "redeem">("view");
   const capacity = Math.max(data.capacity, data.slots.length);
   const slotPlaceholders = Array.from({ length: capacity }, (_, i) => data.slots[i] ?? null);
+  const tabs = [
+    { key: "view", label: "보관 보기" },
+    { key: "stock", label: "넣기" },
+    { key: "redeem", label: "도감 꺼내기" },
+  ] as const;
 
   return (
     <div
@@ -552,75 +558,109 @@ function HousingProductionFacility({
           <HousingStateLine state={withdrawState} />
           <HousingStateLine state={redeemState} />
 
-          <section className={`rounded-3xl bg-gradient-to-br ${meta.accent} p-4 text-white shadow-sm`}>
-            <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-white/75">
-                  Balance
-                </p>
-                <p className="mt-1 text-3xl font-black">{data.points.toLocaleString()}P</p>
-                <p className="mt-1 text-sm font-bold text-white/85">{meta.pointName}</p>
-              </div>
-              <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
-                <p className="text-xs font-bold text-white/75">매일 적립</p>
-                <p className="mt-1 text-xl font-black">+{data.dailyPoints.toLocaleString()}P</p>
-              </div>
-              <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
-                <p className="text-xs font-bold text-white/75">초기화</p>
-                <p className="mt-1 text-xl font-black">자정</p>
-              </div>
-            </div>
-          </section>
+          <div className="grid grid-cols-3 rounded-2xl bg-subtle p-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`rounded-xl px-2 py-2 text-xs font-black transition sm:text-sm ${
+                  activeTab === tab.key
+                    ? "bg-surface text-brand-600 shadow-sm"
+                    : "text-muted hover:bg-surface/70"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-          <section>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h4 className="text-sm font-extrabold text-content">보관 슬롯</h4>
-              <span className="text-xs font-bold text-faint">
-                등급별 점수가 매일 누적됩니다
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {slotPlaceholders.map((slot, index) =>
-                slot ? (
-                  <form
-                    key={`${slot.name}-${index}`}
-                    action={withdrawAction}
-                    className="min-h-28 rounded-2xl border border-line bg-subtle p-3"
-                  >
-                    <input type="hidden" name="kind" value={kind} />
-                    <input type="hidden" name="index" value={index} />
-                    <p className="text-[11px] font-black text-brand-600">R{slot.rank}</p>
-                    <p className="mt-1 line-clamp-2 text-sm font-extrabold text-content">
-                      {slot.name}
+          {activeTab === "view" && (
+            <>
+              <section className={`rounded-3xl bg-gradient-to-br ${meta.accent} p-4 text-white shadow-sm`}>
+                <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-white/75">
+                      Balance
                     </p>
-                    <p className="mt-1 text-[11px] font-bold text-faint">중량 {slot.weight}</p>
-                    <button
-                      type="submit"
-                      disabled={withdrawPending || !housing.atHome}
-                      className="mt-2 w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] font-black text-muted transition hover:bg-subtle-hover disabled:opacity-50"
-                    >
-                      빼기
-                    </button>
-                  </form>
-                ) : (
-                  <div
-                    key={`empty-${index}`}
-                    className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-line bg-subtle/55 p-3 text-center"
-                  >
-                    <span className="text-xs font-bold text-faint">빈 슬롯</span>
+                    <p className="mt-1 text-3xl font-black">{data.points.toLocaleString()}P</p>
+                    <p className="mt-1 text-sm font-bold text-white/85">{meta.pointName}</p>
                   </div>
-                ),
-              )}
-            </div>
-          </section>
+                  <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
+                    <p className="text-xs font-bold text-white/75">매일 적립</p>
+                    <p className="mt-1 text-xl font-black">+{data.dailyPoints.toLocaleString()}P</p>
+                  </div>
+                  <div className="rounded-2xl bg-white/18 px-3 py-3 backdrop-blur">
+                    <p className="text-xs font-bold text-white/75">초기화</p>
+                    <p className="mt-1 text-xl font-black">자정</p>
+                  </div>
+                </div>
+              </section>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+              <section>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-extrabold text-content">보관 슬롯</h4>
+                  <span className="text-xs font-bold text-faint">
+                    등급별 점수가 매일 누적됩니다
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {slotPlaceholders.map((slot, index) =>
+                    slot ? (
+                      <form
+                        key={`${slot.name}-${index}`}
+                        action={withdrawAction}
+                        className="min-h-28 rounded-2xl border border-line bg-subtle p-3"
+                      >
+                        <input type="hidden" name="kind" value={kind} />
+                        <input type="hidden" name="index" value={index} />
+                        <p className="text-[11px] font-black text-brand-600">R{slot.rank}</p>
+                        <p className="mt-1 line-clamp-2 text-sm font-extrabold text-content">
+                          {slot.name}
+                        </p>
+                        <p className="mt-1 text-[11px] font-bold text-faint">중량 {slot.weight}</p>
+                        <button
+                          type="submit"
+                          disabled={withdrawPending || !housing.atHome}
+                          className="mt-2 w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] font-black text-muted transition hover:bg-subtle-hover disabled:opacity-50"
+                        >
+                          빼기
+                        </button>
+                      </form>
+                    ) : (
+                      <div
+                        key={`empty-${index}`}
+                        className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-line bg-subtle/55 p-3 text-center"
+                      >
+                        <span className="text-xs font-bold text-faint">빈 슬롯</span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </section>
+
+              {data.slots.length === 0 && (
+                <p className="rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-faint">
+                  {meta.empty}
+                </p>
+              )}
+            </>
+          )}
+
+          {activeTab === "stock" && (
             <form action={stockAction} className="rounded-2xl border border-line bg-subtle p-4">
               <input type="hidden" name="kind" value={kind} />
-              <p className="text-sm font-extrabold text-content">가방에서 넣기</p>
-              <p className="mt-1 text-xs text-faint">
-                {meta.verb} 최대 {capacity}개까지 보관합니다.
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-extrabold text-content">가방에서 넣기</p>
+                  <p className="mt-1 text-xs text-faint">
+                    {meta.verb} 최대 {capacity}개까지 보관합니다.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-surface px-3 py-1 text-xs font-black text-brand-600">
+                  {data.slots.length}/{capacity}
+                </span>
+              </div>
               <div className="mt-3 flex gap-2">
                 <select
                   name="itemName"
@@ -646,11 +686,20 @@ function HousingProductionFacility({
                 </button>
               </div>
             </form>
+          )}
 
+          {activeTab === "redeem" && (
             <form action={redeemAction} className="rounded-2xl border border-line bg-subtle p-4">
               <input type="hidden" name="kind" value={kind} />
-              <p className="text-sm font-extrabold text-content">도감에서 꺼내기</p>
-              <p className="mt-1 text-xs text-faint">도감 등록 기록이 있는 항목만 선택됩니다.</p>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-extrabold text-content">도감에서 꺼내기</p>
+                  <p className="mt-1 text-xs text-faint">도감 등록 기록이 있는 항목만 선택됩니다.</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-surface px-3 py-1 text-xs font-black text-emerald-600">
+                  {data.points.toLocaleString()}P
+                </span>
+              </div>
               <div className="mt-3 flex flex-wrap gap-2 sm:flex-nowrap">
                 <select
                   name="itemName"
@@ -686,12 +735,6 @@ function HousingProductionFacility({
                 </button>
               </div>
             </form>
-          </div>
-
-          {data.slots.length === 0 && (
-            <p className="rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-faint">
-              {meta.empty}
-            </p>
           )}
         </div>
 
