@@ -1170,6 +1170,7 @@ export async function redeemHousingProduction(
 
   const kind = productionKindOf(formData.get("kind"));
   const itemName = String(formData.get("itemName") ?? "").trim();
+  const qty = formQty(formData);
   if (!kind || !itemName) return { error: "꺼낼 항목이 올바르지 않습니다." };
 
   const sheet = await prisma.characterSheet.findUnique({
@@ -1190,30 +1191,36 @@ export async function redeemHousingProduction(
   }
 
   const housing = parseHousingState(sheet.housingJson, sheet.houseTier);
-  const requiredFurniture = kind === "낚시" ? "aquarium" : "planter";
-  if (!housing.items.includes(requiredFurniture)) {
+  const facility = ownedProductionOption(housing, kind);
+  if (!facility) {
     return { error: kind === "낚시" ? "어항이 필요합니다." : "약초 화분이 필요합니다." };
   }
   accrueHousingProduction(housing);
   const cost = productionRedeemCost(lifeItem.rank);
-  if (housing.production[kind].points < cost) {
-    return { error: `포인트가 부족합니다. (${housing.production[kind].points.toLocaleString()}/${cost.toLocaleString()})` };
+  const totalCost = cost * qty;
+  if (housing.production[kind].points < totalCost) {
+    return {
+      error: `포인트가 부족합니다. (${housing.production[kind].points.toLocaleString()}/${totalCost.toLocaleString()})`,
+    };
   }
 
   const bag = life.bags[kind];
   const currentWeight = lifeBagWeight(bag);
   const maxWeight = lifeBagLimit(life, kind);
-  if (currentWeight + lifeItem.weight > maxWeight) {
-    return { error: `${bag.name} 중량이 부족합니다. (${currentWeight + lifeItem.weight}/${maxWeight})` };
+  const totalWeight = lifeItem.weight * qty;
+  if (currentWeight + totalWeight > maxWeight) {
+    return { error: `${bag.name} 중량이 부족합니다. (${currentWeight + totalWeight}/${maxWeight})` };
   }
 
-  housing.production[kind].points -= cost;
-  addLifeBagItem(life, kind, {
-    name: lifeItem.name,
-    weight: lifeItem.weight,
-    rank: lifeItem.rank,
-    text: lifeItem.text,
-  });
+  housing.production[kind].points -= totalCost;
+  for (let i = 0; i < qty; i += 1) {
+    addLifeBagItem(life, kind, {
+      name: lifeItem.name,
+      weight: lifeItem.weight,
+      rank: lifeItem.rank,
+      text: lifeItem.text,
+    });
+  }
   recordCollection(life, kind, lifeItem.name);
   await prisma.characterSheet.update({
     where: { userId: user.id },
@@ -1224,7 +1231,9 @@ export async function redeemHousingProduction(
   });
   revalidatePath("/world");
   revalidatePath("/profile");
-  return { ok: `${lifeItem.name}을(를) ${bag.name}으로 꺼냈어요. -${cost.toLocaleString()}P` };
+  return {
+    ok: `${lifeItem.name} x${qty}을(를) ${bag.name}으로 꺼냈어요. -${totalCost.toLocaleString()}P`,
+  };
 }
 
 export async function buyFood(_prev: MarketState, formData: FormData): Promise<MarketState> {

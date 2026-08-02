@@ -27,7 +27,9 @@ export function dailyLifeEventBonus(
   now = new Date(),
 ): { apCostDown: number; luck: number } {
   const day = kstDay(now);
-  if (day === 0 || weekdayLifeKind(day) === kind) return { apCostDown: 2, luck: 2 };
+  if (day === 0 || weekdayLifeKind(day) === kind) {
+    return { apCostDown: kind === "채광" ? 3 : 2, luck: 2 };
+  }
   return { apCostDown: 0, luck: 0 };
 }
 
@@ -54,7 +56,7 @@ export function dailyEventBuffs(now = new Date()): { icon: string; label: string
   const until = nextKstMidnight(now);
   const day = kstDay(now);
   if (day === 0) {
-    return [{ icon: "🎉", label: "일요일 이벤트: 월~토 효과 전체 적용", until }];
+    return [{ icon: "🎉", label: "일요일 이벤트: 월~토 효과 전체 적용 (채광 피로도 -3)", until }];
   }
   if (day === 1) {
     return [{ icon: "🎣", label: "월요일 이벤트: 낚시 피로도 -2 · 행운 +2", until }];
@@ -63,7 +65,7 @@ export function dailyEventBuffs(now = new Date()): { icon: string; label: string
     return [{ icon: "🌿", label: "화요일 이벤트: 채집 피로도 -2 · 행운 +2", until }];
   }
   if (day === 3) {
-    return [{ icon: "⛏️", label: "수요일 이벤트: 채광 피로도 -2 · 행운 +2", until }];
+    return [{ icon: "⛏️", label: "수요일 이벤트: 채광 피로도 -3 · 행운 +2", until }];
   }
   if (day === 4) {
     return [{ icon: "🍳", label: "목요일 이벤트: 요리 고품질·명품 확률 50% 증가", until }];

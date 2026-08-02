@@ -651,7 +651,7 @@ function HousingProductionFacility({
               <input type="hidden" name="kind" value={kind} />
               <p className="text-sm font-extrabold text-content">도감에서 꺼내기</p>
               <p className="mt-1 text-xs text-faint">도감 등록 기록이 있는 항목만 선택됩니다.</p>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2 sm:flex-nowrap">
                 <select
                   name="itemName"
                   disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
@@ -667,6 +667,16 @@ function HousingProductionFacility({
                     ))
                   )}
                 </select>
+                <input
+                  type="number"
+                  name="qty"
+                  min={1}
+                  max={99}
+                  defaultValue={1}
+                  disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
+                  aria-label="꺼낼 수량"
+                  className="w-20 rounded-xl border border-line bg-surface px-3 py-2 text-center text-sm font-black text-content"
+                />
                 <button
                   type="submit"
                   disabled={redeemPending || !housing.atHome || data.redeemItems.length === 0}
