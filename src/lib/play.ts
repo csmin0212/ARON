@@ -199,7 +199,7 @@ export async function postSystem(
   await prisma.worldMessage.create({
     data: { locationId, system: true, content, kind: opts?.kind ?? null },
   });
-  logActivity({ locationId, content, ...opts });
+  await logActivity({ locationId, content, ...opts });
   // 이 장소의 채팅 캐시만 즉시 갱신 (접속자 캐시는 건드리지 않는다)
   invalidateWorldMessages(locationId);
 }

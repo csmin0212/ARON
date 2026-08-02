@@ -141,7 +141,7 @@ export async function POST(req: Request) {
     include: MSG_INCLUDE,
   });
   // 채팅은 24시간 뒤 지워지므로 대사는 활동 로그에 따로 남긴다.
-  logActivity({
+  await logActivity({
     userId: user.id,
     actorName: activeDisplayPersona(user).name,
     locationId: sheet.locationId,

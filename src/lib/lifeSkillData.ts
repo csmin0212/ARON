@@ -299,13 +299,11 @@ export function lifeSkillMarketPrice(kind: LifeSkillKind, item: LifeSkillItem): 
   return Math.max(0, Math.round(item.price));
 }
 
-// 낚시 exp 배율 — 낚시 어종 exp가 채집보다 낮아, 레벨링 속도를 맞추기 위해 보정.
-const FISH_EXP_MULT = 1.33;
-const MINERAL_EXP_MULT = 1.0;
+// 생활 숙련도 배율 — 시트 경험치에 공통 보정을 적용한다.
+const LIFE_EXP_MULT = 1.33;
 export function lifeSkillExpGain(kind: LifeSkillKind, baseExp: number): number {
-  if (kind === "낚시") return Math.round(baseExp * FISH_EXP_MULT);
-  if (kind === "채광") return Math.round(baseExp * MINERAL_EXP_MULT);
-  return baseExp;
+  void kind;
+  return Math.round(baseExp * LIFE_EXP_MULT);
 }
 
 export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillKind | null {
