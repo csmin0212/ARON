@@ -502,6 +502,26 @@ export async function updateTradeOffer(
   return { ok: true, message: "거래 조건을 갱신했습니다." };
 }
 
+// 확정 후 검증에 걸렸을 때 — 양쪽 확정을 풀고 이유를 거래 대화에 남긴다.
+//
+// 거래방은 에스크로가 아니라 '완료 시점 재검증' 방식이다. 그래서 올려둔 물건을 가방에서
+// 빼거나 골드를 써버려도 거래 레코드는 그대로 남고, 확정만 true 로 굳는다. 그 상태로 두면
+// 양쪽 다 '확정됨'인데 눌러도 계속 실패하는 교착이 된다. 확정을 되돌려 다시 맞추게 한다.
+async function failTrade(
+  tradeId: string,
+  fromUsername: string,
+  toUsername: string,
+  message: string,
+): Promise<TradeActionState> {
+  await prisma.tradeOffer.updateMany({
+    where: { id: tradeId, status: PENDING },
+    data: { fromConfirmed: false, toConfirmed: false },
+  });
+  await systemMessage(tradeId, `${message} 양쪽 확정이 해제되었습니다.`);
+  refreshTrade(tradeId, fromUsername, toUsername);
+  return { ok: false, message };
+}
+
 async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const trade = await prisma.tradeOffer.findUnique({
     where: { id: tradeId },
@@ -524,7 +544,8 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
       select: { sheetTab: true, invJson: true, lifeJson: true, curGold: true, achStatsJson: true },
     }),
   ]);
-  if (!fromSheet || !toSheet) return { ok: false, message: "거래 당사자의 캐릭터 시트가 필요합니다." };
+  if (!fromSheet || !toSheet)
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, "거래 당사자의 캐릭터 시트가 필요합니다.");
 
   const fromItems = parseTradeItems(trade.fromOfferJson);
   const toItems = parseTradeItems(trade.toOfferJson);
@@ -537,16 +558,20 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   const fromGold = fromSheet.curGold ?? 0;
   const toGold = toSheet.curGold ?? 0;
 
-  if (trade.fromGold > fromGold) return { ok: false, message: `${trade.fromUser.nickname}님의 골드가 부족합니다.` };
-  if (trade.toGold > toGold) return { ok: false, message: `${trade.toUser.nickname}님의 골드가 부족합니다.` };
+  if (trade.fromGold > fromGold)
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.fromUser.nickname}님의 골드가 부족합니다.`);
+  if (trade.toGold > toGold)
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.toUser.nickname}님의 골드가 부족합니다.`);
   const fromInvalid = validateSide(fromPool, fromItems);
-  if (fromInvalid) return { ok: false, message: `${trade.fromUser.nickname}: ${fromInvalid}` };
+  if (fromInvalid) return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.fromUser.nickname}: ${fromInvalid}`);
   const toInvalid = validateSide(toPool, toItems);
-  if (toInvalid) return { ok: false, message: `${trade.toUser.nickname}: ${toInvalid}` };
+  if (toInvalid) return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.toUser.nickname}: ${toInvalid}`);
   const fromSkillBookInvalid = await validateSkillBookTokens(trade.fromUserId, fromItems);
-  if (fromSkillBookInvalid) return { ok: false, message: `${trade.fromUser.nickname}: ${fromSkillBookInvalid}` };
+  if (fromSkillBookInvalid)
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.fromUser.nickname}: ${fromSkillBookInvalid}`);
   const toSkillBookInvalid = await validateSkillBookTokens(trade.toUserId, toItems);
-  if (toSkillBookInvalid) return { ok: false, message: `${trade.toUser.nickname}: ${toSkillBookInvalid}` };
+  if (toSkillBookInvalid)
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.toUser.nickname}: ${toSkillBookInvalid}`);
 
   await loadLifeItems();
 
@@ -585,15 +610,15 @@ async function completeTrade(tradeId: string): Promise<TradeActionState> {
   removeOffered(fromPool, fromItems);
   removeOffered(toPool, toItems);
   const fromReceiveInvalid = receiveOffered(fromPool, trade.fromUser.nickname, toItems);
-  if (fromReceiveInvalid) return { ok: false, message: fromReceiveInvalid };
+  if (fromReceiveInvalid) return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, fromReceiveInvalid);
   const toReceiveInvalid = receiveOffered(toPool, trade.toUser.nickname, fromItems);
-  if (toReceiveInvalid) return { ok: false, message: toReceiveInvalid };
+  if (toReceiveInvalid) return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, toReceiveInvalid);
 
   if (fromInv.curWeight != null && fromInv.maxWeight != null && fromInv.curWeight > fromInv.maxWeight) {
-    return { ok: false, message: `${trade.fromUser.nickname}님의 가방 중량을 초과합니다.` };
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.fromUser.nickname}님의 가방 중량을 초과합니다.`);
   }
   if (toInv.curWeight != null && toInv.maxWeight != null && toInv.curWeight > toInv.maxWeight) {
-    return { ok: false, message: `${trade.toUser.nickname}님의 가방 중량을 초과합니다.` };
+    return failTrade(trade.id, trade.fromUser.username, trade.toUser.username, `${trade.toUser.nickname}님의 가방 중량을 초과합니다.`);
   }
 
   const nextFromGold = fromGold - trade.fromGold + trade.toGold;
