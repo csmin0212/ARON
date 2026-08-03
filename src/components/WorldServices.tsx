@@ -4067,9 +4067,6 @@ export default function WorldServices({
               <span className="text-xl">🌠</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-extrabold text-content">쌍별</span>
-                <span className="text-[11px] font-bold text-indigo-600">
-                  두 글자 단어 맞히기 · 하루 한 판
-                </span>
               </span>
               <span className="shrink-0 rounded-full bg-indigo-500 px-2.5 py-1 text-xs font-black text-white">
                 {STARWORD_ENTRY_FEE}G

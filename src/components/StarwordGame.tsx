@@ -30,6 +30,56 @@ const VERDICT_BG: Record<string, string> = {
   공허: "bg-canvas text-faint",
 };
 
+const MEDAL = ["🥇", "🥈", "🥉"];
+
+function Leaderboard({ rows }: { rows: StarwordRankRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="py-8 text-center text-xs text-faint">아직 맞힌 사람이 없어요.</p>
+    );
+  }
+  return (
+    <ol className="space-y-1">
+      {rows.map((r, i) => {
+        const top = i < 3;
+        return (
+          <li
+            key={r.username}
+            className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 ${
+              top ? "bg-amber-50" : ""
+            }`}
+          >
+            <span className="grid w-6 shrink-0 place-items-center text-sm">
+              {top ? (
+                MEDAL[i]
+              ) : (
+                <span className="text-[11px] font-black text-faint">{i + 1}</span>
+              )}
+            </span>
+            <span
+              className={`min-w-0 flex-1 truncate text-sm ${
+                top ? "font-black text-content" : "font-bold text-muted"
+              }`}
+            >
+              {r.nickname}
+            </span>
+            <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-bold text-faint ring-1 ring-line">
+              {r.tries}번
+            </span>
+            <span
+              className={`shrink-0 tabular-nums text-xs font-black ${
+                top ? "text-amber-600" : "text-muted"
+              }`}
+            >
+              {formatElapsed(r.elapsedMs)}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function yesterdayKey(day: string): string {
   const d = new Date(`${day}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
@@ -49,6 +99,7 @@ export default function StarwordGame({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<StarwordState | null>(null);
   const [today, setToday] = useState<StarwordRankRow[]>([]);
   const [prev, setPrev] = useState<StarwordRankRow[]>([]);
+  const [tab, setTab] = useState<"legend" | "today" | "prev">("legend");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,30 +148,58 @@ export default function StarwordGame({ onClose }: { onClose: () => void }) {
         <div className="border-b border-line px-5 py-4">
           <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-faint">STARWORD</p>
           <h3 className="mt-1 text-xl font-black text-content">🌠 쌍별</h3>
-          <p className="mt-1 text-xs text-faint">
-            두 글자 단어 · 기회 {STARWORD_MAX_TRIES}번 · 하루 한 판
-          </p>
         </div>
 
         <div className="space-y-4 p-5">
           {!state ? (
             <p className="py-8 text-center text-sm text-faint">불러오는 중…</p>
           ) : !state.started ? (
-            <div className="space-y-3">
-              <div className="rounded-2xl bg-subtle p-4 text-sm text-muted">
-                <p>입장료 {STARWORD_ENTRY_FEE}G · 성공 {STARWORD_CLEAR_REWARD}G</p>
-                <p className="mt-1">
-                  순위 보상 {STARWORD_RANK_REWARDS.join(" · ")}G — 다음 날 우편으로 도착합니다.
+            <div className="space-y-4">
+              <div className="overflow-hidden rounded-2xl border border-line">
+                <div className="flex items-center justify-between bg-subtle px-4 py-3">
+                  <span className="text-xs font-bold text-muted">입장료</span>
+                  <span className="text-lg font-black text-content">
+                    {STARWORD_ENTRY_FEE}
+                    <span className="ml-0.5 text-xs">G</span>
+                  </span>
+                </div>
+                <div className="divide-y divide-line">
+                  {[
+                    { icon: "⭐", label: "맞히면", gold: STARWORD_CLEAR_REWARD, now: true },
+                    { icon: "🥇", label: "1등", gold: STARWORD_RANK_REWARDS[0] },
+                    { icon: "🥈", label: "2등", gold: STARWORD_RANK_REWARDS[1] },
+                    { icon: "🥉", label: "3등", gold: STARWORD_RANK_REWARDS[2] },
+                  ].map((r) => (
+                    <div key={r.label} className="flex items-center gap-2.5 px-4 py-2.5">
+                      <span className="text-base">{r.icon}</span>
+                      <span className="text-sm font-bold text-content">{r.label}</span>
+                      {r.now && (
+                        <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-black text-brand-600">
+                          즉시
+                        </span>
+                      )}
+                      <span className="ml-auto text-sm font-black tabular-nums text-amber-600">
+                        +{r.gold}G
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="bg-subtle px-4 py-2 text-[11px] text-faint">
+                  순위 보상은 다음 날 우편함으로
                 </p>
               </div>
+
               {state.error && <p className="text-sm font-bold text-rose-500">{state.error}</p>}
               <button
                 onClick={begin}
                 disabled={busy}
-                className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-black text-white transition hover:bg-brand-600 disabled:opacity-50"
+                className="w-full rounded-xl bg-brand-500 px-4 py-3.5 text-sm font-black text-white shadow-sm transition hover:bg-brand-600 disabled:opacity-50"
               >
-                {busy ? "여는 중…" : `시작하기 (-${STARWORD_ENTRY_FEE}G)`}
+                {busy ? "여는 중…" : `시작하기 · ${STARWORD_ENTRY_FEE}G`}
               </button>
+              <p className="text-center text-[11px] text-faint">
+                기회 {STARWORD_MAX_TRIES}번 · 하루 한 판 · 재도전 없음
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -205,40 +284,48 @@ export default function StarwordGame({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="rounded-2xl border border-line p-3">
-            <p className="mb-2 text-[11px] font-extrabold text-faint">판정</p>
-            <div className="grid grid-cols-1 gap-1 text-[11px] text-muted sm:grid-cols-2">
-              {STARWORD_LEGEND.map((l) => (
-                <p key={l.verdict}>
-                  {STARWORD_ICON[l.verdict]} <b className="text-content">{l.verdict}</b> {l.text}
-                </p>
+          <div className="overflow-hidden rounded-2xl border border-line">
+            <div className="flex border-b border-line bg-subtle p-1">
+              {(
+                [
+                  ["legend", "판정"],
+                  ["today", "오늘 순위"],
+                  ["prev", "어제 순위"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${
+                    tab === key ? "bg-surface text-content shadow-sm" : "text-muted hover:text-content"
+                  }`}
+                >
+                  {label}
+                </button>
               ))}
             </div>
-          </div>
 
-          {[
-            { title: "오늘 순위", rows: today },
-            { title: "어제 순위", rows: prev },
-          ].map(({ title, rows }) => (
-            <div key={title} className="rounded-2xl border border-line p-3">
-              <p className="mb-2 text-[11px] font-extrabold text-faint">{title}</p>
-              {rows.length === 0 ? (
-                <p className="py-2 text-center text-xs text-faint">기록 없음</p>
-              ) : (
-                <ol className="space-y-1">
-                  {rows.map((r, i) => (
-                    <li key={r.username} className="flex items-center gap-2 text-xs">
-                      <span className="w-5 font-black text-muted">{i + 1}</span>
-                      <span className="truncate font-bold text-content">{r.nickname}</span>
-                      <span className="ml-auto shrink-0 tabular-nums text-faint">
-                        {formatElapsed(r.elapsedMs)} · {r.tries}번
+            <div className="p-3">
+              {tab === "legend" ? (
+                <ul className="space-y-1.5">
+                  {STARWORD_LEGEND.map((l) => (
+                    <li key={l.verdict} className="flex items-center gap-2.5">
+                      <span
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-sm ${VERDICT_BG[l.verdict]}`}
+                      >
+                        {STARWORD_ICON[l.verdict]}
                       </span>
+                      <span className="w-9 shrink-0 text-xs font-black text-content">{l.verdict}</span>
+                      <span className="text-[11px] leading-tight text-muted">{l.text}</span>
                     </li>
                   ))}
-                </ol>
+                </ul>
+              ) : (
+                <Leaderboard rows={tab === "today" ? today : prev} />
               )}
             </div>
-          ))}
+          </div>
         </div>
 
         <div className="border-t border-line p-4">
