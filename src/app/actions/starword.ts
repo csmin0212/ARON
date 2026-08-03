@@ -15,7 +15,7 @@ import {
   STARWORD_ENTRY_FEE,
   STARWORD_MAX_TRIES,
   STARWORD_RANK_REWARDS,
-  STARWORD_WORDS,
+  isKnownStarword,
   type StarwordVerdict,
 } from "@/lib/starword";
 
@@ -163,7 +163,7 @@ export async function guessStarword(raw: string): Promise<StarwordState> {
   if (!isValidStarwordShape(word)) {
     return { ...stateOf(run), error: "두 글자 한글 단어를 입력해주세요." };
   }
-  if (!STARWORD_WORDS.includes(word)) {
+  if (!isKnownStarword(word)) {
     return { ...stateOf(run), error: "목록에 없는 단어예요." };
   }
 

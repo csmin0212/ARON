@@ -20,6 +20,16 @@ import {
   STARWORD_RANK_REWARDS,
 } from "@/lib/starword";
 
+// 판정별 칸 색 — 아이콘만으로는 한눈에 안 들어와서 배경으로도 구분한다.
+const VERDICT_BG: Record<string, string> = {
+  별: "bg-amber-400 text-white",
+  항성: "bg-amber-200 text-amber-900",
+  행성: "bg-indigo-200 text-indigo-900",
+  혜성: "bg-sky-100 text-sky-800",
+  위성: "bg-stone-200 text-stone-700",
+  공허: "bg-canvas text-faint",
+};
+
 function yesterdayKey(day: string): string {
   const d = new Date(`${day}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
@@ -123,18 +133,42 @@ export default function StarwordGame({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
+              {/* 시도 칸 — 남은 기회만큼 빈 줄을 미리 그려 몇 번 남았는지 눈으로 보이게 */}
               <div className="space-y-1.5">
-                {state.rows.map((row, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-xl bg-subtle px-3 py-2">
-                    <span className="text-base font-black tracking-widest text-content">{row.word}</span>
-                    <span className="ml-auto text-lg">
-                      {row.verdicts.map((v) => STARWORD_ICON[v]).join(" ")}
-                    </span>
-                  </div>
-                ))}
-                {state.rows.length === 0 && (
-                  <p className="py-6 text-center text-sm text-faint">첫 단어를 입력해보세요.</p>
-                )}
+                {Array.from({ length: STARWORD_MAX_TRIES }).map((_, i) => {
+                  const row = state.rows[i];
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                        row ? "bg-subtle" : "border border-dashed border-line"
+                      }`}
+                    >
+                      <span className="w-4 text-[11px] font-black text-faint">{i + 1}</span>
+                      <div className="flex gap-2">
+                        {[0, 1].map((c) => (
+                          <div key={c} className="flex flex-col items-center gap-0.5">
+                            <span
+                              className={`grid h-9 w-9 place-items-center rounded-lg text-lg font-black ${
+                                row ? VERDICT_BG[row.verdicts[c]] : "bg-canvas text-faint"
+                              }`}
+                            >
+                              {row ? [...row.word][c] : ""}
+                            </span>
+                            <span className="text-[13px] leading-none">
+                              {row ? STARWORD_ICON[row.verdicts[c]] : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {row && (
+                        <span className="ml-auto text-[11px] font-bold text-faint">
+                          {row.verdicts.join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {over ? (
