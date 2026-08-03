@@ -3,7 +3,7 @@
 // 판정은 자모 단위로 한다. 겹받침(ㄳ)·모음 합자(ㅘ)는 구성 자모를 각각 가진 것으로 보고,
 // 쌍자음(ㄲ)과 ㅐ/ㅔ/ㅒ/ㅖ는 별개 자모로 센다.
 
-import { STARWORD_ANSWERS, STARWORD_EXTRA } from "./starwordWords";
+import { STARWORD_ANSWERS } from "./starwordWords";
 
 export const STARWORD_MAX_TRIES = 7;
 export const STARWORD_ENTRY_FEE = 50;
@@ -164,13 +164,5 @@ export function formatElapsed(ms: number): string {
 }
 
 // ── 어휘 ──
-// 정답 풀과 추측 허용 목록은 starwordWords 에 있다. 정답은 "아는 말"로 좁히고,
-// 추측은 넓게 열어 떠오르는 단어를 그냥 넣어볼 수 있게 한다.
+// 정답 풀은 starwordWords 에서 "아는 말"로 좁힌다.
 export const STARWORD_WORDS = STARWORD_ANSWERS;
-
-const GUESSABLE = new Set([...STARWORD_ANSWERS, ...STARWORD_EXTRA]);
-
-/** 입력 가능한 단어인지 (정답 풀보다 넓다) */
-export function isKnownStarword(word: string): boolean {
-  return GUESSABLE.has(word.trim());
-}

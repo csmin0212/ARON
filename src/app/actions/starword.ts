@@ -15,9 +15,9 @@ import {
   STARWORD_ENTRY_FEE,
   STARWORD_MAX_TRIES,
   STARWORD_RANK_REWARDS,
-  isKnownStarword,
   type StarwordVerdict,
 } from "@/lib/starword";
+import { isKnownStarword } from "@/lib/starwordGuesses";
 
 export type StarwordRow = { word: string; verdicts: StarwordVerdict[] };
 
