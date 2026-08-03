@@ -57,6 +57,8 @@ import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from 
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
 import TrainingYard, { type TrainingView } from "@/components/TrainingYard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
+import StarwordGame from "@/components/StarwordGame";
+import { STARWORD_ENTRY_FEE } from "@/lib/starword";
 import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
@@ -92,6 +94,7 @@ type Props = {
   craftTags: Record<string, string>;
   craftTagSlots: Record<string, string>;
   weeklyIncome: WeeklyIncomeView | null; // 분수 광장에서만 채워짐
+  canStarword: boolean; // 쌍별 — 분수 광장
 };
 
 export type InnView = {
@@ -3718,9 +3721,11 @@ export default function WorldServices({
   craftTags,
   craftTagSlots,
   weeklyIncome,
+  canStarword,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
+  const [starwordOpen, setStarwordOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [incomeOpen, setIncomeOpen] = useState(false);
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
@@ -4053,6 +4058,24 @@ export default function WorldServices({
               )}
             </button>
           )}
+          {canStarword && (
+            <button
+              type="button"
+              onClick={() => setStarwordOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 px-3.5 py-3 text-left transition hover:border-indigo-300 hover:from-indigo-100 hover:to-violet-100"
+            >
+              <span className="text-xl">🌠</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-content">쌍별</span>
+                <span className="text-[11px] font-bold text-indigo-600">
+                  두 글자 단어 맞히기 · 하루 한 판
+                </span>
+              </span>
+              <span className="shrink-0 rounded-full bg-indigo-500 px-2.5 py-1 text-xs font-black text-white">
+                {STARWORD_ENTRY_FEE}G
+              </span>
+            </button>
+          )}
           {canHousing &&
             productionFacilities.map((kind) => {
               const meta = productionMeta(kind);
@@ -4213,6 +4236,8 @@ export default function WorldServices({
       {innOpen && <InnRest inn={inn} onClose={() => setInnOpen(false)} />}
 
       {housingOpen && <HousingPanel housing={housing} onClose={() => setHousingOpen(false)} />}
+
+      {starwordOpen && <StarwordGame onClose={() => setStarwordOpen(false)} />}
 
       {incomeOpen && weeklyIncome && (
         <WeeklyIncomePanel income={weeklyIncome} onClose={() => setIncomeOpen(false)} />
