@@ -5,6 +5,7 @@ import {
   getStarwordRanking,
   getStarwordState,
   guessStarword,
+  replaceStarwordForGm,
   settleStarwordRanks,
   startStarword,
   type StarwordRankRow,
@@ -142,6 +143,17 @@ export default function StarwordGame({ onClose }: { onClose: () => void }) {
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
+  async function replaceWord() {
+    if (busy) return;
+    setBusy(true);
+    const s = await replaceStarwordForGm();
+    setState(s);
+    setInput("");
+    await refreshRanks(s.day);
+    setBusy(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-line bg-surface shadow-xl">
@@ -151,6 +163,29 @@ export default function StarwordGame({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="space-y-4 p-5">
+          {state?.isGm && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">
+                    GM 테스트
+                  </p>
+                  <p className="mt-0.5 text-xs font-bold text-amber-900">
+                    현재 단어 {state.gmAnswer ?? "없음"} · 리더보드 제외
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={replaceWord}
+                  disabled={busy}
+                  className="shrink-0 rounded-xl bg-amber-500 px-3 py-2 text-xs font-black text-white transition hover:bg-amber-600 disabled:opacity-50"
+                >
+                  단어 교체
+                </button>
+              </div>
+            </div>
+          )}
+
           {!state ? (
             <p className="py-8 text-center text-sm text-faint">불러오는 중…</p>
           ) : !state.started ? (
