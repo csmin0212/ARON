@@ -11,7 +11,6 @@ import {
   isValidStarwordShape,
   judgeStarword,
   starwordDayKey,
-  starwordOfDay,
   STARWORD_CLEAR_REWARD,
   STARWORD_ENTRY_FEE,
   STARWORD_MAX_TRIES,
@@ -148,7 +147,7 @@ export async function startStarword(): Promise<StarwordState> {
   let run;
   try {
     run = await prisma.starwordRun.create({
-      data: { userId: user.id, day, answer: starwordOfDay(day) },
+      data: { userId: user.id, day, answer: randomStarwordAnswer() },
     });
   } catch {
     const again = await prisma.starwordRun.findUnique({

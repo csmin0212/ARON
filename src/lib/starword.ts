@@ -1,4 +1,4 @@
-// 쌍별 — 두 글자 한국어 단어 맞히기. 하루 한 판, 전원 같은 정답, 기회 7번.
+// 쌍별 — 두 글자 한국어 단어 맞히기. 하루 한 판, 캐릭터마다 랜덤 정답, 기회 7번.
 //
 // 판정은 자모 단위로 한다. 겹받침(ㄳ)·모음 합자(ㅘ)는 구성 자모를 각각 가진 것으로 보고,
 // 쌍자음(ㄲ)과 ㅐ/ㅔ/ㅒ/ㅖ는 별개 자모로 센다.
@@ -134,25 +134,11 @@ export function isStarwordCleared(verdicts: StarwordVerdict[]): boolean {
   return verdicts.length === 2 && verdicts.every((v) => v === "별");
 }
 
-// ── 그날의 정답 ──
-// 날짜 문자열을 시드로 뽑으므로 전원 같은 답이 나오고, 자정이 지나면 저절로 바뀐다.
-// (별도 스케줄러가 필요 없다)
+// ── 날짜 키 ──
+// 하루 한 판 제한에 쓰는 KST 날짜 문자열.
 export function starwordDayKey(now: Date = new Date()): string {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   return kst.toISOString().slice(0, 10);
-}
-
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-export function starwordOfDay(day: string = starwordDayKey()): string {
-  return STARWORD_WORDS[hashString(`쌍별:${day}`) % STARWORD_WORDS.length];
 }
 
 /** 소요 시간 표기 — 리더보드용 */
