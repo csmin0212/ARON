@@ -135,15 +135,15 @@ const FAILED_DISH = {
 };
 const MESSAGE_BOTTLE_NAME = "종이가 든 병";
 const MESSAGE_BOTTLE_READINGS = [
-  "요정의 윤무",
-  "물의 환영",
-  "침묵의 유적",
-  "바람의 끝",
-  "갱도 탐사",
-  "잠들지 않는 것",
-  "심해 속으로",
-  "하늘로",
-  "어둠의 시대",
+  "물결은 오래된 이름을 흐린다",
+  "별빛은 병 입구에서 멈춘다",
+  "젖은 종이는 아직 따뜻하다",
+  "모래 위의 발자국은 셋이었다",
+  "파도는 돌아오는 길을 안다",
+  "검은 잉크가 달빛 아래 번진다",
+  "누군가 끝내 보내지 못한 말",
+  "바람은 봉인을 뜯지 못했다",
+  "종이 가장자리에 소금이 말라붙었다",
 ] as const;
 
 const LIFE_SHOP_ITEMS = [
@@ -2594,6 +2594,23 @@ function isMessageBottle(name: string): boolean {
   return normalizedConsumableName(name) === MESSAGE_BOTTLE_NAME.replace(/\s+/g, "");
 }
 
+function normalizedSecretText(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+async function randomMessageBottleReading(): Promise<string> {
+  const hiddenKeywords = await prisma.location.findMany({
+    where: { hidden: true, keyword: { not: null } },
+    select: { keyword: true },
+  });
+  const blocked = new Set(hiddenKeywords.map((location) => normalizedSecretText(location.keyword ?? "")));
+  const safeReadings = MESSAGE_BOTTLE_READINGS.filter(
+    (reading) => !blocked.has(normalizedSecretText(reading)),
+  );
+  const pool = safeReadings.length > 0 ? safeReadings : MESSAGE_BOTTLE_READINGS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function isRandomBox(name: string): boolean {
   return normalizedConsumableName(name) === "랜덤박스";
 }
@@ -2651,7 +2668,7 @@ export async function useCookingItem(
   }
 
   if (isMessageBottle(itemName)) {
-    const reading = MESSAGE_BOTTLE_READINGS[Math.floor(Math.random() * MESSAGE_BOTTLE_READINGS.length)];
+    const reading = await randomMessageBottleReading();
     const inv = consumeInvItem(ctx.inv, itemName, 1);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
     await Promise.all([
