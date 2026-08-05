@@ -59,6 +59,7 @@ import TrainingYard, { type TrainingView } from "@/components/TrainingYard";
 import CraftingForge, { type CraftMineralView } from "@/components/CraftingForge";
 import StarwordGame from "@/components/StarwordGame";
 import { STARWORD_ENTRY_FEE } from "@/lib/starword";
+import MahjongLobbyModal from "@/components/MahjongLobbyModal";
 import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
@@ -95,6 +96,7 @@ type Props = {
   craftTagSlots: Record<string, string>;
   weeklyIncome: WeeklyIncomeView | null; // 분수 광장에서만 채워짐
   canStarword: boolean; // 쌍별 — 분수 광장
+  canMahjong: boolean; // 마작 — 분수 광장
 };
 
 export type InnView = {
@@ -3722,10 +3724,12 @@ export default function WorldServices({
   craftTagSlots,
   weeklyIncome,
   canStarword,
+  canMahjong,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
   const [starwordOpen, setStarwordOpen] = useState(false);
+  const [mahjongOpen, setMahjongOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [incomeOpen, setIncomeOpen] = useState(false);
   const [lifeShopOpen, setLifeShopOpen] = useState(false);
@@ -4073,6 +4077,19 @@ export default function WorldServices({
               </span>
             </button>
           )}
+          {canMahjong && (
+            <button
+              type="button"
+              onClick={() => setMahjongOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-3.5 py-3 text-left transition hover:border-emerald-300 hover:from-emerald-100 hover:to-teal-100"
+            >
+              <span className="text-xl">🀄</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-content">마작</span>
+                <span className="text-[11px] text-faint">3~4인 · 부족하면 AI 참가</span>
+              </span>
+            </button>
+          )}
           {canHousing &&
             productionFacilities.map((kind) => {
               const meta = productionMeta(kind);
@@ -4235,6 +4252,8 @@ export default function WorldServices({
       {housingOpen && <HousingPanel housing={housing} onClose={() => setHousingOpen(false)} />}
 
       {starwordOpen && <StarwordGame onClose={() => setStarwordOpen(false)} />}
+
+      {mahjongOpen && <MahjongLobbyModal onClose={() => setMahjongOpen(false)} />}
 
       {incomeOpen && weeklyIncome && (
         <WeeklyIncomePanel income={weeklyIncome} onClose={() => setIncomeOpen(false)} />

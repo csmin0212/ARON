@@ -456,6 +456,7 @@ model CharacterSheet {
   fame           Int       @default(0) // 다음 등급까지 누적 명성치
   sheetSkillsJson  String? // 시트 스킬란(B65:D104, B144:D181)에서 SL 1+ 인 스킬 [{name, sl}]
   weeklyIncomeJson String? // 분수 광장 주간 수입 수령 상태 { week, claimed: [] } — 던전 주간 키 기준
+  mahjongAiGoldJson String? // 마작 AI포함전 일일 골드 획득 상한 상태 { day, earned } — lib/mahjong/economy.ts
   syncedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -518,6 +519,54 @@ model RiftMember {
 
   @@unique([riftId, userId])
   @@index([userId])
+}
+
+// 분수광장 마작(작혼기준 3~4인). matchStateJson 이 lib/mahjong 엔진의 MatchState 전체를 담는다.
+model MahjongTable {
+  id             String          @id @default(cuid())
+  hostUserId     String // User.id (FK 아님)
+  locationId     String // 분수광장 Location.id (FK 아님)
+  playerCount    Int // 3 | 4
+  tier           String // low | mid | high — lib/mahjong/economy.ts Tier
+  status         String          @default("waiting") // waiting | playing | finished
+  matchStateJson String? // lib/mahjong/match.ts MatchState 직렬화 (현재 핸드 GameState 포함)
+  settingsJson   String? // 방 설정 { matchLength: "tonpuusen"|"hanchan", kuitan: boolean }
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  seats          MahjongSeat[]
+  records        MahjongRecord[]
+
+  @@index([locationId, status])
+}
+
+model MahjongSeat {
+  id        String       @id @default(cuid())
+  tableId   String
+  table     MahjongTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  seatIndex Int // 0..3
+  userId    String? // null이면 AI (User.id, FK 아님)
+  isAi      Boolean      @default(false)
+  isReady   Boolean      @default(false)
+  entryGold Int          @default(0)
+  joinedAt  DateTime     @default(now())
+
+  @@unique([tableId, seatIndex])
+  @@index([userId])
+}
+
+// 마작 전적 — 랭킹 페이지는 여기 원자료를 집계해서 계산한다(별도 랭킹 테이블 없음, hall/page.tsx 스타일)
+model MahjongRecord {
+  id         String       @id @default(cuid())
+  tableId    String
+  table      MahjongTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  userId     String? // User.id (FK 아님), null이면 AI
+  isAi       Boolean      @default(false)
+  placement  Int // 1~4
+  finalScore Int
+  goldDelta  Int
+  createdAt  DateTime     @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // 생활스킬 채집물/어획물 (GM 시트 '물고기'·'채집' 탭에서 동기화). 낚시/채집 풀의 단일 진실원.

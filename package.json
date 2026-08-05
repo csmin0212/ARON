@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "seed": "node prisma/seed.js",
-    "seed:world": "node prisma/seed-world.js"
+    "seed:world": "node prisma/seed-world.js",
+    "mahjong:selftest": "tsx scripts/mahjong-selftest.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -30,6 +31,7 @@
     "eslint-config-next": "16.2.7",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.5",
     "typescript": "^5"
   }
 }

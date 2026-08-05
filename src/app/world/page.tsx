@@ -1653,6 +1653,7 @@ export default async function WorldPage() {
             craftTagSlots={craftTagSlots}
             weeklyIncome={weeklyIncome}
             canStarword={atPlaza}
+            canMahjong={atPlaza}
           />
 
           <FriendsDock

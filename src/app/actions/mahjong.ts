@@ -1,0 +1,417 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { kstDayKey } from "@/lib/world";
+import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
+import {
+  DEFAULT_RULES_3P,
+  DEFAULT_RULES_4P,
+  TIERS_3P,
+  TIERS_4P,
+  createMatch,
+  pump,
+  performDiscard,
+  declareAnkan,
+  declareKakan,
+  declareRiichi,
+  declareKitaInMatch,
+  submitCallResponse,
+  checkWinAtDraw,
+  settleHandWin,
+  pointsToGold,
+  settleAiCappedGold,
+  type MatchState,
+  type MatchLength,
+  type Tier,
+} from "@/lib/mahjong";
+
+export type MahjongActionState = { ok: boolean; message: string };
+
+export type MahjongSettings = { matchLength: MatchLength; kuitan: boolean };
+const DEFAULT_SETTINGS: MahjongSettings = { matchLength: "tonpuusen", kuitan: true };
+
+function parseSettings(json: string | null | undefined): MahjongSettings {
+  if (!json) return DEFAULT_SETTINGS;
+  try {
+    const parsed = JSON.parse(json) as Partial<MahjongSettings>;
+    return {
+      matchLength: parsed.matchLength === "hanchan" ? "hanchan" : "tonpuusen",
+      kuitan: parsed.kuitan !== false,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+type PlazaCheck =
+  | { ok: false; error: string }
+  | { ok: true; sheet: { locationId: string | null; curGold: number | null }; location: { id: string; name: string } };
+
+async function requirePlazaLocation(userId: string): Promise<PlazaCheck> {
+  const sheet = await prisma.characterSheet.findUnique({
+    where: { userId },
+    select: { locationId: true, curGold: true },
+  });
+  if (!sheet) return { ok: false, error: "캐릭터 시트 연동이 필요합니다." };
+  const location = sheet.locationId
+    ? await prisma.location.findUnique({ where: { id: sheet.locationId }, select: { id: true, name: true } })
+    : null;
+  const atPlaza = `${location?.id ?? ""} ${location?.name ?? ""}`.includes("분수");
+  if (!atPlaza || !location) return { ok: false, error: "마작은 분수 광장에서만 할 수 있어요." };
+  return { ok: true, sheet, location };
+}
+
+function tierConfigOf(playerCount: 3 | 4, tierKey: string) {
+  const tiers = playerCount === 3 ? TIERS_3P : TIERS_4P;
+  return tiers[(tierKey as Tier) in tiers ? (tierKey as Tier) : "low"];
+}
+
+export type MahjongTableSummary = {
+  id: string;
+  playerCount: number;
+  tier: string;
+  filled: number;
+  hostNickname: string;
+  matchLength: MatchLength;
+  status: "waiting" | "playing";
+};
+
+export async function listMahjongTables(): Promise<MahjongTableSummary[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const check = await requirePlazaLocation(user.id);
+  if (!check.ok) return [];
+
+  const tables = await prisma.mahjongTable.findMany({
+    where: { locationId: check.location.id, status: { in: ["waiting", "playing"] } },
+    include: { seats: true },
+    orderBy: { createdAt: "asc" },
+    take: 20,
+  });
+  const hostIds = tables.map((t) => t.hostUserId);
+  const hosts = await prisma.user.findMany({ where: { id: { in: hostIds } }, select: { id: true, nickname: true } });
+  const hostMap = new Map(hosts.map((h) => [h.id, h.nickname]));
+
+  return tables.map((t) => ({
+    id: t.id,
+    playerCount: t.playerCount,
+    tier: t.tier,
+    filled: t.seats.length,
+    hostNickname: hostMap.get(t.hostUserId) ?? "???",
+    matchLength: parseSettings(t.settingsJson).matchLength,
+    status: t.status === "playing" ? "playing" : "waiting",
+  }));
+}
+
+export async function createMahjongTable(
+  _prev: MahjongActionState,
+  formData: FormData,
+): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+
+  const check = await requirePlazaLocation(user.id);
+  if (!check.ok) return { ok: false, message: check.error };
+
+  const playerCount = Number(formData.get("playerCount")) === 3 ? 3 : 4;
+  const tierKey = String(formData.get("tier") ?? "low");
+  const tier = tierConfigOf(playerCount, tierKey);
+  const settings: MahjongSettings = {
+    matchLength: formData.get("matchLength") === "hanchan" ? "hanchan" : "tonpuusen",
+    kuitan: formData.get("kuitan") !== "off",
+  };
+
+  if ((check.sheet.curGold ?? 0) < tier.gold) {
+    return { ok: false, message: "입장 골드가 부족합니다." };
+  }
+
+  const table = await prisma.mahjongTable.create({
+    data: {
+      hostUserId: user.id,
+      locationId: check.location.id,
+      playerCount,
+      tier: tier.tier,
+      status: "waiting",
+      settingsJson: JSON.stringify(settings),
+      seats: { create: [{ seatIndex: 0, userId: user.id, isReady: false }] },
+    },
+    select: { id: true },
+  });
+
+  revalidatePath("/world");
+  redirect(`/mahjong/${table.id}`);
+}
+
+export async function joinMahjongTable(
+  _prev: MahjongActionState,
+  formData: FormData,
+): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+  const tableId = String(formData.get("tableId") ?? "");
+  const table = await prisma.mahjongTable.findUnique({ where: { id: tableId }, include: { seats: true } });
+  if (!table || table.status !== "waiting") return { ok: false, message: "참가할 수 없는 방입니다." };
+  if (table.seats.some((s) => s.userId === user.id)) redirect(`/mahjong/${tableId}`);
+
+  const taken = new Set(table.seats.map((s) => s.seatIndex));
+  let seatIndex = -1;
+  for (let i = 0; i < table.playerCount; i++) {
+    if (!taken.has(i)) {
+      seatIndex = i;
+      break;
+    }
+  }
+  if (seatIndex === -1) return { ok: false, message: "자리가 가득 찼습니다." };
+
+  await prisma.mahjongSeat.create({ data: { tableId, seatIndex, userId: user.id } });
+  redirect(`/mahjong/${tableId}`);
+}
+
+export async function leaveMahjongTable(tableId: string): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+  const table = await prisma.mahjongTable.findUnique({ where: { id: tableId } });
+  if (!table || table.status !== "waiting") return { ok: false, message: "시작된 방은 나갈 수 없습니다." };
+  await prisma.mahjongSeat.deleteMany({ where: { tableId, userId: user.id } });
+  revalidatePath(`/mahjong/${tableId}`);
+  return { ok: true, message: "방을 나갔습니다." };
+}
+
+export async function fillWithAi(tableId: string): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+  const table = await prisma.mahjongTable.findUnique({ where: { id: tableId }, include: { seats: true } });
+  if (!table || table.status !== "waiting") return { ok: false, message: "채울 수 없는 방입니다." };
+  if (table.hostUserId !== user.id) return { ok: false, message: "방장만 채울 수 있어요." };
+
+  const taken = new Set(table.seats.map((s) => s.seatIndex));
+  const creates = [];
+  for (let i = 0; i < table.playerCount; i++) {
+    if (!taken.has(i)) creates.push({ tableId, seatIndex: i, isAi: true, isReady: true, userId: null });
+  }
+  if (creates.length > 0) await prisma.mahjongSeat.createMany({ data: creates });
+  return { ok: true, message: "AI로 채웠어요." };
+}
+
+async function startTable(
+  tableId: string,
+  playerCount: 3 | 4,
+  tierKey: string,
+  settingsJson: string | null,
+  seats: { seatIndex: number; userId: string | null; isAi: boolean }[],
+): Promise<MahjongActionState> {
+  const tier = tierConfigOf(playerCount, tierKey);
+  const settings = parseSettings(settingsJson);
+  const baseRules = playerCount === 3 ? DEFAULT_RULES_3P : DEFAULT_RULES_4P;
+  const rules = { ...baseRules, kuitan: settings.kuitan };
+  const humanSeats = seats.filter((s) => s.userId);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const s of humanSeats) {
+        const result = await tx.characterSheet.updateMany({
+          where: { userId: s.userId!, curGold: { gte: tier.gold } },
+          data: { curGold: { decrement: tier.gold } },
+        });
+        if (result.count === 0) throw new Error("INSUFFICIENT_GOLD");
+        await tx.mahjongSeat.updateMany({
+          where: { tableId, seatIndex: s.seatIndex },
+          data: { entryGold: tier.gold },
+        });
+      }
+    });
+  } catch {
+    return { ok: false, message: "골드가 부족한 참가자가 있어 시작할 수 없습니다." };
+  }
+
+  humanSeats.forEach((s) => void enqueueSheetGoldSync(s.userId!));
+
+  const match = createMatch(
+    rules,
+    tier.startPoints,
+    seats.map((s) => ({ seat: s.seatIndex, userId: s.userId, isAi: s.isAi })),
+    settings.matchLength,
+  );
+  pump(match);
+
+  await prisma.mahjongTable.update({
+    where: { id: tableId },
+    data: { status: "playing", matchStateJson: JSON.stringify(match) },
+  });
+
+  return { ok: true, message: "게임을 시작합니다!" };
+}
+
+export async function setReady(tableId: string, ready: boolean): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+  const table = await prisma.mahjongTable.findUnique({ where: { id: tableId }, include: { seats: true } });
+  if (!table || table.status !== "waiting") return { ok: false, message: "이미 시작된 방입니다." };
+  const mySeat = table.seats.find((s) => s.userId === user.id);
+  if (!mySeat) return { ok: false, message: "이 방에 참가하지 않았습니다." };
+
+  await prisma.mahjongSeat.update({ where: { id: mySeat.id }, data: { isReady: ready } });
+
+  const seats = await prisma.mahjongSeat.findMany({ where: { tableId } });
+  const filled = seats.length === table.playerCount;
+  const allReady = filled && seats.every((s) => s.isReady);
+  if (!allReady) return { ok: true, message: "준비 상태를 변경했습니다." };
+
+  return startTable(
+    table.id,
+    table.playerCount as 3 | 4,
+    table.tier,
+    table.settingsJson,
+    seats.map((s) => ({ seatIndex: s.seatIndex, userId: s.userId, isAi: s.isAi })),
+  );
+}
+
+async function settleMatchGold(
+  table: { id: string; tier: string; playerCount: number; seats: { seatIndex: number; userId: string | null; isAi: boolean; entryGold: number }[] },
+  match: MatchState,
+): Promise<void> {
+  if (!match.finalResult) return;
+  const tierConfig = tierConfigOf(table.playerCount as 3 | 4, table.tier);
+  const hasAi = table.seats.some((s) => s.isAi);
+  const today = kstDayKey(new Date());
+
+  for (const result of match.finalResult) {
+    await prisma.mahjongRecord.create({
+      data: {
+        tableId: table.id,
+        userId: result.userId,
+        isAi: result.isAi,
+        placement: result.placement,
+        finalScore: result.finalPoints,
+        goldDelta: 0,
+      },
+    });
+    if (!result.userId) continue;
+
+    const seatRow = table.seats.find((s) => s.seatIndex === result.seat);
+    const entryGold = seatRow?.entryGold ?? 0;
+    // 최종 점수가 마이너스여도 환급은 0까지만 — 잃는 건 낸 입장료가 전부다(더 뜯기지 않게).
+    const payoutGold = Math.max(0, pointsToGold(result.finalPoints, tierConfig));
+    const netGain = payoutGold - entryGold;
+
+    let finalGold = entryGold + netGain;
+    if (hasAi) {
+      const sheet = await prisma.characterSheet.findUnique({
+        where: { userId: result.userId },
+        select: { mahjongAiGoldJson: true },
+      });
+      const state = sheet?.mahjongAiGoldJson
+        ? (JSON.parse(sheet.mahjongAiGoldJson) as { day: string; earned: number })
+        : { day: today, earned: 0 };
+      const { state: nextState, payableGain } = settleAiCappedGold(state, today, netGain);
+      finalGold = entryGold + payableGain;
+      await prisma.characterSheet.update({
+        where: { userId: result.userId },
+        data: { mahjongAiGoldJson: JSON.stringify(nextState) },
+      });
+    }
+
+    if (finalGold !== 0) {
+      await prisma.characterSheet.update({
+        where: { userId: result.userId },
+        data: { curGold: { increment: finalGold } },
+      });
+      void enqueueSheetGoldSync(result.userId);
+    }
+    await prisma.mahjongRecord.updateMany({
+      where: { tableId: table.id, userId: result.userId },
+      data: { goldDelta: finalGold },
+    });
+  }
+}
+
+export type MahjongPlayAction =
+  | { type: "discard"; tileIndex: number }
+  | { type: "tsumo" }
+  | { type: "riichi" }
+  | { type: "ankan"; kind: number }
+  | { type: "kakan" }
+  | { type: "kita" }
+  | { type: "call"; response: "pon" | "chi" | "kan" | "ron" | "pass" };
+
+export async function submitPlayerAction(tableId: string, action: MahjongPlayAction): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+
+  const table = await prisma.mahjongTable.findUnique({ where: { id: tableId }, include: { seats: true } });
+  if (!table || table.status !== "playing" || !table.matchStateJson) {
+    return { ok: false, message: "진행 중인 대국이 아닙니다." };
+  }
+  const mySeat = table.seats.find((s) => s.userId === user.id);
+  if (!mySeat) return { ok: false, message: "이 방에 참가하지 않았습니다." };
+
+  const match = JSON.parse(table.matchStateJson) as MatchState;
+  pump(match);
+
+  const seat = mySeat.seatIndex;
+  const hand = match.hand;
+
+  if (action.type === "call") {
+    submitCallResponse(match, seat, action.response);
+  } else if (hand && hand.turn === seat && !hand.pendingCall) {
+    switch (action.type) {
+      case "discard":
+        performDiscard(match, seat, action.tileIndex);
+        break;
+      case "tsumo": {
+        const score = checkWinAtDraw(match);
+        if (score) settleHandWin(match, [{ seat, score }], null);
+        break;
+      }
+      case "riichi": {
+        const declared = declareRiichi(match, seat);
+        if (declared && match.hand) {
+          performDiscard(match, seat, match.hand.players[seat].hand.length - 1);
+        }
+        break;
+      }
+      case "ankan":
+        declareAnkan(match, seat, action.kind);
+        break;
+      case "kakan":
+        declareKakan(match, seat);
+        break;
+      case "kita":
+        declareKitaInMatch(match, seat);
+        break;
+    }
+  }
+
+  pump(match);
+
+  // table.status 는 위에서 이미 "playing"으로 확인됨 — match.finished 가 true 면 이번 액션으로 막 끝난 것
+  if (match.finished) {
+    await settleMatchGold(
+      {
+        id: table.id,
+        tier: table.tier,
+        playerCount: table.playerCount,
+        seats: table.seats.map((s) => ({
+          seatIndex: s.seatIndex,
+          userId: s.userId,
+          isAi: s.isAi,
+          entryGold: s.entryGold,
+        })),
+      },
+      match,
+    );
+  }
+
+  await prisma.mahjongTable.update({
+    where: { id: tableId },
+    data: {
+      matchStateJson: JSON.stringify(match),
+      status: match.finished ? "finished" : "playing",
+    },
+  });
+
+  return { ok: true, message: "" };
+}
