@@ -8,7 +8,6 @@ import { shanten } from "./shanten";
 import { WINDS, isSuited, numOf, toCounts } from "./tiles";
 import { chooseDiscard, shouldCallKan, shouldCallPon } from "./ai";
 
-const TURN_TIMEOUT_MS = 60_000; // 사람 차례가 이만큼 비면 이탈로 보고 AI가 대신 진행
 const AI_TURN_DELAY_MS = 1_100; // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
 
 export interface MatchPlayerMeta {
@@ -30,9 +29,21 @@ export interface FinalResult {
 
 export type MatchLength = "tonpuusen" | "hanchan";
 
+export interface TimeRule {
+  baseSec: number; // 매 턴 주어지는 기본시간
+  bankSec: number; // 판당 적립시간 — 기본시간을 넘겨 쓴 만큼 깎인다
+}
+
+export const TIME_PRESETS: Record<string, TimeRule> = {
+  fast: { baseSec: 3, bankSec: 10 },
+  normal: { baseSec: 5, bankSec: 20 },
+  slow: { baseSec: 10, bankSec: 30 },
+};
+
 export interface MatchState {
   rules: RuleConfig;
   matchLength: MatchLength;
+  timeRule: TimeRule;
   players: MatchPlayerMeta[];
   roundWind: WindKind;
   roundNumber: number;
@@ -49,6 +60,8 @@ export interface HandSummary {
   type: "win" | "draw";
   winners: { seat: number; score: ScoreResult; pointsWon: number }[];
   loserSeat: number | null;
+  deltas: number[]; // 좌석별 점수 증감 — 누가 누구에게 얼마를 줬는지 화면에 그대로 보여준다
+  pointsAfter: number[];
 }
 
 function seatWindsFor(playerCount: number, dealerSeat: number): WindKind[] {
@@ -60,7 +73,7 @@ export function createMatch(
   rules: RuleConfig,
   startPoints: number,
   seatAssignments: { seat: number; userId: string | null; isAi: boolean }[],
-  matchLength: MatchLength = "tonpuusen",
+  opts: { matchLength?: MatchLength; timeRule?: TimeRule } = {},
 ): MatchState {
   const players = seatAssignments
     .slice()
@@ -68,7 +81,8 @@ export function createMatch(
     .map((a) => ({ ...a, points: startPoints }));
   const match: MatchState = {
     rules,
-    matchLength,
+    matchLength: opts.matchLength ?? "tonpuusen",
+    timeRule: opts.timeRule ?? TIME_PRESETS.normal,
     players,
     roundWind: WINDS.E,
     roundNumber: 1,
@@ -87,7 +101,8 @@ export function createMatch(
 function buildHand(match: MatchState): GameState {
   const winds = seatWindsFor(match.rules.playerCount, match.dealerSeat);
   const points = match.players.map((p) => p.points);
-  const game = createGame(match.rules, points, winds);
+  // 적립시간은 매 판 새로 채워진다(작혼과 동일)
+  const game = createGame(match.rules, points, winds, match.timeRule.bankSec * 1000);
   game.roundWind = match.roundWind;
   game.honba = match.honba;
   game.kyotaku = match.kyotaku;
@@ -146,15 +161,28 @@ function finishMatch(match: MatchState): void {
 }
 
 // ── 후리텐: 자기 손패 기준으로 어떤 패라도 대기 형태를 이룬 적이 있으면 그 패들 전부 론 불가 ──
-function isFuriten(hand: GameState, seat: number): boolean {
-  const player = hand.players[seat];
-  const discardedKinds = new Set(player.discards.map((t) => t.kind));
-  if (discardedKinds.size === 0) return false;
-  for (const kind of discardedKinds) {
+// 지금 손패가 기다리는 패 종류들(대기)
+export function waitKinds(player: PlayerState): number[] {
+  const out: number[] = [];
+  for (let kind = 0; kind < 34; kind++) {
     const probe = toCounts([...player.hand, { kind, aka: false }]);
-    if (shanten(probe, player.melds.length) === -1) return true;
+    if (shanten(probe, player.melds.length) === -1) out.push(kind);
   }
-  return false;
+  return out;
+}
+
+// 후리텐 — 셋 다 론을 막는다.
+//  1) 내 버림패에 내 대기패가 하나라도 있으면 (영구)
+//  2) 론을 안 받고 넘긴 경우, 내 다음 버림까지 (일시)
+//  3) 리치 후에 론을 넘겼으면 그 판 끝까지 (영구)
+export function isFuriten(hand: GameState, seat: number): boolean {
+  const player = hand.players[seat];
+  if (player.missedRonPermanent) return true;
+  if (player.missedRonTemp) return true;
+  const waits = waitKinds(player);
+  if (waits.length === 0) return false;
+  const discardedKinds = new Set(player.discards.map((t) => t.kind));
+  return waits.some((k) => discardedKinds.has(k));
 }
 
 export function buildWinContext(
@@ -199,10 +227,15 @@ export function checkWinAtDraw(match: MatchState): ScoreResult | null {
   return scoreWin(ctx, player.isDealer);
 }
 
-function checkWinAtDiscard(match: MatchState, seat: number, discardedTile: Tile): ScoreResult | null {
+function checkWinAtDiscard(
+  match: MatchState,
+  seat: number,
+  discardedTile: Tile,
+  opts: { ignoreFuriten?: boolean } = {},
+): ScoreResult | null {
   const hand = match.hand!;
   const player = hand.players[seat];
-  if (isFuriten(hand, seat)) return null;
+  if (!opts.ignoreFuriten && isFuriten(hand, seat)) return null;
   const ctx = buildWinContext(match, seat, discardedTile, false, { houtei: hand.wall.liveTiles.length === 0 });
   return scoreWin(ctx, player.isDealer);
 }
@@ -241,6 +274,7 @@ export function settleHandWin(
 ): void {
   const hand = match.hand;
   if (!hand || wins.length === 0) return;
+  const before = hand.players.map((p) => p.points);
   const gains = wins.map((w) => applyWinPayment(match, w.seat, w.score, loserSeat));
   const kyotakuBonus = match.kyotaku * 1000;
   hand.players[wins[0].seat].points += kyotakuBonus;
@@ -262,6 +296,8 @@ export function settleHandWin(
     type: "win",
     winners: wins.map((w, i) => ({ ...w, pointsWon: gains[i] })),
     loserSeat,
+    deltas: hand.players.map((p, i) => p.points - before[i]),
+    pointsAfter: hand.players.map((p) => p.points),
   };
   advanceOrFinish(match);
 }
@@ -277,6 +313,7 @@ function hasTenpaiDiscard(hand: Tile[], meldCount: number): boolean {
 export function settleHandDraw(match: MatchState): void {
   const hand = match.hand;
   if (!hand) return;
+  const before = hand.players.map((p) => p.points);
   const playerCount = match.rules.playerCount;
   const tenpaiSeats: number[] = [];
   hand.players.forEach((p, seat) => {
@@ -305,7 +342,13 @@ export function settleHandDraw(match: MatchState): void {
 
   hand.finished = true;
   hand.result = { type: "draw" };
-  match.lastHandSummary = { type: "draw", winners: [], loserSeat: null };
+  match.lastHandSummary = {
+    type: "draw",
+    winners: [],
+    loserSeat: null,
+    deltas: hand.players.map((p, i) => p.points - before[i]),
+    pointsAfter: hand.players.map((p) => p.points),
+  };
   advanceOrFinish(match);
 }
 
@@ -313,11 +356,28 @@ export function performDiscard(match: MatchState, seat: number, tileIndex: numbe
   const hand = match.hand;
   if (!hand) return;
   const player = hand.players[seat];
+  // 리치 후에는 뽑은 패를 그대로 버린다(츠모기리) — 손패를 못 바꾸므로 선택권이 없다
   const finalIndex = player.riichi ? player.hand.length - 1 : tileIndex;
+  consumeTurnTime(match, seat);
   const tile = engineDiscard(hand, seat, finalIndex);
   hand.lastDiscard = { seat, tile };
+  hand.lastCall = null;
+  player.missedRonTemp = false; // 내가 버렸으니 일시 후리텐은 풀린다
+  hand.turnStartedAt = null;
   hand.turnDeadline = null;
   openCallWindowIfNeeded(match, seat, tile);
+}
+
+// 이번 차례에 기본시간을 넘겨 쓴 만큼 적립시간에서 깎는다
+function consumeTurnTime(match: MatchState, seat: number): void {
+  const hand = match.hand;
+  if (!hand || hand.turnStartedAt === null) return;
+  const used = Date.now() - hand.turnStartedAt;
+  const over = used - match.timeRule.baseSec * 1000;
+  if (over > 0) {
+    const p = hand.players[seat];
+    p.timeBankMs = Math.max(0, p.timeBankMs - over);
+  }
 }
 
 function hasChiShape(hand: Tile[], discardKind: number): boolean {
@@ -372,9 +432,14 @@ function openCallWindowIfNeeded(match: MatchState, discardSeat: number, tile: Ti
     if (p.seat === discardSeat) return;
     const canRon = checkWinAtDiscard(match, p.seat, tile) !== null;
     const counts = toCounts(p.hand);
-    const canPon = counts[tile.kind] >= 2;
-    const canKan = counts[tile.kind] >= 3;
-    const canChi = isChiAllowed(match.rules.playerCount) && p.seat === (discardSeat + 1) % n && hasChiShape(p.hand, tile.kind);
+    // 리치한 사람은 손패를 못 바꾼다 — 론만 가능하고 퐁·치·깡은 불가
+    const canPon = !p.riichi && counts[tile.kind] >= 2;
+    const canKan = !p.riichi && counts[tile.kind] >= 3;
+    const canChi =
+      !p.riichi &&
+      isChiAllowed(match.rules.playerCount) &&
+      p.seat === (discardSeat + 1) % n &&
+      hasChiShape(p.hand, tile.kind);
     if (!canRon && !canPon && !canKan && !canChi) return;
     if (p.isAi) {
       responses[p.seat] = aiDecideCall(p, tile, { canRon, canPon, canKan, canChi });
@@ -444,7 +509,11 @@ function applyCallMeld(
   hand.lastDiscard = null;
   hand.pendingCall = null;
   hand.turn = callerSeat;
+  hand.turnStartedAt = null;
   hand.turnDeadline = null;
+  hand.lastCall = { seat: callerSeat, fromSeat: discardSeat, type, tile, at: Date.now() };
+  // 울고 바로 버리면 한 화면에 겹쳐 보인다 — 울린 걸 볼 수 있게 한 박자 쉰다
+  hand.aiPauseUntil = Date.now() + AI_TURN_DELAY_MS;
 
   if (type === "minkan") {
     revealNextDora(hand.wall);
@@ -463,6 +532,16 @@ function resolveCallResponses(
   const ronSeats = Object.entries(responses)
     .filter(([, v]) => v === "ron")
     .map(([k]) => Number(k));
+
+  // 론이 가능했는데 안 잡은 사람은 후리텐이 붙는다(리치 중이면 그 판 내내)
+  for (const [key, res] of Object.entries(responses)) {
+    const s = Number(key);
+    if (res === "ron") continue;
+    if (checkWinAtDiscard(match, s, tile, { ignoreFuriten: true }) === null) continue;
+    const p = hand.players[s];
+    if (p.riichi) p.missedRonPermanent = true;
+    else p.missedRonTemp = true;
+  }
   if (ronSeats.length > 0) {
     applyMultiRon(match, discardSeat, tile, ronSeats);
     return;
@@ -538,18 +617,39 @@ export function declareKakan(match: MatchState, seat: number): boolean {
   return true;
 }
 
-export function declareRiichi(match: MatchState, seat: number): boolean {
+// 리치는 "버릴 패를 고르면서" 선언한다(작혼과 동일). tileIndex 를 버려도 텐파이가 유지돼야 한다.
+// 1000점을 공탁으로 내고, 그 판이 끝날 때 화료자가 가져간다.
+export function declareRiichi(match: MatchState, seat: number, tileIndex: number): boolean {
   const hand = match.hand;
   if (!hand || hand.turn !== seat || hand.pendingCall) return false;
   const player = hand.players[seat];
   if (player.riichi) return false;
   if (player.melds.some((m) => m.type !== "ankan")) return false;
   if (player.points < 1000) return false;
-  if (!hasTenpaiDiscard(player.hand, player.melds.length)) return false;
+  if (!riichiDiscardIndexes(player).includes(tileIndex)) return false;
+
+  player.points -= 1000;
+  match.players[seat].points = player.points;
+  match.kyotaku += 1;
+  hand.kyotaku = match.kyotaku;
   player.riichi = true;
   player.riichiTurn = hand.turnCount;
-  hand.turnDeadline = null;
+  performDiscard(match, seat, tileIndex);
   return true;
+}
+
+// 리치를 걸 수 있는 버림패 후보 — 버린 뒤에도 텐파이가 유지되는 패들
+export function riichiDiscardIndexes(player: PlayerState): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < player.hand.length; i++) {
+    const kind = player.hand[i].kind;
+    if (seen.has(kind)) continue;
+    seen.add(kind);
+    const remaining = [...player.hand.slice(0, i), ...player.hand.slice(i + 1)];
+    if (shanten(toCounts(remaining), player.melds.length) === 0) out.push(i);
+  }
+  return out;
 }
 
 export function declareKitaInMatch(match: MatchState, seat: number): boolean {
@@ -566,6 +666,7 @@ export function declareKitaInMatch(match: MatchState, seat: number): boolean {
 export interface LegalActions {
   canTsumo: boolean;
   canRiichi: boolean;
+  riichiTiles: number[]; // 리치를 걸며 버릴 수 있는 손패 인덱스 — 눌러서 고른다
   ankanKinds: number[];
   canKakan: boolean;
   canKita: boolean;
@@ -574,7 +675,7 @@ export interface LegalActions {
 export function legalActionsFor(match: MatchState, seat: number): LegalActions {
   const hand = match.hand;
   if (!hand || hand.turn !== seat || hand.pendingCall || hand.finished) {
-    return { canTsumo: false, canRiichi: false, ankanKinds: [], canKakan: false, canKita: false };
+    return { canTsumo: false, canRiichi: false, riichiTiles: [], ankanKinds: [], canKakan: false, canKita: false };
   }
   const player = hand.players[seat];
   const counts = toCounts(player.hand);
@@ -587,9 +688,11 @@ export function legalActionsFor(match: MatchState, seat: number): LegalActions {
   const canKakan =
     !player.riichi &&
     player.melds.some((m) => m.type === "pon" && m.kind === player.hand[player.hand.length - 1]?.kind);
+  const riichiTiles = declareRiichiPreview(match, seat) ? riichiDiscardIndexes(player) : [];
   return {
     canTsumo: checkWinAtDraw(match) !== null,
-    canRiichi: declareRiichiPreview(match, seat),
+    canRiichi: riichiTiles.length > 0,
+    riichiTiles,
     ankanKinds,
     canKakan,
     canKita: match.rules.playerCount === 3 && player.hand.some((t) => t.kind === WINDS.N),
@@ -603,6 +706,52 @@ function declareRiichiPreview(match: MatchState, seat: number): boolean {
   if (player.melds.some((m) => m.type !== "ankan")) return false;
   if (player.points < 1000) return false;
   return hasTenpaiDiscard(player.hand, player.melds.length);
+}
+
+// 텐파이 정보 — 무엇을 기다리는지 + 그 패가 몇 장 남았는지(보이는 패를 빼고 계산)
+export interface TenpaiInfo {
+  waits: { kind: number; remaining: number }[];
+  furiten: boolean;
+}
+
+export function tenpaiInfoFor(match: MatchState, seat: number): TenpaiInfo | null {
+  const hand = match.hand;
+  if (!hand) return null;
+  const player = hand.players[seat];
+  // 14장 들고 있으면(내 차례) 한 장 뺀 최선의 대기를 보여준다
+  const base =
+    player.hand.length % 3 === 2
+      ? bestWaitAfterDiscard(player)
+      : waitKinds(player).map((kind) => ({ kind }));
+  if (base.length === 0) return null;
+
+  const seen = new Array(34).fill(0);
+  hand.players.forEach((p) => {
+    p.discards.forEach((t) => seen[t.kind]++);
+    p.melds.forEach((m) => m.tiles.forEach((t) => seen[t.kind]++));
+  });
+  player.hand.forEach((t) => seen[t.kind]++);
+  hand.wall.doraIndicators.forEach((k) => seen[k]++);
+
+  return {
+    waits: base.map(({ kind }) => ({ kind, remaining: Math.max(0, 4 - seen[kind]) })),
+    furiten: isFuriten(hand, seat),
+  };
+}
+
+function bestWaitAfterDiscard(player: PlayerState): { kind: number }[] {
+  const seenKinds = new Set<number>();
+  const best: number[] = [];
+  for (let i = 0; i < player.hand.length; i++) {
+    const kind = player.hand[i].kind;
+    if (seenKinds.has(kind)) continue;
+    seenKinds.add(kind);
+    const remaining = [...player.hand.slice(0, i), ...player.hand.slice(i + 1)];
+    if (shanten(toCounts(remaining), player.melds.length) !== 0) continue;
+    const probe: PlayerState = { ...player, hand: remaining };
+    for (const k of waitKinds(probe)) if (!best.includes(k)) best.push(k);
+  }
+  return best.map((kind) => ({ kind }));
 }
 
 // 서버 진입점 — 콜 윈도우 타임아웃 정리 + AI 턴 진행.
@@ -629,7 +778,7 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
     const player = hand.players[seat];
 
     if (!player.isAi) {
-      // 사람 차례 — 타임아웃 전에는 대기(폴링/액션이 다시 pump 를 부를 때까지)
+      // 사람 차례 — 먼저 패를 뽑아주고, 기본시간+적립시간이 남아 있으면 조작을 기다린다
       const needsDrawForHuman = player.hand.length % 3 !== 2;
       if (needsDrawForHuman) {
         const tile = drawForCurrentPlayer(hand);
@@ -638,12 +787,19 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
           return;
         }
       }
-      if (hand.turnDeadline === null) {
-        hand.turnDeadline = Date.now() + TURN_TIMEOUT_MS;
+      if (hand.turnStartedAt === null) {
+        hand.turnStartedAt = Date.now();
+        hand.turnDeadline = Date.now() + match.timeRule.baseSec * 1000 + player.timeBankMs;
+      }
+      if (!instant && Date.now() < hand.turnDeadline!) return;
+      // 시간 초과 — 적립시간을 다 쓴 것으로 보고 자동 츠모기리(방금 뽑은 패를 그대로 버린다)
+      player.timeBankMs = 0;
+      performDiscard(match, seat, player.hand.length - 1);
+      if (!instant && match.hand) {
+        match.hand.aiPauseUntil = Date.now() + AI_TURN_DELAY_MS;
         return;
       }
-      if (Date.now() < hand.turnDeadline) return;
-      // 타임아웃 — 자리비움으로 보고 이번 턴만 AI 휴리스틱으로 대신 진행(재접속하면 다시 직접 조작)
+      continue;
     } else if (!instant && hand.aiPauseUntil !== null && Date.now() < hand.aiPauseUntil) {
       return; // 아직 이 AI 의 차례 텀이 안 지났다 — 클라이언트가 직전 수를 보고 있는 중
     }
@@ -672,8 +828,16 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
       continue;
     }
 
-    if (declareRiichiPreview(match, seat)) {
-      declareRiichi(match, seat);
+    // 리치 선언은 버릴 패 선택까지 한 번에 처리된다(declareRiichi 안에서 버림)
+    if (!player.riichi && declareRiichiPreview(match, seat)) {
+      const candidates = riichiDiscardIndexes(player);
+      if (candidates.length > 0 && declareRiichi(match, seat, candidates[0])) {
+        if (!instant && match.hand) {
+          match.hand.aiPauseUntil = Date.now() + AI_TURN_DELAY_MS;
+          return;
+        }
+        continue;
+      }
     }
 
     const discardTile = player.riichi ? player.hand[player.hand.length - 1] : chooseDiscard(player.hand, player.melds.length);

@@ -1,5 +1,14 @@
 import type { MahjongTable, MahjongSeat } from "@/generated/prisma";
-import { legalActionsFor, type LegalActions, type MatchState, type Meld, type ScoreResult, type Tile } from "@/lib/mahjong";
+import {
+  legalActionsFor,
+  tenpaiInfoFor,
+  type LegalActions,
+  type MatchState,
+  type Meld,
+  type ScoreResult,
+  type TenpaiInfo,
+  type Tile,
+} from "@/lib/mahjong";
 
 export type MahjongSeatView = {
   seatIndex: number;
@@ -43,7 +52,12 @@ export type MahjongHandView = {
       }
     | null;
   lastDiscard: { seat: number; tile: Tile } | null;
+  lastCall: { seat: number; fromSeat: number; type: "pon" | "chi" | "minkan"; tile: Tile } | null;
   legalActions: LegalActions | null;
+  tenpai: TenpaiInfo | null; // 내 텐파이 정보(대기·잔여 매수·후리텐) — 관전자는 null
+  turnDeadline: number | null;
+  timeBaseSec: number;
+  timeBankMs: number[]; // 좌석별 남은 적립시간
   result: { type: "win" | "draw"; winners?: number[]; loserSeat?: number | null } | null;
 };
 
@@ -64,6 +78,8 @@ export type MahjongHandSummaryView = {
   type: "win" | "draw";
   winners: { seat: number; score: ScoreResult; pointsWon: number }[];
   loserSeat: number | null;
+  deltas: number[];
+  pointsAfter: number[];
 };
 
 export function buildMahjongSnapshot(
@@ -125,7 +141,19 @@ export function buildMahjongSnapshot(
           }
         : null,
       lastDiscard: gameHand.lastDiscard,
+      lastCall: gameHand.lastCall
+        ? {
+            seat: gameHand.lastCall.seat,
+            fromSeat: gameHand.lastCall.fromSeat,
+            type: gameHand.lastCall.type,
+            tile: gameHand.lastCall.tile,
+          }
+        : null,
       legalActions: mySeatIndex !== null ? legalActionsFor(match, mySeatIndex) : null,
+      tenpai: mySeatIndex !== null ? tenpaiInfoFor(match, mySeatIndex) : null,
+      turnDeadline: gameHand.turnDeadline,
+      timeBaseSec: match.timeRule.baseSec,
+      timeBankMs: gameHand.players.map((p) => p.timeBankMs),
       result: gameHand.result,
     };
   }
@@ -145,6 +173,8 @@ export function buildMahjongSnapshot(
           type: match.lastHandSummary.type,
           winners: match.lastHandSummary.winners,
           loserSeat: match.lastHandSummary.loserSeat,
+          deltas: match.lastHandSummary.deltas,
+          pointsAfter: match.lastHandSummary.pointsAfter,
         }
       : null,
   };

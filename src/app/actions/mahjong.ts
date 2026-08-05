@@ -12,6 +12,7 @@ import {
   TIERS_3P,
   TIERS_4P,
   createMatch,
+  TIME_PRESETS,
   pump,
   performDiscard,
   declareAnkan,
@@ -30,8 +31,9 @@ import {
 
 export type MahjongActionState = { ok: boolean; message: string };
 
-export type MahjongSettings = { matchLength: MatchLength; kuitan: boolean };
-const DEFAULT_SETTINGS: MahjongSettings = { matchLength: "tonpuusen", kuitan: true };
+export type TimePreset = "fast" | "normal" | "slow";
+export type MahjongSettings = { matchLength: MatchLength; kuitan: boolean; timePreset: TimePreset };
+const DEFAULT_SETTINGS: MahjongSettings = { matchLength: "tonpuusen", kuitan: true, timePreset: "normal" };
 
 function parseSettings(json: string | null | undefined): MahjongSettings {
   if (!json) return DEFAULT_SETTINGS;
@@ -40,6 +42,8 @@ function parseSettings(json: string | null | undefined): MahjongSettings {
     return {
       matchLength: parsed.matchLength === "hanchan" ? "hanchan" : "tonpuusen",
       kuitan: parsed.kuitan !== false,
+      timePreset:
+        parsed.timePreset === "fast" || parsed.timePreset === "slow" ? parsed.timePreset : "normal",
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -119,9 +123,11 @@ export async function createMahjongTable(
   const playerCount = Number(formData.get("playerCount")) === 3 ? 3 : 4;
   const tierKey = String(formData.get("tier") ?? "low");
   const tier = tierConfigOf(playerCount, tierKey);
+  const rawPreset = String(formData.get("timePreset") ?? "normal");
   const settings: MahjongSettings = {
     matchLength: formData.get("matchLength") === "hanchan" ? "hanchan" : "tonpuusen",
     kuitan: formData.get("kuitan") !== "off",
+    timePreset: rawPreset === "fast" || rawPreset === "slow" ? rawPreset : "normal",
   };
 
   if ((check.sheet.curGold ?? 0) < tier.gold) {
@@ -233,7 +239,7 @@ async function startTable(
     rules,
     tier.startPoints,
     seats.map((s) => ({ seat: s.seatIndex, userId: s.userId, isAi: s.isAi })),
-    settings.matchLength,
+    { matchLength: settings.matchLength, timeRule: TIME_PRESETS[settings.timePreset] },
   );
   pump(match);
 
@@ -331,7 +337,7 @@ async function settleMatchGold(
 export type MahjongPlayAction =
   | { type: "discard"; tileIndex: number }
   | { type: "tsumo" }
-  | { type: "riichi" }
+  | { type: "riichi"; tileIndex: number }
   | { type: "ankan"; kind: number }
   | { type: "kakan" }
   | { type: "kita" }
@@ -366,13 +372,10 @@ export async function submitPlayerAction(tableId: string, action: MahjongPlayAct
         if (score) settleHandWin(match, [{ seat, score }], null);
         break;
       }
-      case "riichi": {
-        const declared = declareRiichi(match, seat);
-        if (declared && match.hand) {
-          performDiscard(match, seat, match.hand.players[seat].hand.length - 1);
-        }
+      case "riichi":
+        // 리치는 버릴 패를 고르면서 선언한다 — declareRiichi 안에서 버림까지 처리
+        declareRiichi(match, seat, action.tileIndex);
         break;
-      }
       case "ankan":
         declareAnkan(match, seat, action.kind);
         break;

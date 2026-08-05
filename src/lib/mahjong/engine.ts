@@ -15,6 +15,9 @@ export interface PlayerState {
   isDealer: boolean;
   seatWind: WindKind;
   kitaCount: number;
+  timeBankMs: number; // 기본시간을 넘겨 쓴 만큼 깎이는 판당 적립시간(작혼과 동일)
+  missedRonTemp: boolean; // 론을 넘겨서 생긴 일시 후리텐 — 내가 다음 패를 버리면 풀린다
+  missedRonPermanent: boolean; // 리치 후 론을 넘겼다 — 그 판 끝까지 론 불가
 }
 
 export interface CallOptions {
@@ -39,6 +42,15 @@ export interface HandResult {
   loserSeat?: number | null;
 }
 
+// 방금 성립한 울기 — "누가 누구에게서 무엇을 받았는지"를 화면에 잠깐 띄우기 위한 정보
+export interface LastCall {
+  seat: number;
+  fromSeat: number;
+  type: "pon" | "chi" | "minkan";
+  tile: Tile;
+  at: number;
+}
+
 export interface GameState {
   rules: RuleConfig;
   wall: Wall;
@@ -51,12 +63,19 @@ export interface GameState {
   finished: boolean;
   pendingCall: CallWindow | null;
   lastDiscard: { seat: number; tile: Tile } | null;
+  lastCall: LastCall | null;
   result: HandResult | null;
-  turnDeadline: number | null; // 사람 차례가 너무 오래 비어있으면(이탈) AI 휴리스틱으로 대신 진행
+  turnStartedAt: number | null; // 현재 차례가 시작된 시각 — 소모 시간 계산용
+  turnDeadline: number | null; // 기본시간+적립시간이 끝나는 시각. 넘기면 자동 츠모기리
   aiPauseUntil: number | null; // AI가 한 번에 여러 턴을 몰아치지 않게 — 한 수씩 보이도록 텀을 둔다
 }
 
-export function createGame(rules: RuleConfig, points: number[], seatWinds: WindKind[]): GameState {
+export function createGame(
+  rules: RuleConfig,
+  points: number[],
+  seatWinds: WindKind[],
+  timeBankMs = 0,
+): GameState {
   const { hands, wall } = dealWall(rules.playerCount);
   const players: PlayerState[] = hands.map((hand, i) => ({
     seat: i,
@@ -70,6 +89,9 @@ export function createGame(rules: RuleConfig, points: number[], seatWinds: WindK
     isDealer: seatWinds[i] === 27,
     seatWind: seatWinds[i],
     kitaCount: 0,
+    timeBankMs,
+    missedRonTemp: false,
+    missedRonPermanent: false,
   }));
   return {
     rules,
@@ -83,7 +105,9 @@ export function createGame(rules: RuleConfig, points: number[], seatWinds: WindK
     finished: false,
     pendingCall: null,
     lastDiscard: null,
+    lastCall: null,
     result: null,
+    turnStartedAt: null,
     turnDeadline: null,
     aiPauseUntil: null,
   };

@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { createContext, useContext, useRef, useState, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePolling } from "@/lib/usePolling";
@@ -11,41 +12,159 @@ import {
   submitPlayerAction,
   type MahjongPlayAction,
 } from "@/app/actions/mahjong";
-import type { MahjongHandSummaryView, MahjongPlayerView, MahjongSnapshot } from "@/lib/mahjongSnapshot";
+import type {
+  MahjongHandSummaryView,
+  MahjongHandView,
+  MahjongPlayerView,
+  MahjongSnapshot,
+} from "@/lib/mahjongSnapshot";
 import { isHonor, numOf, suitOf, type ScoreResult, type Tile } from "@/lib/mahjong";
 
 const WIND_LABEL: Record<number, string> = { 27: "동", 28: "남", 29: "서", 30: "북" };
 const TIER_LABEL: Record<string, string> = { low: "저가", mid: "중가", high: "고가" };
-const HONOR_LABEL = ["", "東", "南", "西", "北", "白", "發", "中"];
 const SUIT_TEXT: Record<string, string> = { m: "text-rose-600", p: "text-sky-600", s: "text-emerald-600", z: "text-slate-700" };
-const SUIT_MARK: Record<string, string> = { m: "萬", p: "筒", s: "索", z: "" };
 
-function faceLabel(kind: number): string {
-  return isHonor(kind) ? HONOR_LABEL[numOf(kind)] : String(numOf(kind));
+// 표기법 — 개인 설정(보는 사람마다 다름). 한자는 작혼과 같은 표기, 한글은 읽기 쉬운 표기.
+type Notation = "hanja" | "hangul";
+const NOTATION_KEY = "mahjong.notation";
+const HONOR_HANJA = ["", "東", "南", "西", "北", "白", "發", "中"];
+const HONOR_HANGUL = ["", "동", "남", "서", "북", "백", "발", "중"];
+const SUIT_MARK_HANJA: Record<string, string> = { m: "萬", p: "筒", s: "索", z: "" };
+const SUIT_MARK_HANGUL: Record<string, string> = { m: "만", p: "통", s: "삭", z: "" };
+
+const NotationContext = createContext<Notation>("hanja");
+const useNotation = () => useContext(NotationContext);
+
+// localStorage 를 외부 스토어로 구독한다 — 이펙트에서 setState 하지 않아 하이드레이션도 안전하다
+let notationCache: Notation | null = null;
+const notationListeners = new Set<() => void>();
+function readNotation(): Notation {
+  if (notationCache === null) {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(NOTATION_KEY) : null;
+    notationCache = saved === "hangul" ? "hangul" : "hanja";
+  }
+  return notationCache;
+}
+function writeNotation(next: Notation) {
+  notationCache = next;
+  if (typeof window !== "undefined") window.localStorage.setItem(NOTATION_KEY, next);
+  notationListeners.forEach((l) => l());
+}
+function subscribeNotation(cb: () => void) {
+  notationListeners.add(cb);
+  return () => {
+    notationListeners.delete(cb);
+  };
+}
+
+function faceLabelIn(kind: number, notation: Notation): string {
+  if (!isHonor(kind)) return String(numOf(kind));
+  return (notation === "hangul" ? HONOR_HANGUL : HONOR_HANJA)[numOf(kind)];
+}
+function suitMarkIn(suit: string, notation: Notation): string {
+  return (notation === "hangul" ? SUIT_MARK_HANGUL : SUIT_MARK_HANJA)[suit] ?? "";
 }
 
 // 내 손패 타일 — 14장이 한 줄에 들어가도록 화면 폭에 맞춰 줄어든다
-function TileFace({ tile, onClick, disabled }: { tile: Tile; onClick?: () => void; disabled?: boolean }) {
+function TileFace({
+  tile,
+  onClick,
+  disabled,
+  dimmed,
+  highlight,
+  onHoverKind,
+}: {
+  tile: Tile;
+  onClick?: () => void;
+  disabled?: boolean;
+  dimmed?: boolean;
+  highlight?: boolean;
+  onHoverKind?: (kind: number | null) => void;
+}) {
   const suit = suitOf(tile.kind);
-  const interactive = !!onClick;
+  const notation = useNotation();
+  // 네이티브 disabled 를 쓰면 크롬이 마우스 이벤트를 죽여서 hover 로 버림패를 못 훑는다.
+  // 수비를 위해 남의 차례에도 훑어봐야 하므로 aria-disabled 로만 막는다.
+  const clickable = !!onClick && !disabled;
   return (
     <button
       type="button"
-      disabled={!interactive || disabled}
-      onClick={onClick}
+      aria-disabled={!clickable}
+      onClick={clickable ? onClick : undefined}
+      onMouseEnter={() => onHoverKind?.(tile.kind)}
+      onMouseLeave={() => onHoverKind?.(null)}
+      onFocus={() => onHoverKind?.(tile.kind)}
+      onBlur={() => onHoverKind?.(null)}
       style={{ width: "var(--htw)", height: "calc(var(--htw) * 1.5)" }}
-      className={`relative flex shrink-0 items-center justify-center rounded-lg border border-line bg-white shadow-sm ${SUIT_TEXT[suit]} ${
-        interactive ? "transition hover:-translate-y-1 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" : ""
-      }`}
+      className={`relative flex shrink-0 items-center justify-center rounded-lg border bg-white shadow-sm ${SUIT_TEXT[suit]} ${
+        highlight ? "border-rose-500 ring-2 ring-rose-300" : "border-line"
+      } ${dimmed ? "opacity-35" : ""} ${
+        clickable ? "transition hover:-translate-y-1 hover:shadow-md" : "cursor-default"
+      } ${disabled && !dimmed ? "opacity-60" : ""}`}
     >
       <span className="font-black leading-none" style={{ fontSize: "calc(var(--htw) * 0.58)" }}>
-        {faceLabel(tile.kind)}
+        {faceLabelIn(tile.kind, notation)}
       </span>
       {!isHonor(tile.kind) && (
-        <span className="absolute bottom-0.5 text-[8px] font-bold opacity-70">{SUIT_MARK[suit]}</span>
+        <span className="absolute bottom-0.5 text-[8px] font-bold opacity-70">{suitMarkIn(suit, notation)}</span>
       )}
       {tile.aka && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-rose-500" />}
     </button>
+  );
+}
+
+// 초 단위 시계 — Date.now() 를 렌더 중에 부르면 서버/클라 값이 달라 하이드레이션이 깨진다.
+// 외부 스토어로 구독해 서버 렌더에서는 0(=표시 안 함)을 주고, 마운트 후에만 시간을 그린다.
+let tickNow = 0;
+const tickListeners = new Set<() => void>();
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+function subscribeTick(cb: () => void) {
+  tickListeners.add(cb);
+  if (tickTimer === null) {
+    tickTimer = setInterval(() => {
+      tickNow = Date.now();
+      tickListeners.forEach((l) => l());
+    }, 250);
+  }
+  return () => {
+    tickListeners.delete(cb);
+    if (tickListeners.size === 0 && tickTimer !== null) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
+  };
+}
+function getTick() {
+  if (tickNow === 0) tickNow = Date.now();
+  return tickNow;
+}
+const getServerTick = () => 0;
+
+// 남은 시간 — 기본시간이 끝나면 적립시간을 까먹기 시작한다(작혼과 동일)
+function TurnClock({
+  hand,
+  mySeat,
+  isMyTurn,
+}: {
+  hand: MahjongHandView;
+  mySeat: number | null;
+  isMyTurn: boolean;
+}) {
+  const now = useSyncExternalStore(subscribeTick, getTick, getServerTick);
+  if (now === 0 || hand.turnDeadline === null || mySeat === null) return null;
+  const left = Math.max(0, hand.turnDeadline - now);
+  const bank = hand.timeBankMs[hand.turn] ?? 0;
+  const inBase = left > bank;
+  const shown = Math.ceil((inBase ? left - bank : left) / 1000);
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums ${
+        isMyTurn ? (inBase ? "bg-brand-50 text-brand-700" : "bg-rose-500 text-white") : "bg-subtle text-muted"
+      }`}
+      title={inBase ? "기본시간" : "적립시간 소모 중"}
+    >
+      {shown}s{!inBase && " ⏳"}
+    </span>
   );
 }
 
@@ -55,26 +174,29 @@ function SmallTile({
   tile,
   faded,
   highlight,
+  marked,
   spin = 0,
 }: {
   tile: Tile;
   faded?: boolean;
   highlight?: boolean;
+  marked?: boolean; // 손패에 마우스를 올린 패와 같은 종류 — 버림패 어디에 있는지 회색으로 표시
   spin?: number;
 }) {
   const suit = suitOf(tile.kind);
+  const notation = useNotation();
   return (
     <span
       style={{ width: "var(--tw)", height: "var(--th)" }}
-      className={`relative flex shrink-0 items-center justify-center rounded-[3px] border bg-white font-black shadow-sm ${SUIT_TEXT[suit]} ${
-        highlight ? "border-amber-400 ring-2 ring-amber-300" : "border-black/20"
-      } ${faded ? "opacity-60" : ""}`}
+      className={`relative flex shrink-0 items-center justify-center rounded-[3px] border font-black shadow-sm ${SUIT_TEXT[suit]} ${
+        marked ? "bg-slate-400 ring-2 ring-slate-500" : "bg-white"
+      } ${highlight ? "border-amber-400 ring-2 ring-amber-300" : "border-black/20"} ${faded ? "opacity-60" : ""}`}
     >
       <span
         className="leading-none"
         style={{ transform: `rotate(${-spin}deg)`, fontSize: "calc(var(--tw) * 0.62)" }}
       >
-        {faceLabel(tile.kind)}
+        {faceLabelIn(tile.kind, notation)}
       </span>
       {tile.aka && <span className="absolute right-0 top-0 h-1 w-1 rounded-full bg-rose-500" />}
     </span>
@@ -92,34 +214,85 @@ function TileBack() {
 }
 
 // 버림패 더미(河) — 작탁처럼 6장씩 줄바꿈해서 쌓인다
-function Pond({ tiles, highlightLast, spin }: { tiles: Tile[]; highlightLast: boolean; spin: number }) {
+function Pond({
+  tiles,
+  highlightLast,
+  spin,
+  markKind,
+}: {
+  tiles: Tile[];
+  highlightLast: boolean;
+  spin: number;
+  markKind: number | null;
+}) {
   return (
     <div
       className="grid grid-cols-6 content-start gap-[2px] rounded bg-black/15 p-1"
       style={{ minHeight: "calc(var(--th) * 2)", width: "calc(var(--tw) * 6 + 18px)" }}
     >
       {tiles.map((t, i) => (
-        <SmallTile key={i} tile={t} spin={spin} highlight={highlightLast && i === tiles.length - 1} />
+        <SmallTile
+          key={i}
+          tile={t}
+          spin={spin}
+          highlight={highlightLast && i === tiles.length - 1}
+          marked={markKind !== null && t.kind === markKind}
+        />
       ))}
     </div>
   );
 }
 
-// 울은 패(퐁·치·깡) — 부른 순서가 아니라 패 순서로 정렬해 보여준다(치가 "2 3 1"로 보이지 않게).
-function MeldRow({ melds, spin }: { melds: MahjongPlayerView["melds"]; spin: number }) {
+// 울은 패(퐁·치·깡) — 마작 표준대로 "가져온 패"를 눕혀서 표시하고, 그 위치로 누구에게서
+// 받았는지 나타낸다: 왼쪽=상가(내 앞사람), 가운데=대면, 오른쪽=하가(내 뒷사람).
+function MeldRow({
+  melds,
+  spin,
+  ownerSeat,
+  playerCount,
+  markKind,
+}: {
+  melds: MahjongPlayerView["melds"];
+  spin: number;
+  ownerSeat: number;
+  playerCount: number;
+  markKind: number | null;
+}) {
   if (melds.length === 0) return null;
   return (
     <div className="flex flex-wrap justify-center gap-1">
-      {melds.map((m, i) => (
-        <div key={i} className="flex gap-[2px] rounded bg-black/25 p-[2px]">
-          {m.tiles
-            .slice()
-            .sort((a, b) => a.kind - b.kind)
-            .map((t, j) => (
-              <SmallTile key={j} tile={t} spin={spin} />
-            ))}
-        </div>
-      ))}
+      {melds.map((m, i) => {
+        const rest = m.tiles.slice();
+        let called: Tile | null = null;
+        if (m.calledFrom != null && m.type !== "ankan") called = rest.pop() ?? null;
+        rest.sort((a, b) => a.kind - b.kind);
+
+        // 부른 사람 기준 상대 위치 → 눕힌 패를 왼쪽/가운데/오른쪽 어디에 끼울지
+        const rel = m.calledFrom != null ? (m.calledFrom - ownerSeat + playerCount) % playerCount : -1;
+        const insertAt = rel === playerCount - 1 ? 0 : rel === 1 ? rest.length : Math.min(1, rest.length);
+        const parts: ReactNode[] = rest.map((t, j) => (
+          <SmallTile key={`r${j}`} tile={t} spin={spin} marked={markKind !== null && t.kind === markKind} />
+        ));
+        if (called) {
+          parts.splice(
+            insertAt,
+            0,
+            <span
+              key="called"
+              className="inline-flex"
+              style={{ transform: "rotate(90deg)", width: "var(--th)", height: "var(--tw)" }}
+              title={`${WIND_LABEL[0] ?? ""}가져온 패`}
+            >
+              <SmallTile tile={called} spin={spin + 90} marked={markKind !== null && called.kind === markKind} />
+            </span>,
+          );
+        }
+        return (
+          <div key={i} className="flex items-center gap-[2px] rounded bg-black/25 p-[2px]">
+            {parts}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -166,6 +339,8 @@ function SeatLayer({
   isMe,
   lastDiscardSeat,
   spin,
+  playerCount,
+  markKind,
 }: {
   player: MahjongPlayerView;
   nickname: string;
@@ -173,12 +348,25 @@ function SeatLayer({
   isMe: boolean;
   lastDiscardSeat: number | null;
   spin: number;
+  playerCount: number;
+  markKind: number | null;
 }) {
   return (
     <div className="absolute inset-0" style={{ transform: `rotate(${spin}deg)` }}>
       <div className="absolute inset-x-0 bottom-1 flex flex-col items-center gap-[3px]">
-        <Pond tiles={player.discards} highlightLast={lastDiscardSeat === player.seat} spin={spin} />
-        <MeldRow melds={player.melds} spin={spin} />
+        <Pond
+          tiles={player.discards}
+          highlightLast={lastDiscardSeat === player.seat}
+          spin={spin}
+          markKind={markKind}
+        />
+        <MeldRow
+          melds={player.melds}
+          spin={spin}
+          ownerSeat={player.seat}
+          playerCount={playerCount}
+          markKind={markKind}
+        />
         {!isMe && (
           <>
             {/* 좁은 화면에선 뒷면 13장을 다 그리면 자리가 안 나온다 — 장수만 표시 */}
@@ -202,6 +390,22 @@ function SeatLayer({
         </div>
       </div>
     </div>
+  );
+}
+
+const CALL_LABEL: Record<string, string> = { pon: "퐁", chi: "치", minkan: "깡" };
+
+function seatLabel(snap: MahjongSnapshot, seat: number): string {
+  if (seat === snap.mySeatIndex) return "나";
+  return snap.seats.find((s) => s.seatIndex === seat)?.nickname ?? `${seat + 1}번 자리`;
+}
+
+// 회전과 무관한 자리(배너·결과창)에서 쓰는 타일 — 작탁 CSS 변수 밖에서도 크기가 잡히게
+function SmallTileStatic({ tile }: { tile: Tile }) {
+  return (
+    <span style={{ ["--tw" as string]: "18px", ["--th" as string]: "24px" }} className="inline-flex">
+      <SmallTile tile={tile} />
+    </span>
   );
 }
 
@@ -242,7 +446,7 @@ function HandSummaryOverlay({
 }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-3xl border border-line bg-surface p-5 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-5 shadow-xl">
         <h3 className="text-lg font-black text-content">{summary.type === "win" ? "🀄 화료!" : "유국"}</h3>
         <div className="mt-3 space-y-2">
           {summary.type === "win" ? (
@@ -260,6 +464,27 @@ function HandSummaryOverlay({
           ) : (
             <p className="text-sm text-faint">아무도 화료하지 못했어요. 텐파이한 사람이 노텐인 사람에게서 점수를 받습니다.</p>
           )}
+        </div>
+
+        {/* 누가 누구에게 얼마를 줬는지 — 좌석별 증감 */}
+        <div className="mt-4 space-y-1">
+          <p className="text-xs font-extrabold text-faint">점수 이동</p>
+          {summary.deltas.map((d, seat) => (
+            <div key={seat} className="flex items-center gap-2 rounded-xl bg-canvas px-3 py-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-content">{seatName(seat)}</span>
+              <span
+                className={`shrink-0 text-sm font-black tabular-nums ${
+                  d > 0 ? "text-emerald-600" : d < 0 ? "text-rose-600" : "text-faint"
+                }`}
+              >
+                {d > 0 ? "+" : ""}
+                {d.toLocaleString()}
+              </span>
+              <span className="w-16 shrink-0 text-right text-xs font-bold tabular-nums text-muted">
+                {summary.pointsAfter[seat].toLocaleString()}
+              </span>
+            </div>
+          ))}
         </div>
         <button
           type="button"
@@ -435,13 +660,19 @@ function LiveTable({
   act,
   busy,
   error,
+  onToggleNotation,
 }: {
   snap: MahjongSnapshot;
   act: (action: MahjongPlayAction) => void;
   busy: boolean;
   error: string | null;
+  onToggleNotation: () => void;
 }) {
   const [summaryDismissed, setSummaryDismissed] = useState<string | null>(null);
+  const [riichiArming, setRiichiArming] = useState(false);
+  const [showWaits, setShowWaits] = useState(false);
+  const [hoverKind, setHoverKind] = useState<number | null>(null);
+  const notation = useNotation();
   const hand = snap.hand!;
   const mySeat = snap.mySeatIndex;
   const order = mySeat !== null ? seatOrder(mySeat, snap.playerCount) : Array.from({ length: snap.playerCount }, (_, i) => i);
@@ -480,6 +711,16 @@ function LiveTable({
     <div className="mx-auto max-w-3xl space-y-3 px-3 py-4">
       {error && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-600">{error}</p>}
 
+      {/* 방금 누가 누구에게서 울었는지 — 한 박자 쉬는 동안 여기에 뜬다 */}
+      {hand.lastCall && (
+        <p className="flex items-center justify-center gap-2 rounded-xl bg-brand-50 px-3 py-2 text-xs font-black text-brand-700">
+          {seatLabel(snap, hand.lastCall.seat)}
+          <span className="rounded bg-brand-600 px-2 py-0.5 text-white">{CALL_LABEL[hand.lastCall.type]}</span>
+          <SmallTileStatic tile={hand.lastCall.tile} />
+          <span className="font-bold text-brand-600">← {seatLabel(snap, hand.lastCall.fromSeat)}</span>
+        </p>
+      )}
+
       {/* 작탁 — 각 자리가 자기 방향으로 돌아앉고, 버림패 더미도 그 자리 앞에 놓인다 */}
       <div
         className="rounded-3xl border-4 border-[#6b4423] bg-[#146c43] p-2 shadow-xl"
@@ -515,6 +756,8 @@ function LiveTable({
                 isMe={data.isMe}
                 lastDiscardSeat={lastDiscardSeat}
                 spin={spin}
+                playerCount={snap.playerCount}
+                markKind={hoverKind}
               />
             ) : null,
           )}
@@ -547,36 +790,100 @@ function LiveTable({
           className="rounded-2xl border border-line bg-surface p-3"
           style={{ ["--htw" as string]: "clamp(17px, 5vw, 36px)" }}
         >
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-extrabold text-content">
-              내 손패 {myPlayer.isDealer && <span className="ml-1 text-[10px] font-black text-amber-600">庄</span>}
-              {myPlayer.riichi && <span className="ml-1 text-[10px] font-black text-rose-600">리치</span>}
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-sm font-extrabold text-content">
+              내 손패 {myPlayer.isDealer && <span className="text-[10px] font-black text-amber-600">庄</span>}
+              {myPlayer.riichi && <span className="text-[10px] font-black text-rose-600">리치</span>}
+              {hand.tenpai?.furiten && (
+                <span className="rounded bg-rose-500 px-1.5 py-0.5 text-[10px] font-black text-white">후리텐</span>
+              )}
               {isMyTurn ? (
-                <span className="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-black text-white">
-                  내 차례
-                </span>
+                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-black text-white">내 차례</span>
               ) : (
-                <span className="ml-2 text-[10px] font-bold text-faint">대기 중</span>
+                <span className="text-[10px] font-bold text-faint">대기 중</span>
+              )}
+              {hand.tenpai && (
+                <button
+                  type="button"
+                  onClick={() => setShowWaits((v) => !v)}
+                  className="grid h-5 w-5 place-items-center rounded-full bg-brand-600 text-[11px] font-black text-white transition hover:bg-brand-700"
+                  title="대기패 보기"
+                >
+                  !
+                </button>
               )}
             </span>
-            <span className="text-sm font-black text-content">{myPlayer.points.toLocaleString()}점</span>
+            <span className="flex items-center gap-2">
+              <TurnClock hand={hand} mySeat={mySeat} isMyTurn={isMyTurn} />
+              <button
+                type="button"
+                onClick={onToggleNotation}
+                className="rounded-lg bg-subtle px-2 py-1 text-[11px] font-bold text-muted transition hover:bg-line"
+                title="패 표기법 바꾸기 (한자 ↔ 한글)"
+              >
+                표기 {notation === "hanja" ? "漢" : "한"}
+              </button>
+              <span className="text-sm font-black text-content">{myPlayer.points.toLocaleString()}점</span>
+            </span>
           </div>
+
+          {showWaits && hand.tenpai && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-canvas px-3 py-2">
+              <span className="text-[11px] font-extrabold text-faint">대기</span>
+              {hand.tenpai.waits.map((w) => (
+                <span key={w.kind} className="flex items-center gap-0.5">
+                  <SmallTile tile={{ kind: w.kind, aka: false }} />
+                  <span className="text-[10px] font-bold text-muted">{w.remaining}</span>
+                </span>
+              ))}
+              {hand.tenpai.furiten && (
+                <span className="text-[10px] font-black text-rose-600">후리텐 — 론 불가(쯔모만)</span>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-wrap justify-center gap-[3px] sm:gap-1.5">
             {(myPlayer.myHand ?? [])
               .map((tile, idx) => ({ tile, idx }))
               .sort((a, b) => a.tile.kind - b.tile.kind)
-              .map(({ tile, idx }) => (
-                <TileFace
-                  key={idx}
-                  tile={tile}
-                  disabled={busy || !isMyTurn || myPlayer.riichi}
-                  onClick={isMyTurn && !myPlayer.riichi ? () => act({ type: "discard", tileIndex: idx }) : undefined}
-                />
-              ))}
+              .map(({ tile, idx }) => {
+                const riichiPick = riichiArming && (hand.legalActions?.riichiTiles ?? []).includes(idx);
+                const selectable = isMyTurn && !busy && (riichiArming ? riichiPick : true);
+                return (
+                  <TileFace
+                    key={idx}
+                    tile={tile}
+                    dimmed={riichiArming && !riichiPick}
+                    highlight={riichiPick}
+                    onHoverKind={setHoverKind}
+                    disabled={!selectable}
+                    onClick={
+                      selectable
+                        ? () => {
+                            if (riichiArming) {
+                              setRiichiArming(false);
+                              act({ type: "riichi", tileIndex: idx });
+                            } else {
+                              act({ type: "discard", tileIndex: idx });
+                            }
+                          }
+                        : undefined
+                    }
+                  />
+                );
+              })}
           </div>
 
-          {isMyTurn && hand.legalActions && (
+          {riichiArming && (
+            <p className="mt-2 text-center text-[11px] font-bold text-rose-600">
+              리치하며 버릴 패를 고르세요 (테두리 표시된 패만 가능) ·{" "}
+              <button type="button" onClick={() => setRiichiArming(false)} className="underline">
+                취소
+              </button>
+            </p>
+          )}
+
+          {isMyTurn && hand.legalActions && !riichiArming && (
             <div className="mt-3 flex flex-wrap gap-2">
               {hand.legalActions.canTsumo && (
                 <button
@@ -592,7 +899,7 @@ function LiveTable({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => act({ type: "riichi" })}
+                  onClick={() => setRiichiArming(true)}
                   className="rounded-xl bg-rose-500 px-4 py-2 text-xs font-black text-white transition hover:bg-rose-600 disabled:opacity-60"
                 >
                   리치
@@ -606,7 +913,7 @@ function LiveTable({
                   onClick={() => act({ type: "ankan", kind })}
                   className="rounded-xl bg-slate-700 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60"
                 >
-                  안깡({faceLabel(kind)})
+                  안깡({faceLabelIn(kind, notation)})
                 </button>
               ))}
               {hand.legalActions.canKakan && (
@@ -715,9 +1022,15 @@ export default function MahjongRoom({
   initialSnapshot: MahjongSnapshot;
 }) {
   const [snap, setSnap] = useState(initialSnapshot);
+  const notation = useSyncExternalStore(subscribeNotation, readNotation, () => "hanja" as Notation);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const snapshotKeyRef = useRef(JSON.stringify(initialSnapshot));
+
+  // 표기법은 이 브라우저에만 저장되는 개인 설정
+  function toggleNotation() {
+    writeNotation(notation === "hanja" ? "hangul" : "hanja");
+  }
 
   const waitingOnOthers =
     snap.status === "playing" && snap.hand !== null && snap.hand.turn !== snap.mySeatIndex;
@@ -767,19 +1080,16 @@ export default function MahjongRoom({
     }
   }
 
-  if (snap.status === "waiting") {
-    return (
+  const body =
+    snap.status === "waiting" ? (
       <WaitingRoom snap={snap} tableId={tableId} isHost={isHost} currentUserId={currentUserId} refresh={refresh} />
+    ) : snap.status === "finished" ? (
+      <FinalResultView snap={snap} />
+    ) : !snap.hand ? (
+      <div className="p-8 text-center text-sm text-faint">불러오는 중…</div>
+    ) : (
+      <LiveTable snap={snap} act={act} busy={busy} error={error} onToggleNotation={toggleNotation} />
     );
-  }
 
-  if (snap.status === "finished") {
-    return <FinalResultView snap={snap} />;
-  }
-
-  if (!snap.hand) {
-    return <div className="p-8 text-center text-sm text-faint">불러오는 중…</div>;
-  }
-
-  return <LiveTable snap={snap} act={act} busy={busy} error={error} />;
+  return <NotationContext.Provider value={notation}>{body}</NotationContext.Provider>;
 }

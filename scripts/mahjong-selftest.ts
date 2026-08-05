@@ -18,6 +18,10 @@ import {
   pump,
   computeStats,
   tierForPoints,
+  legalActionsFor,
+  declareRiichi,
+  performDiscard,
+  isFuriten,
   type Tile,
   type WinContext,
 } from "../src/lib/mahjong";
@@ -309,7 +313,7 @@ console.log("== 14. AI 전용 반장전(4인) == 동+남 라운드 진행 확인
       { seat: 2, userId: null, isAi: true },
       { seat: 3, userId: null, isAi: true },
     ],
-    "hanchan",
+    { matchLength: "hanchan" },
   );
   let guard = 0;
   let sawSouthRound = false;
@@ -381,6 +385,86 @@ console.log("== 17. 랭크 집계 ==");
   check("1위 횟수", stats.placementCounts[0], 2);
   check("등급 티어(초심자)", tierForPoints(30).key, "novice");
   check("등급 티어(고수 경계)", tierForPoints(600).key, "master");
+}
+
+console.log("== 18. 리치 규칙 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  pump(match);
+  const me = match.hand!.players[0];
+
+  // 확실히 텐파이인 손패로 바꿔치기: 234m 567m 234p 55p + 9s(버리면 텐파이)
+  me.hand = [
+    t(M(2)), t(M(3)), t(M(4)),
+    t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)),
+    t(P(5)), t(P(5)), t(S(3)), t(S(4)),
+    t(S(9)),
+  ];
+  match.hand!.turn = 0;
+  const la = legalActionsFor(match, 0);
+  check("리치 가능", la.canRiichi, true);
+  check("리치용 버림 후보 있음", la.riichiTiles.length > 0, true);
+
+  const pointsBefore = me.points;
+  const kyotakuBefore = match.kyotaku;
+  const ok = declareRiichi(match, 0, la.riichiTiles[0]);
+  check("리치 선언 성공", ok, true);
+  check("리치 1000점 지불", pointsBefore - match.hand!.players[0].points === 1000 || pointsBefore - me.points === 1000, true);
+  check("공탁 1개 증가", match.kyotaku, kyotakuBefore + 1);
+}
+
+console.log("== 19. 리치 중에는 퐁/치/깡 불가 (론만) ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  pump(match);
+  const hand = match.hand!;
+  // 0번이 리치 상태이고 5통을 두 장 들고 있게 만든다 → 퐁 자격이 있어 보이지만 막혀야 함
+  hand.players[0].riichi = true;
+  hand.players[0].hand = [
+    t(P(5)), t(P(5)), t(M(2)), t(M(3)), t(M(4)),
+    t(M(5)), t(M(6)), t(M(7)), t(S(2)), t(S(3)),
+    t(S(4)), t(S(6)), t(S(6)),
+  ];
+  // 3번(상가)이 5통을 버린다
+  hand.turn = 3;
+  hand.players[3].hand.push(t(P(5)));
+  performDiscard(match, 3, hand.players[3].hand.length - 1);
+
+  const offered = match.hand?.pendingCall?.options?.[0];
+  check("리치자에게 퐁 제안 안 됨", offered?.pon ?? false, false);
+  check("리치자에게 치 제안 안 됨", offered?.chi ?? false, false);
+  check("리치자에게 깡 제안 안 됨", offered?.kan ?? false, false);
+}
+
+console.log("== 20. 후리텐 — 내 버림패에 대기패가 있으면 론 불가 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  pump(match);
+  const hand = match.hand!;
+  // 0번: 3s/6s 양면 대기인데, 이미 3s 를 버린 적이 있다 → 후리텐
+  hand.players[0].hand = [
+    t(M(2)), t(M(3)), t(M(4)), t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(5)),
+    t(S(4)), t(S(5)),
+  ];
+  hand.players[0].discards = [t(S(3))];
+  check("후리텐 판정", isFuriten(hand, 0), true);
 }
 
 console.log(`\n${passCount}개 통과, ${failCount}개 실패`);

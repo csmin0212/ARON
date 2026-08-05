@@ -17,6 +17,7 @@ function CreateTableForm() {
   const [playerCount, setPlayerCount] = useState<3 | 4>(4);
   const [matchLength, setMatchLength] = useState<"tonpuusen" | "hanchan">("tonpuusen");
   const [kuitan, setKuitan] = useState(true);
+  const [timePreset, setTimePreset] = useState<"fast" | "normal" | "slow">("normal");
   const [state, action, pending] = useActionState<MahjongActionState, FormData>(createMahjongTable, {
     ok: true,
     message: "",
@@ -28,6 +29,7 @@ function CreateTableForm() {
       <input type="hidden" name="playerCount" value={playerCount} />
       <input type="hidden" name="matchLength" value={matchLength} />
       <input type="hidden" name="kuitan" value={kuitan ? "on" : "off"} />
+      <input type="hidden" name="timePreset" value={timePreset} />
       <p className="text-xs font-extrabold text-faint">새 방 만들기</p>
 
       <div className="flex gap-2">
@@ -91,6 +93,30 @@ function CreateTableForm() {
         >
           쿠이탄 {kuitan ? "허용" : "금지"}
         </button>
+      </div>
+
+      <div className="space-y-1">
+        <p className="px-1 text-[11px] font-bold text-faint">생각 시간 (기본 + 판당 적립)</p>
+        <div className="flex gap-2">
+          {([
+            ["fast", "3초 +10"],
+            ["normal", "5초 +20"],
+            ["slow", "10초 +30"],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTimePreset(key)}
+              className={`flex-1 rounded-xl border px-2 py-2 text-xs font-extrabold transition ${
+                timePreset === key
+                  ? "border-brand-500 bg-brand-50 text-brand-700"
+                  : "border-line bg-surface text-muted hover:bg-subtle"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <button
