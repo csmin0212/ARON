@@ -22,6 +22,8 @@ import {
   declareRiichi,
   performDiscard,
   isFuriten,
+  declareKyuushu,
+  submitCallResponse,
   type Tile,
   type WinContext,
 } from "../src/lib/mahjong";
@@ -465,6 +467,89 @@ console.log("== 20. 후리텐 — 내 버림패에 대기패가 있으면 론 �
   ];
   hand.players[0].discards = [t(S(3))];
   check("후리텐 판정", isFuriten(hand, 0), true);
+}
+
+console.log("== 21. 일발 / 더블리치 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  pump(match);
+  const hand = match.hand!;
+  const seat = hand.turn;
+  const p = hand.players[seat];
+  p.hand = [
+    t(M(2)), t(M(3)), t(M(4)), t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(5)),
+    t(S(3)), t(S(4)), t(S(9)),
+  ];
+  hand.turn = seat;
+  hand.firstGoAround = true;
+  p.discards = [];
+  const la = legalActionsFor(match, seat);
+  declareRiichi(match, seat, la.riichiTiles[0]);
+  check("더블리치 플래그", match.hand!.players[seat].doubleRiichi, true);
+  // 리치 선언 직후 아무도 안 울었으면 일발 구간이 살아있어야 한다.
+  // (누가 울면 깨지는 게 정상이므로 그 경우는 false 가 맞다 — 22번에서 따로 검증)
+  const somebodyCalled = match.hand!.players.some((pl) => pl.melds.length > 0);
+  check("일발 구간 활성(울음 없을 때)", match.hand!.players[seat].ippatsuActive, !somebodyCalled);
+}
+
+console.log("== 22. 울면 일발이 깨진다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  pump(match);
+  const hand = match.hand!;
+  hand.players[0].riichi = true;
+  hand.players[0].ippatsuActive = true;
+  // 1번이 5통을 두 장 들고 있고, 3번이 5통을 버려서 퐁이 성립하게
+  hand.players[1].hand = [
+    t(P(5)), t(P(5)), t(M(2)), t(M(3)), t(M(4)),
+    t(M(5)), t(M(6)), t(M(7)), t(S(2)), t(S(3)),
+    t(S(4)), t(S(6)), t(S(7)),
+  ];
+  hand.turn = 3;
+  hand.players[3].hand.push(t(P(5)));
+  performDiscard(match, 3, hand.players[3].hand.length - 1);
+  // 1번(사람)이 퐁을 선택
+  if (match.hand?.pendingCall) submitCallResponse(match, 1, "pon");
+  check("울음 후 일발 해제", match.hand!.players[0].ippatsuActive, false);
+  check("첫 순바 종료", match.hand!.firstGoAround, false);
+}
+
+console.log("== 23. 구종구패 (도중 유국) ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  pump(match);
+  const hand = match.hand!;
+  const seat = hand.turn;
+  hand.players[seat].hand = [
+    t(M(1)), t(M(9)), t(P(1)), t(P(9)), t(S(1)), t(S(9)),
+    t(WINDS.E), t(WINDS.S), t(WINDS.W), t(WINDS.N),
+    t(DRAGONS.HAKU), t(DRAGONS.HATSU), t(DRAGONS.CHUN), t(M(5)),
+  ];
+  hand.players[seat].discards = [];
+  hand.firstGoAround = true;
+  check("구종구패 가능", legalActionsFor(match, seat).canKyuushu, true);
+  const before = match.honba;
+  declareKyuushu(match, seat);
+  check("도중 유국 처리", match.lastHandSummary?.type, "abort");
+  check("사유 = 구종구패", match.lastHandSummary?.abortReason, "kyuushu");
+  check("점수 이동 없음", match.lastHandSummary?.deltas.every((d) => d === 0), true);
+  check("혼바 증가", match.honba, before + 1);
 }
 
 console.log(`\n${passCount}개 통과, ${failCount}개 실패`);

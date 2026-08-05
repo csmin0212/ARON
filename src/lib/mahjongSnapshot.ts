@@ -5,6 +5,7 @@ import {
   type LegalActions,
   type MatchState,
   type Meld,
+  type AbortReason,
   type ScoreResult,
   type TenpaiInfo,
   type Tile,
@@ -58,7 +59,7 @@ export type MahjongHandView = {
   turnDeadline: number | null;
   timeBaseSec: number;
   timeBankMs: number[]; // 좌석별 남은 적립시간
-  result: { type: "win" | "draw"; winners?: number[]; loserSeat?: number | null } | null;
+  result: { type: "win" | "draw" | "abort"; winners?: number[]; loserSeat?: number | null } | null;
 };
 
 export type MahjongSnapshot = {
@@ -75,7 +76,9 @@ export type MahjongSnapshot = {
 };
 
 export type MahjongHandSummaryView = {
-  type: "win" | "draw";
+  seq: number;
+  type: "win" | "draw" | "abort";
+  abortReason?: AbortReason;
   winners: { seat: number; score: ScoreResult; pointsWon: number }[];
   loserSeat: number | null;
   deltas: number[];
@@ -170,7 +173,9 @@ export function buildMahjongSnapshot(
     finalResult: match?.finalResult ?? null,
     lastHandSummary: match?.lastHandSummary
       ? {
+          seq: match.lastHandSummary.seq,
           type: match.lastHandSummary.type,
+          abortReason: match.lastHandSummary.abortReason,
           winners: match.lastHandSummary.winners,
           loserSeat: match.lastHandSummary.loserSeat,
           deltas: match.lastHandSummary.deltas,

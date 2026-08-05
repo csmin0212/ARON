@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -435,6 +435,13 @@ function ScoreDetail({ score, pointsWon }: { score: ScoreResult; pointsWon: numb
   );
 }
 
+const ABORT_LABEL: Record<string, string> = {
+  kyuushu: "구종구패",
+  suukaikan: "사간류국",
+  suufonrenda: "사풍연타",
+  suuchariichi: "사가리치",
+};
+
 function HandSummaryOverlay({
   summary,
   seatName,
@@ -444,10 +451,27 @@ function HandSummaryOverlay({
   seatName: (seat: number) => string;
   onClose: () => void;
 }) {
+  // 3초 뒤 자동으로 다음 판 — 직접 누를 수도 있다
+  const [left, setLeft] = useState(3);
+  useEffect(() => {
+    const tick = setInterval(() => setLeft((n) => Math.max(0, n - 1)), 1000);
+    const done = setTimeout(onClose, 3000);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(done);
+    };
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-5 shadow-xl">
-        <h3 className="text-lg font-black text-content">{summary.type === "win" ? "🀄 화료!" : "유국"}</h3>
+        <h3 className="text-lg font-black text-content">
+          {summary.type === "win"
+            ? "🀄 화료!"
+            : summary.type === "abort"
+              ? `도중 유국 — ${ABORT_LABEL[summary.abortReason ?? ""] ?? ""}`
+              : "유국"}
+        </h3>
         <div className="mt-3 space-y-2">
           {summary.type === "win" ? (
             summary.winners.map((w) => (
@@ -461,13 +485,17 @@ function HandSummaryOverlay({
                 <ScoreDetail score={w.score} pointsWon={w.pointsWon} />
               </div>
             ))
+          ) : summary.type === "abort" ? (
+            <p className="text-sm text-faint">
+              점수 이동 없이 이 판을 무릅니다. 친은 그대로, 혼바만 올라갑니다.
+            </p>
           ) : (
             <p className="text-sm text-faint">아무도 화료하지 못했어요. 텐파이한 사람이 노텐인 사람에게서 점수를 받습니다.</p>
           )}
         </div>
 
         {/* 누가 누구에게 얼마를 줬는지 — 좌석별 증감 */}
-        <div className="mt-4 space-y-1">
+        <div className={`mt-4 space-y-1 ${summary.type === "abort" ? "hidden" : ""}`}>
           <p className="text-xs font-extrabold text-faint">점수 이동</p>
           {summary.deltas.map((d, seat) => (
             <div key={seat} className="flex items-center gap-2 rounded-xl bg-canvas px-3 py-2">
@@ -491,7 +519,7 @@ function HandSummaryOverlay({
           onClick={onClose}
           className="mt-4 w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-brand-700"
         >
-          다음 판으로
+          다음 판으로 ({left})
         </button>
       </div>
     </div>
@@ -674,12 +702,14 @@ function LiveTable({
   const [hoverKind, setHoverKind] = useState<number | null>(null);
   const notation = useNotation();
   const hand = snap.hand!;
+  const summaryKeyForClose = snap.lastHandSummary ? String(snap.lastHandSummary.seq) : null;
+  const dismissSummary = useCallback(() => setSummaryDismissed(summaryKeyForClose), [summaryKeyForClose]);
   const mySeat = snap.mySeatIndex;
   const order = mySeat !== null ? seatOrder(mySeat, snap.playerCount) : Array.from({ length: snap.playerCount }, (_, i) => i);
   const myPlayer = mySeat !== null ? hand.players.find((p) => p.seat === mySeat) : null;
   const isMyTurn = mySeat !== null && hand.turn === mySeat && !hand.pendingCall;
 
-  const summaryKey = snap.lastHandSummary ? JSON.stringify(snap.lastHandSummary) : null;
+  const summaryKey = snap.lastHandSummary ? String(snap.lastHandSummary.seq) : null;
   const showSummary = summaryKey !== null && summaryKey !== summaryDismissed;
 
   const pendingForMe =
@@ -926,6 +956,17 @@ function LiveTable({
                   카칸
                 </button>
               )}
+              {hand.legalActions.canKyuushu && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => act({ type: "kyuushu" })}
+                  className="rounded-xl bg-stone-600 px-4 py-2 text-xs font-black text-white transition hover:bg-stone-700 disabled:opacity-60"
+                  title="요구패 9종 이상 — 이 판을 무릅니다"
+                >
+                  구종구패
+                </button>
+              )}
               {hand.legalActions.canKita && (
                 <button
                   type="button"
@@ -1001,9 +1042,10 @@ function LiveTable({
 
       {showSummary && snap.lastHandSummary && (
         <HandSummaryOverlay
+          key={summaryKey}
           summary={snap.lastHandSummary}
           seatName={(seat) => snap.seats.find((s) => s.seatIndex === seat)?.nickname ?? `${seat + 1}번 자리`}
-          onClose={() => setSummaryDismissed(summaryKey)}
+          onClose={dismissSummary}
         />
       )}
     </div>

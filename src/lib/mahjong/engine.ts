@@ -18,6 +18,9 @@ export interface PlayerState {
   timeBankMs: number; // 기본시간을 넘겨 쓴 만큼 깎이는 판당 적립시간(작혼과 동일)
   missedRonTemp: boolean; // 론을 넘겨서 생긴 일시 후리텐 — 내가 다음 패를 버리면 풀린다
   missedRonPermanent: boolean; // 리치 후 론을 넘겼다 — 그 판 끝까지 론 불가
+  ippatsuActive: boolean; // 리치 직후 한 바퀴 — 울음이 끼면 깨진다
+  doubleRiichi: boolean; // 첫 순바에 건 리치
+  rinshanActive: boolean; // 깡 후 영상패를 들고 있는 상태 — 이걸로 쯔모하면 린샨카이호
 }
 
 export interface CallOptions {
@@ -34,13 +37,25 @@ export interface CallWindow {
   options: Record<number, CallOptions>; // eligibleSeats 각각이 실제로 낼 수 있는 콜
   responses: Record<number, "pass" | "pon" | "chi" | "kan" | "ron">;
   deadline: number; // epoch ms
+  // 창깡(다른 사람의 가깡을 론으로 가로채기) 대기 — 아무도 안 잡으면 그 가깡을 마저 완성한다
+  chankan?: { seat: number; meldIndex: number };
 }
 
 export interface HandResult {
-  type: "win" | "draw";
+  type: "win" | "draw" | "abort";
   winners?: number[];
   loserSeat?: number | null;
+  abortReason?: AbortReason;
 }
+
+// 도중 유국(특수 유국) — 점수 이동 없이 그 판을 무르고 다시 돌린다
+export type AbortReason = "kyuushu" | "suukaikan" | "suufonrenda" | "suuchariichi";
+export const ABORT_LABEL: Record<AbortReason, string> = {
+  kyuushu: "구종구패",
+  suukaikan: "사간류국",
+  suufonrenda: "사풍연타",
+  suuchariichi: "사가리치",
+};
 
 // 방금 성립한 울기 — "누가 누구에게서 무엇을 받았는지"를 화면에 잠깐 띄우기 위한 정보
 export interface LastCall {
@@ -68,6 +83,8 @@ export interface GameState {
   turnStartedAt: number | null; // 현재 차례가 시작된 시각 — 소모 시간 계산용
   turnDeadline: number | null; // 기본시간+적립시간이 끝나는 시각. 넘기면 자동 츠모기리
   aiPauseUntil: number | null; // AI가 한 번에 여러 턴을 몰아치지 않게 — 한 수씩 보이도록 텀을 둔다
+  firstGoAround: boolean; // 아직 아무도 울지 않았고 첫 순바가 안 끝났다 — 더블리치·구종구패·사풍연타 판정용
+  kanCount: number; // 이 판에 성립한 깡 총 수 — 사간류국 판정용
 }
 
 export function createGame(
@@ -92,6 +109,9 @@ export function createGame(
     timeBankMs,
     missedRonTemp: false,
     missedRonPermanent: false,
+    ippatsuActive: false,
+    doubleRiichi: false,
+    rinshanActive: false,
   }));
   return {
     rules,
@@ -110,6 +130,8 @@ export function createGame(
     turnStartedAt: null,
     turnDeadline: null,
     aiPauseUntil: null,
+    firstGoAround: true,
+    kanCount: 0,
   };
 }
 

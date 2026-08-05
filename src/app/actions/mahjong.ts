@@ -19,6 +19,7 @@ import {
   declareKakan,
   declareRiichi,
   declareKitaInMatch,
+  declareKyuushu,
   submitCallResponse,
   checkWinAtDraw,
   settleHandWin,
@@ -341,6 +342,7 @@ export type MahjongPlayAction =
   | { type: "ankan"; kind: number }
   | { type: "kakan" }
   | { type: "kita" }
+  | { type: "kyuushu" }
   | { type: "call"; response: "pon" | "chi" | "kan" | "ron" | "pass" };
 
 export async function submitPlayerAction(tableId: string, action: MahjongPlayAction): Promise<MahjongActionState> {
@@ -384,6 +386,9 @@ export async function submitPlayerAction(tableId: string, action: MahjongPlayAct
         break;
       case "kita":
         declareKitaInMatch(match, seat);
+        break;
+      case "kyuushu":
+        declareKyuushu(match, seat);
         break;
     }
   }
