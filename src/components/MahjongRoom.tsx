@@ -132,8 +132,8 @@ function TileFace({
       onFocus={() => onHoverKind?.(tile.kind)}
       onBlur={() => onHoverKind?.(null)}
       style={{ width: "var(--htw)", height: "calc(var(--htw) * 1.5)" }}
-      className={`relative flex shrink-0 items-center justify-center rounded-lg border bg-white shadow-sm ${SUIT_TEXT[suit]} ${
-        highlight ? "border-rose-500 ring-2 ring-rose-300" : "border-line"
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/25 border-t-[3px] border-t-[#d98b2b] bg-[#eae7e0] shadow-sm ${SUIT_TEXT[suit]} ${
+        highlight ? "ring-2 ring-rose-400" : ""
       } ${dimmed ? "opacity-35" : ""} ${
         clickable ? "transition hover:-translate-y-1 hover:shadow-md" : "cursor-default"
       } ${disabled && !dimmed ? "opacity-60" : ""} ${className}`}
@@ -251,10 +251,10 @@ function SmallTile({
         height: "var(--th)",
         ...(sideways ? { transform: "rotate(90deg)" } : null),
       }}
-      className={`relative flex shrink-0 items-center justify-center rounded-[3px] border font-black shadow-sm ${SUIT_TEXT[suit]} ${
-        marked ? "bg-slate-400 ring-2 ring-slate-500" : "bg-white"
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-[3px] border border-black/25 border-t-2 border-t-[#d98b2b] font-black shadow-sm ${SUIT_TEXT[suit]} ${
+        marked ? "bg-slate-400" : "bg-[#eae7e0]"
       } ${
-        sideways ? "border-rose-500 ring-2 ring-rose-400" : highlight ? "border-amber-400 ring-2 ring-amber-300" : "border-black/20"
+        sideways ? "ring-2 ring-rose-500" : highlight ? "ring-2 ring-amber-400" : ""
       } ${faded ? "opacity-60" : ""}`}
     >
       <span
