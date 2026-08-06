@@ -1140,3 +1140,45 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
     }
   }
 }
+
+// 예전 판(필드가 추가되기 전에 저장된 matchStateJson)을 읽어도 죽지 않게 기본값을 채운다.
+// 이걸 안 하면 배포 직후 진행 중이던 방이 전부 터진다.
+export function parseMatchState(json: string | null | undefined): MatchState | null {
+  if (!json) return null;
+  let raw: MatchState;
+  try {
+    raw = JSON.parse(json) as MatchState;
+  } catch {
+    return null;
+  }
+  if (!raw || !Array.isArray(raw.players)) return null;
+
+  raw.timeRule ??= TIME_PRESETS.normal;
+  raw.timeRule.baseSec ??= TIME_PRESETS.normal.baseSec;
+  raw.timeRule.bankSec ??= TIME_PRESETS.normal.bankSec;
+  raw.matchLength ??= "tonpuusen";
+  raw.handSeq ??= 0;
+  raw.honba ??= 0;
+  raw.kyotaku ??= 0;
+
+  const hand = raw.hand;
+  if (hand) {
+    hand.turnStartedAt ??= null;
+    hand.turnDeadline ??= null;
+    hand.aiPauseUntil ??= null;
+    hand.lastCall ??= null;
+    hand.firstGoAround ??= false;
+    hand.kanCount ??= 0;
+    for (const p of hand.players ?? []) {
+      p.timeBankMs ??= raw.timeRule.bankSec * 1000;
+      p.missedRonTemp ??= false;
+      p.missedRonPermanent ??= false;
+      p.ippatsuActive ??= false;
+      p.doubleRiichi ??= false;
+      p.rinshanActive ??= false;
+      p.riichiDiscardIndex ??= null;
+      p.kitaCount ??= 0;
+    }
+  }
+  return raw;
+}

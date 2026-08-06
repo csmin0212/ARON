@@ -29,6 +29,7 @@ import {
   checkWinAtDraw,
   shanten,
   toCounts,
+  parseMatchState,
   type Tile,
   type WinContext,
 } from "../src/lib/mahjong";
@@ -656,6 +657,9 @@ console.log("== 29. 차례가 넘어가면 제한시간이 새로 잡힌다 ==")
   const first = match.hand!.turn;
   const before = match.hand!.players[(first + 1) % 4].discards.length;
   performDiscard(match, first, 0);
+  // 버린 패에 울기 대기창이 뜨면 차례가 안 넘어가는 게 정상이다 — 전원 패스시켜 넘긴다
+  const pc = match.hand!.pendingCall;
+  if (pc) pc.eligibleSeats.forEach((sx) => submitCallResponse(match, sx, "pass"));
   pump(match);
   const nextSeat = match.hand!.turn;
   check("차례가 다음 사람에게 넘어감", nextSeat, (first + 1) % 4);
@@ -748,6 +752,36 @@ console.log("== 32. 리치 중에는 기다리지 않고 바로 츠모기리 =="
   const me = match.hand!.players[0];
   check("시간 안 기다리고 바로 버려짐", me.discards.length, 1);
   check("버린 건 방금 뽑은 패", me.discards[0].kind, M(1));
+}
+
+console.log("== 33. 예전 저장본(필드 없는 상태)도 읽혀야 한다 ==");
+{
+  // 배포 직후 진행 중이던 방이 터지지 않게 — 새로 생긴 필드가 없어도 기본값이 채워져야 한다
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const legacy = JSON.parse(JSON.stringify(match));
+  delete legacy.timeRule;
+  delete legacy.handSeq;
+  delete legacy.hand.firstGoAround;
+  delete legacy.hand.kanCount;
+  for (const p of legacy.hand.players) {
+    delete p.timeBankMs;
+    delete p.ippatsuActive;
+    delete p.riichiDiscardIndex;
+  }
+  const fixed = parseMatchState(JSON.stringify(legacy));
+  check("읽기 성공", fixed !== null, true);
+  check("timeRule 기본값 채움", fixed!.timeRule.baseSec > 0, true);
+  check("handSeq 채움", fixed!.handSeq, 0);
+  check("좌석 적립시간 채움", fixed!.hand!.players[0].timeBankMs > 0, true);
+  // 채운 상태로 실제로 굴러가야 한다
+  pump(fixed!);
+  check("복구된 상태로 진행 가능", fixed!.hand !== null || fixed!.finished, true);
+  check("깨진 JSON 은 null", parseMatchState("{oops"), null);
 }
 
 console.log(`

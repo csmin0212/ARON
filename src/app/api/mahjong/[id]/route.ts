@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { pump, type MatchState } from "@/lib/mahjong";
 import { buildMahjongSnapshot } from "@/lib/mahjongSnapshot";
+import { finishAndSettle, parseMatchState } from "@/lib/mahjongSettle";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const me = await getCurrentUser();
@@ -18,19 +19,40 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   let match: MatchState | null = null;
-  if (table.status === "playing" && table.matchStateJson) {
-    match = JSON.parse(table.matchStateJson) as MatchState;
-    const before = table.matchStateJson;
-    pump(match);
-    const after = JSON.stringify(match);
-    if (after !== before) {
-      await prisma.mahjongTable.update({
-        where: { id: table.id },
-        data: { matchStateJson: after, status: match.finished ? "finished" : "playing" },
-      });
+  if (table.status === "playing") {
+    match = parseMatchState(table.matchStateJson);
+    if (match) {
+      const before = table.matchStateJson;
+      pump(match);
+      if (match.finished) {
+        // 대국이 여기서 끝나는 경우가 대부분이다(AI 가 마지막 판을 마무리하거나 시간초과).
+        // 예전엔 status 만 바꾸고 정산을 안 해서 입장료만 내고 아무것도 못 받았다.
+        await finishAndSettle(
+          {
+            id: table.id,
+            tier: table.tier,
+            playerCount: table.playerCount,
+            seats: table.seats.map((s) => ({
+              seatIndex: s.seatIndex,
+              userId: s.userId,
+              isAi: s.isAi,
+              entryGold: s.entryGold,
+            })),
+          },
+          match,
+        );
+      } else {
+        const after = JSON.stringify(match);
+        if (after !== before) {
+          await prisma.mahjongTable.update({
+            where: { id: table.id },
+            data: { matchStateJson: after },
+          });
+        }
+      }
     }
-  } else if (table.status === "finished" && table.matchStateJson) {
-    match = JSON.parse(table.matchStateJson) as MatchState;
+  } else if (table.status === "finished") {
+    match = parseMatchState(table.matchStateJson);
   }
 
   const userIds = table.seats.map((s) => s.userId).filter((v): v is string => !!v);

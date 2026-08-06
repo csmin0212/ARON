@@ -21,6 +21,7 @@ import type {
 } from "@/lib/mahjongSnapshot";
 import { isHonor, numOf, suitOf, type ScoreResult, type Tile } from "@/lib/mahjong";
 import { TileArt } from "@/components/MahjongTileArt";
+import { TABLE_SKINS, tableSkinOf, type TableSkin } from "@/lib/mahjongTableSkin";
 
 const WIND_LABEL: Record<number, string> = { 27: "동", 28: "남", 29: "서", 30: "북" };
 const TIER_LABEL: Record<string, string> = { low: "저가", mid: "중가", high: "고가" };
@@ -90,6 +91,86 @@ function subscribeAuto(cb: () => void) {
   };
 }
 const getServerAuto = () => AUTO_DEFAULT;
+
+// 작탁 스킨 — 이것도 보는 사람마다 다른 개인 설정
+const SKIN_KEY = "mahjong.tableSkin";
+let skinCache: string | null = null;
+const skinListeners = new Set<() => void>();
+function readSkin(): string {
+  if (skinCache === null) {
+    skinCache = (typeof window !== "undefined" ? window.localStorage.getItem(SKIN_KEY) : null) ?? "classic";
+  }
+  return skinCache;
+}
+function writeSkin(next: string) {
+  skinCache = next;
+  if (typeof window !== "undefined") window.localStorage.setItem(SKIN_KEY, next);
+  skinListeners.forEach((l) => l());
+}
+function subscribeSkin(cb: () => void) {
+  skinListeners.add(cb);
+  return () => {
+    skinListeners.delete(cb);
+  };
+}
+const getServerSkin = () => "classic";
+
+// 작탁 고르기 — 프로필 카드처럼 미리보기를 늘어놓고 고른다
+function TableSkinPicker({ current, onClose }: { current: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-line bg-surface shadow-xl">
+        <div className="border-b border-line px-5 py-4">
+          <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-faint">TABLE</p>
+          <h3 className="mt-1 text-xl font-black text-content">작탁 고르기</h3>
+          <p className="mt-1 text-xs text-faint">이 브라우저에만 저장돼요. 다른 사람 화면은 그대로입니다.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-5">
+          {TABLE_SKINS.map((skin) => (
+            <button
+              key={skin.key}
+              type="button"
+              onClick={() => {
+                writeSkin(skin.key);
+                onClose();
+              }}
+              className={`overflow-hidden rounded-2xl border-2 text-left transition ${
+                current === skin.key ? "border-brand-500 ring-2 ring-brand-300" : "border-line hover:border-brand-300"
+              }`}
+            >
+              <span
+                className="flex h-20 items-center justify-center border-b-4"
+                style={{ background: skin.felt, borderBottomColor: skin.rail }}
+              >
+                <span className="flex gap-1">
+                  {[0, 9, 18, 27].map((k) => (
+                    <span
+                      key={k}
+                      className="h-7 w-5 rounded-[3px] border border-black/25 border-t-2 border-t-[#d98b2b] bg-[#eae7e0]"
+                    />
+                  ))}
+                </span>
+              </span>
+              <span className="block px-3 py-2">
+                <span className="block text-sm font-extrabold text-content">{skin.name}</span>
+                <span className="block text-[11px] leading-snug text-faint">{skin.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="border-t border-line p-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-subtle px-4 py-2.5 text-sm font-bold text-muted transition hover:bg-line"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function faceLabelIn(kind: number, notation: Notation): string {
   if (!isHonor(kind)) return String(numOf(kind));
@@ -785,6 +866,9 @@ function LiveTable({
   const [summaryDismissed, setSummaryDismissed] = useState<string | null>(null);
   const [riichiArming, setRiichiArming] = useState(false);
   const auto = useSyncExternalStore(subscribeAuto, readAuto, getServerAuto);
+  const skinKey = useSyncExternalStore(subscribeSkin, readSkin, getServerSkin);
+  const skin: TableSkin = tableSkinOf(skinKey);
+  const [skinOpen, setSkinOpen] = useState(false);
   const [showWaits, setShowWaits] = useState(false);
   const [hoverKind, setHoverKind] = useState<number | null>(null);
   const notation = useNotation();
@@ -871,11 +955,20 @@ function LiveTable({
 
       {/* 작탁 — 각 자리가 자기 방향으로 돌아앉고, 버림패 더미도 그 자리 앞에 놓인다 */}
       <div
-        className="rounded-3xl border-4 border-[#6b4423] bg-[#146c43] p-2 shadow-xl"
-        style={{ ["--tw" as string]: "clamp(12px, 2.5vw, 30px)", ["--th" as string]: "clamp(16px, 3.4vw, 40px)" }}
+        className="rounded-3xl border-4 p-2 shadow-xl"
+        style={{
+          ["--tw" as string]: "clamp(12px, 2.5vw, 30px)",
+          ["--th" as string]: "clamp(16px, 3.4vw, 40px)",
+          background: skin.felt,
+          borderColor: skin.rail,
+          color: skin.onFelt,
+        }}
       >
         {/* 모바일 전용 정보 바 — 테이블 중앙이 좁아 밖으로 뺀 것 */}
-        <div className="mb-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-lg bg-black/35 px-2 py-1 text-white sm:hidden">
+        <div
+          className="mb-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-lg px-2 py-1 text-white sm:hidden"
+          style={{ background: skin.centerBg }}
+        >
           <span className="text-xs font-black">
             {WIND_LABEL[hand.roundWind]}
             {hand.roundNumber}국 <span className="font-bold text-white/70">{hand.honba}본</span>
@@ -912,7 +1005,8 @@ function LiveTable({
 
           {/* 중앙 점수판 — 회전하지 않는다 */}
           {/* 좁은 화면에선 좌우 버림패 줄과 자리를 다투므로 테이블 밖(위쪽 바)으로 뺀다 */}
-          <div className="absolute left-1/2 top-1/2 hidden w-[8.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 rounded-xl bg-black/45 px-2 py-1.5 text-center text-white sm:flex">
+          <div className="absolute left-1/2 top-1/2 hidden w-[8.5rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-center text-white sm:flex"
+            style={{ background: skin.centerBg }}>
             <p className="text-xs font-black sm:text-sm">
               {WIND_LABEL[hand.roundWind]}
               {hand.roundNumber}국 <span className="font-bold text-white/70">{hand.honba}본</span>
@@ -970,6 +1064,14 @@ function LiveTable({
                 title="패 표기 바꾸기 (그림 ↔ 글자)"
               >
                 표기 {notation === "art" ? "🀄" : "한"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSkinOpen(true)}
+                className="rounded-lg bg-subtle px-2 py-1 text-[11px] font-bold text-muted transition hover:bg-line"
+                title="작탁 바꾸기"
+              >
+                작탁
               </button>
               <span className="text-sm font-black text-content">{myPlayer.points.toLocaleString()}점</span>
             </span>
@@ -1202,6 +1304,8 @@ function LiveTable({
           </div>
         </div>
       )}
+
+      {skinOpen && <TableSkinPicker current={skinKey} onClose={() => setSkinOpen(false)} />}
 
       {showSummary && snap.lastHandSummary && (
         <HandSummaryOverlay
