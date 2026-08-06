@@ -342,7 +342,20 @@ function SmallTile({
         className="flex h-full w-full items-center justify-center leading-none"
         style={{ transform: `rotate(${-spin - (sideways ? 90 : 0)}deg)`, fontSize: "calc(var(--tw) * 0.62)" }}
       >
-        {notation === "art" ? <TileArt kind={tile.kind} compact /> : faceLabelIn(tile.kind, notation)}
+        {notation === "art" ? (
+          <>
+            {/* 작탁이 커지는 화면(sm~)에서는 버림패도 진짜 무늬로. 좁은 화면에선
+                패가 12~16px 라 무늬가 뭉개지므로 큰 숫자 하나로 바꾼다. */}
+            <span className="hidden h-full w-full sm:flex">
+              <TileArt kind={tile.kind} />
+            </span>
+            <span className="flex h-full w-full sm:hidden">
+              <TileArt kind={tile.kind} compact />
+            </span>
+          </>
+        ) : (
+          faceLabelIn(tile.kind, notation)
+        )}
       </span>
       {tile.aka && <span className="absolute right-0 top-0 h-1 w-1 rounded-full bg-rose-500" />}
     </span>
