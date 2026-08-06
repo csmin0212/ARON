@@ -15,7 +15,7 @@ import { shanten } from "./shanten";
 import { WINDS, isSuited, isTerminalOrHonor, numOf, toCounts } from "./tiles";
 import { chooseDiscard, shouldCallKan, shouldCallPon } from "./ai";
 
-const AI_TURN_DELAY_MS = 1_100;
+const AI_TURN_DELAY_MS = 1_100; // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
 
 // 차례가 넘어갈 때는 반드시 둘 다 초기화해야 한다.
 // turnStartedAt 만 남으면 다음 사람 차례에 새 제한시간이 안 잡혀서
@@ -23,7 +23,7 @@ const AI_TURN_DELAY_MS = 1_100;
 function resetTurnClock(hand: GameState): void {
   hand.turnStartedAt = null;
   hand.turnDeadline = null;
-} // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
+}
 
 export interface MatchPlayerMeta {
   seat: number;
@@ -199,11 +199,18 @@ export function waitKinds(player: PlayerState): number[] {
 //  1) 내 버림패에 내 대기패가 하나라도 있으면 (영구)
 //  2) 론을 안 받고 넘긴 경우, 내 다음 버림까지 (일시)
 //  3) 리치 후에 론을 넘겼으면 그 판 끝까지 (영구)
+// 대기는 항상 13장 기준으로 본다. 내 차례라 14장을 들고 있으면 방금 뽑은 패를 빼고 계산한다.
+// (이걸 안 하면 15장짜리 형태를 풀게 돼서 대기·후리텐이 전부 엉뚱해진다)
+function waitBaseOf(player: PlayerState): PlayerState {
+  if (player.hand.length % 3 === 2) return { ...player, hand: player.hand.slice(0, -1) };
+  return player;
+}
+
 export function isFuriten(hand: GameState, seat: number): boolean {
   const player = hand.players[seat];
   if (player.missedRonPermanent) return true;
   if (player.missedRonTemp) return true;
-  const waits = waitKinds(player);
+  const waits = waitKinds(waitBaseOf(player));
   if (waits.length === 0) return false;
   const discardedKinds = new Set(player.discards.map((t) => t.kind));
   return waits.some((k) => discardedKinds.has(k));
@@ -876,6 +883,7 @@ export function declareKitaInMatch(match: MatchState, seat: number): boolean {
 
 export interface LegalActions {
   canTsumo: boolean;
+  riichiKinds: number[]; // 리치를 걸 수 있는 버림패 '종류'(인덱스는 스냅샷이 어긋나면 위험)
   canKyuushu: boolean; // 구종구패 — 첫 순바에 요구패가 9종 이상이면 무를 수 있다
   canRiichi: boolean;
   riichiTiles: number[]; // 리치를 걸며 버릴 수 있는 손패 인덱스 — 눌러서 고른다
@@ -892,6 +900,7 @@ export function legalActionsFor(match: MatchState, seat: number): LegalActions {
       canKyuushu: false,
       canRiichi: false,
       riichiTiles: [],
+      riichiKinds: [],
       ankanKinds: [],
       canKakan: false,
       canKita: false,
@@ -912,11 +921,13 @@ export function legalActionsFor(match: MatchState, seat: number): LegalActions {
     !player.riichi &&
     player.melds.some((m) => m.type === "pon" && m.kind === player.hand[player.hand.length - 1]?.kind);
   const riichiTiles = declareRiichiPreview(match, seat) ? riichiDiscardIndexes(player) : [];
+  const riichiKinds = [...new Set(riichiTiles.map((i) => player.hand[i].kind))];
   return {
     canTsumo: checkWinAtDraw(match) !== null,
     canKyuushu: canDeclareKyuushu(match, seat),
     canRiichi: riichiTiles.length > 0,
     riichiTiles,
+    riichiKinds,
     ankanKinds,
     canKakan,
     canKita: match.rules.playerCount === 3 && player.hand.some((t) => t.kind === WINDS.N),

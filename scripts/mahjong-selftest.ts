@@ -664,6 +664,62 @@ console.log("== 29. 차례가 넘어가면 제한시간이 새로 잡힌다 ==")
   check("아직 시간 남음", match.hand!.turnDeadline! > Date.now(), true);
 }
 
+console.log("== 30. 후리텐 — 14장(내 차례)에서도 올바르게 판정 ==");
+{
+  // 예전 버그: 14장 손패에 그대로 대기 계산을 돌려서(=15장짜리 형태) 엉뚱하게 후리텐이 떴다.
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  const p = hand.players[0];
+  p.melds = [];
+  // 234p 567p 234s 567s + 9s9s 텐파이(9s 대기), 버림패엔 대기패가 없다
+  p.hand = [
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(6)), t(P(7)),
+    t(S(2)), t(S(3)), t(S(4)), t(S(5)), t(S(6)), t(S(7)),
+    t(S(9)),
+  ];
+  p.discards = [t(M(1)), t(WINDS.W)];
+  check("13장 기준 후리텐 아님", isFuriten(hand, 0), false);
+
+  // 뽑은 패 한 장을 더 든 상태(내 차례, 14장) — 여전히 후리텐이 아니어야 한다
+  p.hand = [...p.hand, t(M(9))];
+  check("14장이어도 후리텐 아님", isFuriten(hand, 0), false);
+
+  // 대기패(9s)를 내가 버린 적이 있으면 그때는 후리텐
+  p.discards = [...p.discards, t(S(9))];
+  check("대기패를 버렸으면 후리텐", isFuriten(hand, 0), true);
+}
+
+console.log("== 31. 리치 후보는 '종류'로 나온다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  const p = hand.players[0];
+  p.melds = [];
+  p.discards = [];
+  p.riichi = false;
+  hand.turn = 0;
+  hand.pendingCall = null;
+  // 234p 567p 234s 567s 9s + 뽑은 1m → 1m 버리면 9s 단기 텐파이
+  p.hand = [
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(6)), t(P(7)),
+    t(S(2)), t(S(3)), t(S(4)), t(S(5)), t(S(6)), t(S(7)),
+    t(S(9)), t(M(1)),
+  ];
+  const la = legalActionsFor(match, 0);
+  check("리치 가능", la.canRiichi, true);
+  check("리치 후보에 1m 포함(종류 기준)", la.riichiKinds.includes(M(1)), true);
+}
+
 console.log(`
 ${passCount}개 통과, ${failCount}개 실패 (최종)`);
 if (failCount > 0) process.exit(1);

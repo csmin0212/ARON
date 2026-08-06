@@ -110,8 +110,22 @@ export function kokushiShanten(counts: number[]): number {
   return 13 - kinds - (hasPair ? 1 : 0);
 }
 
+// 같은 손패를 반복해서 묻는다(대기 계산은 한 번에 34번). 결과를 캐시해 렉을 줄인다.
+const shantenCache = new Map<string, number>();
+const SHANTEN_CACHE_MAX = 20000;
+
 // 전체 샹텐수(오픈 멜드가 있으면 치또이/코쿠시는 불가 — 표준형만 계산)
 export function shanten(counts: number[], presetMelds: number): number {
+  const key = `${presetMelds}|${counts.join("")}`;
+  const hit = shantenCache.get(key);
+  if (hit !== undefined) return hit;
+  const val = shantenUncached(counts, presetMelds);
+  if (shantenCache.size >= SHANTEN_CACHE_MAX) shantenCache.clear();
+  shantenCache.set(key, val);
+  return val;
+}
+
+function shantenUncached(counts: number[], presetMelds: number): number {
   const std = standardShanten(counts, presetMelds);
   if (presetMelds > 0) return std;
   return Math.min(std, chiitoiShanten(counts), kokushiShanten(counts));

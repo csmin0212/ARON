@@ -106,6 +106,7 @@ function TileFace({
   dimmed,
   highlight,
   onHoverKind,
+  className = "",
 }: {
   tile: Tile;
   onClick?: () => void;
@@ -113,6 +114,7 @@ function TileFace({
   dimmed?: boolean;
   highlight?: boolean;
   onHoverKind?: (kind: number | null) => void;
+  className?: string;
 }) {
   const suit = suitOf(tile.kind);
   const notation = useNotation();
@@ -133,7 +135,7 @@ function TileFace({
         highlight ? "border-rose-500 ring-2 ring-rose-300" : "border-line"
       } ${dimmed ? "opacity-35" : ""} ${
         clickable ? "transition hover:-translate-y-1 hover:shadow-md" : "cursor-default"
-      } ${disabled && !dimmed ? "opacity-60" : ""}`}
+      } ${disabled && !dimmed ? "opacity-60" : ""} ${className}`}
     >
       <span className="font-black leading-none" style={{ fontSize: "calc(var(--htw) * 0.58)" }}>
         {faceLabelIn(tile.kind, notation)}
@@ -184,7 +186,20 @@ function TurnClock({
   isMyTurn: boolean;
 }) {
   const now = useSyncExternalStore(subscribeTick, getTick, getServerTick);
-  if (now === 0 || hand.turnDeadline === null || mySeat === null) return null;
+  if (now === 0 || mySeat === null) return null;
+
+  // 울기 대기창이 떠 있으면 그쪽 제한시간을 보여준다
+  const call = hand.pendingCall;
+  if (call && call.eligibleSeats.includes(mySeat)) {
+    const leftCall = Math.max(0, call.deadline - now);
+    return (
+      <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-black tabular-nums text-white">
+        {Math.ceil(leftCall / 1000)}s
+      </span>
+    );
+  }
+
+  if (hand.turnDeadline === null) return null;
   const left = Math.max(0, hand.turnDeadline - now);
   const bank = hand.timeBankMs[hand.turn] ?? 0;
   const inBase = left > bank;
@@ -803,7 +818,8 @@ function LiveTable({
         act({ type: "tsumo" });
       } else if (auto.tsumogiri && !hand.legalActions.canTsumo) {
         autoFiredRef.current = key;
-        act({ type: "discard", tileIndex: (myPlayer.myHand?.length ?? 1) - 1 });
+        const drawn = myPlayer.myHand?.[(myPlayer.myHand?.length ?? 1) - 1];
+        if (drawn) act({ type: "discard", kind: drawn.kind, aka: drawn.aka, drawn: true });
       }
     }
   }, [auto, busy, mySeat, riichiArming, pendingForMe, isMyTurn, hand, myPlayer, act]);
@@ -989,22 +1005,31 @@ function LiveTable({
             </div>
           )}
 
-          <div className="flex flex-wrap justify-center gap-[3px] sm:gap-1.5">
-            {(myPlayer.myHand ?? [])
-              .map((tile, idx) => ({ tile, idx }))
-              .sort((a, b) => a.tile.kind - b.tile.kind)
-              .map(({ tile, idx }) => {
-                const riichiPick = riichiArming && (hand.legalActions?.riichiTiles ?? []).includes(idx);
-                // 리치 중에는 뽑은 패(맨 뒤)만 버릴 수 있다 — 손패를 못 바꾸므로
-                const drawnIdx = (myPlayer.myHand?.length ?? 0) - 1;
-                const lockedByRiichi = myPlayer.riichi && idx !== drawnIdx;
+          {/* 뽑은 패는 작혼처럼 따로 띄워 놓는다 — 손패에 섞이면 뭘 뽑았는지 찾아야 한다 */}
+          <div className="flex flex-wrap items-end justify-center gap-[3px] sm:gap-1.5">
+            {(() => {
+              const all = myPlayer.myHand ?? [];
+              const drawnIdxOuter = all.length % 3 === 2 ? all.length - 1 : -1;
+              const sorted = all
+                .map((tile, idx) => ({ tile, idx }))
+                .filter(({ idx }) => idx !== drawnIdxOuter)
+                .sort((a, b) => a.tile.kind - b.tile.kind);
+              const drawn = drawnIdxOuter >= 0 ? { tile: all[drawnIdxOuter], idx: drawnIdxOuter } : null;
+              return [...sorted, ...(drawn ? [{ ...drawn, spacer: true }] : [])];
+            })()
+              .map(({ tile, idx, ...rest }) => {
+                const isDrawnTile = "spacer" in rest;
+                const riichiPick = riichiArming && (hand.legalActions?.riichiKinds ?? []).includes(tile.kind);
+                // 리치 중에는 방금 뽑은 패만 버릴 수 있다 — 손패를 못 바꾸므로
+                const lockedByRiichi = myPlayer.riichi && !isDrawnTile;
                 const selectable = isMyTurn && !busy && !lockedByRiichi && (riichiArming ? riichiPick : true);
                 return (
                   <TileFace
                     key={idx}
                     tile={tile}
+                    className={isDrawnTile ? "ml-3 sm:ml-4" : ""}
                     dimmed={(riichiArming && !riichiPick) || lockedByRiichi}
-                    highlight={riichiPick || (myPlayer.riichi && idx === drawnIdx && isMyTurn)}
+                    highlight={riichiPick || (myPlayer.riichi && isDrawnTile && isMyTurn)}
                     onHoverKind={setHoverKind}
                     disabled={!selectable}
                     onClick={
@@ -1012,9 +1037,9 @@ function LiveTable({
                         ? () => {
                             if (riichiArming) {
                               setRiichiArming(false);
-                              act({ type: "riichi", tileIndex: idx });
+                              act({ type: "riichi", kind: tile.kind, aka: tile.aka });
                             } else {
-                              act({ type: "discard", tileIndex: idx });
+                              act({ type: "discard", kind: tile.kind, aka: tile.aka, drawn: isDrawnTile });
                             }
                           }
                         : undefined
@@ -1203,9 +1228,6 @@ export default function MahjongRoom({
     writeNotation(notation === "hanja" ? "hangul" : "hanja");
   }
 
-  const waitingOnOthers =
-    snap.status === "playing" && snap.hand !== null && snap.hand.turn !== snap.mySeatIndex;
-
   usePolling(
     async () => {
       try {
@@ -1221,14 +1243,24 @@ export default function MahjongRoom({
         return false;
       }
     },
-    // AI 가 한 수씩 두는 걸 놓치지 않게, 남의 차례(=AI 진행 중)일 때는 짧게 확인한다.
-    // 내 차례로 넘어오면 더 볼 게 없으므로 느슨하게 — 불필요한 DB 조회를 줄인다.
-    snap.status !== "playing"
-      ? { minMs: 3_000, maxMs: 15_000, idleMs: 60_000 }
-      : snap.hand?.pendingCall || waitingOnOthers
-        ? { minMs: 900, maxMs: 2_500, idleMs: 60_000 }
-        : { minMs: 3_000, maxMs: 10_000, idleMs: 60_000 },
+    // 대국 중에는 항상 촘촘히 받아온다. 제한시간(기본 5초)은 서버가 차례를 넘긴 순간부터
+    // 흐르는데, 화면이 3~10초 뒤에 오면 이미 다 써버린 상태로 보인다.
+    snap.status === "playing"
+      ? { minMs: 900, maxMs: 2_000, idleMs: 120_000 }
+      : { minMs: 3_000, maxMs: 15_000, idleMs: 60_000 },
   );
+
+  // 다음 판으로 넘어가면 자동 츠모기리는 꺼준다 — 켜둔 채로 새 판이 시작되면
+  // 손도 못 대보고 계속 버려진다. (화료·패스는 계속 유지)
+  const lastSeqRef = useRef<number | null>(null);
+  useEffect(() => {
+    const seq = snap.lastHandSummary?.seq ?? null;
+    if (seq !== null && lastSeqRef.current !== null && seq !== lastSeqRef.current) {
+      const cur = readAuto();
+      if (cur.tsumogiri) writeAuto({ ...cur, tsumogiri: false });
+    }
+    lastSeqRef.current = seq;
+  }, [snap.lastHandSummary?.seq]);
 
   async function refresh() {
     const refreshed = await fetch(`/api/mahjong/${tableId}`, { cache: "no-store" });

@@ -382,14 +382,30 @@ async function settleMatchGold(
 }
 
 export type MahjongPlayAction =
-  | { type: "discard"; tileIndex: number }
+  // 버릴 패는 인덱스가 아니라 '무슨 패인지'로 보낸다. 인덱스로 보내면 화면이 조금만
+  // 뒤처져도(자동 버림·울기 해소·다음 판) 엉뚱한 패가 버려진다.
+  | { type: "discard"; kind: number; aka?: boolean; drawn?: boolean }
   | { type: "tsumo" }
-  | { type: "riichi"; tileIndex: number }
+  | { type: "riichi"; kind: number; aka?: boolean }
   | { type: "ankan"; kind: number }
   | { type: "kakan" }
   | { type: "kita" }
   | { type: "kyuushu" }
   | { type: "call"; response: "pon" | "chi" | "kan" | "ron" | "pass" };
+
+// 손패에서 실제 위치를 찾는다. 뽑은 패로 지정했으면 맨 뒤(=방금 뽑은 자리)를 우선한다.
+function findTileIndex(
+  hand: { kind: number; aka: boolean }[],
+  want: { kind: number; aka?: boolean; drawn?: boolean },
+): number {
+  if (want.drawn) {
+    const last = hand.length - 1;
+    if (last >= 0 && hand[last].kind === want.kind) return last;
+  }
+  const exact = hand.findIndex((t) => t.kind === want.kind && t.aka === (want.aka ?? false));
+  if (exact >= 0) return exact;
+  return hand.findIndex((t) => t.kind === want.kind);
+}
 
 export async function submitPlayerAction(tableId: string, action: MahjongPlayAction): Promise<MahjongActionState> {
   const user = await getCurrentUser();
@@ -412,18 +428,26 @@ export async function submitPlayerAction(tableId: string, action: MahjongPlayAct
     submitCallResponse(match, seat, action.response);
   } else if (hand && hand.turn === seat && !hand.pendingCall) {
     switch (action.type) {
-      case "discard":
-        performDiscard(match, seat, action.tileIndex);
+      case "discard": {
+        const idx = findTileIndex(hand.players[seat].hand, action);
+        if (idx < 0) return { ok: false, message: "이미 지나간 패입니다. 화면을 갱신했어요." };
+        performDiscard(match, seat, idx);
         break;
+      }
       case "tsumo": {
         const score = checkWinAtDraw(match);
         if (score) settleHandWin(match, [{ seat, score }], null);
         break;
       }
-      case "riichi":
+      case "riichi": {
         // 리치는 버릴 패를 고르면서 선언한다 — declareRiichi 안에서 버림까지 처리
-        declareRiichi(match, seat, action.tileIndex);
+        const idx = findTileIndex(hand.players[seat].hand, action);
+        if (idx < 0) return { ok: false, message: "이미 지나간 패입니다. 화면을 갱신했어요." };
+        if (!declareRiichi(match, seat, idx)) {
+          return { ok: false, message: "그 패로는 리치를 걸 수 없어요." };
+        }
         break;
+      }
       case "ankan":
         declareAnkan(match, seat, action.kind);
         break;
