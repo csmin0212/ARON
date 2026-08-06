@@ -642,6 +642,28 @@ console.log("== 28. 샹텐 — 작(雀頭)이 뒤쪽 종류에 있어도 읽어�
   check("같은 형태 13장 = 텐파이", shanten(toCounts(tenpai), 0), 0);
 }
 
+console.log("== 29. 차례가 넘어가면 제한시간이 새로 잡힌다 ==");
+{
+  // 예전 버그: 콜을 모두 패스하고 턴이 넘어갈 때 turnDeadline 만 지우고
+  // turnStartedAt 을 안 지워서, 다음 사람이 패를 받자마자 자동으로 버려졌다.
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: "u2", isAi: false },
+    { seat: 3, userId: "u3", isAi: false },
+  ]);
+  pump(match);
+  const first = match.hand!.turn;
+  const before = match.hand!.players[(first + 1) % 4].discards.length;
+  performDiscard(match, first, 0);
+  pump(match);
+  const nextSeat = match.hand!.turn;
+  check("차례가 다음 사람에게 넘어감", nextSeat, (first + 1) % 4);
+  check("새 제한시간이 잡힘", match.hand!.turnDeadline !== null, true);
+  check("넘어가자마자 자동 버림 안 됨", match.hand!.players[nextSeat].discards.length, before);
+  check("아직 시간 남음", match.hand!.turnDeadline! > Date.now(), true);
+}
+
 console.log(`
 ${passCount}개 통과, ${failCount}개 실패 (최종)`);
 if (failCount > 0) process.exit(1);

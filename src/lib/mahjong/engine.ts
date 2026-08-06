@@ -21,6 +21,7 @@ export interface PlayerState {
   ippatsuActive: boolean; // 리치 직후 한 바퀴 — 울음이 끼면 깨진다
   doubleRiichi: boolean; // 첫 순바에 건 리치
   rinshanActive: boolean; // 깡 후 영상패를 들고 있는 상태 — 이걸로 쯔모하면 린샨카이호
+  riichiDiscardIndex: number | null; // 리치를 선언하며 버린 패의 위치 — 河에서 눕혀 표시한다
 }
 
 export interface CallOptions {
@@ -113,6 +114,7 @@ export function createGame(
     ippatsuActive: false,
     doubleRiichi: false,
     rinshanActive: false,
+    riichiDiscardIndex: null,
   }));
   return {
     rules,

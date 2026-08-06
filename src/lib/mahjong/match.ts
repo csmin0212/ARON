@@ -15,7 +15,15 @@ import { shanten } from "./shanten";
 import { WINDS, isSuited, isTerminalOrHonor, numOf, toCounts } from "./tiles";
 import { chooseDiscard, shouldCallKan, shouldCallPon } from "./ai";
 
-const AI_TURN_DELAY_MS = 1_100; // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
+const AI_TURN_DELAY_MS = 1_100;
+
+// 차례가 넘어갈 때는 반드시 둘 다 초기화해야 한다.
+// turnStartedAt 만 남으면 다음 사람 차례에 새 제한시간이 안 잡혀서
+// (turnDeadline=null → Date.now() < null 이 false) 패를 받자마자 자동으로 버려진다.
+function resetTurnClock(hand: GameState): void {
+  hand.turnStartedAt = null;
+  hand.turnDeadline = null;
+} // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
 
 export interface MatchPlayerMeta {
   seat: number;
@@ -424,8 +432,8 @@ export function performDiscard(
   player.rinshanActive = false; // 영상패를 버렸든 아니든 린샨 상태는 여기서 끝
   // 내 이전 일발 구간은 이번 버림으로 끝난다. 이번이 리치 선언이면 여기서 새 구간이 시작된다.
   player.ippatsuActive = opts.riichiDeclaration === true;
-  hand.turnStartedAt = null;
-  hand.turnDeadline = null;
+  if (opts.riichiDeclaration === true) player.riichiDiscardIndex = player.discards.length - 1;
+  resetTurnClock(hand);
 
   // 첫 순바 종료 판정 + 사풍연타(첫 4장이 같은 바람이면 도중 유국)
   const totalDiscards = hand.players.reduce((n, p) => n + p.discards.length, 0);
@@ -595,8 +603,7 @@ function applyCallMeld(
   hand.lastDiscard = null;
   hand.pendingCall = null;
   hand.turn = callerSeat;
-  hand.turnStartedAt = null;
-  hand.turnDeadline = null;
+  resetTurnClock(hand);
   hand.lastCall = { seat: callerSeat, fromSeat: discardSeat, type, tile, at: Date.now() };
   // 울고 바로 버리면 한 화면에 겹쳐 보인다 — 울린 걸 볼 수 있게 한 박자 쉰다
   hand.aiPauseUntil = Date.now() + AI_TURN_DELAY_MS;
@@ -675,7 +682,7 @@ function resolveCallResponses(
     return;
   }
   hand.turn = (discardSeat + 1) % hand.players.length;
-  hand.turnDeadline = null;
+  resetTurnClock(hand);
 }
 
 export function submitCallResponse(match: MatchState, seat: number, response: CallResponse): void {
@@ -715,7 +722,7 @@ export function declareAnkan(match: MatchState, seat: number, kind: number): boo
     player.hand.push(rinshan);
     player.rinshanActive = true;
   }
-  hand.turnDeadline = null;
+  resetTurnClock(hand); // 깡 후에는 새 시간으로 다시 센다
   checkSuukaikan(match);
   return true;
 }
@@ -728,8 +735,7 @@ export function declareKakan(match: MatchState, seat: number): boolean {
   const meldIndex = player.melds.findIndex((m) => m.type === "pon" && m.kind === justDrawn.kind);
   if (meldIndex < 0) return false;
   player.hand.pop();
-  hand.turnStartedAt = null;
-  hand.turnDeadline = null;
+  resetTurnClock(hand);
 
   // 창깡 — 이 패로 론이 되는 사람이 있으면 먼저 물어본다. 아무도 안 잡으면 그때 가깡을 완성.
   if (openChankanWindow(match, seat, meldIndex, justDrawn)) return true;
@@ -864,7 +870,7 @@ export function declareKitaInMatch(match: MatchState, seat: number): boolean {
   const result = sanmaDeclareKita(player.hand, hand.wall);
   if (!result) return false;
   player.kitaCount += 1;
-  hand.turnDeadline = null;
+  resetTurnClock(hand);
   return true;
 }
 
@@ -1042,11 +1048,11 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
           return;
         }
       }
-      if (hand.turnStartedAt === null) {
+      if (hand.turnStartedAt === null || hand.turnDeadline === null) {
         hand.turnStartedAt = Date.now();
         hand.turnDeadline = Date.now() + match.timeRule.baseSec * 1000 + player.timeBankMs;
       }
-      if (!instant && Date.now() < hand.turnDeadline!) return;
+      if (!instant && Date.now() < hand.turnDeadline) return;
       // 시간 초과 — 적립시간을 다 쓴 것으로 보고 자동 츠모기리(방금 뽑은 패를 그대로 버린다)
       player.timeBankMs = 0;
       performDiscard(match, seat, player.hand.length - 1);

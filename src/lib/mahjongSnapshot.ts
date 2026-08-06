@@ -26,6 +26,7 @@ export type MahjongPlayerView = {
   melds: Meld[];
   discards: Tile[];
   riichi: boolean;
+  riichiDiscardIndex: number | null;
   points: number;
   seatWind: number;
   isDealer: boolean;
@@ -115,6 +116,7 @@ export function buildMahjongSnapshot(
       melds: p.melds,
       discards: p.discards,
       riichi: p.riichi,
+      riichiDiscardIndex: p.riichiDiscardIndex,
       points: p.points,
       seatWind: p.seatWind,
       isDealer: p.isDealer,

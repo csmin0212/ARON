@@ -57,6 +57,38 @@ function subscribeNotation(cb: () => void) {
   };
 }
 
+// 작혼식 자동 조작 — 개인 설정(브라우저 저장). 켜두면 해당 상황에서 알아서 눌러준다.
+export type AutoFlags = { win: boolean; pass: boolean; tsumogiri: boolean };
+const AUTO_KEY = "mahjong.auto";
+const AUTO_DEFAULT: AutoFlags = { win: false, pass: false, tsumogiri: false };
+let autoCache: AutoFlags | null = null;
+const autoListeners = new Set<() => void>();
+function readAuto(): AutoFlags {
+  if (autoCache === null) {
+    let parsed: Partial<AutoFlags> = {};
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem(AUTO_KEY) : null;
+      if (raw) parsed = JSON.parse(raw) as Partial<AutoFlags>;
+    } catch {
+      parsed = {};
+    }
+    autoCache = { ...AUTO_DEFAULT, ...parsed };
+  }
+  return autoCache;
+}
+function writeAuto(next: AutoFlags) {
+  autoCache = next;
+  if (typeof window !== "undefined") window.localStorage.setItem(AUTO_KEY, JSON.stringify(next));
+  autoListeners.forEach((l) => l());
+}
+function subscribeAuto(cb: () => void) {
+  autoListeners.add(cb);
+  return () => {
+    autoListeners.delete(cb);
+  };
+}
+const getServerAuto = () => AUTO_DEFAULT;
+
 function faceLabelIn(kind: number, notation: Notation): string {
   if (!isHonor(kind)) return String(numOf(kind));
   return (notation === "hangul" ? HONOR_HANGUL : HONOR_HANJA)[numOf(kind)];
@@ -176,25 +208,33 @@ function SmallTile({
   highlight,
   marked,
   spin = 0,
+  sideways,
 }: {
   tile: Tile;
   faded?: boolean;
   highlight?: boolean;
   marked?: boolean; // 손패에 마우스를 올린 패와 같은 종류 — 버림패 어디에 있는지 회색으로 표시
   spin?: number;
+  sideways?: boolean; // 리치 선언패 — 마작 표준대로 눕혀서 표시
 }) {
   const suit = suitOf(tile.kind);
   const notation = useNotation();
   return (
     <span
-      style={{ width: "var(--tw)", height: "var(--th)" }}
+      style={{
+        width: "var(--tw)",
+        height: "var(--th)",
+        ...(sideways ? { transform: "rotate(90deg)" } : null),
+      }}
       className={`relative flex shrink-0 items-center justify-center rounded-[3px] border font-black shadow-sm ${SUIT_TEXT[suit]} ${
         marked ? "bg-slate-400 ring-2 ring-slate-500" : "bg-white"
-      } ${highlight ? "border-amber-400 ring-2 ring-amber-300" : "border-black/20"} ${faded ? "opacity-60" : ""}`}
+      } ${
+        sideways ? "border-rose-500 ring-2 ring-rose-400" : highlight ? "border-amber-400 ring-2 ring-amber-300" : "border-black/20"
+      } ${faded ? "opacity-60" : ""}`}
     >
       <span
         className="leading-none"
-        style={{ transform: `rotate(${-spin}deg)`, fontSize: "calc(var(--tw) * 0.62)" }}
+        style={{ transform: `rotate(${-spin - (sideways ? 90 : 0)}deg)`, fontSize: "calc(var(--tw) * 0.62)" }}
       >
         {faceLabelIn(tile.kind, notation)}
       </span>
@@ -219,11 +259,13 @@ function Pond({
   highlightLast,
   spin,
   markKind,
+  riichiIndex,
 }: {
   tiles: Tile[];
   highlightLast: boolean;
   spin: number;
   markKind: number | null;
+  riichiIndex: number | null;
 }) {
   return (
     <div
@@ -237,6 +279,7 @@ function Pond({
           spin={spin}
           highlight={highlightLast && i === tiles.length - 1}
           marked={markKind !== null && t.kind === markKind}
+          sideways={i === riichiIndex}
         />
       ))}
     </div>
@@ -325,7 +368,9 @@ function NamePlate({
         </span>
         <span className="text-[10px] font-black tabular-nums">{player.points.toLocaleString()}</span>
       </span>
-      {player.riichi && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" title="리치" />}
+      {player.riichi && (
+        <span className="shrink-0 rounded bg-rose-500 px-1 text-[9px] font-black text-white">리치</span>
+      )}
     </div>
   );
 }
@@ -359,6 +404,7 @@ function SeatLayer({
           highlightLast={lastDiscardSeat === player.seat}
           spin={spin}
           markKind={markKind}
+          riichiIndex={player.riichiDiscardIndex}
         />
         <MeldRow
           melds={player.melds}
@@ -698,6 +744,7 @@ function LiveTable({
 }) {
   const [summaryDismissed, setSummaryDismissed] = useState<string | null>(null);
   const [riichiArming, setRiichiArming] = useState(false);
+  const auto = useSyncExternalStore(subscribeAuto, readAuto, getServerAuto);
   const [showWaits, setShowWaits] = useState(false);
   const [hoverKind, setHoverKind] = useState<number | null>(null);
   const notation = useNotation();
@@ -714,6 +761,36 @@ function LiveTable({
 
   const pendingForMe =
     hand.pendingCall && mySeat !== null && hand.pendingCall.eligibleSeats.includes(mySeat) && !hand.pendingCall.myResponse;
+
+  // 자동 조작 — 같은 상황에서 두 번 누르지 않도록 상황 키로 한 번만 실행한다
+  const autoFiredRef = useRef("");
+  useEffect(() => {
+    if (busy || mySeat === null || riichiArming) return;
+    const call = hand.pendingCall;
+    if (pendingForMe && call) {
+      const key = `call:${call.deadline}`;
+      if (autoFiredRef.current === key) return;
+      if (auto.win && call.myOptions?.ron) {
+        autoFiredRef.current = key;
+        act({ type: "call", response: "ron" });
+      } else if (auto.pass && !call.myOptions?.ron) {
+        autoFiredRef.current = key;
+        act({ type: "call", response: "pass" });
+      }
+      return;
+    }
+    if (isMyTurn && hand.legalActions && myPlayer) {
+      const key = `turn:${hand.turnDeadline ?? 0}`;
+      if (autoFiredRef.current === key) return;
+      if (auto.win && hand.legalActions.canTsumo) {
+        autoFiredRef.current = key;
+        act({ type: "tsumo" });
+      } else if (auto.tsumogiri && !hand.legalActions.canTsumo) {
+        autoFiredRef.current = key;
+        act({ type: "discard", tileIndex: (myPlayer.myHand?.length ?? 1) - 1 });
+      }
+    }
+  }, [auto, busy, mySeat, riichiArming, pendingForMe, isMyTurn, hand, myPlayer, act]);
 
   const seatAt = (pos: number) => {
     const seatIndex = order[pos];
@@ -738,7 +815,7 @@ function LiveTable({
   const seated = [bottom, right, top, left].map((data, i) => ({ data, spin: -90 * i }));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-3 px-3 py-4">
+    <div className="mx-auto max-w-5xl space-y-3 px-3 py-4">
       {error && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-600">{error}</p>}
 
       {/* 방금 누가 누구에게서 울었는지 — 한 박자 쉬는 동안 여기에 뜬다 */}
@@ -754,7 +831,7 @@ function LiveTable({
       {/* 작탁 — 각 자리가 자기 방향으로 돌아앉고, 버림패 더미도 그 자리 앞에 놓인다 */}
       <div
         className="rounded-3xl border-4 border-[#6b4423] bg-[#146c43] p-2 shadow-xl"
-        style={{ ["--tw" as string]: "clamp(12px, 2.9vw, 20px)", ["--th" as string]: "clamp(16px, 4vw, 27px)" }}
+        style={{ ["--tw" as string]: "clamp(12px, 2.5vw, 30px)", ["--th" as string]: "clamp(16px, 3.4vw, 40px)" }}
       >
         {/* 모바일 전용 정보 바 — 테이블 중앙이 좁아 밖으로 뺀 것 */}
         <div className="mb-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-lg bg-black/35 px-2 py-1 text-white sm:hidden">
@@ -775,7 +852,7 @@ function LiveTable({
             <span className="rounded-full bg-white/20 px-2 text-[9px] font-black">관전 중</span>
           )}
         </div>
-        <div className="relative mx-auto aspect-square w-full max-w-[34rem]">
+        <div className="relative mx-auto aspect-square w-full max-w-[min(78vh,46rem)]">
           {seated.map(({ data, spin }) =>
             data ? (
               <SeatLayer
@@ -818,7 +895,7 @@ function LiveTable({
       {myPlayer && (
         <div
           className="rounded-2xl border border-line bg-surface p-3"
-          style={{ ["--htw" as string]: "clamp(17px, 5vw, 36px)" }}
+          style={{ ["--htw" as string]: "clamp(17px, 4.4vw, 52px)" }}
         >
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="flex items-center gap-1 text-sm font-extrabold text-content">
@@ -857,6 +934,30 @@ function LiveTable({
             </span>
           </div>
 
+          {/* 작혼식 자동 조작 */}
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold text-faint">자동</span>
+            {(
+              [
+                ["win", "화료", "쯔모·론이 되면 자동으로 화료합니다"],
+                ["pass", "패스", "론이 아닌 울기 요청은 자동으로 넘깁니다"],
+                ["tsumogiri", "츠모기리", "내 차례가 오면 뽑은 패를 그대로 버립니다"],
+              ] as const
+            ).map(([key, label, title]) => (
+              <button
+                key={key}
+                type="button"
+                title={title}
+                onClick={() => writeAuto({ ...auto, [key]: !auto[key] })}
+                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${
+                  auto[key] ? "bg-brand-600 text-white" : "bg-subtle text-muted hover:bg-line"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {showWaits && hand.tenpai && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-canvas px-3 py-2">
               <span className="text-[11px] font-extrabold text-faint">대기</span>
@@ -878,13 +979,16 @@ function LiveTable({
               .sort((a, b) => a.tile.kind - b.tile.kind)
               .map(({ tile, idx }) => {
                 const riichiPick = riichiArming && (hand.legalActions?.riichiTiles ?? []).includes(idx);
-                const selectable = isMyTurn && !busy && (riichiArming ? riichiPick : true);
+                // 리치 중에는 뽑은 패(맨 뒤)만 버릴 수 있다 — 손패를 못 바꾸므로
+                const drawnIdx = (myPlayer.myHand?.length ?? 0) - 1;
+                const lockedByRiichi = myPlayer.riichi && idx !== drawnIdx;
+                const selectable = isMyTurn && !busy && !lockedByRiichi && (riichiArming ? riichiPick : true);
                 return (
                   <TileFace
                     key={idx}
                     tile={tile}
-                    dimmed={riichiArming && !riichiPick}
-                    highlight={riichiPick}
+                    dimmed={(riichiArming && !riichiPick) || lockedByRiichi}
+                    highlight={riichiPick || (myPlayer.riichi && idx === drawnIdx && isMyTurn)}
                     onHoverKind={setHoverKind}
                     disabled={!selectable}
                     onClick={
@@ -903,6 +1007,12 @@ function LiveTable({
                 );
               })}
           </div>
+
+          {myPlayer.riichi && isMyTurn && !riichiArming && (
+            <p className="mt-2 text-center text-[11px] font-bold text-rose-600">
+              리치 중 — 손패는 못 바꿉니다. 방금 뽑은 패(빨간 테두리)만 버릴 수 있어요.
+            </p>
+          )}
 
           {riichiArming && (
             <p className="mt-2 text-center text-[11px] font-bold text-rose-600">
@@ -983,8 +1093,11 @@ function LiveTable({
       )}
 
       {pendingForMe && hand.pendingCall && (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-surface p-4 shadow-2xl">
-          <div className="mx-auto flex max-w-2xl items-center gap-3">
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3 shadow-lg ring-4 ring-amber-200/60">
+          <div className="mx-auto flex flex-wrap items-center justify-center gap-3">
+            <span className="text-sm font-black text-amber-900">
+              {snap.seats.find((x) => x.seatIndex === hand.pendingCall!.discardSeat)?.nickname ?? "상대"} 버림 →
+            </span>
             <TileFace tile={hand.pendingCall.tile} />
             <div className="flex flex-1 flex-wrap gap-2">
               {hand.pendingCall.myOptions?.ron && (
@@ -992,7 +1105,7 @@ function LiveTable({
                   type="button"
                   disabled={busy}
                   onClick={() => act({ type: "call", response: "ron" })}
-                  className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-white transition hover:bg-amber-600 disabled:opacity-60"
+                  className="rounded-xl bg-amber-500 px-6 py-3 text-base font-black text-white shadow transition hover:bg-amber-600 disabled:opacity-60"
                 >
                   론!
                 </button>
@@ -1002,7 +1115,7 @@ function LiveTable({
                   type="button"
                   disabled={busy}
                   onClick={() => act({ type: "call", response: "kan" })}
-                  className="rounded-xl bg-slate-700 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-60"
+                  className="rounded-xl bg-slate-700 px-6 py-3 text-base font-black text-white shadow transition hover:bg-slate-800 disabled:opacity-60"
                 >
                   깡
                 </button>
@@ -1012,7 +1125,7 @@ function LiveTable({
                   type="button"
                   disabled={busy}
                   onClick={() => act({ type: "call", response: "pon" })}
-                  className="rounded-xl bg-brand-600 px-4 py-2 text-xs font-black text-white transition hover:bg-brand-700 disabled:opacity-60"
+                  className="rounded-xl bg-brand-600 px-6 py-3 text-base font-black text-white shadow transition hover:bg-brand-700 disabled:opacity-60"
                 >
                   퐁
                 </button>
@@ -1022,7 +1135,7 @@ function LiveTable({
                   type="button"
                   disabled={busy}
                   onClick={() => act({ type: "call", response: "chi" })}
-                  className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-white transition hover:bg-emerald-600 disabled:opacity-60"
+                  className="rounded-xl bg-emerald-500 px-6 py-3 text-base font-black text-white shadow transition hover:bg-emerald-600 disabled:opacity-60"
                 >
                   치
                 </button>
@@ -1031,7 +1144,7 @@ function LiveTable({
                 type="button"
                 disabled={busy}
                 onClick={() => act({ type: "call", response: "pass" })}
-                className="rounded-xl bg-subtle px-4 py-2 text-xs font-bold text-muted transition hover:bg-line disabled:opacity-60"
+                className="rounded-xl bg-white px-6 py-3 text-base font-bold text-muted shadow-sm transition hover:bg-subtle disabled:opacity-60"
               >
                 패스
               </button>
