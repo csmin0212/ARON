@@ -20,20 +20,21 @@ import type {
   MahjongSnapshot,
 } from "@/lib/mahjongSnapshot";
 import { isHonor, numOf, suitOf, type ScoreResult, type Tile } from "@/lib/mahjong";
+import { TileArt } from "@/components/MahjongTileArt";
 
 const WIND_LABEL: Record<number, string> = { 27: "동", 28: "남", 29: "서", 30: "북" };
 const TIER_LABEL: Record<string, string> = { low: "저가", mid: "중가", high: "고가" };
 const SUIT_TEXT: Record<string, string> = { m: "text-rose-600", p: "text-sky-600", s: "text-emerald-600", z: "text-slate-700" };
 
 // 표기법 — 개인 설정(보는 사람마다 다름). 한자는 작혼과 같은 표기, 한글은 읽기 쉬운 표기.
-type Notation = "hanja" | "hangul";
+type Notation = "art" | "hangul";
 const NOTATION_KEY = "mahjong.notation";
 const HONOR_HANJA = ["", "東", "南", "西", "北", "白", "發", "中"];
 const HONOR_HANGUL = ["", "동", "남", "서", "북", "백", "발", "중"];
 const SUIT_MARK_HANJA: Record<string, string> = { m: "萬", p: "筒", s: "索", z: "" };
 const SUIT_MARK_HANGUL: Record<string, string> = { m: "만", p: "통", s: "삭", z: "" };
 
-const NotationContext = createContext<Notation>("hanja");
+const NotationContext = createContext<Notation>("art");
 const useNotation = () => useContext(NotationContext);
 
 // localStorage 를 외부 스토어로 구독한다 — 이펙트에서 setState 하지 않아 하이드레이션도 안전하다
@@ -42,7 +43,7 @@ const notationListeners = new Set<() => void>();
 function readNotation(): Notation {
   if (notationCache === null) {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(NOTATION_KEY) : null;
-    notationCache = saved === "hangul" ? "hangul" : "hanja";
+    notationCache = saved === "hangul" ? "hangul" : "art"; // 예전 "hanja" 저장값도 그림으로
   }
   return notationCache;
 }
@@ -137,11 +138,19 @@ function TileFace({
         clickable ? "transition hover:-translate-y-1 hover:shadow-md" : "cursor-default"
       } ${disabled && !dimmed ? "opacity-60" : ""} ${className}`}
     >
-      <span className="font-black leading-none" style={{ fontSize: "calc(var(--htw) * 0.58)" }}>
-        {faceLabelIn(tile.kind, notation)}
-      </span>
-      {!isHonor(tile.kind) && (
-        <span className="absolute bottom-0.5 text-[8px] font-bold opacity-70">{suitMarkIn(suit, notation)}</span>
+      {notation === "art" ? (
+        <span className="flex h-full w-full items-center justify-center p-[6%]">
+          <TileArt kind={tile.kind} />
+        </span>
+      ) : (
+        <>
+          <span className="font-black leading-none" style={{ fontSize: "calc(var(--htw) * 0.58)" }}>
+            {faceLabelIn(tile.kind, notation)}
+          </span>
+          {!isHonor(tile.kind) && (
+            <span className="absolute bottom-0.5 text-[8px] font-bold opacity-70">{suitMarkIn(suit, notation)}</span>
+          )}
+        </>
       )}
       {tile.aka && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-rose-500" />}
     </button>
@@ -249,10 +258,10 @@ function SmallTile({
       } ${faded ? "opacity-60" : ""}`}
     >
       <span
-        className="leading-none"
+        className="flex h-full w-full items-center justify-center leading-none"
         style={{ transform: `rotate(${-spin - (sideways ? 90 : 0)}deg)`, fontSize: "calc(var(--tw) * 0.62)" }}
       >
-        {faceLabelIn(tile.kind, notation)}
+        {notation === "art" ? <TileArt kind={tile.kind} compact /> : faceLabelIn(tile.kind, notation)}
       </span>
       {tile.aka && <span className="absolute right-0 top-0 h-1 w-1 rounded-full bg-rose-500" />}
     </span>
@@ -958,9 +967,9 @@ function LiveTable({
                 type="button"
                 onClick={onToggleNotation}
                 className="rounded-lg bg-subtle px-2 py-1 text-[11px] font-bold text-muted transition hover:bg-line"
-                title="패 표기법 바꾸기 (한자 ↔ 한글)"
+                title="패 표기 바꾸기 (그림 ↔ 글자)"
               >
-                표기 {notation === "hanja" ? "漢" : "한"}
+                표기 {notation === "art" ? "🀄" : "한"}
               </button>
               <span className="text-sm font-black text-content">{myPlayer.points.toLocaleString()}점</span>
             </span>
@@ -1225,7 +1234,7 @@ export default function MahjongRoom({
 
   // 표기법은 이 브라우저에만 저장되는 개인 설정
   function toggleNotation() {
-    writeNotation(notation === "hanja" ? "hangul" : "hanja");
+    writeNotation(notation === "art" ? "hangul" : "art");
   }
 
   usePolling(

@@ -1059,6 +1059,19 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
           return;
         }
       }
+      // 리치 중이라 고를 게 없으면(쯔모·깡도 안 되면) 기다릴 이유가 없다 — 바로 츠모기리.
+      // 시간을 다 태우고 나서야 버려지던 문제.
+      if (player.riichi) {
+        const la = legalActionsFor(match, seat);
+        if (!la.canTsumo && la.ankanKinds.length === 0 && !la.canKakan) {
+          performDiscard(match, seat, player.hand.length - 1);
+          if (!instant && match.hand) {
+            match.hand.aiPauseUntil = Date.now() + AI_TURN_DELAY_MS;
+            return;
+          }
+          continue;
+        }
+      }
       if (hand.turnStartedAt === null || hand.turnDeadline === null) {
         hand.turnStartedAt = Date.now();
         hand.turnDeadline = Date.now() + match.timeRule.baseSec * 1000 + player.timeBankMs;
