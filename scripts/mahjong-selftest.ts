@@ -24,6 +24,11 @@ import {
   isFuriten,
   declareKyuushu,
   submitCallResponse,
+  settleHandDraw,
+  canAnkanWhileRiichi,
+  checkWinAtDraw,
+  shanten,
+  toCounts,
   type Tile,
   type WinContext,
 } from "../src/lib/mahjong";
@@ -553,4 +558,90 @@ console.log("== 23. 구종구패 (도중 유국) ==");
 }
 
 console.log(`\n${passCount}개 통과, ${failCount}개 실패`);
+console.log("== 24. 토비 — 마이너스면 즉시 종료 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: true },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  match.players[1].points = -500;
+  match.hand!.players[1].points = -500;
+  settleHandDraw(match);
+  check("토비로 대국 종료", match.finished, true);
+  check("최종 결과 생성됨", match.finalResult !== null, true);
+}
+
+console.log("== 25. 더블론 혼바는 머리 잡은 한 명만 ==");
+{
+  const noHonba = paymentsFor(1000, false, false, 0, 4).ronPayer;
+  const withHonba = paymentsFor(1000, false, false, 2, 4).ronPayer;
+  check("혼바 2본 = +600", withHonba - noHonba, 600);
+}
+
+console.log("== 26. 리치 중 안깡 — 대기가 안 변할 때만 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const p = match.hand!.players[0];
+  p.riichi = true;
+  p.melds = [];
+  // 222m 333m 444m 567p 9s + 방금 뽑은 2m → 2m 안깡해도 9s 단기 대기 그대로
+  p.hand = [
+    t(M(2)), t(M(2)), t(M(2)), t(M(3)), t(M(3)), t(M(3)),
+    t(M(4)), t(M(4)), t(M(4)), t(P(5)), t(P(6)), t(P(7)),
+    t(S(9)), t(M(2)),
+  ];
+  check("대기 안 변하면 안깡 허용", canAnkanWhileRiichi(p, M(2)), true);
+  check("송깡(방금 뽑은 패가 아님) 금지", canAnkanWhileRiichi(p, M(3)), false);
+}
+
+console.log("== 27. 천화 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: null, isAi: true },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  const dealer = hand.players.find((pl) => pl.isDealer)!;
+  hand.turn = dealer.seat;
+  hand.firstGoAround = true;
+  dealer.discards = [];
+  dealer.melds = [];
+  dealer.rinshanActive = false;
+  dealer.hand = [
+    t(M(2)), t(M(3)), t(M(4)), t(P(2)), t(P(3)), t(P(4)),
+    t(S(2)), t(S(3)), t(S(4)), t(S(6)), t(S(7)), t(S(8)),
+    t(P(9)), t(P(9)),
+  ];
+  const res = checkWinAtDraw(match);
+  check("천화 성립", res?.yaku.some((y) => y.name === "천화"), true);
+}
+
+console.log("== 28. 샹텐 — 작(雀頭)이 뒤쪽 종류에 있어도 읽어야 한다 ==");
+{
+  // 333m 444m 567p + 9s9s : 면자 4개가 먼저 차고 작이 마지막에 오는 형태.
+  // 예전에는 melds>=4 에서 탐색을 끊어 화료/텐파이를 못 읽었다(후리텐·리치·AI 전부 영향).
+  const done = [
+    t(M(3)), t(M(3)), t(M(3)), t(M(4)), t(M(4)), t(M(4)),
+    t(P(5)), t(P(6)), t(P(7)), t(S(9)), t(S(9)),
+  ];
+  check("면자1개 확정 + 작 뒤쪽 = 화료", shanten(toCounts(done), 1), -1);
+
+  const tenpai = [
+    t(M(2)), t(M(2)), t(M(2)), t(M(3)), t(M(3)), t(M(3)),
+    t(M(4)), t(M(4)), t(M(4)), t(P(5)), t(P(6)), t(P(7)), t(S(9)),
+  ];
+  check("같은 형태 13장 = 텐파이", shanten(toCounts(tenpai), 0), 0);
+}
+
+console.log(`
+${passCount}개 통과, ${failCount}개 실패 (최종)`);
 if (failCount > 0) process.exit(1);

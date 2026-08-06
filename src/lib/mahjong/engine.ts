@@ -49,12 +49,13 @@ export interface HandResult {
 }
 
 // 도중 유국(특수 유국) — 점수 이동 없이 그 판을 무르고 다시 돌린다
-export type AbortReason = "kyuushu" | "suukaikan" | "suufonrenda" | "suuchariichi";
+export type AbortReason = "kyuushu" | "suukaikan" | "suufonrenda" | "suuchariichi" | "sanchahou";
 export const ABORT_LABEL: Record<AbortReason, string> = {
   kyuushu: "구종구패",
   suukaikan: "사간류국",
   suufonrenda: "사풍연타",
   suuchariichi: "사가리치",
+  sanchahou: "삼가화",
 };
 
 // 방금 성립한 울기 — "누가 누구에게서 무엇을 받았는지"를 화면에 잠깐 띄우기 위한 정보

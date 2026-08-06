@@ -19,7 +19,10 @@ export function standardShanten(counts: number[], presetMelds: number): number {
   }
 
   function rec(i: number, melds: number, partials: number, pair: number): number {
-    if (i >= KIND_COUNT || melds >= 4) {
+    // 면자가 4개 찼다고 여기서 끊으면 안 된다 — 작(雀頭)이 뒤쪽 종류에 있는 손패
+    // (예: 333m 444m 567p + 9s9s)를 텐파이/화료로 못 읽는다. 남은 종류는 계속 훑되
+    // 면자만 더 안 만든다.
+    if (i >= KIND_COUNT) {
       return evalLeaf(melds, partials, pair);
     }
     const k = key(i, melds, partials, pair);
@@ -34,7 +37,7 @@ export function standardShanten(counts: number[], presetMelds: number): number {
 
     let found = Infinity;
 
-    if (c[i] >= 3) {
+    if (melds < 4 && c[i] >= 3) {
       c[i] -= 3;
       found = Math.min(found, rec(i, melds + 1, partials, pair));
       c[i] += 3;
@@ -49,7 +52,7 @@ export function standardShanten(counts: number[], presetMelds: number): number {
       found = Math.min(found, rec(i, melds, partials + 1, pair));
       c[i] += 2;
     }
-    if (canStartSequence(i) && c[i] >= 1 && c[i + 1] >= 1 && c[i + 2] >= 1) {
+    if (melds < 4 && canStartSequence(i) && c[i] >= 1 && c[i + 1] >= 1 && c[i + 2] >= 1) {
       c[i]--;
       c[i + 1]--;
       c[i + 2]--;

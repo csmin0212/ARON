@@ -136,6 +136,11 @@ function advanceDealer(match: MatchState): void {
 }
 
 function advanceOrFinish(match: MatchState): void {
+  // 토비 — 한 명이라도 점수가 마이너스면 그 자리에서 대국 종료
+  if (match.players.some((p) => p.points < 0)) {
+    finishMatch(match);
+    return;
+  }
   if (match.roundNumber > match.rules.playerCount) {
     if (match.matchLength === "hanchan" && match.roundWind === WINDS.E) {
       match.roundWind = WINDS.S;
@@ -234,10 +239,14 @@ export function checkWinAtDraw(match: MatchState): ScoreResult | null {
   const seat = hand.turn;
   const player = hand.players[seat];
   const winTile = player.hand[player.hand.length - 1];
+  // 천화(친)·지화(자) — 아무도 울지 않은 첫 순바에서 내가 아직 한 장도 안 버린 상태의 첫 쯔모
+  const firstDraw = hand.firstGoAround && player.discards.length === 0 && !player.rinshanActive;
   const ctx = buildWinContext(match, seat, winTile, true, {
     haitei: hand.wall.liveTiles.length === 0 && !player.rinshanActive,
     rinshan: player.rinshanActive,
   });
+  ctx.tenhou = firstDraw && player.isDealer;
+  ctx.chiihou = firstDraw && !player.isDealer;
   return scoreWin(ctx, player.isDealer);
 }
 
@@ -262,11 +271,12 @@ function applyWinPayment(
   winnerSeat: number,
   scoreResult: ScoreResult,
   loserSeat: number | null,
+  honba: number,
 ): number {
   const hand = match.hand!;
   const winner = hand.players[winnerSeat];
   const tsumo = loserSeat === null;
-  const payment = paymentsFor(scoreResult.basePoints, winner.isDealer, tsumo, match.honba, match.rules.playerCount);
+  const payment = paymentsFor(scoreResult.basePoints, winner.isDealer, tsumo, honba, match.rules.playerCount);
   let gained = 0;
   if (tsumo) {
     hand.players.forEach((p) => {
@@ -292,7 +302,8 @@ export function settleHandWin(
   const hand = match.hand;
   if (!hand || wins.length === 0) return;
   const before = hand.players.map((p) => p.points);
-  const gains = wins.map((w) => applyWinPayment(match, w.seat, w.score, loserSeat));
+  // 혼바는 방총자에게서 머리 잡은 한 명만 받는다(더블론에서 중복 지급되던 문제)
+  const gains = wins.map((w, i) => applyWinPayment(match, w.seat, w.score, loserSeat, i === 0 ? match.honba : 0));
   const kyotakuBonus = match.kyotaku * 1000;
   hand.players[wins[0].seat].points += kyotakuBonus;
   gains[0] += kyotakuBonus;
@@ -637,6 +648,10 @@ function resolveCallResponses(
     if (p.riichi) p.missedRonPermanent = true;
     else p.missedRonTemp = true;
   }
+  if (ronSeats.length >= 3) {
+    settleHandAbort(match, "sanchahou"); // 삼가화 — 세 명이 동시에 론하면 그 판을 무른다
+    return;
+  }
   if (ronSeats.length > 0) {
     applyMultiRon(match, discardSeat, tile, ronSeats);
     return;
@@ -679,9 +694,10 @@ export function declareAnkan(match: MatchState, seat: number, kind: number): boo
   const hand = match.hand;
   if (!hand || hand.turn !== seat || hand.pendingCall) return false;
   const player = hand.players[seat];
-  if (player.riichi) return false;
   const counts = toCounts(player.hand);
   if (counts[kind] < 4) return false;
+  // 리치 중이면 대기가 안 변하는 안깡만 허용
+  if (player.riichi && !canAnkanWhileRiichi(player, kind)) return false;
   const removed: Tile[] = [];
   for (let i = 0; i < 4; i++) {
     const idx = player.hand.findIndex((t) => t.kind === kind);
@@ -689,6 +705,7 @@ export function declareAnkan(match: MatchState, seat: number, kind: number): boo
   }
   player.melds.push({ type: "ankan", kind, tiles: removed });
   hand.kanCount += 1;
+  hand.firstGoAround = false;
   hand.players.forEach((p) => {
     p.ippatsuActive = false;
   });
@@ -728,6 +745,7 @@ function completeKakan(match: MatchState, seat: number, meldIndex: number, tile:
   meld.type = "kakan";
   meld.tiles.push(tile);
   hand.kanCount += 1;
+  hand.firstGoAround = false;
   hand.players.forEach((p) => {
     p.ippatsuActive = false;
   });
@@ -876,11 +894,14 @@ export function legalActionsFor(match: MatchState, seat: number): LegalActions {
   const player = hand.players[seat];
   const counts = toCounts(player.hand);
   const ankanKinds: number[] = [];
-  if (!player.riichi) {
-    counts.forEach((c, kind) => {
-      if (c >= 4) ankanKinds.push(kind);
-    });
-  }
+  counts.forEach((c, kind) => {
+    if (c < 4) return;
+    if (player.riichi) {
+      if (canAnkanWhileRiichi(player, kind)) ankanKinds.push(kind);
+    } else {
+      ankanKinds.push(kind);
+    }
+  });
   const canKakan =
     !player.riichi &&
     player.melds.some((m) => m.type === "pon" && m.kind === player.hand[player.hand.length - 1]?.kind);
@@ -920,6 +941,25 @@ export function declareKyuushu(match: MatchState, seat: number): boolean {
   if (!canDeclareKyuushu(match, seat)) return false;
   settleHandAbort(match, "kyuushu");
   return true;
+}
+
+// 리치 중 안깡 — 작혼과 같은 제약:
+//  1) 방금 뽑은 패로만 (송깡 금지)  2) 안깡 전후로 대기가 완전히 같아야 한다
+export function canAnkanWhileRiichi(player: PlayerState, kind: number): boolean {
+  const drawn = player.hand[player.hand.length - 1];
+  if (!drawn || drawn.kind !== kind) return false;
+  const counts = toCounts(player.hand);
+  if (counts[kind] < 4) return false;
+
+  const before: PlayerState = { ...player, hand: player.hand.slice(0, -1) };
+  const after: PlayerState = {
+    ...player,
+    hand: player.hand.filter((t) => t.kind !== kind),
+    melds: [...player.melds, { type: "ankan", kind, tiles: [] }],
+  };
+  const a = waitKinds(before).join(",");
+  const b = waitKinds(after).join(",");
+  return a.length > 0 && a === b;
 }
 
 // 텐파이 정보 — 무엇을 기다리는지 + 그 패가 몇 장 남았는지(보이는 패를 빼고 계산)
