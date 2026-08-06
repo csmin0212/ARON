@@ -1,5 +1,7 @@
 import type { StatEntry } from "@/lib/charsheet";
 import type { SheetEquipment } from "@/lib/googleSheets";
+import type { LanternEmberBuff } from "@/lib/lanternEmbers";
+import { lanternHpBonus, lanternMpBonus } from "@/lib/lanternEmbers";
 import { adventurerRankGoal, normalizeAdventurerRank, totalFameForRank } from "@/lib/adventurerRank";
 import EquipmentPanel from "./EquipmentPanel";
 
@@ -21,6 +23,7 @@ export type SheetData = {
   curGold?: number | null;
   adventurerRank?: string | null;
   fame?: number | null;
+  lanternEmbers?: LanternEmberBuff[];
 };
 
 function Stat({ s }: { s: StatEntry }) {
@@ -90,6 +93,9 @@ export default function CharacterSheetCard({
   const fame = totalFameForRank(rank, sheet.fame);
   const rankGoal = adventurerRankGoal(rank);
   const rankPct = rankGoal > 0 ? Math.min(100, Math.round((fame / rankGoal) * 100)) : 100;
+  const lanternEmbers = sheet.lanternEmbers ?? [];
+  const maxHp = sheet.hp == null ? null : sheet.hp + lanternHpBonus(lanternEmbers);
+  const maxMp = sheet.mp == null ? null : sheet.mp + lanternMpBonus(lanternEmbers);
 
   return (
     <div className="space-y-4">
@@ -150,14 +156,14 @@ export default function CharacterSheetCard({
         <Vital
           icon="❤️"
           label="HP"
-          value={currentMaxValue(sheet.curHp, sheet.hp)}
+          value={currentMaxValue(sheet.curHp, maxHp)}
           color="text-rose-500"
           bg="bg-rose-500/10"
         />
         <Vital
           icon="💧"
           label="MP"
-          value={currentMaxValue(sheet.curMp, sheet.mp)}
+          value={currentMaxValue(sheet.curMp, maxMp)}
           color="text-sky-500"
           bg="bg-sky-500/10"
         />
@@ -184,6 +190,28 @@ export default function CharacterSheetCard({
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
             {stats.map((s) => (
               <Stat key={s.key} s={s} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lanternEmbers.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-xs font-bold text-faint">등불 효과</p>
+          <div className="space-y-2">
+            {lanternEmbers.map((ember) => (
+              <div key={ember.key} className="rounded-2xl border border-amber-200 bg-amber-50/60 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-sm font-extrabold text-amber-900">
+                    <span className="mr-1">{ember.icon}</span>
+                    {ember.title}
+                  </p>
+                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                    {ember.statLine}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-amber-800/80">{ember.flavor}</p>
+              </div>
             ))}
           </div>
         </div>

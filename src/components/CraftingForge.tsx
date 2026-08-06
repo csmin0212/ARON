@@ -14,9 +14,11 @@ import {
   MAX_MOON_FRAGMENTS,
   MOON_FRAGMENT,
   MOON_TIER_BASE,
+  craftCategoryLabel,
   isCraftMinorMaterial,
   isMoonFragment,
   minorSlotsFor,
+  type CraftHand,
   type CraftGroup,
 } from "@/lib/weaponCraft";
 import type { LifeSkillItem } from "@/lib/lifeSkillData";
@@ -172,6 +174,7 @@ export default function CraftingForge({
   const router = useRouter();
   const [group, setGroup] = useState<CraftGroup>("무기");
   const [category, setCategory] = useState<string>("장검");
+  const [handFilter, setHandFilter] = useState<CraftHand | "전체">("전체");
   const [majorQty, setMajorQty] = useState<Record<string, number>>({});
   const [minorSel, setMinorSel] = useState<string[]>([]);
   const [customName, setCustomName] = useState("");
@@ -179,6 +182,21 @@ export default function CraftingForge({
   const [result, setResult] = useState<CraftResult | null>(null);
   const [openTag, setOpenTag] = useState<string | null>(null);
   const maxMinors = minorSlotsFor(smithLevel);
+  const categoryOptions = useMemo(
+    () =>
+      CRAFT_CATEGORIES.filter(
+        (c) => c.group === group && (group !== "무기" || handFilter === "전체" || c.hand === handFilter),
+      ),
+    [group, handFilter],
+  );
+
+  function firstCategoryFor(nextGroup: CraftGroup, nextHand: CraftHand | "전체"): string {
+    return (
+      CRAFT_CATEGORIES.find(
+        (c) => c.group === nextGroup && (nextGroup !== "무기" || nextHand === "전체" || c.hand === nextHand),
+      )?.key ?? ""
+    );
+  }
 
   // 메이저를 둘로 나눈다 — 일반 광물(Lv1~5)과 상위 티어를 여는 특수 광물(Lv6~10).
   const majors = minerals.filter((m) => m.def.craftRole === "메이저");
@@ -323,8 +341,9 @@ export default function CraftingForge({
                   type="button"
                   onClick={() => {
                     setGroup(g);
-                    const first = CRAFT_CATEGORIES.find((c) => c.group === g);
-                    if (first) setCategory(first.key);
+                    const nextHand = g === "무기" ? handFilter : "전체";
+                    if (g !== "무기") setHandFilter("전체");
+                    setCategory(firstCategoryFor(g, nextHand));
                   }}
                   className={`rounded-xl py-2 text-sm font-extrabold transition ${
                     group === g ? "bg-surface text-brand-600 shadow-sm" : "text-muted hover:text-content"
@@ -334,8 +353,27 @@ export default function CraftingForge({
                 </button>
               ))}
             </div>
+            {group === "무기" && (
+              <div className="mb-2 grid grid-cols-3 gap-1.5 rounded-2xl bg-canvas p-1">
+                {(["전체", "한손", "양손"] as const).map((hand) => (
+                  <button
+                    key={hand}
+                    type="button"
+                    onClick={() => {
+                      setHandFilter(hand);
+                      setCategory(firstCategoryFor("무기", hand));
+                    }}
+                    className={`rounded-xl py-1.5 text-xs font-extrabold transition ${
+                      handFilter === hand ? "bg-surface text-brand-600 shadow-sm" : "text-muted hover:text-content"
+                    }`}
+                  >
+                    {hand}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5">
-              {CRAFT_CATEGORIES.filter((c) => c.group === group).map((c) => (
+              {categoryOptions.map((c) => (
                 <button
                   key={c.key}
                   type="button"
@@ -346,7 +384,8 @@ export default function CraftingForge({
                       : "bg-subtle text-muted hover:text-content"
                   }`}
                 >
-                  {c.emoji} {c.key}
+                  {c.emoji} {craftCategoryLabel(c)}
+                  {handFilter === "전체" && c.hand ? ` · ${c.hand}` : ""}
                 </button>
               ))}
             </div>

@@ -28,6 +28,7 @@ import WorldChat from "@/components/WorldChat";
 import { WorldSyncProvider } from "@/components/WorldSyncProvider";
 import ActiveBuffsBar, { type WorldBuff } from "@/components/ActiveBuffsBar";
 import { dailyEventBuffs, dailyLifeEventBonus } from "@/lib/dailyEvents";
+import { loadActiveLanternEmbers } from "@/lib/lanternEmbers";
 import WorldServices, {
   type CookingView,
   type BlackMarketView,
@@ -1388,7 +1389,16 @@ export default async function WorldPage() {
   }
 
   // 적용 중인 이벤트·요리 버프 — 월드 상단 표시용 (같은 요리에서 나온 생활 행운은 한 칩으로 합침)
-  const buffRows: WorldBuff[] = dailyEventBuffs().map((buff) => ({ ...buff, source: "event" }));
+  const activeLanternEmbers = await loadActiveLanternEmbers();
+  const buffRows: WorldBuff[] = [
+    ...dailyEventBuffs().map((buff) => ({ ...buff, source: "event" as const })),
+    ...activeLanternEmbers.map((ember) => ({
+      icon: ember.icon,
+      label: `${ember.itemName} · ${ember.statLine}`,
+      until: null,
+      source: "lantern" as const,
+    })),
+  ];
   for (const buff of life.cookingBuffs.lifeLuck) {
     const kinds =
       buff.kind === "all"

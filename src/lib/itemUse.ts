@@ -19,7 +19,8 @@ const EQUIPMENT_SLOT_PATTERN =
 // 예전엔 여기에 \b가 붙어 있어서 이 패턴이 한 번도 매치되지 않았다(사실상 죽은 분기).
 // 경계는 문자열 끝이나 구분자(공백·중점·쉼표·줄바꿈)로 직접 확인한다.
 const CRAFT_CATEGORY_BOUNDARY = "(?=$|[\\s·,])";
-const CRAFT_CATEGORY_NAMES = "단검|장검|양손검|도끼|메이스|창|채찍|카타나|활|방패|몸통|머리|보조|장신구";
+const CRAFT_CATEGORY_NAMES =
+  "격투|단검|장검|양손검|도끼|타격|메이스|창|채찍|카타나|활|방패|몸통|머리|전신|보조|장신구";
 const CRAFT_CATEGORY_PATTERN = new RegExp(
   `(?:^|\\n)\\s*Lv\\s*\\d+\\s+(?:${CRAFT_CATEGORY_NAMES})${CRAFT_CATEGORY_BOUNDARY}`,
 );

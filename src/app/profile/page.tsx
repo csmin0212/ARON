@@ -20,6 +20,7 @@ import { computeProfileValues, buildProfileIdentity } from "@/lib/profileValues"
 import { parseProfileWidgets } from "@/lib/profileWidgets";
 import { normalizeCardStyle } from "@/lib/profileCard";
 import { ownedSkinsForSheet } from "@/lib/cardSkinUnlock";
+import { loadActiveLanternEmbers } from "@/lib/lanternEmbers";
 
 export const metadata = { title: "프로필 설정 · 아리안로드 온라인 갤러리" };
 
@@ -33,7 +34,7 @@ export default async function ProfilePage({
 
   const sp = await searchParams;
   await checkAndGrant(user.id); // 임계값 업적 지연 판정
-  const [counts, sheet, earnedRows] = await Promise.all([
+  const [counts, sheet, earnedRows, lanternEmbers] = await Promise.all([
     prisma.post.count({ where: { authorId: user.id } }),
     prisma.characterSheet.findUnique({
       where: { userId: user.id },
@@ -55,6 +56,7 @@ export default async function ProfilePage({
       },
     }),
     prisma.userAchievement.findMany({ where: { userId: user.id }, select: { achId: true } }),
+    loadActiveLanternEmbers(),
   ]);
   const earnedIds = earnedRows.map((row) => row.achId);
   const achievementOptions: ProfileAchievementBadge[] =
@@ -149,7 +151,7 @@ export default async function ProfilePage({
 
           {sheet && (
             <div className="mb-5 rounded-2xl border border-line bg-canvas p-4">
-              <CharacterSheetCard sheet={{ ...sheet, charName: user.nickname }} />
+              <CharacterSheetCard sheet={{ ...sheet, charName: user.nickname, lanternEmbers }} />
             </div>
           )}
 

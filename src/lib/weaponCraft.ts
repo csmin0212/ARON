@@ -20,30 +20,50 @@
 import { lifeSkillMarketPrice, type LifeSkillItem } from "./lifeSkillData";
 
 export type CraftGroup = "무기" | "방어구";
+export type CraftHand = "한손" | "양손";
 
 export type CraftCategory = {
   key: string;
   group: CraftGroup;
   emoji: string;
+  label?: string;
+  hand?: CraftHand;
 };
 
 export const CRAFT_CATEGORIES: CraftCategory[] = [
   { key: "격투", group: "무기", emoji: "🥊" },
-  { key: "단검", group: "무기", emoji: "🗡️" },
-  { key: "장검", group: "무기", emoji: "⚔️" },
-  { key: "양손검", group: "무기", emoji: "🗡️" },
-  { key: "도끼", group: "무기", emoji: "🪓" },
-  { key: "타격", group: "무기", emoji: "🔨" },
-  { key: "창", group: "무기", emoji: "🔱" },
-  { key: "채찍", group: "무기", emoji: "〰️" },
-  { key: "카타나", group: "무기", emoji: "🈁" },
-  { key: "활", group: "무기", emoji: "🏹" },
+  { key: "단검", group: "무기", emoji: "🗡️", hand: "한손" },
+  { key: "장검", group: "무기", emoji: "⚔️", hand: "한손" },
+  { key: "양손검", group: "무기", emoji: "🗡️", hand: "양손" },
+  { key: "도끼:한손", group: "무기", emoji: "🪓", label: "도끼", hand: "한손" },
+  { key: "도끼:양손", group: "무기", emoji: "🪓", label: "도끼", hand: "양손" },
+  { key: "타격:한손", group: "무기", emoji: "🔨", label: "타격", hand: "한손" },
+  { key: "타격:양손", group: "무기", emoji: "🪄", label: "타격", hand: "양손" },
+  { key: "창:한손", group: "무기", emoji: "🔱", label: "창", hand: "한손" },
+  { key: "창:양손", group: "무기", emoji: "🔱", label: "창", hand: "양손" },
+  { key: "채찍", group: "무기", emoji: "〰️", hand: "한손" },
+  { key: "카타나", group: "무기", emoji: "🈁", hand: "한손" },
+  { key: "활", group: "무기", emoji: "🏹", hand: "양손" },
   { key: "방패", group: "방어구", emoji: "🛡️" },
   { key: "몸통", group: "방어구", emoji: "🎽" },
   { key: "머리", group: "방어구", emoji: "🪖" },
   { key: "전신", group: "방어구", emoji: "🛡️" },
   { key: "보조", group: "방어구", emoji: "🧤" },
 ];
+
+export function craftCategoryLabel(category: CraftCategory): string {
+  return category.label ?? category.key;
+}
+
+const LEGACY_CRAFT_CATEGORY_KEYS: Record<string, string> = {
+  도끼: "도끼:양손",
+  타격: "타격:한손",
+  창: "창:한손",
+};
+
+function normalizeCraftCategoryKey(key: string): string {
+  return LEGACY_CRAFT_CATEGORY_KEYS[key] ?? key;
+}
 
 export const MAX_MAJORS = 5; // 일반 메이저 투입 상한 = Lv5
 export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
@@ -300,7 +320,19 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 3600, rep: "미스릴 펄스", part: "양손" },
     { hit: -2, atk: 20, dodge: 0, pdef: 0, mdef: 0, price: 6100, rep: "미스릴 플랑베르주", part: "양손" },
   ],
-  도끼: [
+  "도끼:한손": [
+    { hit: -1, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 80, rep: "핸드 액스", part: "한손" },
+    { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 160, rep: "배틀 액스", part: "한손" },
+    { hit: -1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 320, rep: "워 액스", part: "한손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 520, rep: "파인 액스", part: "한손" },
+    { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 800, rep: "헤비 액스", part: "한손" },
+    { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 1000, rep: "실버 액스", part: "한손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 1600, rep: "미스릴 핸드 액스", part: "한손" },
+    { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 2400, rep: "미스릴 워 액스", part: "한손" },
+    { hit: -1, atk: 15, dodge: 0, pdef: 0, mdef: 0, price: 3600, rep: "네바프 핸드 액스", part: "한손" },
+    { hit: -1, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 4800, rep: "다이아 액스", part: "한손" },
+  ],
+  "도끼:양손": [
     { hit: -2, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 160, rep: "그레이트 액스", part: "양손" },
     { hit: -2, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 230, rep: "부주", part: "양손" },
     { hit: -2, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 510, rep: "폴 액스", part: "양손" },
@@ -312,7 +344,7 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 4800, rep: "네바프 액스", part: "양손" },
     { hit: -2, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 6200, rep: "크레센트 액스", part: "양손" },
   ],
-  타격: [
+  "타격:한손": [
     { hit: -1, atk: 4, dodge: 0, pdef: 0, mdef: 0, price: 80, rep: "라이트 메이스", part: "한손" },
     { hit: -1, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 250, rep: "픽", part: "한손" },
     { hit: -1, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 360, rep: "모닝스타", part: "한손" },
@@ -324,17 +356,41 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 1368, rep: "미스릴 픽", part: "한손" },
     { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 2200, rep: "다이아 메이스", part: "한손" },
   ],
-  창: [
+  "타격:양손": [
+    { hit: -1, atk: 2, dodge: 0, pdef: 1, mdef: 0, price: 80, rep: "스태프", part: "양손" },
+    { hit: -1, atk: 4, dodge: 0, pdef: 2, mdef: 0, price: 250, rep: "쿼터스태프", part: "양손" },
+    { hit: -1, atk: 5, dodge: 0, pdef: 3, mdef: 0, price: 360, rep: "메이지 스태프", part: "양손" },
+    { hit: -1, atk: 6, dodge: 0, pdef: 4, mdef: 0, price: 480, rep: "파인 스태프", part: "양손" },
+    { hit: -1, atk: 6, dodge: 0, pdef: 5, mdef: 0, price: 500, rep: "가드 스태프", part: "양손" },
+    { hit: -1, atk: 7, dodge: 0, pdef: 6, mdef: 0, price: 700, rep: "룬 스태프", part: "양손" },
+    { hit: -1, atk: 8, dodge: 0, pdef: 7, mdef: 0, price: 875, rep: "워 스태프", part: "양손" },
+    { hit: -1, atk: 9, dodge: 0, pdef: 8, mdef: 0, price: 1094, rep: "미스릴 스태프", part: "양손" },
+    { hit: -1, atk: 9, dodge: 0, pdef: 9, mdef: 0, price: 1368, rep: "미스릴 가드 스태프", part: "양손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 10, mdef: 0, price: 2200, rep: "다이아 스태프", part: "양손" },
+  ],
+  "창:한손": [
     { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 140, rep: "숏 스피어", part: "한손" },
-    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 350, rep: "트라이던트", part: "양손" },
-    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 450, rep: "헤비 스피어", part: "양손" },
-    { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 590, rep: "랜시아", part: "양손" },
+    { hit: -1, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 280, rep: "스피어", part: "한손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 420, rep: "파인 스피어", part: "한손" },
+    { hit: -1, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 560, rep: "랜스", part: "한손" },
     { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 705, rep: "파이크", part: "한손" },
     { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 1500, rep: "미스릴 스피어", part: "한손" },
     { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 1875, rep: "헤비 랜스", part: "한손" },
     { hit: -1, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 2800, rep: "풋맨즈 파이크", part: "한손" },
     { hit: -1, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 4100, rep: "십자창", part: "한손" },
     { hit: -1, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 5125, rep: "다이아 랜스", part: "한손" },
+  ],
+  "창:양손": [
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 350, rep: "트라이던트", part: "양손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 450, rep: "헤비 스피어", part: "양손" },
+    { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 590, rep: "랜시아", part: "양손" },
+    { hit: -1, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 900, rep: "롱 스피어", part: "양손" },
+    { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 1350, rep: "핼버드", part: "양손" },
+    { hit: -1, atk: 15, dodge: 0, pdef: 0, mdef: 0, price: 1800, rep: "미스릴 트라이던트", part: "양손" },
+    { hit: -1, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 2400, rep: "미스릴 핼버드", part: "양손" },
+    { hit: -1, atk: 17, dodge: 0, pdef: 0, mdef: 0, price: 3200, rep: "풋맨즈 랜시아", part: "양손" },
+    { hit: -1, atk: 18, dodge: 0, pdef: 0, mdef: 0, price: 4600, rep: "크로스 스피어", part: "양손" },
+    { hit: -1, atk: 19, dodge: 0, pdef: 0, mdef: 0, price: 5800, rep: "다이아 핼버드", part: "양손" },
   ],
   채찍: [
     { hit: -2, atk: 5, dodge: 0, pdef: 0, mdef: 0, price: 30, rep: "윕", part: "한손" },
@@ -441,9 +497,12 @@ const BASELINE_WEIGHT: Record<string, number[]> = {
   단검: [1, 2, 2, 2, 3, 3, 4, 4, 5, 5],
   장검: [6, 7, 8, 8, 8, 8, 8, 9, 9, 9],
   양손검: [10, 11, 12, 13, 14, 14, 14, 14, 14, 15],
-  도끼: [11, 11, 12, 13, 14, 14, 14, 14, 14, 14],
-  타격: [5, 7, 8, 9, 10, 10, 10, 10, 10, 10],
-  창: [8, 10, 11, 12, 12, 13, 13, 14, 15, 15],
+  "도끼:한손": [5, 6, 7, 8, 8, 9, 9, 10, 10, 11],
+  "도끼:양손": [11, 11, 12, 13, 14, 14, 14, 14, 14, 14],
+  "타격:한손": [5, 7, 8, 9, 10, 10, 10, 10, 10, 10],
+  "타격:양손": [5, 6, 7, 8, 9, 9, 10, 10, 10, 11],
+  "창:한손": [8, 9, 10, 11, 12, 13, 13, 14, 15, 15],
+  "창:양손": [10, 10, 11, 12, 12, 13, 14, 14, 15, 15],
   채찍: [3, 4, 5, 6, 7, 7, 7, 7, 7, 7],
   카타나: [5, 6, 7, 8, 9, 9, 9, 9, 9, 9],
   활: [6, 7, 8, 9, 10, 10, 10, 13, 13, 13],
@@ -657,8 +716,10 @@ export function resolveSlotTag(tag: string, group: CraftGroup): string {
 }
 
 export function computeCraft(input: CraftInput): CraftPreview | { error: string } {
-  const category = CRAFT_CATEGORIES.find((c) => c.key === input.category);
+  const categoryKey = normalizeCraftCategoryKey(input.category);
+  const category = CRAFT_CATEGORIES.find((c) => c.key === categoryKey);
   if (!category) return { error: "만들 장비 종류를 선택해주세요." };
+  const categoryLabel = craftCategoryLabel(category);
 
   const all = input.majors.filter((m) => m.qty > 0);
   // 달의 파편은 레벨(티어)만 올리고, 일반 메이저가 재질·스탯을 정한다.
@@ -701,6 +762,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   }
 
   const rows = BASELINE[category.key];
+  if (!rows) return { error: "이 장비 종류는 아직 제작 기준이 없어요." };
   const base = rows[Math.min(level, rows.length) - 1];
 
   // 메이저 — 개수 가중평균(질 좋은 광물을 섞을수록 기준보다 소폭 상향)
@@ -766,11 +828,11 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     ...(tagList.length > 0 ? [tagList.map((t) => `[${t}]`).join(" ")] : []),
     ...(extras.length > 0 ? [extras.join(" · ")] : []),
     ...(isMagic ? ["분류: 매직 아이템"] : []),
-    `Lv${level} ${category.key} · ${base.part}`,
+    `Lv${level} ${categoryLabel} · ${base.part}`,
   ].join("\n");
 
   return {
-    category: category.key,
+    category: categoryLabel,
     group: category.group,
     level,
     part: base.part,

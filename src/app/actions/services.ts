@@ -53,6 +53,12 @@ import {
   parsePotionName,
 } from "@/lib/alchemy";
 import {
+  lanternHpBonus,
+  lanternMpBonus,
+  lanternRecoveryBonus,
+  loadActiveLanternEmbers,
+} from "@/lib/lanternEmbers";
+import {
   findLifeSkillItem,
   getActiveItems,
   lifeSkillSellPrice,
@@ -2832,6 +2838,10 @@ export async function useCookingItem(
   const potionDurationMinutes = isCustomAlchemyPotion ? parseBuffDurationMinutes(rawEffect) : null;
   const timedPotionLifeLuck = potionDurationMinutes && lifeLuck ? lifeLuck : null;
   const timedPotionStat = potionDurationMinutes && statBuff ? statBuff : null;
+  const activeLanternEmbers = await loadActiveLanternEmbers();
+  const maxHp = sheet.hp == null ? null : sheet.hp + lanternHpBonus(activeLanternEmbers);
+  const maxMp = sheet.mp == null ? null : sheet.mp + lanternMpBonus(activeLanternEmbers);
+  const recoveryBonus = lanternRecoveryBonus(activeLanternEmbers);
 
   if (
     isCustomAlchemyPotion &&
@@ -2854,11 +2864,13 @@ export async function useCookingItem(
     for (const rec of recovery) {
       if (rec.resource === "HP") {
         const before = curHp;
-        curHp = sheet.hp != null ? Math.min(sheet.hp, curHp + rec.amount) : curHp + rec.amount;
+        const amount = rec.amount + recoveryBonus;
+        curHp = maxHp != null ? Math.min(maxHp, curHp + amount) : curHp + amount;
         gains.push(`HP +${curHp - before}`);
       } else {
         const before = curMp;
-        curMp = sheet.mp != null ? Math.min(sheet.mp, curMp + rec.amount) : curMp + rec.amount;
+        const amount = rec.amount + recoveryBonus;
+        curMp = maxMp != null ? Math.min(maxMp, curMp + amount) : curMp + amount;
         gains.push(`MP +${curMp - before}`);
       }
     }
@@ -3150,11 +3162,13 @@ export async function useCookingItem(
     for (const rec of recovery) {
       if (rec.resource === "HP") {
         const before = curHp;
-        curHp = sheet.hp != null ? Math.min(sheet.hp, curHp + rec.amount) : curHp + rec.amount;
+        const amount = rec.amount + recoveryBonus;
+        curHp = maxHp != null ? Math.min(maxHp, curHp + amount) : curHp + amount;
         gains.push(`HP +${curHp - before}`);
       } else {
         const before = curMp;
-        curMp = sheet.mp != null ? Math.min(sheet.mp, curMp + rec.amount) : curMp + rec.amount;
+        const amount = rec.amount + recoveryBonus;
+        curMp = maxMp != null ? Math.min(maxMp, curMp + amount) : curMp + amount;
         gains.push(`MP +${curMp - before}`);
       }
     }

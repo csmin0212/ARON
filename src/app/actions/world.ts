@@ -32,6 +32,7 @@ import { lifeSkillKindOf, type LifeSkillKind } from "@/lib/lifeSkillData";
 import {
   appendSheetItem,
   inventoryWeightTotal,
+  pushInventoryToSheet,
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
@@ -43,6 +44,17 @@ import {
   isHomeLocationId,
   parseHousingState,
 } from "@/lib/housing";
+import {
+  LANTERN_EMBER_COMMAND,
+  LANTERN_EMBERS,
+  LANTERN_PLAZA_ID,
+  activeEmberKeysFromClaims,
+  consumeEmberFromInventory,
+  emberAliases,
+  findFirstOwnedEmber,
+  lanternEmberEventId,
+  normalizeLanternKeyword,
+} from "@/lib/lanternEmbers";
 
 export type WorldActionState = { error?: string; ok?: string } | undefined;
 export type WorldCleanupState = { error?: string; ok?: string } | undefined;
@@ -68,6 +80,80 @@ function parseProbeMap(json: string | null): Record<string, number> {
   }
 }
 
+async function decrementEmberDbInventory(userId: string, aliases: string[]): Promise<void> {
+  const rows = await prisma.inventoryEntry.findMany({
+    where: { userId, meta: null, itemId: { in: aliases } },
+    orderBy: { updatedAt: "desc" },
+  });
+  let remaining = 1;
+  for (const row of rows) {
+    if (remaining <= 0) break;
+    const used = Math.min(Math.max(0, row.qty), remaining);
+    await prisma.inventoryEntry.update({
+      where: { id: row.id },
+      data: { qty: Math.max(0, row.qty - used) },
+    });
+    remaining -= used;
+  }
+}
+
+async function placeLanternEmber(
+  userId: string,
+  sheet: { locationId: string | null; invJson: string | null; sheetTab: string | null },
+): Promise<DiscoverState> {
+  if (sheet.locationId !== LANTERN_PLAZA_ID) {
+    return { notice: "등불은 대답하지 않는다. 불씨를 놓을 곳은 등불 광장이다." };
+  }
+
+  const claims = await prisma.worldEventClaim.findMany({
+    where: { eventId: { in: LANTERN_EMBERS.map((ember) => lanternEmberEventId(ember.key)) } },
+    select: { eventId: true },
+  });
+  const active = activeEmberKeysFromClaims(claims);
+  const inv = parseInv(sheet.invJson);
+  const ember = findFirstOwnedEmber(inv, active);
+  if (!ember) {
+    return active.length >= LANTERN_EMBERS.length
+      ? { notice: "여섯 불꽃은 이미 모두 등불 안에서 숨 쉬고 있다." }
+      : { notice: "가방 안에서 등불에 응답하는 불씨를 찾지 못했다." };
+  }
+
+  try {
+    await prisma.worldEventClaim.create({
+      data: {
+        eventId: lanternEmberEventId(ember.key),
+        locationId: LANTERN_PLAZA_ID,
+        userId,
+      },
+    });
+  } catch {
+    return { notice: `${ember.itemName}의 빛은 이미 등불 광장에 깃들어 있다.` };
+  }
+
+  const nextInv = consumeEmberFromInventory(inv, ember);
+  nextInv.curWeight = inventoryWeightTotal(nextInv.items) ?? nextInv.curWeight;
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId },
+      data: { invJson: JSON.stringify(nextInv) },
+    }),
+    decrementEmberDbInventory(userId, emberAliases(ember)),
+  ]);
+  void pushInventoryToSheet(sheet.sheetTab, nextInv);
+  await postSystem(
+    LANTERN_PLAZA_ID,
+    `🏮 ${ember.itemName}가 등불에 놓였다. ${ember.title} — ${ember.statLine}`,
+    { userId, kind: "시스템" },
+  );
+  revalidatePath("/world");
+  revalidatePath("/profile");
+
+  return {
+    found: true,
+    notice: `${ember.flavor} 세계 효과가 켜졌다: ${ember.statLine}`,
+  };
+}
+
 // 비밀 키워드로 히든 장소 발견 — 채팅과 분리된 전용 입력칸에서 호출.
 // 입력 키워드는 공개 채팅에 남기지 않고, 결과는 본인에게만 notice 로 돌려준다.
 export async function discoverByKeyword(keyword: string): Promise<DiscoverState> {
@@ -80,6 +166,10 @@ export async function discoverByKeyword(keyword: string): Promise<DiscoverState>
 
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.locationId) return { error: "월드에 입장한 상태에서만 조사할 수 있어요." };
+
+  if (normalizeLanternKeyword(trimmed) === LANTERN_EMBER_COMMAND) {
+    return placeLanternEmber(user.id, sheet);
+  }
 
   // 키워드별 쿨다운 체크 (만료된 기록은 정리)
   const now = Date.now();

@@ -7,8 +7,8 @@ import { formatTime } from "@/lib/format";
 export type WorldBuff = {
   icon: string;
   label: string;
-  until: string;
-  source?: "event" | "food" | "potion";
+  until?: string | null;
+  source?: "event" | "food" | "potion" | "lantern";
 };
 
 export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
@@ -21,14 +21,17 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
     return () => clearInterval(t);
   }, []);
 
-  const alive = now == null ? buffs : buffs.filter((buff) => Date.parse(buff.until) > now);
+  const alive = now == null ? buffs : buffs.filter((buff) => !buff.until || Date.parse(buff.until) > now);
   if (alive.length === 0) return null;
 
   const events = alive.filter((buff) => buff.source === "event");
-  const foods = alive.filter((buff) => buff.source !== "event" && buff.source !== "potion");
+  const lanterns = alive.filter((buff) => buff.source === "lantern");
+  const foods = alive.filter(
+    (buff) => buff.source !== "event" && buff.source !== "potion" && buff.source !== "lantern",
+  );
   const potions = alive.filter((buff) => buff.source === "potion");
-  const minutesLeft = (iso: string) =>
-    now == null ? null : Math.max(1, Math.ceil((Date.parse(iso) - now) / 60_000));
+  const minutesLeft = (iso: string | null | undefined) =>
+    now == null || !iso ? null : Math.max(1, Math.ceil((Date.parse(iso) - now) / 60_000));
 
   return (
     <div className="space-y-2 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-sm">
@@ -39,6 +42,20 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
             <span
               key={`event-${buff.label}-${i}`}
               className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700"
+            >
+              {buff.icon} {buff.label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {lanterns.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-extrabold text-muted">🏮 등불 효과</span>
+          {lanterns.map((buff, i) => (
+            <span
+              key={`lantern-${buff.label}-${i}`}
+              className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700"
             >
               {buff.icon} {buff.label}
             </span>
@@ -59,7 +76,7 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
               >
                 {buff.icon} {buff.label}
                 <span className="font-semibold text-emerald-500">
-                  · {formatTime(buff.until)}까지{left != null ? ` (${left}분)` : ""}
+                  {buff.until ? ` · ${formatTime(buff.until)}까지${left != null ? ` (${left}분)` : ""}` : ""}
                 </span>
               </span>
             );
@@ -80,7 +97,7 @@ export default function ActiveBuffsBar({ buffs }: { buffs: WorldBuff[] }) {
               >
                 {buff.icon} {buff.label}
                 <span className="font-semibold text-sky-500">
-                  · {formatTime(buff.until)}까지{left != null ? ` (${left}분)` : ""}
+                  {buff.until ? ` · ${formatTime(buff.until)}까지${left != null ? ` (${left}분)` : ""}` : ""}
                 </span>
               </span>
             );
