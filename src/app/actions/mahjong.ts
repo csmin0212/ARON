@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { isGmUsername } from "@/lib/gm";
 import { kstDayKey } from "@/lib/world";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 import {
@@ -82,6 +83,7 @@ export type MahjongTableSummary = {
   hostNickname: string;
   matchLength: MatchLength;
   status: "waiting" | "playing";
+  isHost: boolean;
 };
 
 export async function listMahjongTables(): Promise<MahjongTableSummary[]> {
@@ -89,6 +91,8 @@ export async function listMahjongTables(): Promise<MahjongTableSummary[]> {
   if (!user) return [];
   const check = await requirePlazaLocation(user.id);
   if (!check.ok) return [];
+
+  await cleanupStaleTables(check.location.id);
 
   const tables = await prisma.mahjongTable.findMany({
     where: { locationId: check.location.id, status: { in: ["waiting", "playing"] } },
@@ -108,6 +112,7 @@ export async function listMahjongTables(): Promise<MahjongTableSummary[]> {
     hostNickname: hostMap.get(t.hostUserId) ?? "???",
     matchLength: parseSettings(t.settingsJson).matchLength,
     status: t.status === "playing" ? "playing" : "waiting",
+    isHost: t.hostUserId === user.id,
   }));
 }
 
@@ -183,8 +188,49 @@ export async function leaveMahjongTable(tableId: string): Promise<MahjongActionS
   const table = await prisma.mahjongTable.findUnique({ where: { id: tableId } });
   if (!table || table.status !== "waiting") return { ok: false, message: "시작된 방은 나갈 수 없습니다." };
   await prisma.mahjongSeat.deleteMany({ where: { tableId, userId: user.id } });
+
+  // 사람이 아무도 안 남으면 방을 지운다 — 안 그러면 빈 방이 목록에 계속 떠 있는다
+  const rest = await prisma.mahjongSeat.findMany({ where: { tableId }, select: { userId: true } });
+  if (!rest.some((s) => s.userId)) {
+    await prisma.mahjongTable.delete({ where: { id: tableId } });
+  }
+  revalidatePath("/world");
   revalidatePath(`/mahjong/${tableId}`);
   return { ok: true, message: "방을 나갔습니다." };
+}
+
+// 방장이 직접 방을 없앤다(대기 중일 때만). GM 은 진행이 꼬인 방도 정리할 수 있다.
+export async function deleteMahjongTable(tableId: string): Promise<MahjongActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, message: "로그인이 필요합니다." };
+  const table = await prisma.mahjongTable.findUnique({ where: { id: tableId } });
+  if (!table) return { ok: true, message: "이미 없는 방입니다." };
+
+  const gm = isGmUsername(user.username);
+  if (table.hostUserId !== user.id && !gm) return { ok: false, message: "방장만 없앨 수 있어요." };
+  if (table.status === "playing" && !gm) return { ok: false, message: "진행 중인 방은 없앨 수 없어요." };
+
+  await prisma.mahjongRecord.deleteMany({ where: { tableId } });
+  await prisma.mahjongTable.delete({ where: { id: tableId } }); // 좌석은 Cascade 로 함께 삭제
+  revalidatePath("/world");
+  return { ok: true, message: "방을 없앴습니다." };
+}
+
+// 목록을 열 때마다 찌꺼기 방을 치운다(별도 크론 없이 — starword 지연 정산과 같은 방식).
+//  · 사람이 하나도 안 남은 대기방
+//  · 6시간 넘게 대기 중인 방
+async function cleanupStaleTables(locationId: string): Promise<void> {
+  const stale = await prisma.mahjongTable.findMany({
+    where: { locationId, status: "waiting" },
+    include: { seats: { select: { userId: true } } },
+  });
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  const doomed = stale
+    .filter((t) => !t.seats.some((s) => s.userId) || t.createdAt.getTime() < cutoff)
+    .map((t) => t.id);
+  if (doomed.length === 0) return;
+  await prisma.mahjongRecord.deleteMany({ where: { tableId: { in: doomed } } });
+  await prisma.mahjongTable.deleteMany({ where: { id: { in: doomed } } });
 }
 
 export async function fillWithAi(tableId: string): Promise<MahjongActionState> {

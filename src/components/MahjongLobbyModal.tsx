@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useState } from "react";
 import {
   createMahjongTable,
+  deleteMahjongTable,
   joinMahjongTable,
   listMahjongTables,
   type MahjongActionState,
@@ -155,8 +156,32 @@ function JoinButton({ tableId }: { tableId: string }) {
 
 const MATCH_LENGTH_LABEL: Record<string, string> = { tonpuusen: "동풍전", hanchan: "반장전" };
 
+// 내가 만든 방 없애기 — 대기 중인 방만
+function DeleteRoomButton({ tableId, onDone }: { tableId: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      title="이 방 없애기"
+      onClick={async () => {
+        setBusy(true);
+        await deleteMahjongTable(tableId);
+        onDone();
+      }}
+      className="shrink-0 rounded-xl bg-rose-500/10 px-3 py-2 text-xs font-extrabold text-rose-600 transition hover:bg-rose-500/20 disabled:opacity-60"
+    >
+      {busy ? "..." : "삭제"}
+    </button>
+  );
+}
+
 export default function MahjongLobbyModal({ onClose }: { onClose: () => void }) {
   const [tables, setTables] = useState<MahjongTableSummary[] | null>(null);
+
+  const reload = useCallback(() => {
+    listMahjongTables().then(setTables);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -214,7 +239,10 @@ export default function MahjongLobbyModal({ onClose }: { onClose: () => void }) 
                         관전
                       </Link>
                     ) : (
-                      <JoinButton tableId={t.id} />
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <JoinButton tableId={t.id} />
+                        {t.isHost && <DeleteRoomButton tableId={t.id} onDone={reload} />}
+                      </span>
                     )}
                   </li>
                 ))}

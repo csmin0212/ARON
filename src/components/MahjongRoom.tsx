@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePolling } from "@/lib/usePolling";
 import {
+  deleteMahjongTable,
   fillWithAi,
   leaveMahjongTable,
   setReady,
@@ -607,6 +608,11 @@ function WaitingRoom({
     await leaveMahjongTable(tableId);
     router.push("/world");
   }
+  async function removeRoom() {
+    setBusy(true);
+    await deleteMahjongTable(tableId);
+    router.push("/world");
+  }
 
   const slots = Array.from({ length: snap.playerCount }, (_, i) => snap.seats.find((s) => s.seatIndex === i) ?? null);
 
@@ -671,10 +677,20 @@ function WaitingRoom({
           type="button"
           onClick={leave}
           disabled={busy}
-          className="w-full rounded-xl bg-rose-500/10 px-4 py-3 text-sm font-extrabold text-rose-600 transition hover:bg-rose-500/15 disabled:opacity-60"
+          className="w-full rounded-xl bg-subtle px-4 py-3 text-sm font-bold text-muted transition hover:bg-line disabled:opacity-60"
         >
           방 나가기
         </button>
+        {isHost && (
+          <button
+            type="button"
+            onClick={removeRoom}
+            disabled={busy}
+            className="w-full rounded-xl bg-rose-500/10 px-4 py-3 text-sm font-extrabold text-rose-600 transition hover:bg-rose-500/15 disabled:opacity-60"
+          >
+            방 없애기
+          </button>
+        )}
       </div>
     </div>
   );
