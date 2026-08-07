@@ -5,7 +5,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
 import { prisma } from "@/lib/prisma";
 import {
-  GM_NPC_SLOT_COUNT,
+  GM_NPC_SLOT_MAX,
+  isGmNpcSlotKey,
   parseGmNpcPersonas,
   serializeGmNpcPersonas,
   type GmNpcPersona,
@@ -42,18 +43,31 @@ export async function saveGmNpcPersonas(
   if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
 
   const saved = parseGmNpcPersonas(user.gmNpcPersonasJson);
-  const personas: GmNpcPersona[] = Array.from({ length: GM_NPC_SLOT_COUNT }, (_, index) => {
-    const key = `npc${index + 1}`;
+  // 슬롯 목록은 폼이 들고 온다(추가·제거가 저장 시점에 함께 반영된다).
+  // slotKeys 가 아예 없는 요청은 옛 폼이므로, 저장된 슬롯을 그대로 유지해 실수로 날리지 않는다.
+  const rawSlotKeys = formData.get("slotKeys");
+  const keys =
+    rawSlotKeys == null
+      ? saved.map((persona) => persona.key)
+      : String(rawSlotKeys)
+          .split(",")
+          .map((key) => key.trim())
+          .filter(isGmNpcSlotKey);
+
+  const personas: GmNpcPersona[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (seen.has(key) || personas.length >= GM_NPC_SLOT_MAX) continue;
+    seen.add(key);
     const existing = saved.find((persona) => persona.key === key);
-    const name = String(formData.get(`${key}Name`) ?? existing?.name ?? `NPC ${index + 1}`)
-      .trim()
-      .slice(0, 20);
-    return {
+    const fallbackName = existing?.name ?? `NPC ${key.slice(3)}`;
+    const name = String(formData.get(`${key}Name`) ?? fallbackName).trim().slice(0, 20);
+    personas.push({
       key,
-      name: name || `NPC ${index + 1}`,
+      name: name || fallbackName,
       avatar: cleanAvatar(String(formData.get(`${key}Avatar`) ?? existing?.avatar ?? "")),
-    };
-  });
+    });
+  }
 
   const requestedActive = String(formData.get("activeNpcPersonaKey") ?? "");
   const activeNpcPersonaKey =
@@ -61,7 +75,13 @@ export async function saveGmNpcPersonas(
       ? null
       : personas.some((persona) => persona.key === requestedActive)
         ? requestedActive
-        : user.activeNpcPersonaKey;
+        // 표시 중이던 NPC 슬롯을 지웠다면 본캐로 돌아간다 — 없는 페르소나를 가리킨 채로 두면 안 된다.
+        : personas.some((persona) => persona.key === user.activeNpcPersonaKey)
+          ? user.activeNpcPersonaKey
+          : null;
+
+  const removed = saved.filter((persona) => !seen.has(persona.key)).length;
+  const added = personas.filter((persona) => !saved.some((s) => s.key === persona.key)).length;
 
   await prisma.user.update({
     where: { id: user.id },
@@ -71,7 +91,12 @@ export async function saveGmNpcPersonas(
     },
   });
   await refreshGmNpcViews(user.id);
-  return { ok: activeNpcPersonaKey ? "NPC 페르소나가 저장되고 전환됐어요." : "본인 표시로 돌아왔어요." };
+
+  const slotNote = [added > 0 ? `+${added}칸` : null, removed > 0 ? `-${removed}칸` : null]
+    .filter(Boolean)
+    .join(" ");
+  const base = activeNpcPersonaKey ? "NPC 페르소나가 저장되고 전환됐어요." : "본인 표시로 돌아왔어요.";
+  return { ok: slotNote ? `${base} (슬롯 ${slotNote} · 총 ${personas.length}칸)` : base };
 }
 
 export async function switchGmNpcPersona(formData: FormData): Promise<void> {

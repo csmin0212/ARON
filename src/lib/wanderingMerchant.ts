@@ -4,6 +4,9 @@ import { type LifeSkillItem, type LifeSkillKind } from "./lifeSkillData";
 export const WANDERING_MERCHANT_LOCATION_ID = "대상야영지";
 export const WANDERING_MERCHANT_LOCATION_NAME = "대상 야영지";
 export const WANDERING_MERCHANT_DURATION_MS = 60 * 60 * 1000;
+// 행상인이 저절로 들르는 시각(KST). 각 시각에 1시간씩 머문다.
+// GM 소환과는 별개이며, 소환 횟수에도 잡히지 않는다.
+export const WANDERING_MERCHANT_NATURAL_HOURS_KST = [8, 20] as const;
 export const VITALITY_POTION_EVENT_NAME = "활력의 포션 이벤트";
 export const MYSTERY_PARCHMENT_NAME = "의문의 양피지";
 

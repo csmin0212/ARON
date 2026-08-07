@@ -66,7 +66,7 @@ import {
 } from "@/lib/lifeSkillData";
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
-import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
+import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, resolveMaterialSellPrice } from "@/lib/shop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import {
   equipmentLevelOf,
@@ -3300,18 +3300,17 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
   if (!itemName) return { error: "판매할 재료가 올바르지 않습니다." };
   if (isNonSellable(itemName)) return { error: "이 물건은 매입하지 않아요." };
 
-  const specialPrice = specialMaterialSellPrice(itemName);
-  const item = specialPrice == null
-    ? await prisma.item.findFirst({
-        where: {
-          name: itemName,
-          sellPrice: { gt: 0 },
-          category: { in: SELLABLE_MATERIAL_CATEGORIES },
-        },
-        select: { sellPrice: true },
-      })
-    : null;
-  const sellPrice = specialPrice ?? item?.sellPrice ?? 0;
+  // 정본은 아이템 탭(시트)이다. 특수 재료 폴백은 시트에 판매가가 없을 때만 내려간다 —
+  // 예전에는 폴백이 시트를 덮어써서 시트 값을 고쳐도 매입가가 안 바뀌었다.
+  const item = await prisma.item.findFirst({
+    where: {
+      name: itemName,
+      sellPrice: { gt: 0 },
+      category: { in: SELLABLE_MATERIAL_CATEGORIES },
+    },
+    select: { sellPrice: true },
+  });
+  const sellPrice = resolveMaterialSellPrice(itemName, item?.sellPrice);
   if (sellPrice <= 0) return { error: "이곳에서 매입하지 않는 물건입니다." };
 
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };

@@ -61,7 +61,7 @@ import {
   type LocationLifeConfig,
 } from "@/lib/lifeSkillData";
 import { isBlacksmithClass, itemAsCraftMinor, MOON_FRAGMENT } from "@/lib/weaponCraft";
-import { specialMaterialSellPrice } from "@/lib/shop";
+import { resolveMaterialSellPrice } from "@/lib/shop";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SKILLBOOK_META } from "@/lib/skillbook";
@@ -754,15 +754,20 @@ export default async function WorldPage() {
     (storageBox?.entries
       .filter((item) => item.name.trim() === MOON_FRAGMENT)
       .reduce((sum, item) => sum + Math.max(0, item.qty), 0) ?? 0);
+  // 재료가치는 실제 제작(actions/craft.ts)과 같은 기준이어야 한다 — 도감(시트) 판매가가 먼저다.
+  const moonItem = await prisma.item.findFirst({
+    where: { OR: [{ id: MOON_FRAGMENT }, { name: MOON_FRAGMENT }] },
+    select: { sellPrice: true, weight: true },
+  });
   const moonViews: CraftMineralView[] = [
     {
       def: {
         ...itemAsCraftMinor({
           name: MOON_FRAGMENT,
           craftEffect: null,
-          sellPrice: specialMaterialSellPrice(MOON_FRAGMENT) ?? 0,
+          sellPrice: resolveMaterialSellPrice(MOON_FRAGMENT, moonItem?.sellPrice),
           desc: "장비 레벨을 6~10으로 끌어올린다. 넣은 개수가 곧 단계.",
-          weight: 1,
+          weight: moonItem?.weight ?? 1,
         }),
         craftRole: "메이저",
       },

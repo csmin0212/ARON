@@ -22,7 +22,7 @@ import {
   lifeSkillSellPrice,
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
-import { isNonSellable, specialMaterialSellPrice } from "@/lib/shop";
+import { fallbackMaterialSellPrice, isNonSellable, isSpecialMaterial } from "@/lib/shop";
 import {
   consumeSkillBookTokensInTransaction,
   grantSkillBookTokenInTransaction,
@@ -294,9 +294,6 @@ export async function resolveFloor(
   const lifeKind = lifeSkillItemKind(raw);
   if (lifeKind) return lifeSkillSellPrice(lifeKind, raw);
 
-  const specialMaterialPrice = specialMaterialSellPrice(raw);
-  if (specialMaterialPrice != null) return specialMaterialPrice;
-
   const potionPrice = await potionSellPrice(raw, effect);
   if (potionPrice != null) return potionPrice;
 
@@ -321,7 +318,8 @@ export async function resolveFloor(
     if (item?.sellPrice && item.sellPrice > 0) return item.sellPrice;
     if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.floor(item.buyPrice * 0.5));
   }
-  return 0;
+  // 시트에 값이 아예 없는 특수 재료(강철/달의 파편)만 여기로 내려온다.
+  return fallbackMaterialSellPrice(raw) ?? 0;
 }
 
 // 이름으로 도감 행을 찾되, 못 찾으면 제작품 고유번호(#7K2F)로 한 번 더 찾는다.
@@ -384,7 +382,7 @@ export async function resolveCategory(
   if (cat === "음식") return "요리";
   if (["소모품", "포션"].includes(cat)) return "포션";
   if (["재료", "보석"].includes(cat)) return "재료";
-  if (specialMaterialSellPrice(raw) != null) return "재료";
+  if (isSpecialMaterial(raw)) return "재료";
   // 이름/효과문에 "Lv1 장신구" 표기가 있으면 장신구 — detectForgeSlot보다 먼저.
   // ("연구 도구"의 '도'가 무기 힌트에 걸려 무기로 새는 걸 막는다)
   if (inventoryEquipmentSlot({ name: raw, effect: effect ?? null, weight: null, qty: 1 }) === "accessory") {

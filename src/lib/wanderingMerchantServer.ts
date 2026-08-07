@@ -6,6 +6,7 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
   WANDERING_MERCHANT_DURATION_MS,
   WANDERING_MERCHANT_LOCATION_ID,
+  WANDERING_MERCHANT_NATURAL_HOURS_KST,
   buildWanderingMerchantStock,
   isWanderingMerchantLifeKind,
   wanderingMerchantLifePrice,
@@ -64,18 +65,30 @@ async function generateStock(eventId: string): Promise<WanderingMerchantStockIte
   return buildWanderingMerchantStock(eventId, lifeCandidates);
 }
 
-function naturalMerchantWindow(now: Date): { day: string; startsAt: Date; endsAt: Date } {
+// 오늘(KST 기준) 행상인이 저절로 들르는 구간들. KST = UTC+9 라 UTC 로는 9시간을 뺀다.
+// 8시 구간은 UTC 기준 전날 23시가 되므로 Date.UTC 의 시(hour) 음수 보정에 맡긴다.
+function naturalMerchantWindows(now: Date): { day: string; hour: number; startsAt: Date; endsAt: Date }[] {
   const day = wanderingMerchantDay(now);
   const [year, month, date] = day.split("-").map(Number);
-  return {
-    day,
-    startsAt: new Date(Date.UTC(year, month - 1, date, 11, 0, 0, 0)), // 20:00 KST
-    endsAt: new Date(Date.UTC(year, month - 1, date, 12, 0, 0, 0)), // 21:00 KST
-  };
+  return WANDERING_MERCHANT_NATURAL_HOURS_KST.map((hour) => {
+    const startsAt = new Date(Date.UTC(year, month - 1, date, hour - 9, 0, 0, 0));
+    return {
+      day,
+      hour,
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + WANDERING_MERCHANT_DURATION_MS),
+    };
+  });
 }
 
-function naturalMerchantEventId(day: string): string {
-  return `wandering-merchant-daily-${day}`;
+function naturalMerchantWindowAt(now: Date) {
+  return naturalMerchantWindows(now).find((w) => now >= w.startsAt && now < w.endsAt) ?? null;
+}
+
+// 시각마다 다른 id — 하루에 두 번 오면 각각 별개의 이벤트(재고도 따로)다.
+// 20시 구간은 예전 id 를 그대로 써서, 이미 열려 있던 오늘치 이벤트와 겹치지 않게 한다.
+function naturalMerchantEventId(day: string, hour: number): string {
+  return hour === 20 ? `wandering-merchant-daily-${day}` : `wandering-merchant-daily-${day}-${hour}`;
 }
 
 function mapEvent(event: {
@@ -97,10 +110,10 @@ function mapEvent(event: {
 }
 
 async function ensureNaturalWanderingMerchant(now: Date) {
-  const window = naturalMerchantWindow(now);
-  if (now < window.startsAt || now >= window.endsAt) return null;
+  const window = naturalMerchantWindowAt(now);
+  if (!window) return null;
 
-  const eventId = naturalMerchantEventId(window.day);
+  const eventId = naturalMerchantEventId(window.day, window.hour);
   let event = await prisma.wanderingMerchantEvent.upsert({
     where: { id: eventId },
     update: {},

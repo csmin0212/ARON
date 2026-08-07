@@ -2985,6 +2985,7 @@ function WanderingMerchantModal({
             <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-10 text-center">
               <p className="text-3xl">🏜️</p>
               <p className="mt-2 text-sm font-bold text-stone-300">지금은 행상인이 없습니다</p>
+              <p className="mt-1 text-xs text-stone-400">매일 아침 8시 · 저녁 8시에 한 시간씩 들릅니다</p>
             </div>
           )}
         </div>
@@ -3955,7 +3956,7 @@ export default function WorldServices({
                       : "전역 재고 판매 중"
                     : wanderingMerchant.isGm
                       ? `GM 소환 가능 · 오늘 ${wanderingMerchant.todaySummonCount}회`
-                      : "지금은 머물고 있지 않음"}
+                      : "지금은 머물고 있지 않음 · 매일 08시, 20시"}
                 </span>
               </span>
             </button>

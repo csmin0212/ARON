@@ -19,7 +19,7 @@ import {
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
-import { specialMaterialSellPrice } from "@/lib/shop";
+import { resolveMaterialSellPrice } from "@/lib/shop";
 import {
   applyGradeBonus,
   computeCraft,
@@ -250,9 +250,8 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
       ...itemAsCraftMinor({
         name: MOON_FRAGMENT,
         craftEffect: null,
-        // 도감의 판매가가 0이면 상점 특별가로 대체한다.
-        // (?? 는 0을 유효값으로 보므로 || 여야 한다 — 재료가치 0 = 순이익 0 이 되어버린다)
-        sellPrice: moon?.sellPrice || specialMaterialSellPrice(MOON_FRAGMENT) || 0,
+        // 도감(시트) 판매가가 먼저, 비어 있을 때만 폴백값.
+        sellPrice: resolveMaterialSellPrice(MOON_FRAGMENT, moon?.sellPrice),
         desc: moon?.desc ?? null,
         weight: moon?.weight ?? 1,
       }),
