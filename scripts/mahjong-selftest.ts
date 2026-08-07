@@ -831,6 +831,38 @@ console.log("== 34. 대기 표시에 '역 없음' 이 붙는다 ==");
   check("9삭으로 나면 中은 머리 — 역 없음", s9?.hasYaku, false);
 }
 
+console.log("== 35. 리치 선언 시 '고른 패'가 버려져야 한다 ==");
+{
+  // 예전 버그: declareRiichi 가 riichi 플래그를 먼저 켜고 performDiscard 를 불러서,
+  // performDiscard 의 츠모기리 강제 규칙에 걸려 고른 패 대신 쯔모패가 버려졌다.
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  const p = hand.players[0];
+  hand.turn = 0;
+  hand.pendingCall = null;
+  p.melds = [];
+  p.discards = [];
+  p.riichi = false;
+  // 234p 567p 234s 567s 9s + 맨 뒤가 쯔모패(1m). 9s(인덱스 12)를 골라 리치를 건다.
+  p.hand = [
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(6)), t(P(7)),
+    t(S(2)), t(S(3)), t(S(4)), t(S(5)), t(S(6)), t(S(7)),
+    t(S(9)), t(M(1)),
+  ];
+  const la = legalActionsFor(match, 0);
+  check("9삭·1만 둘 다 리치 후보", la.riichiKinds.includes(S(9)) && la.riichiKinds.includes(M(1)), true);
+
+  const ok = declareRiichi(match, 0, 12); // 12 = 9삭 (쯔모패가 아닌 패)
+  check("리치 선언 성공", ok, true);
+  check("고른 9삭이 버려짐(쯔모패 1만 아님)", match.hand!.players[0].discards[0].kind, S(9));
+  check("쯔모패 1만은 손에 남음", match.hand!.players[0].hand.some((x) => x.kind === M(1)), true);
+}
+
 console.log(`
 ${passCount}개 통과, ${failCount}개 실패 (최종)`);
 if (failCount > 0) process.exit(1);

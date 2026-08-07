@@ -429,8 +429,11 @@ export function performDiscard(
   const hand = match.hand;
   if (!hand) return;
   const player = hand.players[seat];
-  // 리치 후에는 뽑은 패를 그대로 버린다(츠모기리) — 손패를 못 바꾸므로 선택권이 없다
-  const finalIndex = player.riichi ? player.hand.length - 1 : tileIndex;
+  // 리치를 '건 뒤'에는 뽑은 패를 그대로 버린다(츠모기리) — 손패를 못 바꾸므로 선택권이 없다.
+  // 단 리치를 거는 그 버림은 본인이 고른 패여야 한다. declareRiichi 가 riichi 를 켜고
+  // 부르기 때문에, 이걸 구분 안 하면 고른 패 대신 쯔모패가 버려진다.
+  const forcedTsumogiri = player.riichi && opts.riichiDeclaration !== true;
+  const finalIndex = forcedTsumogiri ? player.hand.length - 1 : tileIndex;
   consumeTurnTime(match, seat);
   const tile = engineDiscard(hand, seat, finalIndex);
   hand.lastDiscard = { seat, tile };
@@ -841,7 +844,12 @@ export function declareRiichi(match: MatchState, seat: number, tileIndex: number
   if (player.riichi) return false;
   if (player.melds.some((m) => m.type !== "ankan")) return false;
   if (player.points < 1000) return false;
-  if (!riichiDiscardIndexes(player).includes(tileIndex)) return false;
+  // 후보는 '종류'로 판정한다 — riichiDiscardIndexes 는 같은 종류를 한 번만 담기 때문에,
+  // 같은 패가 두 장(적도라 포함) 있으면 뒤쪽 인덱스를 골랐다고 거절하면 안 된다.
+  const target = player.hand[tileIndex];
+  if (!target) return false;
+  const riichiKinds = new Set(riichiDiscardIndexes(player).map((i) => player.hand[i].kind));
+  if (!riichiKinds.has(target.kind)) return false;
 
   player.points -= 1000;
   match.players[seat].points = player.points;
