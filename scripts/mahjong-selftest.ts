@@ -14,6 +14,7 @@ import {
   TIERS_4P,
   pointsToGold,
   settleAiCappedGold,
+  DAILY_AI_GOLD_CAP,
   createMatch,
   pump,
   computeStats,
@@ -30,6 +31,7 @@ import {
   shanten,
   toCounts,
   parseMatchState,
+  tenpaiInfoFor,
   type Tile,
   type WinContext,
 } from "../src/lib/mahjong";
@@ -207,11 +209,12 @@ console.log("== 8. 골드 경제 ==");
   check("3인 저가 티어 환산", pointsToGold(35000, TIERS_3P.low), 35);
   check("4인 고가 티어 환산", pointsToGold(25000, TIERS_4P.high), 250);
 
-  const clamp1 = settleAiCappedGold({ day: "2026-08-05", earned: 80 }, "2026-08-05", 50);
+  const clamp1 = settleAiCappedGold({ day: "2026-08-05", earned: DAILY_AI_GOLD_CAP - 20 }, "2026-08-05", 50);
   check("일일 상한 클램프", clamp1.payableGain, 20);
-  check("일일 상한 클램프 후 누적", clamp1.state.earned, 100);
+  check("일일 상한 클램프 후 누적", clamp1.state.earned, DAILY_AI_GOLD_CAP);
 
   const loss = settleAiCappedGold({ day: "2026-08-05", earned: 80 }, "2026-08-05", -30);
+  check("AI 일일 상한값", DAILY_AI_GOLD_CAP, 250);
   check("손실은 상한 없음", loss.payableGain, -30);
 
   const newDay = settleAiCappedGold({ day: "2026-08-04", earned: 90 }, "2026-08-05", 50);
@@ -782,6 +785,50 @@ console.log("== 33. 예전 저장본(필드 없는 상태)도 읽혀야 한다 =
   pump(fixed!);
   check("복구된 상태로 진행 가능", fixed!.hand !== null || fixed!.finished, true);
   check("깨진 JSON 은 null", parseMatchState("{oops"), null);
+}
+
+console.log("== 34. 대기 표시에 '역 없음' 이 붙는다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  const p = hand.players[0];
+  hand.turn = 0;
+  hand.pendingCall = null;
+  p.discards = [];
+  p.riichi = false;
+
+  // 울어서 오픈 + 역이 안 붙는 형태: 치로 456m 를 울고, 남은 손패는 789s / 123p / 서(자풍·장풍 아님) 대기
+  p.melds = [{ type: "chi", kind: M(4), tiles: [t(M(4)), t(M(5)), t(M(6))], calledFrom: 3 }];
+  p.hand = [
+    t(P(1)), t(P(2)), t(P(3)),
+    t(S(7)), t(S(8)), t(S(9)),
+    t(P(6)), t(P(7)), t(P(8)),
+    t(WINDS.W),
+  ];
+  const info = tenpaiInfoFor(match, 0);
+  check("텐파이로는 잡힘", info !== null, true);
+  const west = info?.waits.find((w) => w.kind === WINDS.W);
+  check("서 단기 대기 인식", west !== undefined, true);
+  check("역이 없다고 표시", west?.hasYaku, false);
+
+  // 샤보 대기: 中으로 나면 역패(삼원패 3장)라 역이 붙고, 9삭으로 나면 中은 머리라 역이 없다.
+  // 같은 손패에서 대기패마다 갈리는 걸 확인.
+  p.hand = [
+    t(P(1)), t(P(2)), t(P(3)),
+    t(P(6)), t(P(7)), t(P(8)),
+    t(DRAGONS.CHUN), t(DRAGONS.CHUN),
+    t(S(9)), t(S(9)),
+  ];
+  const info2 = tenpaiInfoFor(match, 0);
+  const chun = info2?.waits.find((w) => w.kind === DRAGONS.CHUN);
+  const s9 = info2?.waits.find((w) => w.kind === S(9));
+  check("中으로 나면 역패 — 역 있음", chun?.hasYaku, true);
+  check("9삭으로 나면 中은 머리 — 역 없음", s9?.hasYaku, false);
 }
 
 console.log(`

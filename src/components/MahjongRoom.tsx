@@ -306,6 +306,41 @@ function TurnClock({
   );
 }
 
+// 울기 버튼 — 작탁 안에 놓이므로 작고 또렷하게
+function CallBtn({
+  label,
+  tone,
+  busy,
+  onClick,
+}: {
+  label: string;
+  tone: string;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onClick}
+      className={`rounded-lg px-2.5 py-1 text-xs font-black text-white shadow transition disabled:opacity-60 ${tone}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// 울기 대기창 남은 시간
+function CallCountdown({ deadline }: { deadline: number }) {
+  const now = useSyncExternalStore(subscribeTick, getTick, getServerTick);
+  if (now === 0) return null;
+  return (
+    <span className="text-[10px] font-black tabular-nums text-white">
+      {Math.max(0, Math.ceil((deadline - now) / 1000))}s
+    </span>
+  );
+}
+
 // 좌석 회전에 맞춰 타일 자체는 돌아가되, 글리프는 역회전시켜 어느 자리 버림패든 똑바로 읽힌다.
 // (수비하려면 상대 버림패를 한눈에 읽어야 하므로 가독성을 회전 충실도보다 우선한다)
 function SmallTile({
@@ -1037,6 +1072,64 @@ function LiveTable({
               <span className="rounded-full bg-white/20 px-2 text-[9px] font-black">관전 중</span>
             )}
           </div>
+
+          {/* 울기 버튼 — 작탁 안 우하단에 작게. 예전엔 화면 맨 아래에 크게 떠서 눈에 안 들어왔다 */}
+          {pendingForMe && hand.pendingCall && (
+            <div className="absolute bottom-[6%] right-[4%] flex flex-col items-end gap-1">
+              <span className="flex items-center gap-1 rounded-lg bg-black/55 px-1.5 py-0.5">
+                <SmallTile tile={hand.pendingCall.tile} />
+                <CallCountdown deadline={hand.pendingCall.deadline} />
+              </span>
+              <span className="flex gap-1">
+                {hand.pendingCall.myOptions?.ron && (
+                  <CallBtn label="론" tone="bg-amber-500 hover:bg-amber-600" busy={busy}
+                    onClick={() => act({ type: "call", response: "ron" })} />
+                )}
+                {hand.pendingCall.myOptions?.kan && (
+                  <CallBtn label="깡" tone="bg-slate-700 hover:bg-slate-800" busy={busy}
+                    onClick={() => act({ type: "call", response: "kan" })} />
+                )}
+                {hand.pendingCall.myOptions?.pon && (
+                  <CallBtn label="퐁" tone="bg-brand-600 hover:bg-brand-700" busy={busy}
+                    onClick={() => act({ type: "call", response: "pon" })} />
+                )}
+                {hand.pendingCall.myOptions?.chi && (
+                  <CallBtn label="치" tone="bg-emerald-600 hover:bg-emerald-700" busy={busy}
+                    onClick={() => act({ type: "call", response: "chi" })} />
+                )}
+                <CallBtn label="패스" tone="bg-white/85 !text-slate-700 hover:bg-white" busy={busy}
+                  onClick={() => act({ type: "call", response: "pass" })} />
+              </span>
+            </div>
+          )}
+
+          {/* 내 상태(차례·후리텐·대기) — 작탁 안, 내 자리 위쪽 */}
+          {mySeat !== null && (
+            <div className="absolute bottom-[13%] left-1/2 flex -translate-x-1/2 items-center gap-1">
+              {isMyTurn ? (
+                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-black text-white">내 차례</span>
+              ) : (
+                <span className="rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-bold text-white/80">대기</span>
+              )}
+              {myPlayer?.riichi && (
+                <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">리치</span>
+              )}
+              {hand.tenpai?.furiten && (
+                <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black text-white">후리텐</span>
+              )}
+              {hand.tenpai && (
+                <button
+                  type="button"
+                  onClick={() => setShowWaits((v) => !v)}
+                  className="grid h-5 w-5 place-items-center rounded-full bg-white/90 text-[11px] font-black text-slate-800"
+                  title="대기패 보기"
+                >
+                  !
+                </button>
+              )}
+              <TurnClock hand={hand} mySeat={mySeat} isMyTurn={isMyTurn} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1048,28 +1141,8 @@ function LiveTable({
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="flex items-center gap-1 text-sm font-extrabold text-content">
               내 손패 {myPlayer.isDealer && <span className="text-[10px] font-black text-amber-600">庄</span>}
-              {myPlayer.riichi && <span className="text-[10px] font-black text-rose-600">리치</span>}
-              {hand.tenpai?.furiten && (
-                <span className="rounded bg-rose-500 px-1.5 py-0.5 text-[10px] font-black text-white">후리텐</span>
-              )}
-              {isMyTurn ? (
-                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-black text-white">내 차례</span>
-              ) : (
-                <span className="text-[10px] font-bold text-faint">대기 중</span>
-              )}
-              {hand.tenpai && (
-                <button
-                  type="button"
-                  onClick={() => setShowWaits((v) => !v)}
-                  className="grid h-5 w-5 place-items-center rounded-full bg-brand-600 text-[11px] font-black text-white transition hover:bg-brand-700"
-                  title="대기패 보기"
-                >
-                  !
-                </button>
-              )}
             </span>
             <span className="flex items-center gap-2">
-              <TurnClock hand={hand} mySeat={mySeat} isMyTurn={isMyTurn} />
               <button
                 type="button"
                 onClick={onToggleNotation}
@@ -1115,16 +1188,32 @@ function LiveTable({
           </div>
 
           {showWaits && hand.tenpai && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-canvas px-3 py-2">
-              <span className="text-[11px] font-extrabold text-faint">대기</span>
-              {hand.tenpai.waits.map((w) => (
-                <span key={w.kind} className="flex items-center gap-0.5">
-                  <SmallTile tile={{ kind: w.kind, aka: false }} />
-                  <span className="text-[10px] font-bold text-muted">{w.remaining}</span>
-                </span>
-              ))}
+            <div className="mb-2 space-y-1 rounded-xl bg-canvas px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-extrabold text-faint">대기</span>
+                {hand.tenpai.waits.map((w) => (
+                  <span
+                    key={w.kind}
+                    className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${
+                      w.hasYaku ? "bg-emerald-500/10" : "bg-rose-500/10"
+                    }`}
+                  >
+                    <SmallTileStatic tile={{ kind: w.kind, aka: false }} />
+                    {w.hasYaku ? (
+                      <span className="text-[11px] font-black text-emerald-700">{w.remaining}장</span>
+                    ) : (
+                      <span className="text-[11px] font-black text-rose-600">역 없음</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+              {hand.tenpai.waits.every((w) => !w.hasYaku) && (
+                <p className="text-[10px] font-bold text-rose-600">
+                  형태는 텐파이지만 역이 없어 이대로는 화료할 수 없어요.
+                </p>
+              )}
               {hand.tenpai.furiten && (
-                <span className="text-[10px] font-black text-rose-600">후리텐 — 론 불가(쯔모만)</span>
+                <p className="text-[10px] font-black text-rose-600">후리텐 — 론 불가(쯔모만 가능)</p>
               )}
             </div>
           )}
@@ -1257,67 +1346,6 @@ function LiveTable({
         </div>
       )}
 
-      {pendingForMe && hand.pendingCall && (
-        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3 shadow-lg ring-4 ring-amber-200/60">
-          <div className="mx-auto flex flex-wrap items-center justify-center gap-3">
-            <span className="text-sm font-black text-amber-900">
-              {snap.seats.find((x) => x.seatIndex === hand.pendingCall!.discardSeat)?.nickname ?? "상대"} 버림 →
-            </span>
-            <TileFace tile={hand.pendingCall.tile} />
-            <div className="flex flex-1 flex-wrap gap-2">
-              {hand.pendingCall.myOptions?.ron && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => act({ type: "call", response: "ron" })}
-                  className="rounded-xl bg-amber-500 px-6 py-3 text-base font-black text-white shadow transition hover:bg-amber-600 disabled:opacity-60"
-                >
-                  론!
-                </button>
-              )}
-              {hand.pendingCall.myOptions?.kan && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => act({ type: "call", response: "kan" })}
-                  className="rounded-xl bg-slate-700 px-6 py-3 text-base font-black text-white shadow transition hover:bg-slate-800 disabled:opacity-60"
-                >
-                  깡
-                </button>
-              )}
-              {hand.pendingCall.myOptions?.pon && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => act({ type: "call", response: "pon" })}
-                  className="rounded-xl bg-brand-600 px-6 py-3 text-base font-black text-white shadow transition hover:bg-brand-700 disabled:opacity-60"
-                >
-                  퐁
-                </button>
-              )}
-              {hand.pendingCall.myOptions?.chi && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => act({ type: "call", response: "chi" })}
-                  className="rounded-xl bg-emerald-500 px-6 py-3 text-base font-black text-white shadow transition hover:bg-emerald-600 disabled:opacity-60"
-                >
-                  치
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => act({ type: "call", response: "pass" })}
-                className="rounded-xl bg-white px-6 py-3 text-base font-bold text-muted shadow-sm transition hover:bg-subtle disabled:opacity-60"
-              >
-                패스
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {skinOpen && <TableSkinPicker current={skinKey} onClose={() => setSkinOpen(false)} />}
 
       {showSummary && snap.lastHandSummary && (
@@ -1372,7 +1400,7 @@ export default function MahjongRoom({
     // 대국 중에는 항상 촘촘히 받아온다. 제한시간(기본 5초)은 서버가 차례를 넘긴 순간부터
     // 흐르는데, 화면이 3~10초 뒤에 오면 이미 다 써버린 상태로 보인다.
     snap.status === "playing"
-      ? { minMs: 900, maxMs: 2_000, idleMs: 120_000 }
+      ? { minMs: 600, maxMs: 1_400, idleMs: 120_000 }
       : { minMs: 3_000, maxMs: 15_000, idleMs: 60_000 },
   );
 

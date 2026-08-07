@@ -15,7 +15,7 @@ import { shanten } from "./shanten";
 import { WINDS, isSuited, isTerminalOrHonor, numOf, toCounts } from "./tiles";
 import { chooseDiscard, shouldCallKan, shouldCallPon } from "./ai";
 
-const AI_TURN_DELAY_MS = 1_100; // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
+const AI_TURN_DELAY_MS = 800; // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
 
 // 차례가 넘어갈 때는 반드시 둘 다 초기화해야 한다.
 // turnStartedAt 만 남으면 다음 사람 차례에 새 제한시간이 안 잡혀서
@@ -981,7 +981,8 @@ export function canAnkanWhileRiichi(player: PlayerState, kind: number): boolean 
 
 // 텐파이 정보 — 무엇을 기다리는지 + 그 패가 몇 장 남았는지(보이는 패를 빼고 계산)
 export interface TenpaiInfo {
-  waits: { kind: number; remaining: number }[];
+  // hasYaku: 그 패로 론했을 때 역이 붙는지. 구조상 텐파이여도 역이 없으면 화료가 안 된다.
+  waits: { kind: number; remaining: number; hasYaku: boolean }[];
   furiten: boolean;
 }
 
@@ -1005,9 +1006,34 @@ export function tenpaiInfoFor(match: MatchState, seat: number): TenpaiInfo | nul
   hand.wall.doraIndicators.forEach((k) => seen[k]++);
 
   return {
-    waits: base.map(({ kind }) => ({ kind, remaining: Math.max(0, 4 - seen[kind]) })),
+    waits: base.map(({ kind }) => ({
+      kind,
+      remaining: Math.max(0, 4 - seen[kind]),
+      hasYaku: waitHasYaku(match, seat, kind),
+    })),
     furiten: isFuriten(hand, seat),
   };
+}
+
+// 그 패로 화료가 실제로 되는지(역 유무). 후리텐은 따로 표시하므로 여기선 무시한다.
+function waitHasYaku(match: MatchState, seat: number, kind: number): boolean {
+  const hand = match.hand;
+  if (!hand) return false;
+  const player = hand.players[seat];
+  const base = waitBaseOf(player);
+  const saved = player.hand;
+  player.hand = base.hand;
+  try {
+    const tile: Tile = { kind, aka: false };
+    // 론으로 한 번, 안 되면 쯔모로 한 번(멘젠쯔모만으로도 화료가 되는 경우가 있다)
+    const ron = scoreWin(buildWinContext(match, seat, tile, false), player.isDealer);
+    if (ron) return true;
+    player.hand = [...base.hand, tile];
+    const tsumo = scoreWin(buildWinContext(match, seat, tile, true), player.isDealer);
+    return tsumo !== null;
+  } finally {
+    player.hand = saved;
+  }
 }
 
 function bestWaitAfterDiscard(player: PlayerState): { kind: number }[] {
