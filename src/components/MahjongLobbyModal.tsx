@@ -10,12 +10,11 @@ import {
   type MahjongActionState,
   type MahjongTableSummary,
 } from "@/app/actions/mahjong";
-import { TIERS_3P, TIERS_4P, type Tier } from "@/lib/mahjong";
-
-const TIER_LABEL: Record<Tier, string> = { low: "저", mid: "중", high: "고" };
+import { AI_LEVEL_DESC, AI_LEVEL_LABEL, TIERS_3P, TIERS_4P, TIER_LABEL, type Tier } from "@/lib/mahjong";
 
 function CreateTableForm() {
   const [playerCount, setPlayerCount] = useState<3 | 4>(4);
+  const [tier, setTier] = useState<Tier>("free");
   const [matchLength, setMatchLength] = useState<"tonpuusen" | "hanchan">("tonpuusen");
   const [kuitan, setKuitan] = useState(true);
   const [timePreset, setTimePreset] = useState<"fast" | "normal" | "slow">("normal");
@@ -28,6 +27,7 @@ function CreateTableForm() {
   return (
     <form action={action} className="space-y-3 rounded-2xl border border-line bg-canvas p-4">
       <input type="hidden" name="playerCount" value={playerCount} />
+      <input type="hidden" name="tier" value={tier} />
       <input type="hidden" name="matchLength" value={matchLength} />
       <input type="hidden" name="kuitan" value={kuitan ? "on" : "off"} />
       <input type="hidden" name="timePreset" value={timePreset} />
@@ -50,21 +50,37 @@ function CreateTableForm() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {(Object.keys(tiers) as Tier[]).map((key) => {
-          const tier = tiers[key];
-          return (
-            <label
-              key={key}
-              className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-line bg-surface px-2 py-3 text-center transition hover:border-brand-300 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50"
-            >
-              <input type="radio" name="tier" value={key} defaultChecked={key === "low"} className="sr-only" />
-              <span className="text-[11px] font-extrabold text-faint">{TIER_LABEL[key]}</span>
-              <span className="text-sm font-black text-content">{tier.gold}G</span>
-              <span className="text-[10px] text-faint">{tier.startPoints.toLocaleString()}점</span>
-            </label>
-          );
-        })}
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-4 gap-1.5">
+          {(["free", "low", "mid", "high"] as Tier[]).map((key) => {
+            const cfg = tiers[key];
+            const selected = tier === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTier(key)}
+                className={`flex flex-col items-center gap-0.5 rounded-xl border px-1 py-2.5 text-center transition ${
+                  selected ? "border-brand-500 bg-brand-50" : "border-line bg-surface hover:border-brand-300"
+                }`}
+              >
+                <span className={`text-[11px] font-extrabold ${selected ? "text-brand-700" : "text-faint"}`}>
+                  {TIER_LABEL[key]}
+                </span>
+                <span className="text-sm font-black text-content">{cfg.gold === 0 ? "0G" : `${cfg.gold}G`}</span>
+                <span className="text-[10px] text-faint">AI {AI_LEVEL_LABEL[cfg.aiLevel]}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="rounded-xl bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted">
+          <span className="font-extrabold text-content">
+            시작 {tiers[tier].startPoints.toLocaleString()}점 · AI {AI_LEVEL_LABEL[tiers[tier].aiLevel]}
+          </span>
+          <br />
+          {AI_LEVEL_DESC[tiers[tier].aiLevel]}
+          {tier === "free" && " 골드는 오가지 않지만 등급 점수는 그대로 쌓입니다."}
+        </p>
       </div>
 
       <div className="flex gap-2">
@@ -226,6 +242,11 @@ export default function MahjongLobbyModal({ onClose }: { onClose: () => void }) 
                       <span className="block text-sm font-extrabold text-content">
                         {t.hostNickname}님의 방 · {t.playerCount}인 {TIER_LABEL[t.tier as Tier] ?? t.tier} ·{" "}
                         {MATCH_LENGTH_LABEL[t.matchLength]}
+                        {t.tier === "free" && (
+                          <span className="ml-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-black text-emerald-600">
+                            무료
+                          </span>
+                        )}
                       </span>
                       <span className="text-[11px] text-faint">
                         {t.status === "playing" ? "대국 중" : `${t.filled}/${t.playerCount}명 참가`}

@@ -19,6 +19,13 @@ import {
   pump,
   computeStats,
   tierForPoints,
+  nextTierFor,
+  tierProgress,
+  rankPointsForPlacement,
+  chooseDiscard,
+  chooseRiichiDiscard,
+  decideCall,
+  neutralView,
   legalActionsFor,
   declareRiichi,
   performDiscard,
@@ -394,8 +401,12 @@ console.log("== 17. 랭크 집계 ==");
   check("랭크 포인트 합산", stats.rankPoints, 30);
   check("게임 수", stats.gamesPlayed, 4);
   check("1위 횟수", stats.placementCounts[0], 2);
-  check("등급 티어(초심자)", tierForPoints(30).key, "novice");
-  check("등급 티어(고수 경계)", tierForPoints(600).key, "master");
+  check("등급 티어(작사)", tierForPoints(30).label, "작사");
+  check("등급 티어(작걸 경계)", tierForPoints(150).label, "작걸");
+  check("등급 티어(작호)", tierForPoints(600).label, "작호");
+  check("등급 티어(작성 경계)", tierForPoints(800).label, "작성");
+  check("최상위는 다음 등급 없음", nextTierFor(900), null);
+  check("구간 진행률(작사 중간)", tierProgress(75), 0.5);
 }
 
 console.log("== 18. 리치 규칙 ==");
@@ -428,6 +439,50 @@ console.log("== 18. 리치 규칙 ==");
   check("리치 선언 성공", ok, true);
   check("리치 1000점 지불", pointsBefore - match.hand!.players[0].points === 1000 || pointsBefore - me.points === 1000, true);
   check("공탁 1개 증가", match.kyotaku, kyotakuBefore + 1);
+}
+
+console.log("== 18-b. 리치 선언 시 '고른 패'가 버려진다 (쯔모패 아님) ==");
+{
+  // 234m 567m 234p 55p 999s — 5p 를 버리면 5p 탄키, 9s 를 버리면 5p/9s 샨퐁. 후보가 둘이다.
+  const makeMatch = () => {
+    const match = createMatch(DEFAULT_RULES_4P, 25000, [
+      { seat: 0, userId: "u0", isAi: false },
+      { seat: 1, userId: null, isAi: true },
+      { seat: 2, userId: null, isAi: true },
+      { seat: 3, userId: null, isAi: true },
+    ]);
+    pump(match);
+    match.hand!.players[0].hand = [
+      t(M(2)), t(M(3)), t(M(4)),
+      t(M(5)), t(M(6)), t(M(7)),
+      t(P(2)), t(P(3)), t(P(4)),
+      t(P(5)), t(P(5)),
+      t(S(9)), t(S(9)), t(S(9)),
+    ];
+    match.hand!.turn = 0;
+    return match;
+  };
+
+  const m1 = makeMatch();
+  const kinds1 = legalActionsFor(m1, 0).riichiKinds;
+  check("리치 후보에 5p·9s 모두 포함", kinds1.includes(P(5)) && kinds1.includes(S(9)), true);
+  check("5p 리치 선언 성공", declareRiichi(m1, 0, 9), true);
+  check("버려진 패가 고른 5p (쯔모패 9s 아님)", m1.hand!.players[0].discards.at(-1)!.kind, P(5));
+
+  // 같은 종류가 여러 장이면 어느 인덱스를 골라도 통해야 한다(적도라 포함)
+  const m2 = makeMatch();
+  check("두 번째 5p 인덱스로도 리치 가능", declareRiichi(m2, 0, 10), true);
+  check("그때도 5p 가 버려짐", m2.hand!.players[0].discards.at(-1)!.kind, P(5));
+
+  // 리치를 '건 뒤'에는 여전히 츠모기리(뽑은 패)만 나가야 한다
+  const m3 = makeMatch();
+  declareRiichi(m3, 0, 9);
+  const p3 = m3.hand!.players[0];
+  p3.hand.push(t(M(9))); // 다음 순 쯔모
+  m3.hand!.turn = 0;
+  m3.hand!.pendingCall = null;
+  performDiscard(m3, 0, 0); // 0번(2m)을 버리라고 해도 무시하고 쯔모패가 나가야 함
+  check("리치 후에는 강제 츠모기리", p3.discards.at(-1)!.kind, M(9));
 }
 
 console.log("== 19. 리치 중에는 퐁/치/깡 불가 (론만) ==");
@@ -861,6 +916,96 @@ console.log("== 35. 리치 선언 시 '고른 패'가 버려져야 한다 ==");
   check("리치 선언 성공", ok, true);
   check("고른 9삭이 버려짐(쯔모패 1만 아님)", match.hand!.players[0].discards[0].kind, S(9));
   check("쯔모패 1만은 손에 남음", match.hand!.players[0].hand.some((x) => x.kind === M(1)), true);
+}
+
+console.log("== 34. 무료방 — 입장료도 보상도 0골드 ==");
+{
+  check("4인 무료방 입장료", TIERS_4P.free.gold, 0);
+  check("3인 무료방 입장료", TIERS_3P.free.gold, 0);
+  check("무료방 시작점수는 하급과 동일", TIERS_4P.free.startPoints, TIERS_4P.low.startPoints);
+  // 어떤 최종점수로 끝나도 지급은 0 — 환산율 자체가 0이다
+  check("1위로 끝나도 0G", pointsToGold(55000, TIERS_4P.free), 0);
+  check("꼴찌로 끝나도 0G", pointsToGold(0, TIERS_4P.free), 0);
+  check("유료방은 그대로", pointsToGold(53000, TIERS_4P.low), 53);
+  // 랭크 포인트는 무료·유료 구분 없이 순위로만 계산된다
+  check("무료판도 랭크 반영", rankPointsForPlacement(1, 4), 30);
+}
+
+console.log("== 35. AI 실력이 등급마다 올라간다 ==");
+{
+  check("무료방 AI 레벨", TIERS_4P.free.aiLevel, 1);
+  check("하급 AI 레벨", TIERS_4P.low.aiLevel, 2);
+  check("중급 AI 레벨", TIERS_4P.mid.aiLevel, 3);
+  check("상급 AI 레벨", TIERS_4P.high.aiLevel, 4);
+
+  // 숙련(3) 이상은 샹텐이 같으면 유효패가 많은 쪽을 남긴다.
+  // 234p 567p 234s 567s + 1만 + 9삭 → 둘 다 버리면 텐파이지만,
+  // 1만을 버리면 9삭 단기(3장), 9삭을 버리면 1만 단기(3장)로 같다. 대신 아래 손패로 확인:
+  // 234p 567p 234s 55s + 1만 + 서 → 서(자패, 남은 3장 대기)보다 1만 쪽 유지가 유리한지 본다.
+  const hand = [
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(6)), t(P(7)),
+    t(S(2)), t(S(3)), t(S(4)), t(S(5)), t(S(6)), t(S(7)),
+    t(S(9)), t(M(1)),
+  ];
+  const view3 = neutralView(3);
+  // 9삭을 이미 3장 봤다고 치면(내 것 포함 4장 소진) 9삭 단기는 죽은 대기가 된다 →
+  // 숙련 AI 는 9삭을 남기지 않고 버린다.
+  view3.unseen[S(9)] = 0;
+  check("숙련 AI 는 죽은 대기를 버린다", chooseDiscard(hand, 0, view3).kind, S(9));
+
+  // 고수(4)는 대기가 얇으면(1장 이하) 리치를 미룬다 — 다마텐
+  const view4 = neutralView(4);
+  view4.unseen[S(9)] = 0;
+  view4.unseen[M(1)] = 0;
+  check("고수는 죽은 대기로 리치 안 함", chooseRiichiDiscard(hand, 0, [12, 13], view4), null);
+  const view4b = neutralView(4);
+  check("대기가 살아 있으면 리치", chooseRiichiDiscard(hand, 0, [12, 13], view4b) !== null, true);
+
+  // 연습(1)은 샹텐이 줄지 않아도 치를 부른다. 보통(2) 이상은 참는다.
+  const junk = [
+    t(P(2)), t(P(5)), t(P(8)), t(S(2)), t(S(5)), t(S(8)),
+    t(M(1)), t(M(9)), t(WINDS.E), t(WINDS.S), t(WINDS.W), t(DRAGONS.HAKU), t(DRAGONS.CHUN),
+  ];
+  const chiOpts = { canRon: false, canPon: false, canKan: false, canChi: true };
+  check("연습 AI 는 아무거나 치", decideCall(junk, [], t(P(3)), chiOpts, neutralView(1)), "chi");
+  check("보통 AI 는 헛치를 안 함", decideCall(junk, [], t(P(3)), chiOpts, neutralView(2)), "pass");
+}
+
+console.log("== 35-b. 레벨별 풀시뮬레이션 (4인·3인 모두 끝까지 돈다) ==");
+{
+  for (const level of [1, 2, 3, 4] as const) {
+    for (const n of [4, 3] as const) {
+      const rules = n === 3 ? DEFAULT_RULES_3P : DEFAULT_RULES_4P;
+      const start = n === 3 ? 35000 : 25000;
+      const seats = Array.from({ length: n }, (_, seat) => ({ seat, userId: null, isAi: true }));
+      const match = createMatch(rules, start, seats, { aiLevel: level });
+      let guard = 0;
+      while (!match.finished && guard++ < 2000) pump(match, { instant: true });
+      check(`레벨${level} ${n}인 매치 종료`, match.finished, true);
+      const sum = match.finalResult?.reduce((acc, r) => acc + r.rawPoints, 0);
+      check(`레벨${level} ${n}인 점수 합 보존`, sum, start * n);
+    }
+  }
+}
+
+console.log("== 36. 방 등급이 AI 레벨로 이어진다 ==");
+{
+  const match = createMatch(
+    DEFAULT_RULES_4P,
+    TIERS_4P.high.startPoints,
+    [
+      { seat: 0, userId: "u0", isAi: false },
+      { seat: 1, userId: null, isAi: true },
+      { seat: 2, userId: null, isAi: true },
+      { seat: 3, userId: null, isAi: true },
+    ],
+    { aiLevel: TIERS_4P.high.aiLevel },
+  );
+  check("상급방은 레벨 4 AI", match.aiLevel, 4);
+  // 예전에 저장된 판(aiLevel 필드가 없던 시절)도 죽지 않아야 한다
+  const legacy = JSON.parse(JSON.stringify(match)) as Record<string, unknown>;
+  delete legacy.aiLevel;
+  check("구버전 저장본은 레벨 2로 복구", parseMatchState(JSON.stringify(legacy))!.aiLevel, 2);
 }
 
 console.log(`

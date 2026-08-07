@@ -2,17 +2,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { computeStats, nextTierFor } from "@/lib/mahjong";
+import { RANK_TIERS, computeStats, nextTierFor, tierProgress } from "@/lib/mahjong";
+import MahjongRankBadge from "@/components/MahjongRankBadge";
 
 export const metadata: Metadata = { title: "마작 전적 · 아리안로드 온라인 갤러리" };
-
-const TIER_BADGE: Record<string, string> = {
-  slate: "bg-slate-500",
-  emerald: "bg-emerald-500",
-  sky: "bg-sky-500",
-  violet: "bg-violet-500",
-  amber: "bg-amber-500",
-};
 
 export default async function MahjongHistoryPage() {
   const me = await getCurrentUser();
@@ -25,7 +18,7 @@ export default async function MahjongHistoryPage() {
       goldDelta: true,
       finalScore: true,
       createdAt: true,
-      table: { select: { playerCount: true } },
+      table: { select: { playerCount: true, tier: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 2000,
@@ -76,16 +69,14 @@ export default async function MahjongHistoryPage() {
             <>
               <div className="flex items-center justify-between">
                 <div>
-                  <span
-                    className={`inline-block rounded-full ${TIER_BADGE[myStats.tier.color]} px-3 py-1 text-xs font-black text-white`}
-                  >
-                    {myStats.tier.label}
-                  </span>
+                  <MahjongRankBadge tier={myStats.tier} size="lg" />
                   <p className="mt-2 text-2xl font-black text-content">{myStats.rankPoints}점</p>
-                  {myNext && (
+                  {myNext ? (
                     <p className="mt-1 text-xs text-faint">
                       다음 등급 {myNext.tier.label}까지 {myNext.remaining}점
                     </p>
+                  ) : (
+                    <p className="mt-1 text-xs font-bold text-amber-600">최고 등급 달성</p>
                   )}
                 </div>
                 <div className="text-right text-sm text-muted">
@@ -98,6 +89,13 @@ export default async function MahjongHistoryPage() {
                   </p>
                   <p className="text-[10px] text-faint">입장료 뺀 순손익</p>
                 </div>
+              </div>
+
+              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-canvas">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-[width]"
+                  style={{ width: `${Math.round(tierProgress(myStats.rankPoints) * 100)}%` }}
+                />
               </div>
 
               <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
@@ -115,12 +113,21 @@ export default async function MahjongHistoryPage() {
                   <div key={i} className="flex items-center justify-between rounded-lg bg-canvas px-3 py-1.5 text-xs">
                     <span className="font-bold text-content">
                       {r.placement}위 · {r.table.playerCount}인
+                      {r.table.tier === "free" && (
+                        <span className="ml-1.5 rounded bg-emerald-500/15 px-1 py-0.5 text-[10px] font-black text-emerald-600">
+                          무료
+                        </span>
+                      )}
                     </span>
                     <span className="text-faint">{r.finalScore.toLocaleString()}점</span>
-                    <span className={r.goldDelta >= 0 ? "font-bold text-emerald-600" : "font-bold text-rose-600"}>
-                      {r.goldDelta >= 0 ? "+" : ""}
-                      {r.goldDelta}G
-                    </span>
+                    {r.table.tier === "free" ? (
+                      <span className="font-bold text-faint">—</span>
+                    ) : (
+                      <span className={r.goldDelta >= 0 ? "font-bold text-emerald-600" : "font-bold text-rose-600"}>
+                        {r.goldDelta >= 0 ? "+" : ""}
+                        {r.goldDelta}G
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -139,16 +146,37 @@ export default async function MahjongHistoryPage() {
               <li key={row.userId} className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2">
                 <span className="w-5 shrink-0 text-center text-xs font-black text-faint">{i + 1}</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-extrabold text-content">{row.nickname}</span>
-                <span
-                  className={`shrink-0 rounded-full ${TIER_BADGE[row.stats.tier.color]} px-2 py-0.5 text-[10px] font-black text-white`}
-                >
-                  {row.stats.tier.label}
-                </span>
+                <MahjongRankBadge tier={row.stats.tier} size="sm" showHanja={false} />
                 <span className="shrink-0 text-sm font-black text-brand-600">{row.stats.rankPoints}</span>
               </li>
             ))}
           </ol>
         )}
+      </section>
+
+      <section className="rounded-3xl border border-line bg-surface p-5 shadow-sm">
+        <p className="text-xs font-extrabold text-faint">등급표</p>
+        <div className="mt-3 space-y-2">
+          {RANK_TIERS.map((t) => {
+            const mine = me && myStats.gamesPlayed > 0 && myStats.tier.key === t.key;
+            return (
+              <div
+                key={t.key}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
+                  mine ? "bg-brand-50 ring-1 ring-brand-300" : "bg-canvas"
+                }`}
+              >
+                <MahjongRankBadge tier={t} size="md" />
+                <span className="flex-1 text-xs text-faint">{t.minPoints}점 이상</span>
+                {mine && <span className="text-[10px] font-black text-brand-600">현재</span>}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-faint">
+          4인전 1위 +30 / 2위 +10 / 3위 −10 / 4위 −30, 3인전 1위 +30 / 2위 0 / 3위 −30. 무료방도 똑같이 반영되고,
+          누적 점수는 0점 밑으로 내려가지 않습니다.
+        </p>
       </section>
 
       <Link

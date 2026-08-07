@@ -13,7 +13,14 @@ import { scoreWin, paymentsFor } from "./scoring";
 import { umaFor, isChiAllowed, declareKita as sanmaDeclareKita } from "./sanma";
 import { shanten } from "./shanten";
 import { WINDS, isSuited, isTerminalOrHonor, numOf, toCounts } from "./tiles";
-import { chooseDiscard, shouldCallKan, shouldCallPon } from "./ai";
+import {
+  buildUnseenCounts,
+  chooseDiscard,
+  chooseRiichiDiscard,
+  decideCall,
+  type AiView,
+} from "./ai";
+import type { AiLevel } from "./economy";
 
 const AI_TURN_DELAY_MS = 800; // AI 한 수마다 텀 — 각자 한 장씩 내는 흐름이 눈에 보이도록
 
@@ -58,6 +65,7 @@ export const TIME_PRESETS: Record<string, TimeRule> = {
 export interface MatchState {
   rules: RuleConfig;
   matchLength: MatchLength;
+  aiLevel: AiLevel; // 방 등급이 정하는 AI 실력 (economy.ts TierConfig.aiLevel)
   timeRule: TimeRule;
   players: MatchPlayerMeta[];
   roundWind: WindKind;
@@ -91,7 +99,7 @@ export function createMatch(
   rules: RuleConfig,
   startPoints: number,
   seatAssignments: { seat: number; userId: string | null; isAi: boolean }[],
-  opts: { matchLength?: MatchLength; timeRule?: TimeRule } = {},
+  opts: { matchLength?: MatchLength; timeRule?: TimeRule; aiLevel?: AiLevel } = {},
 ): MatchState {
   const players = seatAssignments
     .slice()
@@ -100,6 +108,7 @@ export function createMatch(
   const match: MatchState = {
     rules,
     matchLength: opts.matchLength ?? "tonpuusen",
+    aiLevel: opts.aiLevel ?? 2,
     timeRule: opts.timeRule ?? TIME_PRESETS.normal,
     players,
     roundWind: WINDS.E,
@@ -512,17 +521,46 @@ function findChiPair(hand: Tile[], discardKind: number): [number, number] | null
 
 type CallResponse = "pass" | "pon" | "chi" | "kan" | "ron";
 
+// AI 가 지금 자리에서 볼 수 있는 정보만 모아 준다.
+// 실력(match.aiLevel)에 따라 이 중 어디까지 실제로 활용하는지가 달라진다 — ai.ts 참고.
+function aiViewFor(match: MatchState, seat: number): AiView {
+  const hand = match.hand!;
+  const me = hand.players[seat];
+  const unseen = buildUnseenCounts(
+    match.rules.playerCount,
+    me.hand,
+    hand.players.map((p) => p.discards),
+    hand.players.map((p) => p.melds),
+    hand.wall.doraIndicators,
+  );
+
+  // 현물 — 리치를 건 상대의 버림패에 있는 종류는 그 사람에게 절대 론당하지 않는다(후리텐).
+  // 리치자가 여럿이면 전원에게 안전한 것만 남긴다.
+  const riichiOpponents = hand.players.filter((p) => p.seat !== seat && p.riichi);
+  let safeKinds = new Set<number>();
+  riichiOpponents.forEach((p, i) => {
+    const mine = new Set(p.discards.map((t) => t.kind));
+    safeKinds = i === 0 ? mine : new Set([...safeKinds].filter((k) => mine.has(k)));
+  });
+
+  return {
+    level: match.aiLevel,
+    unseen,
+    underThreat: riichiOpponents.length > 0,
+    safeKinds,
+    seatWind: me.seatWind,
+    roundWind: match.roundWind,
+    kuitan: match.rules.kuitan,
+  };
+}
+
 function aiDecideCall(
+  match: MatchState,
   player: PlayerState,
   tile: Tile,
   opts: { canRon: boolean; canPon: boolean; canKan: boolean; canChi: boolean },
 ): CallResponse {
-  if (opts.canRon) return "ron";
-  const counts = toCounts(player.hand);
-  if (opts.canKan && shouldCallKan(counts, tile.kind)) return "kan";
-  if (opts.canPon && shouldCallPon(counts, player.melds.length, tile.kind)) return "pon";
-  if (opts.canChi) return "chi";
-  return "pass";
+  return decideCall(player.hand, player.melds, tile, opts, aiViewFor(match, player.seat));
 }
 
 function openCallWindowIfNeeded(match: MatchState, discardSeat: number, tile: Tile): void {
@@ -546,7 +584,7 @@ function openCallWindowIfNeeded(match: MatchState, discardSeat: number, tile: Ti
       hasChiShape(p.hand, tile.kind);
     if (!canRon && !canPon && !canKan && !canChi) return;
     if (p.isAi) {
-      responses[p.seat] = aiDecideCall(p, tile, { canRon, canPon, canKan, canChi });
+      responses[p.seat] = aiDecideCall(match, p, tile, { canRon, canPon, canKan, canChi });
     } else {
       eligible.push(p.seat);
       options[p.seat] = { ron: canRon, pon: canPon, kan: canKan, chi: canChi };
@@ -1153,10 +1191,14 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
       continue;
     }
 
-    // 리치 선언은 버릴 패 선택까지 한 번에 처리된다(declareRiichi 안에서 버림)
+    const view = aiViewFor(match, seat);
+
+    // 리치 선언은 버릴 패 선택까지 한 번에 처리된다(declareRiichi 안에서 버림).
+    // 어느 패로 걸지 + 애초에 걸지 말지는 실력에 달렸다(고수는 대기가 얇으면 다마텐).
     if (!player.riichi && declareRiichiPreview(match, seat)) {
       const candidates = riichiDiscardIndexes(player);
-      if (candidates.length > 0 && declareRiichi(match, seat, candidates[0])) {
+      const pick = chooseRiichiDiscard(player.hand, player.melds.length, candidates, view);
+      if (pick !== null && declareRiichi(match, seat, pick)) {
         if (!instant && match.hand) {
           match.hand.aiPauseUntil = Date.now() + AI_TURN_DELAY_MS;
           return;
@@ -1165,7 +1207,9 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
       }
     }
 
-    const discardTile = player.riichi ? player.hand[player.hand.length - 1] : chooseDiscard(player.hand, player.melds.length);
+    const discardTile = player.riichi
+      ? player.hand[player.hand.length - 1]
+      : chooseDiscard(player.hand, player.melds.length, view);
     const idx = player.hand.indexOf(discardTile);
     performDiscard(match, seat, idx < 0 ? player.hand.length - 1 : idx);
     if (!instant && match.hand) {
@@ -1191,6 +1235,7 @@ export function parseMatchState(json: string | null | undefined): MatchState | n
   raw.timeRule.baseSec ??= TIME_PRESETS.normal.baseSec;
   raw.timeRule.bankSec ??= TIME_PRESETS.normal.bankSec;
   raw.matchLength ??= "tonpuusen";
+  raw.aiLevel ??= 2;
   raw.handSeq ??= 0;
   raw.honba ??= 0;
   raw.kyotaku ??= 0;

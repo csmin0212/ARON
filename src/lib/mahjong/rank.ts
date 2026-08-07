@@ -1,19 +1,22 @@
 // 마작 등급 — 정식 단위 체계가 아니라 순위 누적 점수로 매기는 자체 간이 랭크.
 // 별도 테이블 없이 MahjongRecord 원자료를 집계해서 매번 계산한다(hall/page.tsx와 동일한 방식).
+// 이름은 작혼식 4단계(작사·작걸·작호·작성), 단(段)은 두지 않는다.
+
+export type RankMetal = "copper" | "silver" | "gold" | "holo";
 
 export interface RankTier {
   key: string;
-  label: string;
+  label: string; // 작사
+  hanja: string; // 雀士
   minPoints: number;
-  color: string; // UI 배지용
+  metal: RankMetal; // 배지 재질 — MahjongRankBadge 가 해석한다
 }
 
 export const RANK_TIERS: RankTier[] = [
-  { key: "novice", label: "초심자", minPoints: 0, color: "slate" },
-  { key: "apprentice", label: "수련생", minPoints: 100, color: "emerald" },
-  { key: "expert", label: "숙련자", minPoints: 300, color: "sky" },
-  { key: "master", label: "고수", minPoints: 600, color: "violet" },
-  { key: "legend", label: "마작왕", minPoints: 1000, color: "amber" },
+  { key: "jakushi", label: "작사", hanja: "雀士", minPoints: 0, metal: "copper" },
+  { key: "jakuketsu", label: "작걸", hanja: "雀傑", minPoints: 150, metal: "silver" },
+  { key: "jakugou", label: "작호", hanja: "雀豪", minPoints: 400, metal: "gold" },
+  { key: "jakusei", label: "작성", hanja: "雀聖", minPoints: 800, metal: "holo" },
 ];
 
 // 4인전: 1위 +30 / 2위 +10 / 3위 -10 / 4위 -30
@@ -37,6 +40,15 @@ export function nextTierFor(points: number): { tier: RankTier; remaining: number
   const next = RANK_TIERS.find((t) => t.minPoints > points);
   if (!next) return null;
   return { tier: next, remaining: next.minPoints - points };
+}
+
+// 현재 등급 구간 안에서 얼마나 왔는지 (0~1). 최상위 등급은 항상 1.
+export function tierProgress(points: number): number {
+  const cur = tierForPoints(points);
+  const next = RANK_TIERS.find((t) => t.minPoints > points);
+  if (!next) return 1;
+  const span = next.minPoints - cur.minPoints;
+  return span <= 0 ? 1 : Math.min(1, Math.max(0, (points - cur.minPoints) / span));
 }
 
 export interface MahjongStats {

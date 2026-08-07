@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import {
   inviteToHouse,
@@ -10,7 +11,7 @@ import {
   type FriendState,
 } from "@/app/actions/friends";
 
-export type FriendView = { id: string; nickname: string; where: string };
+export type FriendView = { id: string; username: string; nickname: string; where: string };
 export type FriendRequestView = { id: string; nickname: string };
 export type HouseInviteView = { id: string; nickname: string };
 
@@ -171,12 +172,17 @@ export default function FriendsDock({
                   key={friend.id}
                   className="flex items-center gap-2 rounded-2xl border border-line bg-subtle px-3 py-2.5"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-extrabold text-content">
+                  {/* 이름을 누르면 그 친구의 프로필로 — 초대·삭제 버튼과 겹치지 않게 이름 영역만 링크 */}
+                  <Link
+                    href={`/u/${encodeURIComponent(friend.username)}`}
+                    title={`${friend.nickname}님의 프로필 보기`}
+                    className="group min-w-0 flex-1 rounded-lg px-1 py-0.5 transition hover:bg-surface"
+                  >
+                    <p className="truncate text-sm font-extrabold text-content group-hover:text-brand-600 group-hover:underline">
                       {friend.nickname}
                     </p>
                     <p className="truncate text-[11px] text-faint">{friend.where}</p>
-                  </div>
+                  </Link>
                   {canInvite && (
                     <form action={inviteAction}>
                       <input type="hidden" name="friendId" value={friend.id} />

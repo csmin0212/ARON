@@ -253,31 +253,34 @@ async function startTable(
   const rules = { ...baseRules, kuitan: settings.kuitan };
   const humanSeats = seats.filter((s) => s.userId);
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      for (const s of humanSeats) {
-        const result = await tx.characterSheet.updateMany({
-          where: { userId: s.userId!, curGold: { gte: tier.gold } },
-          data: { curGold: { decrement: tier.gold } },
-        });
-        if (result.count === 0) throw new Error("INSUFFICIENT_GOLD");
-        await tx.mahjongSeat.updateMany({
-          where: { tableId, seatIndex: s.seatIndex },
-          data: { entryGold: tier.gold },
-        });
-      }
-    });
-  } catch {
-    return { ok: false, message: "골드가 부족한 참가자가 있어 시작할 수 없습니다." };
-  }
+  // 무료방(tier.gold === 0)은 골드를 아예 건드리지 않는다 — 정산도 0원이라 지갑 왕복이 없다.
+  if (tier.gold > 0) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const s of humanSeats) {
+          const result = await tx.characterSheet.updateMany({
+            where: { userId: s.userId!, curGold: { gte: tier.gold } },
+            data: { curGold: { decrement: tier.gold } },
+          });
+          if (result.count === 0) throw new Error("INSUFFICIENT_GOLD");
+          await tx.mahjongSeat.updateMany({
+            where: { tableId, seatIndex: s.seatIndex },
+            data: { entryGold: tier.gold },
+          });
+        }
+      });
+    } catch {
+      return { ok: false, message: "골드가 부족한 참가자가 있어 시작할 수 없습니다." };
+    }
 
-  humanSeats.forEach((s) => void enqueueSheetGoldSync(s.userId!));
+    humanSeats.forEach((s) => void enqueueSheetGoldSync(s.userId!));
+  }
 
   const match = createMatch(
     rules,
     tier.startPoints,
     seats.map((s) => ({ seat: s.seatIndex, userId: s.userId, isAi: s.isAi })),
-    { matchLength: settings.matchLength, timeRule: TIME_PRESETS[settings.timePreset] },
+    { matchLength: settings.matchLength, timeRule: TIME_PRESETS[settings.timePreset], aiLevel: tier.aiLevel },
   );
   pump(match);
 

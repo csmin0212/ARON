@@ -237,3 +237,50 @@ body {
     animation: none;
   }
 }
+
+/* ── 마작 등급 배지 — 금속 인장 ── */
+@keyframes mj-rank-sheen {
+  0% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  55%,
+  100% {
+    transform: translateX(240%) skewX(-18deg);
+  }
+}
+@keyframes mj-rank-holo-pan {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+/* 금속판 위를 훑고 지나가는 광택 — 작걸 이상에만 붙는다 */
+.mj-rank-sheen {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.85),
+    transparent
+  );
+  animation: mj-rank-sheen 4.5s ease-in-out infinite;
+}
+/* 작성 — 무지갯빛이 천천히 흐른다 */
+.mj-rank-holo {
+  background-size: 260% 100%;
+  animation: mj-rank-holo-pan 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mj-rank-sheen,
+  .mj-rank-holo {
+    animation: none;
+  }
+}

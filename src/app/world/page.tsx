@@ -815,8 +815,8 @@ export default async function WorldPage() {
     prisma.friendship.findMany({
       where: { status: "accepted", OR: [{ userId: user.id }, { friendId: user.id }] },
       include: {
-        user: { select: { id: true, nickname: true } },
-        friend: { select: { id: true, nickname: true } },
+        user: { select: { id: true, nickname: true, username: true } },
+        friend: { select: { id: true, nickname: true, username: true } },
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -862,7 +862,7 @@ export default async function WorldPage() {
       const loc = friendLocById.get(locId);
       where = !loc || loc.hidden ? "🕶️ 어딘가…" : `${loc.emoji ?? "📍"} ${loc.name}`;
     }
-    return { id: f.id, nickname: f.nickname, where };
+    return { id: f.id, username: f.username, nickname: f.nickname, where };
   });
   const friendRequests = friendRequestRows.map((row) => ({
     id: row.id,
