@@ -44,7 +44,9 @@ export async function finishAndSettle(
   for (const result of match.finalResult) {
     const seatRow = table.seats.find((s) => s.seatIndex === result.seat);
     const entryGold = seatRow?.entryGold ?? 0;
-    let goldDelta = 0;
+    // net = 실제 손익(입장료를 뺀 값), creditBack = 지갑에 돌려줄 총액.
+    // 입장료는 시작할 때 이미 빠져나갔으므로 지갑에는 입장료+순손익을 돌려준다.
+    let net = 0;
 
     if (result.userId) {
       const payoutGold = pointsToGold(result.finalPoints, tierConfig);
@@ -62,19 +64,20 @@ export async function finishAndSettle(
           /* 깨져 있으면 새로 시작 */
         }
         const { state: nextState, payableGain } = settleAiCappedGold(state, today, netGain);
-        goldDelta = entryGold + payableGain;
+        net = payableGain;
         await prisma.characterSheet.update({
           where: { userId: result.userId },
           data: { mahjongAiGoldJson: JSON.stringify(nextState) },
         });
       } else {
-        goldDelta = entryGold + netGain;
+        net = netGain;
       }
 
-      if (goldDelta !== 0) {
+      const creditBack = entryGold + net;
+      if (creditBack !== 0) {
         await prisma.characterSheet.update({
           where: { userId: result.userId },
-          data: { curGold: { increment: goldDelta } },
+          data: { curGold: { increment: creditBack } },
         });
         void enqueueSheetGoldSync(result.userId);
       }
@@ -87,7 +90,7 @@ export async function finishAndSettle(
         isAi: result.isAi,
         placement: result.placement,
         finalScore: result.finalPoints,
-        goldDelta,
+        goldDelta: net, // 입장료를 뺀 실제 손익
       },
     });
   }

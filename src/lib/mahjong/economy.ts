@@ -35,7 +35,7 @@ export interface DailyAiGoldState {
   earned: number;
 }
 
-export const DAILY_AI_GOLD_CAP = 250;
+export const DAILY_AI_GOLD_CAP = 100;
 
 // AI가 낀 판의 순이익 골드를 하루 상한(DAILY_AI_GOLD_CAP)으로 클램프한다. 손실은 상한 없이 그대로 반영하고,
 // 사람끼리만 둔 판은 이 함수를 거치지 않는다(무제한).

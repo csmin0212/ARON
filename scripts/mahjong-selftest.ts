@@ -214,7 +214,7 @@ console.log("== 8. 골드 경제 ==");
   check("일일 상한 클램프 후 누적", clamp1.state.earned, DAILY_AI_GOLD_CAP);
 
   const loss = settleAiCappedGold({ day: "2026-08-05", earned: 80 }, "2026-08-05", -30);
-  check("AI 일일 상한값", DAILY_AI_GOLD_CAP, 250);
+  check("AI 일일 상한값", DAILY_AI_GOLD_CAP, 100);
   check("손실은 상한 없음", loss.payableGain, -30);
 
   const newDay = settleAiCappedGold({ day: "2026-08-04", earned: 90 }, "2026-08-05", 50);

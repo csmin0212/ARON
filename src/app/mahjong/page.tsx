@@ -96,6 +96,7 @@ export default async function MahjongHistoryPage() {
                     {myStats.totalGoldDelta >= 0 ? "+" : ""}
                     {myStats.totalGoldDelta.toLocaleString()}G
                   </p>
+                  <p className="text-[10px] text-faint">입장료 뺀 순손익</p>
                 </div>
               </div>
 
