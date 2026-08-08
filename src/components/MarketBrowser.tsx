@@ -237,8 +237,7 @@ function SellRow({ item }: { item: SellableItem }) {
   const [qty, setQty] = useState(1);
   const below = price < minListPrice;
   const categoryLabel = normalizeAuctionCategory(item.category);
-  // 즉시매각은 매입가가 0이면 아예 불가 (NPC가 안 사주는 물건)
-  const canInstant = item.floor > 0;
+  // 0성·0원 잡템(낙엽·나무껍질 등)은 0G 즉시매각으로 가방을 비우는 용도다 — 버튼을 없애면 안 된다.
   const canList = !below;
 
   return (
@@ -253,17 +252,10 @@ function SellRow({ item }: { item: SellableItem }) {
         </div>
         <span className="shrink-0 text-[11px] font-bold text-faint">보유 {item.qty}</span>
       </div>
-      {(canInstant || item.source !== "basic") && (
-        <p className="mt-1 text-[11px] text-faint">
-          {canInstant && (
-            <>
-              즉시매각 하한 <span className="font-bold text-content">{gold(item.floor)}G</span>
-            </>
-          )}
-          {canInstant && item.source !== "basic" && " · "}
-          {item.source !== "basic" && `${item.source} 가방`}
-        </p>
-      )}
+      <p className="mt-1 text-[11px] text-faint">
+        즉시매각 하한 <span className="font-bold text-content">{gold(item.floor)}G</span>
+        {item.source !== "basic" && <span className="ml-1">· {item.source} 가방</span>}
+      </p>
 
       <label className="mt-2 flex items-center gap-1 text-[11px] font-bold text-faint">
         수량
@@ -277,22 +269,19 @@ function SellRow({ item }: { item: SellableItem }) {
         />
       </label>
 
-      {/* 즉시매각 (NPC 바로 판매) — 매입가가 없는 물건은 버튼 자체를 안 그린다.
-          예전에는 0G 짜리 '즉시매각' 버튼이 살아 있어서, 누르면 아무것도 못 받고 물건만 없어졌다. */}
-      {canInstant && (
-        <form action={sellAction} className="mt-2">
-          <input type="hidden" name="source" value={item.source} />
-          <input type="hidden" name="itemName" value={item.name} />
-          <input type="hidden" name="qty" value={qty} />
-          <button
-            type="submit"
-            disabled={sellPending}
-            className="w-full rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
-          >
-            {sellPending ? "판매 중..." : `즉시매각 ${gold(item.floor * qty)}G`}
-          </button>
-        </form>
-      )}
+      {/* 즉시매각 (NPC 바로 판매) — 0G 짜리도 그대로 판다. 0성 잡템을 가방에서 버리는 창구다. */}
+      <form action={sellAction} className="mt-2">
+        <input type="hidden" name="source" value={item.source} />
+        <input type="hidden" name="itemName" value={item.name} />
+        <input type="hidden" name="qty" value={qty} />
+        <button
+          type="submit"
+          disabled={sellPending}
+          className="w-full rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
+        >
+          {sellPending ? "판매 중..." : `즉시매각 ${gold(item.floor * qty)}G`}
+        </button>
+      </form>
 
       {/* 위탁 등록 (경매장에 올리기) */}
       <form action={listAction} className="mt-2 flex items-center gap-2">

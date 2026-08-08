@@ -957,7 +957,8 @@ function LiveTable({
       if (auto.win && hand.legalActions.canTsumo) {
         autoFiredRef.current = key;
         act({ type: "tsumo" });
-      } else if (auto.tsumogiri && !hand.legalActions.canTsumo) {
+      } else if (auto.tsumogiri && !hand.legalActions.canTsumo && myPlayer.drewThisTurn) {
+        // 뽑은 패가 있을 때만 츠모기리 — 퐁·치 직후엔 버릴 '뽑은 패'가 없다
         autoFiredRef.current = key;
         const drawn = myPlayer.myHand?.[(myPlayer.myHand?.length ?? 1) - 1];
         if (drawn) act({ type: "discard", kind: drawn.kind, aka: drawn.aka, drawn: true });
@@ -1222,7 +1223,8 @@ function LiveTable({
           <div className="flex flex-wrap items-end justify-center gap-[3px] sm:gap-1.5">
             {(() => {
               const all = myPlayer.myHand ?? [];
-              const drawnIdxOuter = all.length % 3 === 2 ? all.length - 1 : -1;
+              // 장수로 추측하면 퐁·치 직후(13→11장)도 뽑은 걸로 오인한다 — 서버 판정을 그대로 쓴다
+              const drawnIdxOuter = myPlayer.drewThisTurn && all.length > 0 ? all.length - 1 : -1;
               const sorted = all
                 .map((tile, idx) => ({ tile, idx }))
                 .filter(({ idx }) => idx !== drawnIdxOuter)

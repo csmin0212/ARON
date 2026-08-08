@@ -27,6 +27,8 @@ import {
   decideCall,
   neutralView,
   visibleDiscards,
+  declareAnkan,
+  declareKakan,
   legalActionsFor,
   declareRiichi,
   performDiscard,
@@ -1140,6 +1142,106 @@ console.log("== 38-b. 그래도 시간 초과 자체는 계속 동작한다 ==")
   hand.turnDeadline = Date.now() - 1_000;
   pump(match); // 좌석 지정 없이 = 평소 폴링
   check("지정 없으면 시간 초과로 자동 버림", match.hand!.players[0].discards.length > 0, true);
+}
+
+console.log("== 39. 퐁 직후에는 '방금 뽑은 패'가 없다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  hand.players.forEach((p) => {
+    p.discards = [];
+    p.melds = [];
+    p.riichi = false;
+    p.calledDiscardIndexes = [];
+    p.drewThisTurn = false;
+  });
+  const p0 = hand.players[0];
+  p0.hand = [
+    t(DRAGONS.CHUN), t(DRAGONS.CHUN), t(M(2)), t(M(3)), t(M(4)),
+    t(M(5)), t(M(6)), t(M(7)), t(S(2)), t(S(3)), t(S(4)), t(S(6)), t(S(6)),
+  ];
+  hand.players[3].hand = [
+    t(DRAGONS.CHUN), t(P(1)), t(P(2)), t(P(3)), t(P(5)), t(P(6)), t(P(7)),
+    t(S(7)), t(S(8)), t(S(9)), t(M(9)), t(M(9)), t(WINDS.W), t(WINDS.W),
+  ];
+  hand.turn = 3;
+  hand.players[3].drewThisTurn = true;
+  performDiscard(match, 3, 0);
+  check("버린 사람은 쯔모패 표시 해제", hand.players[3].drewThisTurn, false);
+
+  // instant pump 를 태우면 그대로 버림까지 진행되므로, 퐁이 붙은 직후 상태만 본다
+  submitCallResponse(match, 0, "pon");
+  check("퐁 멘츠 생김", p0.melds.length, 1);
+  check("퐁한 사람 손패 11장", p0.hand.length, 11);
+  check("퐁 직후엔 쯔모패 없음", p0.drewThisTurn, false);
+  check("차례는 퐁한 사람", match.hand!.turn, 0);
+}
+
+console.log("== 39-b. 깡의 영상패는 쯔모패로 잡힌다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  hand.turn = 0;
+  const p = hand.players[0];
+  p.melds = [];
+  p.riichi = false;
+  p.drewThisTurn = false;
+  // 백 4장 안깡
+  p.hand = [
+    t(DRAGONS.HAKU), t(DRAGONS.HAKU), t(DRAGONS.HAKU), t(DRAGONS.HAKU),
+    t(M(2)), t(M(3)), t(M(4)), t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)), t(S(5)),
+  ];
+  check("안깡 성공", declareAnkan(match, 0, DRAGONS.HAKU), true);
+  check("영상패는 쯔모패", p.drewThisTurn, true);
+}
+
+console.log("== 39-c. 가깡 4번째 패가 '가져온 패' 자리를 뺏지 않는다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  hand.turn = 0;
+  const p = hand.players[0];
+  p.riichi = false;
+  // 3번에게서 백을 퐁해 둔 상태 (맨 뒤 = 가져온 패)
+  p.melds = [
+    {
+      type: "pon",
+      kind: DRAGONS.HAKU,
+      tiles: [t(DRAGONS.HAKU), t(DRAGONS.HAKU), t(DRAGONS.HAKU)],
+      calledFrom: 3,
+    },
+  ];
+  p.hand = [
+    t(M(2)), t(M(3)), t(M(4)), t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)), t(S(5)), t(DRAGONS.HAKU), // 맨 뒤 = 방금 뽑은 백
+  ];
+  p.drewThisTurn = true;
+  declareKakan(match, 0);
+  const meld = match.hand!.players[0].melds[0];
+  check("가깡으로 바뀜", meld.type, "kakan");
+  check("멘츠 4장", meld.tiles.length, 4);
+  // 화면은 맨 뒤를 '남에게서 가져온 패'로 눕혀 그린다 — 내가 얹은 패가 거기 오면 안 된다
+  check("맨 뒤는 여전히 울린 패 자리", meld.tiles.length - 1, 3);
+  check("가깡 후 영상패는 쯔모패", match.hand!.players[0].drewThisTurn, true);
 }
 
 console.log(`

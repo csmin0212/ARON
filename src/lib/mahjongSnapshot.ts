@@ -31,6 +31,7 @@ export type MahjongPlayerView = {
   seatWind: number;
   isDealer: boolean;
   kitaCount: number;
+  drewThisTurn: boolean; // 손패 맨 뒤가 쯔모패인가 (퐁·치 직후에는 false)
 };
 
 export type MahjongHandView = {
@@ -135,6 +136,7 @@ export function buildMahjongSnapshot(
         seatWind: p.seatWind,
         isDealer: p.isDealer,
         kitaCount: p.kitaCount,
+        drewThisTurn: p.drewThisTurn ?? p.hand.length % 3 === 2,
       };
     });
 

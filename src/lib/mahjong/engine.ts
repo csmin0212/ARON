@@ -26,6 +26,9 @@ export interface PlayerState {
   // 빼 버리면 후리텐이 풀려 버리기 때문(울린 패도 '내가 버린 패'로 후리텐에 걸린다).
   // 화면(河)과 남은 패 계산에서는 이 위치를 건너뛴다. 안 그러면 같은 패가 두 번 보인다.
   calledDiscardIndexes: number[];
+  // 지금 손패 맨 뒤가 '방금 뽑은 패'인가. 클라이언트가 장수(hand.length % 3)로 추측하면
+  // 퐁·치 직후(13→11장)도 뽑은 것으로 오인해서, 원래 들고 있던 패를 쯔모패라고 떼어 보여준다.
+  drewThisTurn: boolean;
 }
 
 export interface CallOptions {
@@ -120,6 +123,7 @@ export function createGame(
     rinshanActive: false,
     riichiDiscardIndex: null,
     calledDiscardIndexes: [],
+    drewThisTurn: false,
   }));
   return {
     rules,
@@ -151,6 +155,7 @@ export function drawForCurrentPlayer(state: GameState): Tile | null {
     return null;
   }
   state.players[state.turn].hand.push(tile);
+  state.players[state.turn].drewThisTurn = true;
   state.turnCount++;
   return tile;
 }
@@ -159,6 +164,7 @@ export function discard(state: GameState, seat: number, tileIndex: number): Tile
   const player = state.players[seat];
   const [tile] = player.hand.splice(tileIndex, 1);
   player.discards.push(tile);
+  player.drewThisTurn = false; // 버렸으니 쯔모패 표시는 사라진다
   return tile;
 }
 

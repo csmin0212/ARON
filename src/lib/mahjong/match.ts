@@ -666,6 +666,9 @@ function applyCallMeld(
   });
   hand.firstGoAround = false;
 
+  // 퐁·치는 패를 뽑지 않는다 — 손패 맨 뒤는 원래 들고 있던 패이지 쯔모패가 아니다.
+  caller.drewThisTurn = false;
+
   if (type === "minkan") {
     hand.kanCount += 1;
     revealNextDora(hand.wall);
@@ -673,6 +676,7 @@ function applyCallMeld(
     if (rinshan) {
       caller.hand.push(rinshan);
       caller.rinshanActive = true;
+      caller.drewThisTurn = true; // 영상패는 진짜 쯔모패다
     }
     if (checkSuukaikan(match)) return;
   }
@@ -774,6 +778,7 @@ export function declareAnkan(match: MatchState, seat: number, kind: number): boo
   if (rinshan) {
     player.hand.push(rinshan);
     player.rinshanActive = true;
+    player.drewThisTurn = true;
   }
   resetTurnClock(hand); // 깡 후에는 새 시간으로 다시 센다
   checkSuukaikan(match);
@@ -802,7 +807,10 @@ function completeKakan(match: MatchState, seat: number, meldIndex: number, tile:
   const meld = player.melds[meldIndex];
   if (!meld) return;
   meld.type = "kakan";
-  meld.tiles.push(tile);
+  // 화면은 '맨 뒤 = 남에게서 가져온 패'로 보고 그것만 눕혀 그린다.
+  // 가깡으로 얹는 4번째 패는 내 손에서 나온 거라 맨 뒤에 붙이면 안 된다 —
+  // 붙이면 내 패가 '가져온 패'로 눕혀지고, 진짜 울린 패는 평범하게 보인다.
+  meld.tiles.splice(Math.max(0, meld.tiles.length - 1), 0, tile);
   hand.kanCount += 1;
   hand.firstGoAround = false;
   hand.players.forEach((p) => {
@@ -813,6 +821,7 @@ function completeKakan(match: MatchState, seat: number, meldIndex: number, tile:
   if (rinshan) {
     player.hand.push(rinshan);
     player.rinshanActive = true;
+    player.drewThisTurn = true;
   }
   checkSuukaikan(match);
 }
@@ -928,6 +937,7 @@ export function declareKitaInMatch(match: MatchState, seat: number): boolean {
   const result = sanmaDeclareKita(player.hand, hand.wall);
   if (!result) return false;
   player.kitaCount += 1;
+  player.drewThisTurn = result.replacement != null; // 보충패를 받았으면 그게 쯔모패다
   resetTurnClock(hand);
   return true;
 }
@@ -1271,6 +1281,8 @@ export function parseMatchState(json: string | null | undefined): MatchState | n
       p.riichiDiscardIndex ??= null;
       p.kitaCount ??= 0;
       p.calledDiscardIndexes ??= [];
+      // 예전 저장본에는 없던 값 — 기존 화면과 같은 추측으로 채운다
+      p.drewThisTurn ??= p.hand.length % 3 === 2;
     }
   }
   return raw;
