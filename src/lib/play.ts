@@ -43,6 +43,7 @@ import {
   lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
+  lifeLuckModFromStats,
   parseLifeState,
   progressOf,
   recordLifeCatch,
@@ -236,7 +237,7 @@ export async function runActionCommand(
 
   const lifeSkillKind = lifeSkillKindOf(target.kind, target.label);
   const life = lifeSkillKind ? parseLifeState(sheet.lifeJson) : null;
-  const lifeMods = lifeSkillKind && life ? computeMods(life, lifeSkillKind) : null;
+  const lifeMods = lifeSkillKind && life ? computeMods(life, lifeSkillKind, lifeLuckModFromStats(sheet.statsJson)) : null;
   if (lifeSkillKind && lifeMods) {
     const eventBonus = dailyLifeEventBonus(lifeSkillKind);
     lifeMods.apCostDown += eventBonus.apCostDown;
@@ -305,7 +306,7 @@ export async function runActionCommand(
       try {
         caught = pickLifeSkillCatch(lifeSkillKind, {
           ...locationPool,
-          weights: adjustedRankWeights(mods, regionBase),
+          weights: adjustedRankWeights(mods, regionBase, level),
         });
       } catch (e) {
         return { error: e instanceof Error ? e.message : `${lifeSkillKind} 목록 설정을 확인해주세요.` };

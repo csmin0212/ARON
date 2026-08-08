@@ -24,6 +24,7 @@ import {
   boostedLifeExp,
   computeMods,
   isPerkChoiceLevel,
+  lifeLuckModFromStats,
   lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
@@ -179,7 +180,7 @@ export async function startGathering(): Promise<GatherStart> {
   if (!pool?.enabled) return { error: "여기서는 채집을 할 수 없어요." };
 
   const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, GATHER);
+  const mods = computeMods(life, GATHER, lifeLuckModFromStats(sheet.statsJson));
   const eventBonus = dailyLifeEventBonus(GATHER);
   mods.apCostDown += eventBonus.apCostDown;
   mods.luck += eventBonus.luck;
@@ -199,7 +200,7 @@ export async function startGathering(): Promise<GatherStart> {
   await loadLifeItems();
   let caught;
   try {
-    caught = pickLifeSkillCatch(GATHER, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+    caught = pickLifeSkillCatch(GATHER, { ...pool, weights: adjustedRankWeights(mods, regionBase, level) });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "채집 목록 설정을 확인해주세요." };
   }

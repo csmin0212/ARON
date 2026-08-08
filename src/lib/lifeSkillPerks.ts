@@ -687,7 +687,7 @@ export type LifeMods = {
   rank0Down: number; // %p 감소 (cap 10)
   rank1Down: number; // (cap 20)
   rank2Down: number; // (cap 20)
-  luck: number; // 행운아/버프 — 이미 열린 4·5성 가중치 상대 증가율(%)
+  luck: number; // 행운 수정치 + 행운아/버프 — 고랭크 가중치 가산
   rank5Up: number; // 신의 어부
   noTrash: boolean; // 행운의 부적
   toolEff: number; // 도구 숙련 — 도구 보정 공식 개선 % (기본 도구는 보정 0이라 효과 없음)
@@ -695,6 +695,19 @@ export type LifeMods = {
   apCostDown: number; // 효율적인 정리 — 생활 행동 피로도 소모 감소 (최소 1은 소모)
   doubleDrop: number; // 일석이조(채광) — 획득 시 N% 확률로 결과물 1개 추가 (cap 100)
 };
+
+type StatLike = { label?: string | null; mod?: number | null };
+
+export function lifeLuckModFromStats(statsJson: string | null | undefined): number {
+  if (!statsJson) return 0;
+  try {
+    const stats = JSON.parse(statsJson) as StatLike[];
+    const luck = stats.find((stat) => stat.label === "행운");
+    return luck?.mod ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 // 효과키가 없는 옛 특성(스냅샷)용 폴백 — 이름·희귀도 → 수치. 시트 '스킬' 탭과 동일하게 유지.
 const VAL: Record<string, Record<string, number>> = {
@@ -769,14 +782,14 @@ function applyEffectKey(mods: LifeMods, key: string | null | undefined, value: s
   }
 }
 
-export function computeMods(state: LifeState, kind: LifeSkillKind): LifeMods {
+export function computeMods(state: LifeState, kind: LifeSkillKind, luckMod = 0): LifeMods {
   const mods: LifeMods = {
     expMult: 1,
     goldMult: 1,
     rank0Down: 0,
     rank1Down: 0,
     rank2Down: 0,
-    luck: 0,
+    luck: luckMod,
     rank5Up: 0,
     noTrash: false,
     toolEff: 0,
@@ -858,30 +871,21 @@ export function toolRankRateBonus(toolTier: number, toolEff: number): number {
   return base * (1 + Math.max(0, toolEff) / 100);
 }
 
-function takeEvenlyFromLowRanks(weights: number[], amount: number): number {
-  let remaining = Math.max(0, amount);
-  let removed = 0;
-  const ranks = [0, 1, 2, 3];
-  while (remaining > 1e-9) {
-    const available = ranks.filter((rank) => weights[rank] > 1e-9);
-    if (available.length === 0) break;
-    const share = remaining / available.length;
-    let removedThisRound = 0;
-    for (const rank of available) {
-      const cut = Math.min(weights[rank], share);
-      weights[rank] -= cut;
-      removed += cut;
-      removedThisRound += cut;
-    }
-    remaining -= removedThisRound;
-    if (removedThisRound <= 1e-9) break;
-  }
-  return removed;
+// 행운 1당 3성 증가폭. 4·5성은 레벨 구간별(luckBonusForLevel)이라 여기서 따로 잡는다.
+const LUCK_RANK3_UP = 0.05;
+// 행운으로 올린 만큼을 0·1·2성에서 가져오는 비율 (4:4:2).
+// 행운 1당 3·4성 합계 +0.1 → 0성 -0.04 / 1성 -0.04 / 2성 -0.02 가 되도록 맞춘 값.
+const LUCK_LOW_RANK_SHARE = [0.4, 0.4, 0.2];
+
+function luckBonusForLevel(level: number | undefined): { rank4: number; rank5: number } {
+  if (level == null || level < 31) return { rank4: 0.05, rank5: 0 };
+  if (level < 61) return { rank4: 0.09, rank5: 0.01 };
+  return { rank4: 0.25, rank5: 0.05 };
 }
 
 // 등급 가중치 [0성..5성] 에 특성/행운 보정 적용.
 // base 는 레벨 구간표(baseWeightsFor) 또는 장소별 override다.
-export function adjustedRankWeights(mods: LifeMods, base?: number[]): number[] {
+export function adjustedRankWeights(mods: LifeMods, base?: number[], level?: number): number[] {
   const orig = base ? [...base] : [30, 40, 25, 5, 0, 0];
   const w = [...orig];
   let removed = 0;
@@ -905,15 +909,31 @@ export function adjustedRankWeights(mods: LifeMods, base?: number[]): number[] {
     w[2] += removed; // 상위 등급이 모두 잠긴 극단 케이스
   }
 
-  // 행운: 이미 열린 4·5성 확률을 상대 비율로 늘린다. 예: 4성 1%에 행운 +1이면 1.01%.
-  if (mods.luck > 0 && upper.length > 0) {
-    const rank4Gain = orig[4] > 0 ? w[4] * (mods.luck / 100) : 0;
-    const rank5Gain = orig[5] > 0 ? w[5] * (mods.luck / 100) : 0;
-    const requested = rank4Gain + rank5Gain;
-    const actual = takeEvenlyFromLowRanks(w, requested);
-    if (actual > 0 && requested > 0) {
-      w[4] += actual * (rank4Gain / requested);
-      w[5] += actual * (rank5Gain / requested);
+  // 행운: 3·4(·5)성이 오르고, 그만큼을 0·1·2성에서 4:4:2 로 가져온다. 총합은 항상 보존된다.
+  //  · 행운 1당 3성 +0.05 / 4성 +0.05 → 0성 -0.04 / 1성 -0.04 / 2성 -0.02
+  //  · 3성은 차감 대상이 아니다 — 예전에는 0~3성에서 균등하게 깎아서 행운을 올릴수록
+  //    3성 확률이 오히려 내려갔다(Lv1~30 기준 5.10% → 4.85%).
+  //  · 4성은 구간에서 기본 0이어도 행운으로 열린다(Lv1~30 에서 4성이 영영 0% 이던 문제).
+  //    5성은 luckBonusForLevel 이 Lv31 미만에 0 을 주므로 그대로 잠겨 있다.
+  if (mods.luck > 0) {
+    const bonus = luckBonusForLevel(level);
+    const gain3 = mods.luck * LUCK_RANK3_UP;
+    const gain4 = mods.luck * bonus.rank4;
+    const gain5 = mods.luck * bonus.rank5;
+    const wanted = gain3 + gain4 + gain5;
+    if (wanted > 0) {
+      // 하위 등급이 모자라면 가져온 만큼만 올린다 — 총합이 100을 넘지 않게.
+      let taken = 0;
+      LUCK_LOW_RANK_SHARE.forEach((share, rank) => {
+        const cut = Math.min(w[rank], wanted * share);
+        w[rank] -= cut;
+        taken += cut;
+      });
+      if (taken > 0) {
+        w[3] += taken * (gain3 / wanted);
+        w[4] += taken * (gain4 / wanted);
+        w[5] += taken * (gain5 / wanted);
+      }
     }
   }
   // 신의 어부(5성 확률 증가): 5성이 열린 구간에서만 효과

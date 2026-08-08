@@ -24,6 +24,7 @@ import {
   boostedLifeExp,
   computeMods,
   isPerkChoiceLevel,
+  lifeLuckModFromStats,
   lifeExpGainText,
   lifeBagLimit,
   lifeBagWeight,
@@ -204,7 +205,7 @@ export async function startFishing(): Promise<FishingStart> {
   if (!pool?.enabled) return { error: "여기서는 낚시를 할 수 없어요." };
 
   const life = parseLifeState(sheet.lifeJson);
-  const mods = computeMods(life, FISH);
+  const mods = computeMods(life, FISH, lifeLuckModFromStats(sheet.statsJson));
   const eventBonus = dailyLifeEventBonus(FISH);
   mods.apCostDown += eventBonus.apCostDown;
   mods.luck += eventBonus.luck;
@@ -225,7 +226,7 @@ export async function startFishing(): Promise<FishingStart> {
   await loadLifeItems();
   let caught;
   try {
-    caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase) });
+    caught = pickLifeSkillCatch(FISH, { ...pool, weights: adjustedRankWeights(mods, regionBase, level) });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "낚시 목록 설정을 확인해주세요." };
   }
