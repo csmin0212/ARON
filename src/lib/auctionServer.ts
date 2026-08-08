@@ -83,6 +83,9 @@ export type SellableItem = {
   text: string | null;
   floor: number;
   category: AuctionCategory;
+  // 목록에는 보이지만 팔 수 없는 이유. 예전에는 이런 물건을 목록에서 통째로 빼버려서,
+  // 플레이어도 GM도 "왜 안 뜨는지"를 알 방법이 없었다.
+  blockedReason?: string;
 };
 
 type AuctionMailMeta = AuctionItemMeta & { category?: string | null };
@@ -626,11 +629,15 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
       resolveCategory(r.name, r.source, r.effect),
     ]);
     let qty = r.qty;
+    let blockedReason: string | undefined;
     if (r.source === "basic" && category === "스킬북") {
-      qty = Math.min(qty, await skillBookTokenQty(userId, r.name));
-      if (qty <= 0) continue;
+      const tokenQty = await skillBookTokenQty(userId, r.name);
+      // 서버가 지급한 기록(토큰)이 없는 스킬북은 못 판다. 예전에는 여기서 목록에서 빼버려서
+      // 가방에는 있는데 판매창에는 없는, 원인을 알 수 없는 상태가 됐다 — 이유를 붙여 보여준다.
+      if (tokenQty <= 0) blockedReason = "지급 기록이 없어 거래할 수 없어요. GM에게 문의하세요.";
+      else qty = Math.min(qty, tokenQty);
     }
-    out.push({ ...r, qty, floor, category });
+    out.push({ ...r, qty, floor, category, blockedReason });
   }
   return out.sort(
     (a, b) =>

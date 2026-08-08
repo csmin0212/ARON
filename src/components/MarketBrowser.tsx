@@ -238,7 +238,8 @@ function SellRow({ item }: { item: SellableItem }) {
   const below = price < minListPrice;
   const categoryLabel = normalizeAuctionCategory(item.category);
   // 0성·0원 잡템(낙엽·나무껍질 등)은 0G 즉시매각으로 가방을 비우는 용도다 — 버튼을 없애면 안 된다.
-  const canList = !below;
+  const blocked = item.blockedReason ?? null;
+  const canList = !below && !blocked;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">
@@ -257,6 +258,10 @@ function SellRow({ item }: { item: SellableItem }) {
         {item.source !== "basic" && <span className="ml-1">· {item.source} 가방</span>}
       </p>
 
+      {blocked && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700">{blocked}</p>
+      )}
+
       <label className="mt-2 flex items-center gap-1 text-[11px] font-bold text-faint">
         수량
         <input
@@ -264,8 +269,9 @@ function SellRow({ item }: { item: SellableItem }) {
           min={1}
           max={item.qty}
           value={qty}
+          disabled={!!blocked}
           onChange={(e) => setQty(Math.max(1, Math.min(item.qty, Number(e.target.value) || 1)))}
-          className="w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400"
+          className="w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm font-semibold outline-none focus:border-brand-400 disabled:opacity-50"
         />
       </label>
 
@@ -276,7 +282,7 @@ function SellRow({ item }: { item: SellableItem }) {
         <input type="hidden" name="qty" value={qty} />
         <button
           type="submit"
-          disabled={sellPending}
+          disabled={sellPending || !!blocked}
           className="w-full rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
         >
           {sellPending ? "판매 중..." : `즉시매각 ${gold(item.floor * qty)}G`}
