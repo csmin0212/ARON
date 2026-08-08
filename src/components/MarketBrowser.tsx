@@ -230,12 +230,16 @@ function BuyRow({ listing, myGold }: { listing: ListingView; myGold: number }) {
 function SellRow({ item }: { item: SellableItem }) {
   const [listState, listAction, listPending] = useActionState<AuctionState, FormData>(listOnAuction, undefined);
   const [sellState, sellAction, sellPending] = useActionState<AuctionState, FormData>(instantSell, undefined);
-  const [price, setPrice] = useState(Math.max(0, item.floor));
+  // 위탁 등록은 1G 미만을 못 받는다. 하한가가 0인 물건(아이템 탭에 가격이 없는 스킬북 등)도
+  // 최소 1G 로 시작해야 한다 — 0 을 그대로 넣어두면 등록 버튼이 계속 "가격을 입력해주세요"로 튕긴다.
+  const minListPrice = Math.max(1, item.floor);
+  const [price, setPrice] = useState(minListPrice);
   const [qty, setQty] = useState(1);
-  const below = price < item.floor;
+  const below = price < minListPrice;
   const categoryLabel = normalizeAuctionCategory(item.category);
-  const canInstant = item.floor >= 0;
-  const canList = item.floor >= 0 && !below;
+  // 즉시매각은 매입가가 0이면 아예 불가 (NPC가 안 사주는 물건)
+  const canInstant = item.floor > 0;
+  const canList = !below;
 
   return (
     <div className="rounded-2xl border border-line bg-canvas p-3">
@@ -249,10 +253,17 @@ function SellRow({ item }: { item: SellableItem }) {
         </div>
         <span className="shrink-0 text-[11px] font-bold text-faint">보유 {item.qty}</span>
       </div>
-      <p className="mt-1 text-[11px] text-faint">
-        즉시매각 하한 <span className="font-bold text-content">{gold(item.floor)}G</span>
-        {item.source !== "basic" && <span className="ml-1">· {item.source} 가방</span>}
-      </p>
+      {(canInstant || item.source !== "basic") && (
+        <p className="mt-1 text-[11px] text-faint">
+          {canInstant && (
+            <>
+              즉시매각 하한 <span className="font-bold text-content">{gold(item.floor)}G</span>
+            </>
+          )}
+          {canInstant && item.source !== "basic" && " · "}
+          {item.source !== "basic" && `${item.source} 가방`}
+        </p>
+      )}
 
       <label className="mt-2 flex items-center gap-1 text-[11px] font-bold text-faint">
         수량
@@ -290,7 +301,7 @@ function SellRow({ item }: { item: SellableItem }) {
           <input
             type="number"
             name="unitPrice"
-            min={Math.max(0, item.floor)}
+            min={minListPrice}
             value={price}
             onChange={(e) => setPrice(Math.max(0, Number(e.target.value) || 0))}
             className={`w-24 rounded-lg border bg-surface px-2 py-1.5 text-sm font-semibold outline-none ${

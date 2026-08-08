@@ -109,19 +109,34 @@ export function buildMahjongSnapshot(
   let hand: MahjongHandView | null = null;
   if (match?.hand) {
     const gameHand = match.hand;
-    const players: MahjongPlayerView[] = gameHand.players.map((p) => ({
-      seat: p.seat,
-      handCount: p.hand.length,
-      myHand: p.seat === mySeatIndex ? p.hand : null,
-      melds: p.melds,
-      discards: p.discards,
-      riichi: p.riichi,
-      riichiDiscardIndex: p.riichiDiscardIndex,
-      points: p.points,
-      seatWind: p.seatWind,
-      isDealer: p.isDealer,
-      kitaCount: p.kitaCount,
-    }));
+    const players: MahjongPlayerView[] = gameHand.players.map((p) => {
+      // 남이 울어 간 버림패는 강에서 빼고 보낸다 — 서버는 후리텐 때문에 계속 들고 있지만,
+      // 화면에 그대로 내보내면 멘츠와 강에 같은 패가 동시에 보인다(중이 5장으로 보이던 원인).
+      const taken = new Set(p.calledDiscardIndexes ?? []);
+      const discards: Tile[] = [];
+      let riichiDiscardIndex: number | null = null;
+      p.discards.forEach((tile, i) => {
+        if (taken.has(i)) return;
+        // 리치 선언패가 울려 갔으면 그 다음으로 남은 패에 표시를 옮긴다
+        if (p.riichiDiscardIndex !== null && riichiDiscardIndex === null && i >= p.riichiDiscardIndex) {
+          riichiDiscardIndex = discards.length;
+        }
+        discards.push(tile);
+      });
+      return {
+        seat: p.seat,
+        handCount: p.hand.length,
+        myHand: p.seat === mySeatIndex ? p.hand : null,
+        melds: p.melds,
+        discards,
+        riichi: p.riichi,
+        riichiDiscardIndex,
+        points: p.points,
+        seatWind: p.seatWind,
+        isDealer: p.isDealer,
+        kitaCount: p.kitaCount,
+      };
+    });
 
     hand = {
       turn: gameHand.turn,

@@ -4,6 +4,8 @@ import {
   createGame,
   discard as engineDiscard,
   drawForCurrentPlayer,
+  markDiscardCalled,
+  visibleDiscards,
   type AbortReason,
   type GameState,
   type PlayerState,
@@ -529,7 +531,8 @@ function aiViewFor(match: MatchState, seat: number): AiView {
   const unseen = buildUnseenCounts(
     match.rules.playerCount,
     me.hand,
-    hand.players.map((p) => p.discards),
+    // 울려 간 패는 멘츠 쪽에서 세므로 강에서는 빼야 한다 — 안 그러면 두 번 깎인다
+    hand.players.map((p) => visibleDiscards(p)),
     hand.players.map((p) => p.melds),
     hand.wall.doraIndicators,
   );
@@ -647,6 +650,8 @@ function applyCallMeld(
   const meldKind = type === "chi" ? Math.min(tile.kind, ...removeTiles.map((t) => t.kind)) : tile.kind;
   const meld: Meld = { type, kind: meldKind, tiles: meldTiles, calledFrom: discardSeat };
   caller.melds.push(meld);
+  // 울어 간 패는 버린 사람의 강에서 빠진다 — 안 그러면 멘츠와 강에 같은 패가 동시에 보인다.
+  markDiscardCalled(hand, discardSeat);
 
   hand.lastDiscard = null;
   hand.pendingCall = null;
@@ -1100,7 +1105,10 @@ function bestWaitAfterDiscard(player: PlayerState): { kind: number }[] {
 // 서버 진입점 — 콜 윈도우 타임아웃 정리 + AI 턴 진행.
 // AI 는 한 번 호출에 한 수만 둔다(사람이 각자 한 장씩 내는 걸 볼 수 있어야 하므로).
 // instant: true 면 텀 없이 끝까지 진행 — 테스트/시뮬레이션 전용.
-export function pump(match: MatchState, opts: { instant?: boolean } = {}): void {
+export function pump(
+  match: MatchState,
+  opts: { instant?: boolean; skipTimeoutSeat?: number } = {},
+): void {
   const hand = match.hand;
   if (!hand || hand.finished || match.finished) return;
   const instant = opts.instant === true;
@@ -1149,6 +1157,11 @@ export function pump(match: MatchState, opts: { instant?: boolean } = {}): void 
         hand.turnDeadline = Date.now() + match.timeRule.baseSec * 1000 + player.timeBankMs;
       }
       if (!instant && Date.now() < hand.turnDeadline) return;
+      // 이 좌석이 방금 조작을 보내온 참이라면 자동 츠모기리를 이번 pump 에서는 미룬다.
+      // 클릭이 서버에 닿는 사이 제한시간이 지났다고 남이 고른 패 대신 쯔모패를 버리면,
+      // "난 1삭 냈는데 발이 나갔다" 가 된다. 조작 처리가 끝난 뒤 호출되는 pump 가
+      // 어차피 시간 초과를 다시 판정하므로, 이걸로 무한정 버틸 수는 없다.
+      if (opts.skipTimeoutSeat === seat) return;
       // 시간 초과 — 적립시간을 다 쓴 것으로 보고 자동 츠모기리(방금 뽑은 패를 그대로 버린다)
       player.timeBankMs = 0;
       performDiscard(match, seat, player.hand.length - 1);
@@ -1257,6 +1270,7 @@ export function parseMatchState(json: string | null | undefined): MatchState | n
       p.rinshanActive ??= false;
       p.riichiDiscardIndex ??= null;
       p.kitaCount ??= 0;
+      p.calledDiscardIndexes ??= [];
     }
   }
   return raw;

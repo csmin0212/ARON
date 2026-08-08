@@ -96,7 +96,7 @@ export async function saveGmNpcPersonas(
     .filter(Boolean)
     .join(" ");
   const base = activeNpcPersonaKey ? "NPC 페르소나가 저장되고 전환됐어요." : "본인 표시로 돌아왔어요.";
-  return { ok: slotNote ? `${base} (슬롯 ${slotNote} · 총 ${personas.length}칸)` : base };
+  return { ok: slotNote ? `${base} (슬롯 ${slotNote} · ${personas.length}칸)` : base };
 }
 
 export async function switchGmNpcPersona(formData: FormData): Promise<void> {

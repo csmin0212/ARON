@@ -42,8 +42,8 @@ export default function GmNpcPersonaForm({
   const removeSlot = (key: string, name: string) => {
     const warning =
       key === activeKey
-        ? `'${name}' 슬롯을 지웁니다. 지금 이 NPC로 표시 중이라 저장하면 본캐로 돌아갑니다. 계속할까요?`
-        : `'${name}' 슬롯을 지웁니다. 저장해야 실제로 반영됩니다. 계속할까요?`;
+        ? `${name} 슬롯 제거 (표시 중 → 저장하면 본캐로)`
+        : `${name} 슬롯 제거`;
     if (!window.confirm(warning)) return;
     setSlots((prev) => prev.filter((slot) => slot.key !== key));
   };
@@ -121,7 +121,7 @@ export default function GmNpcPersonaForm({
         <div className="grid gap-3">
           {slots.length === 0 && (
             <p className="rounded-2xl border border-dashed border-line bg-surface px-4 py-6 text-center text-xs font-bold text-faint">
-              NPC 슬롯이 없습니다. 아래에서 추가해보세요.
+              슬롯 없음
             </p>
           )}
           {slots.map((persona) => (
@@ -174,7 +174,6 @@ export default function GmNpcPersonaForm({
             </button>
             <span className="text-[11px] font-bold text-faint">
               {slots.length} / {GM_NPC_SLOT_MAX}칸
-              {!canAdd && " · 최대까지 채웠어요"}
             </span>
           </div>
 
@@ -192,7 +191,7 @@ export default function GmNpcPersonaForm({
 
         {dirty && (
           <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-600">
-            슬롯 구성이 아직 저장되지 않았어요. 아래 저장 버튼을 눌러야 반영됩니다.
+            슬롯 변경 미저장
           </p>
         )}
 

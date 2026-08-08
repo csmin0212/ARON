@@ -355,14 +355,19 @@ export async function submitPlayerAction(tableId: string, action: MahjongPlayAct
 
   const match = parseMatchState(table.matchStateJson);
   if (!match) return { ok: false, message: "대국 정보를 읽지 못했습니다." };
-  pump(match);
-
   const seat = mySeat.seatIndex;
+  // 내 조작을 처리하기 전에 돌리는 pump 는 '내 자리'의 시간 초과 자동 버림만 건너뛴다.
+  // (다른 자리의 시간 초과·AI 진행·콜 창 마감은 그대로 처리한다)
+  pump(match, { skipTimeoutSeat: seat });
+
   const hand = match.hand;
+  // 내 차례가 아니면 조작이 통째로 무시된다 — 예전에는 조용히 성공으로 돌려줘서
+  // "내가 낸 패가 아닌 게 나갔다"로 보였다. 무시했으면 무시했다고 알려준다.
+  const myTurn = !!hand && hand.turn === seat && !hand.pendingCall;
 
   if (action.type === "call") {
     submitCallResponse(match, seat, action.response);
-  } else if (hand && hand.turn === seat && !hand.pendingCall) {
+  } else if (myTurn && hand) {
     switch (action.type) {
       case "discard": {
         const idx = findTileIndex(hand.players[seat].hand, action);
@@ -424,5 +429,8 @@ export async function submitPlayerAction(tableId: string, action: MahjongPlayAct
     });
   }
 
+  if (action.type !== "call" && !myTurn) {
+    return { ok: false, message: "차례가 넘어갔습니다." };
+  }
   return { ok: true, message: "" };
 }

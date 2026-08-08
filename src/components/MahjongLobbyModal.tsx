@@ -79,7 +79,7 @@ function CreateTableForm() {
           </span>
           <br />
           {AI_LEVEL_DESC[tiers[tier].aiLevel]}
-          {tier === "free" && " 골드는 오가지 않지만 등급 점수는 그대로 쌓입니다."}
+          {tier === "free" && " · 골드 없음, 등급 점수는 반영"}
         </p>
       </div>
 

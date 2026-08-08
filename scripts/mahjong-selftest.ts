@@ -26,6 +26,7 @@ import {
   chooseRiichiDiscard,
   decideCall,
   neutralView,
+  visibleDiscards,
   legalActionsFor,
   declareRiichi,
   performDiscard,
@@ -1006,6 +1007,139 @@ console.log("== 36. 방 등급이 AI 레벨로 이어진다 ==");
   const legacy = JSON.parse(JSON.stringify(match)) as Record<string, unknown>;
   delete legacy.aiLevel;
   check("구버전 저장본은 레벨 2로 복구", parseMatchState(JSON.stringify(legacy))!.aiLevel, 2);
+}
+
+console.log("== 37. 울린 패는 강(河)에서 빠진다 — '중이 5장'으로 보이던 버그 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  hand.players.forEach((p) => {
+    p.discards = [];
+    p.melds = [];
+    p.riichi = false;
+    p.calledDiscardIndexes = [];
+  });
+  // 0번이 중을 두 장 들고 있고, 3번이 중을 버린다 → 0번이 퐁
+  const p0 = hand.players[0];
+  p0.hand = [
+    t(DRAGONS.CHUN), t(DRAGONS.CHUN), t(M(2)), t(M(3)), t(M(4)),
+    t(M(5)), t(M(6)), t(M(7)), t(S(2)), t(S(3)), t(S(4)), t(S(6)), t(S(6)),
+  ];
+  const p3 = hand.players[3];
+  p3.hand = [
+    t(DRAGONS.CHUN), t(P(1)), t(P(2)), t(P(3)), t(P(5)),
+    t(P(6)), t(P(7)), t(S(7)), t(S(8)), t(S(9)), t(M(9)), t(M(9)), t(WINDS.W), t(WINDS.W),
+  ];
+  hand.turn = 3;
+  performDiscard(match, 3, 0); // 3번이 중을 버림
+  check("버린 직후 3번 강에 중 1장", p3.discards.filter((x) => x.kind === DRAGONS.CHUN).length, 1);
+
+  submitCallResponse(match, 0, "pon");
+  pump(match, { instant: true });
+
+  const meldChun = p0.melds.flatMap((m) => m.tiles).filter((x) => x.kind === DRAGONS.CHUN).length;
+  check("0번 멘츠에 중 3장", meldChun, 3);
+  check("3번 강에서 중이 빠짐(표시용)", visibleDiscards(p3).filter((x) => x.kind === DRAGONS.CHUN).length, 0);
+  check("원본 discards 에는 남아 있음(후리텐용)", p3.discards.filter((x) => x.kind === DRAGONS.CHUN).length, 1);
+
+  // 전체 중 개수는 4장을 넘을 수 없다 — 손패 + 멘츠 + 보이는 강 전부 합산
+  const totalChun = hand.players.reduce(
+    (sum, p) =>
+      sum +
+      p.hand.filter((x) => x.kind === DRAGONS.CHUN).length +
+      p.melds.flatMap((m) => m.tiles).filter((x) => x.kind === DRAGONS.CHUN).length +
+      visibleDiscards(p).filter((x) => x.kind === DRAGONS.CHUN).length,
+    0,
+  );
+  check("보이는 중은 4장 이하", totalChun <= 4, true);
+}
+
+console.log("== 37-b. 울려 간 패로도 후리텐은 계속 걸린다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: "u1", isAi: false },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  const p = hand.players[0];
+  p.melds = [];
+  p.riichi = false;
+  p.missedRonTemp = false;
+  p.missedRonPermanent = false;
+  // 234m 567m 234p 55p 34s → 2삭/5삭 대기
+  p.hand = [
+    t(M(2)), t(M(3)), t(M(4)), t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(5)), t(S(3)), t(S(4)),
+  ];
+  p.discards = [t(S(2))]; // 대기패인 2삭을 이미 버렸다 → 후리텐
+  p.calledDiscardIndexes = [];
+  check("버림패 그대로면 후리텐", isFuriten(hand, 0), true);
+  p.calledDiscardIndexes = [0]; // 그 2삭을 남이 울어 갔다
+  check("울려 가도 후리텐 유지", isFuriten(hand, 0), true);
+}
+
+console.log("== 38. 시간 초과 자동 버림이 내 조작을 앞지르지 않는다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  hand.turn = 0;
+  const p = hand.players[0];
+  p.riichi = false;
+  p.melds = [];
+  p.discards = [];
+  p.timeBankMs = 0;
+  p.hand = [
+    t(S(1)), t(M(2)), t(M(3)), t(M(4)), t(M(5)), t(M(6)), t(M(7)),
+    t(P(2)), t(P(3)), t(P(4)), t(P(5)), t(P(5)), t(S(6)),
+    t(DRAGONS.HATSU), // 맨 뒤 = 방금 뽑은 발
+  ];
+  // 제한시간이 이미 지난 상태
+  hand.turnStartedAt = Date.now() - 60_000;
+  hand.turnDeadline = Date.now() - 1_000;
+
+  // 내 자리를 지정해 pump 하면 자동 츠모기리가 미뤄진다
+  pump(match, { skipTimeoutSeat: 0 });
+  check("내 조작 직전 pump 는 대신 버리지 않음", match.hand!.players[0].discards.length, 0);
+  check("차례도 그대로 내 것", match.hand!.turn, 0);
+
+  // 이제 내가 고른 1삭이 나간다
+  performDiscard(match, 0, 0);
+  check("내가 고른 1삭이 버려짐", match.hand!.players[0].discards[0].kind, S(1));
+  check("쯔모패 발은 손에 남음", match.hand!.players[0].hand.some((x) => x.kind === DRAGONS.HATSU), true);
+}
+
+console.log("== 38-b. 그래도 시간 초과 자체는 계속 동작한다 ==");
+{
+  const match = createMatch(DEFAULT_RULES_4P, 25000, [
+    { seat: 0, userId: "u0", isAi: false },
+    { seat: 1, userId: null, isAi: true },
+    { seat: 2, userId: null, isAi: true },
+    { seat: 3, userId: null, isAi: true },
+  ]);
+  const hand = match.hand!;
+  hand.pendingCall = null;
+  hand.turn = 0;
+  hand.players[0].timeBankMs = 0;
+  hand.players[0].discards = [];
+  hand.turnStartedAt = Date.now() - 60_000;
+  hand.turnDeadline = Date.now() - 1_000;
+  pump(match); // 좌석 지정 없이 = 평소 폴링
+  check("지정 없으면 시간 초과로 자동 버림", match.hand!.players[0].discards.length > 0, true);
 }
 
 console.log(`

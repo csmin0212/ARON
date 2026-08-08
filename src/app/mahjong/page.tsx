@@ -174,8 +174,7 @@ export default async function MahjongHistoryPage() {
           })}
         </div>
         <p className="mt-3 text-[11px] leading-relaxed text-faint">
-          4인전 1위 +30 / 2위 +10 / 3위 −10 / 4위 −30, 3인전 1위 +30 / 2위 0 / 3위 −30. 무료방도 똑같이 반영되고,
-          누적 점수는 0점 밑으로 내려가지 않습니다.
+          4인전 +30 / +10 / −10 / −30 · 3인전 +30 / 0 / −30 · 무료방 포함 · 최저 0점
         </p>
       </section>
 

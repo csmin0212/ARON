@@ -22,6 +22,10 @@ export interface PlayerState {
   doubleRiichi: boolean; // 첫 순바에 건 리치
   rinshanActive: boolean; // 깡 후 영상패를 들고 있는 상태 — 이걸로 쯔모하면 린샨카이호
   riichiDiscardIndex: number | null; // 리치를 선언하며 버린 패의 위치 — 河에서 눕혀 표시한다
+  // 남이 울어 가져간 버림패의 위치. discards 에서 빼지 않고 표시만 해 둔다 —
+  // 빼 버리면 후리텐이 풀려 버리기 때문(울린 패도 '내가 버린 패'로 후리텐에 걸린다).
+  // 화면(河)과 남은 패 계산에서는 이 위치를 건너뛴다. 안 그러면 같은 패가 두 번 보인다.
+  calledDiscardIndexes: number[];
 }
 
 export interface CallOptions {
@@ -115,6 +119,7 @@ export function createGame(
     doubleRiichi: false,
     rinshanActive: false,
     riichiDiscardIndex: null,
+    calledDiscardIndexes: [],
   }));
   return {
     rules,
@@ -155,6 +160,22 @@ export function discard(state: GameState, seat: number, tileIndex: number): Tile
   const [tile] = player.hand.splice(tileIndex, 1);
   player.discards.push(tile);
   return tile;
+}
+
+// 남이 방금 버린 패를 울어 갔다 — 그 패는 이제 강(河)이 아니라 상대 멘츠에 있다.
+// discards 에서 지우지 않고 위치만 기록한다(후리텐은 계속 걸려 있어야 하므로).
+export function markDiscardCalled(state: GameState, discardSeat: number): void {
+  const player = state.players[discardSeat];
+  const index = player.discards.length - 1;
+  if (index < 0 || player.calledDiscardIndexes.includes(index)) return;
+  player.calledDiscardIndexes.push(index);
+}
+
+// 화면·계산에 실제로 남아 있는 버림패 (울려 간 건 빠진다)
+export function visibleDiscards(player: PlayerState): Tile[] {
+  if (player.calledDiscardIndexes.length === 0) return player.discards;
+  const taken = new Set(player.calledDiscardIndexes);
+  return player.discards.filter((_, i) => !taken.has(i));
 }
 
 export function currentShanten(state: GameState, seat: number): number {

@@ -19,10 +19,10 @@ export const AI_LEVEL_LABEL: Record<AiLevel, string> = {
 };
 
 export const AI_LEVEL_DESC: Record<AiLevel, string> = {
-  1: "가끔 엉뚱한 패를 버리고 아무거나 웁니다.",
-  2: "샹텐만 보고 진행합니다. 위험패 개념은 없어요.",
-  3: "유효패가 많은 쪽으로 버리고, 역 없는 울기는 참습니다.",
-  4: "남은 대기 장수를 세고, 상대 리치엔 현물로 오리기까지 합니다.",
+  1: "실수 잦음 · 아무거나 울기",
+  2: "샹텐만 봄 · 위험패 무시",
+  3: "유효패 계산 · 역 없는 울기 안 함",
+  4: "대기 장수 계산 · 상대 리치에 오리기",
 };
 
 export const TIERS_3P: Record<Tier, TierConfig> = {
