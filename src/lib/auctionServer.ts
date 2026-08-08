@@ -23,6 +23,7 @@ import {
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
 import { fallbackMaterialSellPrice, isNonSellable, isSpecialMaterial } from "@/lib/shop";
+import { foodShopSellPrice } from "@/lib/foodShop";
 import {
   consumeSkillBookTokensInTransaction,
   grantSkillBookTokenInTransaction,
@@ -318,6 +319,10 @@ export async function resolveFloor(
     if (item?.sellPrice && item.sellPrice > 0) return item.sellPrice;
     if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.floor(item.buyPrice * 0.5));
   }
+  // 식료품(달걀·물·과일·치즈 …)은 도감에 행이 없고 식료품 상점 표에만 값이 있다.
+  const foodPrice = foodShopSellPrice(raw);
+  if (foodPrice != null) return foodPrice;
+
   // 시트에 값이 아예 없는 특수 재료(강철/달의 파편)만 여기로 내려온다.
   return fallbackMaterialSellPrice(raw) ?? 0;
 }
@@ -331,10 +336,33 @@ async function findItemByNameOrSerial<S extends Record<string, boolean>>(
 ): Promise<Record<string, number | null> | null> {
   const exact = await prisma.item.findFirst({ where: { OR: [{ id: raw }, { name: raw }] }, select });
   if (exact) return exact as Record<string, number | null>;
-  const serial = craftSerialOf(raw);
+
+  // 강화·보석 태그는 이름 끝에 '(+1)' '(+2, 화염)' 처럼 붙는다. 붙은 채로는 도감에서 못 찾으므로
+  // 태그를 떼고 한 번 더 본다 — '고품질 묵사발!(+1)' 이 0G 로 잡히던 원인.
+  // (이름 자체에 괄호가 있는 물건은 위 exact 에서 이미 걸리므로 여기까지 안 온다)
+  const untagged = stripItemTags(raw);
+  if (untagged !== raw) {
+    const byBaseName = await prisma.item.findFirst({
+      where: { OR: [{ id: untagged }, { name: untagged }] },
+      select,
+    });
+    if (byBaseName) return byBaseName as Record<string, number | null>;
+  }
+
+  const serial = craftSerialOf(raw) ?? craftSerialOf(untagged);
   if (!serial) return null;
   const bySerial = await prisma.item.findFirst({ where: { id: { endsWith: ` #${serial}` } }, select });
   return (bySerial as Record<string, number | null> | null) ?? null;
+}
+
+// 이름 끝의 태그 묶음 '(...)' 을 뗀다. 강화(+N)나 보석 효과가 하나라도 들어 있을 때만.
+function stripItemTags(raw: string): string {
+  const match = raw.trim().match(/^(.*?)\s*\(([^()]*)\)$/);
+  if (!match) return raw;
+  const tags = match[2].split(",").map((t) => t.trim()).filter(Boolean);
+  if (tags.length === 0) return raw;
+  if (!tags.some((t) => /^\+\d+$/.test(t))) return raw;
+  return match[1].trim() || raw;
 }
 
 export async function resolveCategory(

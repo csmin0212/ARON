@@ -67,6 +67,7 @@ import {
 import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, resolveMaterialSellPrice } from "@/lib/shop";
+import { FOOD_ITEMS } from "@/lib/foodShop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import {
   equipmentLevelOf,
@@ -172,18 +173,7 @@ const LIFE_SHOP_ITEMS = [
   { id: "mithril_pick", kind: "채광", type: "tool", name: "미스릴 곡괭이", price: 7000, tier: 2 },
 ] as const satisfies readonly LifeShopProduct[];
 
-const FOOD_ITEMS = [
-  { id: "egg", name: "달걀", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
-  { id: "milk", name: "우유", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
-  { id: "meat", name: "고기", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
-  { id: "vegetable", name: "채소", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
-  { id: "fruit", name: "과일", buyPrice: 10, sellPrice: 5, weight: 1, desc: "요리용 식재료" },
-  { id: "water", name: "물", buyPrice: 5, sellPrice: 2, weight: 1, desc: "요리용 식재료" },
-  { id: "wheat", name: "밀", buyPrice: 20, sellPrice: 10, weight: 1, desc: "요리용 식재료" },
-  { id: "salt", name: "소금", buyPrice: 30, sellPrice: 15, weight: 1, desc: "요리용 식재료" },
-  { id: "spice", name: "향신료", buyPrice: 50, sellPrice: 25, weight: 1, desc: "요리용 식재료" },
-  { id: "cheese", name: "치즈", buyPrice: 50, sellPrice: 25, weight: 1, desc: "요리용 식재료" },
-] as const;
+// 정의는 lib/foodShop.ts — 경매장 하한가도 같은 표를 봐야 해서 공유 모듈로 뺐다.
 
 const ALCHEMY_BOOK_ITEMS = [
   {
