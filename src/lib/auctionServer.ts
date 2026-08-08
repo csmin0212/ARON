@@ -996,6 +996,8 @@ export async function instantSellCore(
   }
 
   const floor = await resolveFloor(name, source, effect);
+  // 매입가 0인 물건을 넘기면 아무것도 못 받고 물건만 사라진다 — 서버에서도 막는다.
+  if (floor <= 0) return { error: "매입하지 않는 물건입니다." };
   const isSkillBookSale = source === "basic" && category === "스킬북";
   if (source === "basic") {
     consumeInvItem(actor.inv, name, qty);

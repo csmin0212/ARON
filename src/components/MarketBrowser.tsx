@@ -277,19 +277,22 @@ function SellRow({ item }: { item: SellableItem }) {
         />
       </label>
 
-      {/* 즉시매각 (NPC 바로 판매) */}
-      <form action={sellAction} className="mt-2">
-        <input type="hidden" name="source" value={item.source} />
-        <input type="hidden" name="itemName" value={item.name} />
-        <input type="hidden" name="qty" value={qty} />
-        <button
-          type="submit"
-          disabled={sellPending || !canInstant}
-          className="w-full rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
-        >
-          {!canInstant ? "매입 불가" : sellPending ? "판매 중..." : `즉시매각 ${gold(item.floor * qty)}G`}
-        </button>
-      </form>
+      {/* 즉시매각 (NPC 바로 판매) — 매입가가 없는 물건은 버튼 자체를 안 그린다.
+          예전에는 0G 짜리 '즉시매각' 버튼이 살아 있어서, 누르면 아무것도 못 받고 물건만 없어졌다. */}
+      {canInstant && (
+        <form action={sellAction} className="mt-2">
+          <input type="hidden" name="source" value={item.source} />
+          <input type="hidden" name="itemName" value={item.name} />
+          <input type="hidden" name="qty" value={qty} />
+          <button
+            type="submit"
+            disabled={sellPending}
+            className="w-full rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-amber-600 disabled:opacity-50"
+          >
+            {sellPending ? "판매 중..." : `즉시매각 ${gold(item.floor * qty)}G`}
+          </button>
+        </form>
+      )}
 
       {/* 위탁 등록 (경매장에 올리기) */}
       <form action={listAction} className="mt-2 flex items-center gap-2">
