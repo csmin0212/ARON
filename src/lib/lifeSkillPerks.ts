@@ -47,6 +47,8 @@ export type LifeState = {
   // 생활 전용 임시 가방 — 일반 시트 소지품과 별도로 중량 제한을 둔다.
   bags: Record<LifeSkillKind, LifeBag>;
   tools: Record<LifeSkillKind, string>;
+  // 탐지기·감정기 보유 단계 — 0 없음 / 1 탐지기(확률만) / 2 감정기(확률 + 품목)
+  detectors: Record<LifeSkillKind, number>;
   catchCounts: Record<LifeSkillKind, Record<string, number>>;
   cookingBuffs: {
     lifeLuck: CookingLifeLuckBuff[];
@@ -266,11 +268,18 @@ const EMPTY: LifeState = {
     채광: "기본 곡괭이",
   },
   catchCounts: { 채집: {}, 낚시: {}, 채광: {} },
+  detectors: { 채집: 0, 낚시: 0, 채광: 0 },
   cookingBuffs: { lifeLuck: [], potionLifeLuck: [], session: [], stat: [], potionStat: [] },
 };
 
 function defaultBag(kind: LifeSkillKind): LifeBag {
   return structuredClone(EMPTY.bags[kind]);
+}
+
+// 탐지기 0 / 탐지기 1 / 감정기 2 — 그 밖의 값은 0으로 본다
+function detectorTier(value: unknown): number {
+  const n = Number(value);
+  return n === 1 || n === 2 ? n : 0;
 }
 
 function normalizeBag(kind: LifeSkillKind, bag: Partial<LifeBag> | undefined): LifeBag {
@@ -381,6 +390,11 @@ export function parseLifeState(json: string | null | undefined): LifeState {
         채집: v.catchCounts?.채집 ?? {},
         낚시: v.catchCounts?.낚시 ?? {},
         채광: v.catchCounts?.채광 ?? {},
+      },
+      detectors: {
+        채집: detectorTier(v.detectors?.채집),
+        낚시: detectorTier(v.detectors?.낚시),
+        채광: detectorTier(v.detectors?.채광),
       },
       cookingBuffs: {
         // 만료된 버프는 읽는 시점에 걸러낸다 — 다음 저장 때 상태에서도 사라짐.

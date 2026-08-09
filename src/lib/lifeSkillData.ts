@@ -314,10 +314,10 @@ export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillK
   return null;
 }
 
-export function pickLifeSkillCatch(
-  kind: LifeSkillKind,
-  options?: number[] | LifeSkillPoolConfig,
-): LifeSkillCatch {
+// 추첨에 실제로 쓰이는 후보 풀과 등급 가중치를 뽑는다.
+// 탐지기/감정기(레이더)가 보여주는 확률이 실제 추첨과 어긋나면 안 되므로,
+// pickLifeSkillCatch 와 lifeSkillRankOdds 가 반드시 이 함수를 공유한다.
+function resolveLifeSkillPool(kind: LifeSkillKind, options?: number[] | LifeSkillPoolConfig) {
   const config: LifeSkillPoolConfig | undefined = Array.isArray(options)
     ? { enabled: true, weights: options }
     : options;
@@ -333,11 +333,10 @@ export function pickLifeSkillCatch(
     if (kind === "낚시" && !waterAllowed(item, water)) return false;
     return true;
   });
-  if (usesAllowList && pool.length === 0) {
-    throw new Error(`${kind} 가능 목록에 현재 조건으로 나올 수 있는 항목이 없어요. 이름/수역/랭크를 확인해주세요.`);
-  }
+  const emptyAllowList = usesAllowList && pool.length === 0;
   const fallback = pool.length > 0 ? pool : poolFor(kind).filter((item) => kind !== "낚시" || !SEA_FISH.has(item.name));
   const availableRanks = new Set(fallback.map((item) => item.rank));
+  // 그 장소에 아예 없는 등급은 가중치가 있어도 0으로 눌린다
   const rankWeights = (config?.weights ?? undefined)?.map((weight, rank) =>
     availableRanks.has(rank) ? weight : 0,
   );
@@ -347,6 +346,17 @@ export function pickLifeSkillCatch(
   const finalPool = weightedRanks
     ? fallback.filter((item) => weightedRanks.has(item.rank))
     : fallback;
+  return { finalPool, fallback, rankWeights, emptyAllowList };
+}
+
+export function pickLifeSkillCatch(
+  kind: LifeSkillKind,
+  options?: number[] | LifeSkillPoolConfig,
+): LifeSkillCatch {
+  const { finalPool, fallback, rankWeights, emptyAllowList } = resolveLifeSkillPool(kind, options);
+  if (emptyAllowList) {
+    throw new Error(`${kind} 가능 목록에 현재 조건으로 나올 수 있는 항목이 없어요. 이름/수역/랭크를 확인해주세요.`);
+  }
   const rank = pickRank(rankWeights);
   const rankPool = finalPool.filter((item) => item.rank === rank);
   const candidates = rankPool.length > 0 ? rankPool : finalPool.length > 0 ? finalPool : fallback;
@@ -356,6 +366,34 @@ export function pickLifeSkillCatch(
     item,
     size: item.sizeBase + rollInt(item.sizeVariance),
   };
+}
+
+export interface LifeSkillRankOdds {
+  rank: number; // 0~5
+  chance: number; // 정규화된 % (합 100)
+  items: string[]; // 그 등급에서 실제로 나올 수 있는 품목 이름
+}
+
+// 탐지기·감정기용. 추첨과 같은 풀·가중치를 써서 "보이는 값 = 실제 값"을 보장한다.
+export function lifeSkillRankOdds(
+  kind: LifeSkillKind,
+  options?: number[] | LifeSkillPoolConfig,
+): LifeSkillRankOdds[] | null {
+  const { finalPool, rankWeights, emptyAllowList } = resolveLifeSkillPool(kind, options);
+  if (emptyAllowList) return null;
+  // 가중치가 아예 없으면 pickRank 가 균등 추첨을 하므로, 표시도 등장 등급 균등으로 맞춘다
+  const ranks = [0, 1, 2, 3, 4, 5];
+  const weights = rankWeights ?? ranks.map((r) => (finalPool.some((i) => i.rank === r) ? 1 : 0));
+  const total = weights.reduce((sum, w) => sum + Math.max(0, w), 0);
+  if (total <= 0) return null;
+  return ranks.map((rank) => ({
+    rank,
+    chance: (Math.max(0, weights[rank] ?? 0) / total) * 100,
+    items: finalPool
+      .filter((item) => item.rank === rank)
+      .map((item) => item.name)
+      .sort((a, b) => a.localeCompare(b, "ko")),
+  }));
 }
 
 export function lifeSkillItemEffect(item: LifeSkillItem, kind: LifeSkillKind): string {

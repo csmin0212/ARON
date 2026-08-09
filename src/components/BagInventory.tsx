@@ -6,8 +6,10 @@ import { useSkillBook, type SkillBookState } from "@/app/actions/skills";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 import { ALCHEMY_CUSTOM_POTION_MARKER, customPotionSellPrice } from "@/lib/alchemy";
 import { isEquipmentLikeInventoryItem } from "@/lib/itemUse";
+import type { DetectorView } from "@/lib/lifeDetector";
 
 export type LifeBagPocket = {
+  kind: string; // 낚시 · 채집 · 채광
   name: string;
   emoji: string;
   weight: string;
@@ -21,7 +23,41 @@ type Props = {
   lifeBags?: LifeBagPocket[];
   skillBooks?: string[]; // 스킬북 아이템 이름 목록 (사용 시 전투스킬 습득)
   tagDict?: Record<string, string>; // 장비 [태그] 룰 사전 — 상세에서 설명 표시
+  detectors?: DetectorView[]; // 탐지기·감정기 — 지금 장소의 등급 확률
 };
+
+const RANK_TEXT = ["text-stone-400", "text-sky-500", "text-emerald-500", "text-violet-500", "text-amber-500", "text-rose-500"];
+
+// 탐지기 확률표 — 중량 줄 위에 붙는다. 감정기(tier 2)면 등급마다 품목까지 펼친다.
+function DetectorPanel({ view }: { view: DetectorView }) {
+  return (
+    <div className="mb-3 rounded-2xl border border-line bg-canvas px-3 py-2.5">
+      <p className="mb-1.5 flex items-center justify-between text-[11px] font-extrabold text-faint">
+        <span>
+          📡 {view.locationName} · {view.kind}
+        </span>
+        <span className="text-brand-500">{view.tier >= 2 ? "감정기" : "탐지기"}</span>
+      </p>
+      <ul className="space-y-1">
+        {view.rows.map((row) => (
+          <li key={row.rank} className="text-[11px] leading-tight">
+            <span className="flex items-baseline gap-1.5">
+              <span className={`w-7 shrink-0 font-black ${RANK_TEXT[row.rank]}`}>{row.rank}☆</span>
+              <span className="w-12 shrink-0 text-right font-extrabold tabular-nums text-content">
+                {row.chance.toFixed(1)}%
+              </span>
+              {view.tier >= 2 && (
+                <span className="min-w-0 flex-1 truncate text-faint" title={row.items.join(", ")}>
+                  {row.items.length > 0 ? row.items.join(", ") : "—"}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function mergeItems(items: SheetInventoryItem[]): SheetInventoryItem[] {
   const byName = new Map<string, SheetInventoryItem>();
@@ -121,7 +157,15 @@ function CookingStateLine({ state }: { state: CookingState }) {
   );
 }
 
-export default function BagInventory({ gold, weight, items, lifeBags = [], skillBooks = [], tagDict = {} }: Props) {
+export default function BagInventory({
+  gold,
+  weight,
+  items,
+  lifeBags = [],
+  skillBooks = [],
+  tagDict = {},
+  detectors = [],
+}: Props) {
   const [selected, setSelected] = useState<SheetInventoryItem | null>(null);
   const [activeTab, setActiveTab] = useState<string>("기본");
   const [useStateResult, useAction, usePending] = useActionState<CookingState, FormData>(
@@ -138,13 +182,21 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
   // 가방 하나에 탭으로 통합 — 기본 + 생활 가방(낚시/채집/채광)
   const tabs = useMemo(
     () => [
-      { key: "기본", emoji: "🎒", weight: weight ?? "-", items },
-      ...lifeBags.map((bag) => ({ key: bag.name, emoji: bag.emoji, weight: bag.weight, items: bag.items })),
+      { key: "기본", emoji: "🎒", weight: weight ?? "-", items, kind: null as string | null },
+      ...lifeBags.map((bag) => ({
+        key: bag.name,
+        emoji: bag.emoji,
+        weight: bag.weight,
+        items: bag.items,
+        kind: bag.kind,
+      })),
     ],
     [weight, items, lifeBags],
   );
   const active = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
   const mergedItems = useMemo(() => mergeItems(active.items), [active]);
+  // 지금 보고 있는 생활 가방에 해당하는 탐지기만 띄운다
+  const activeDetector = active.kind ? (detectors.find((d) => d.kind === active.kind) ?? null) : null;
 
   return (
     <div className="rounded-3xl border border-line bg-surface p-4 shadow-sm">
@@ -176,6 +228,8 @@ export default function BagInventory({ gold, weight, items, lifeBags = [], skill
           })}
         </div>
       )}
+      {activeDetector && <DetectorPanel view={activeDetector} />}
+
       <div className="mb-3 flex items-center justify-between rounded-2xl bg-subtle px-3 py-2 text-xs">
         <span className="font-semibold text-muted">중량</span>
         <span className="font-extrabold text-content">{active.weight}</span>

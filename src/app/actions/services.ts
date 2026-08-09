@@ -68,6 +68,7 @@ import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { SELLABLE_MATERIAL_CATEGORIES, isNonSellable, resolveMaterialSellPrice } from "@/lib/shop";
 import { FOOD_ITEMS } from "@/lib/foodShop";
+import { lifeGearNameAt, lifeGearPriceAt, lifeGearProduct } from "@/lib/lifeShop";
 import { buildCookedName, enhanceEffectText, gradeInfo, parseCookedName } from "@/lib/auction";
 import {
   equipmentLevelOf,
@@ -153,25 +154,7 @@ const MESSAGE_BOTTLE_READINGS = [
   "종이 가장자리에 소금이 말라붙었다",
 ] as const;
 
-const LIFE_SHOP_ITEMS = [
-  // 가방 — 낚시·채집·채광 공통 (기본 5칸 → 10/20/30칸 확장, 1000/2500/5000G)
-  { id: "fish_bag_10", kind: "낚시", type: "bag", name: "낚시꾼 가방 10칸", price: 1000, maxWeight: 10 },
-  { id: "fish_bag_20", kind: "낚시", type: "bag", name: "낚시꾼 가방 20칸", price: 2500, maxWeight: 20 },
-  { id: "fish_bag_30", kind: "낚시", type: "bag", name: "낚시꾼 가방 30칸", price: 5000, maxWeight: 30 },
-  { id: "plant_bag_10", kind: "채집", type: "bag", name: "약초꾼 가방 10칸", price: 1000, maxWeight: 10 },
-  { id: "plant_bag_20", kind: "채집", type: "bag", name: "약초꾼 가방 20칸", price: 2500, maxWeight: 20 },
-  { id: "plant_bag_30", kind: "채집", type: "bag", name: "약초꾼 가방 30칸", price: 5000, maxWeight: 30 },
-  { id: "mine_bag_10", kind: "채광", type: "bag", name: "광부 가방 10칸", price: 1000, maxWeight: 10 },
-  { id: "mine_bag_20", kind: "채광", type: "bag", name: "광부 가방 20칸", price: 2500, maxWeight: 20 },
-  { id: "mine_bag_30", kind: "채광", type: "bag", name: "광부 가방 30칸", price: 5000, maxWeight: 30 },
-  // 도구 — 종류별 1·2단계 (가격 동일)
-  { id: "good_rod", kind: "낚시", type: "tool", name: "좋은 낚싯대", price: 2500, tier: 1 },
-  { id: "master_rod", kind: "낚시", type: "tool", name: "고급 낚싯대", price: 7000, tier: 2 },
-  { id: "good_sickle", kind: "채집", type: "tool", name: "숙련 채집 도구", price: 2500, tier: 1 },
-  { id: "master_sickle", kind: "채집", type: "tool", name: "장인의 채집 도구", price: 7000, tier: 2 },
-  { id: "iron_pick", kind: "채광", type: "tool", name: "철 곡괭이", price: 2500, tier: 1 },
-  { id: "mithril_pick", kind: "채광", type: "tool", name: "미스릴 곡괭이", price: 7000, tier: 2 },
-] as const satisfies readonly LifeShopProduct[];
+// 카탈로그 정의는 lib/lifeShop.ts — 클라이언트 목록과 같은 표를 쓴다.
 
 // 정의는 lib/foodShop.ts — 경매장 하한가도 같은 표를 봐야 해서 공유 모듈로 뺐다.
 
@@ -205,24 +188,6 @@ const ALCHEMY_BOOK_ITEMS = [
     optionNames: ["MP 50%(소숫점 올림) 회복", "MP 50% 회복"],
   },
 ] as const;
-
-type LifeShopProduct =
-  | {
-      id: string;
-      kind: LifeSkillKind;
-      type: "bag";
-      name: string;
-      price: number;
-      maxWeight: number;
-    }
-  | {
-      id: string;
-      kind: LifeSkillKind;
-      type: "tool";
-      name: string;
-      price: number;
-      tier: number;
-    };
 
 const GEM_EFFECTS = [
   { key: "루비", text: "루비 인첸트: <화> 속성 마법 데미지 +2" },
@@ -459,22 +424,8 @@ async function currentSheet(): Promise<{
 }
 
 
-function lifeShopProduct(productId: string): LifeShopProduct | null {
-  return LIFE_SHOP_ITEMS.find((item) => item.id === productId) ?? null;
-}
-
-function lifeShopBagPrice(kind: LifeSkillKind, maxWeight: number): number {
-  const product = LIFE_SHOP_ITEMS.find(
-    (item) => item.type === "bag" && item.kind === kind && item.maxWeight === maxWeight,
-  );
-  return product?.price ?? 0;
-}
-
-function lifeShopToolPrice(kind: LifeSkillKind, tier: number): number {
-  const product = LIFE_SHOP_ITEMS.find(
-    (item) => item.type === "tool" && item.kind === kind && item.tier === tier,
-  );
-  return product?.price ?? 0;
+function lifeShopProduct(productId: string) {
+  return lifeGearProduct(productId);
 }
 
 function foodProduct(productId: string) {
@@ -3923,23 +3874,30 @@ export async function buyLifeGear(
   let refund = 0;
   let replacedName: string | null = null;
 
-  if (product.type === "bag") {
+  // 현재 보유 단계 (가방=최대중량, 도구·탐지=1·2단계)
+  const currentTier =
+    product.group === "가방"
+      ? life.bags[product.kind].maxWeight
+      : product.group === "탐지"
+        ? (life.detectors[product.kind] ?? 0)
+        : toolTier(life.tools[product.kind]);
+  if (currentTier >= product.tier) {
+    const what = product.group === "가방" ? "가방" : product.group === "탐지" ? "탐지 장비" : "장비";
+    return { error: `이미 같은 등급 이상의 ${product.kind} ${what}을(를) 보유 중입니다.` };
+  }
+  // 하위 장비는 정가의 절반으로 자동 매각된다
+  const oldPrice = lifeGearPriceAt(product.kind, product.group, currentTier);
+  refund = Math.floor(oldPrice / 2);
+
+  if (product.group === "가방") {
     const bag = life.bags[product.kind];
-    if (bag.maxWeight >= product.maxWeight) {
-      return { error: `이미 ${product.maxWeight}칸 이상의 ${product.kind} 가방을 보유 중입니다.` };
-    }
-    const oldPrice = lifeShopBagPrice(product.kind, bag.maxWeight);
-    refund = Math.floor(oldPrice / 2);
     replacedName = oldPrice > 0 ? bag.name : null;
     bag.name = product.name;
-    bag.maxWeight = product.maxWeight;
+    bag.maxWeight = product.tier;
+  } else if (product.group === "탐지") {
+    replacedName = currentTier > 0 ? lifeGearNameAt(product.kind, "탐지", currentTier) : null;
+    life.detectors[product.kind] = product.tier;
   } else {
-    const currentTier = toolTier(life.tools[product.kind]);
-    if (currentTier >= product.tier) {
-      return { error: `이미 같은 등급 이상의 ${product.kind} 장비를 보유 중입니다.` };
-    }
-    const oldPrice = lifeShopToolPrice(product.kind, currentTier);
-    refund = Math.floor(oldPrice / 2);
     replacedName = oldPrice > 0 ? life.tools[product.kind] : null;
     life.tools[product.kind] = product.name;
   }

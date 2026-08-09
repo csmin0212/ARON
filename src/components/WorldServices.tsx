@@ -52,6 +52,7 @@ import {
 import { inviteToHouse, type FriendState } from "@/app/actions/friends";
 import { enterHome } from "@/app/actions/world";
 import { FURNITURE_OPTIONS } from "@/lib/housing";
+import { LIFE_GEAR_GROUPS, LIFE_GEAR_PRODUCTS, lifeGearPriceAt, type LifeGearProduct } from "@/lib/lifeShop";
 import type { WeeklyIncomeView } from "@/lib/weeklyIncome";
 import { adventurerRankGoal, nextAdventurerRank, normalizeAdventurerRank } from "@/lib/adventurerRank";
 import GuildQuestBoard, { type GuildQuestBoardView } from "@/components/GuildQuestBoard";
@@ -245,6 +246,12 @@ export type LifeShopView = {
     낚시: string;
     채집: string;
     채광: string;
+  };
+  // 탐지기·감정기 보유 단계 (0 없음 / 1 탐지기 / 2 감정기)
+  detectors: {
+    낚시: number;
+    채집: number;
+    채광: number;
   };
 };
 
@@ -1183,68 +1190,32 @@ function StorageManager({
   );
 }
 
-const LIFE_SHOP_PRODUCTS = [
-  { id: "fish_bag_10", kind: "낚시", group: "가방", name: "낚시꾼 가방 10칸", price: 1000, note: "낚시 가방 최대 중량 10" },
-  { id: "fish_bag_20", kind: "낚시", group: "가방", name: "낚시꾼 가방 20칸", price: 2500, note: "낚시 가방 최대 중량 20" },
-  { id: "fish_bag_30", kind: "낚시", group: "가방", name: "낚시꾼 가방 30칸", price: 5000, note: "낚시 가방 최대 중량 30" },
-  { id: "plant_bag_10", kind: "채집", group: "가방", name: "약초꾼 가방 10칸", price: 1000, note: "채집 가방 최대 중량 10" },
-  { id: "plant_bag_20", kind: "채집", group: "가방", name: "약초꾼 가방 20칸", price: 2500, note: "채집 가방 최대 중량 20" },
-  { id: "plant_bag_30", kind: "채집", group: "가방", name: "약초꾼 가방 30칸", price: 5000, note: "채집 가방 최대 중량 30" },
-  { id: "mine_bag_10", kind: "채광", group: "가방", name: "광부 가방 10칸", price: 1000, note: "채광 가방 최대 중량 10" },
-  { id: "mine_bag_20", kind: "채광", group: "가방", name: "광부 가방 20칸", price: 2500, note: "채광 가방 최대 중량 20" },
-  { id: "mine_bag_30", kind: "채광", group: "가방", name: "광부 가방 30칸", price: 5000, note: "채광 가방 최대 중량 30" },
-  { id: "good_rod", kind: "낚시", group: "도구", name: "좋은 낚싯대", price: 2500, note: "낚시 장비 1단계" },
-  { id: "master_rod", kind: "낚시", group: "도구", name: "고급 낚싯대", price: 7000, note: "낚시 장비 2단계" },
-  { id: "good_sickle", kind: "채집", group: "도구", name: "숙련 채집 도구", price: 2500, note: "채집 장비 1단계" },
-  { id: "master_sickle", kind: "채집", group: "도구", name: "장인의 채집 도구", price: 7000, note: "채집 장비 2단계" },
-  { id: "iron_pick", kind: "채광", group: "도구", name: "철 곡괭이", price: 2500, note: "채광 장비 1단계" },
-  { id: "mithril_pick", kind: "채광", group: "도구", name: "미스릴 곡괭이", price: 7000, note: "채광 장비 2단계" },
-] as const;
+// 카탈로그 정의는 lib/lifeShop.ts — 서버 구매 처리와 같은 표를 쓴다.
+type LifeShopProductView = LifeGearProduct;
 
-type LifeShopProductView = (typeof LIFE_SHOP_PRODUCTS)[number];
-
-function lifeShopBagWeight(item: LifeShopProductView): number {
-  const match = item.name.match(/(\d+)\s*칸/);
-  return match ? Number(match[1]) : 0;
-}
-
+// 들고 있는 도구 이름 → 단계. 카탈로그에 없는 이름(기본 도구)은 0.
 function lifeShopToolTier(toolName: string): number {
-  if (toolName === "고급 낚싯대" || toolName === "장인의 채집 도구" || toolName === "미스릴 곡괭이") return 2;
-  if (toolName === "좋은 낚싯대" || toolName === "숙련 채집 도구" || toolName === "철 곡괭이") return 1;
-  return 0;
+  return LIFE_GEAR_PRODUCTS.find((p) => p.group === "도구" && p.name === toolName)?.tier ?? 0;
 }
 
-function lifeShopProductTier(item: LifeShopProductView): number {
-  if (item.id === "master_rod" || item.id === "master_sickle" || item.id === "mithril_pick") return 2;
-  return 1;
-}
-
-function lifeShopOwnedPrice(item: LifeShopProductView, lifeShop: LifeShopView): number {
-  if (item.group === "가방") {
-    const maxWeight = lifeShop.bags[item.kind].maxWeight;
-    return LIFE_SHOP_PRODUCTS.find(
-      (product) => product.group === "가방" && product.kind === item.kind && lifeShopBagWeight(product) === maxWeight,
-    )?.price ?? 0;
-  }
-  const tier = lifeShopToolTier(lifeShop.tools[item.kind]);
-  return LIFE_SHOP_PRODUCTS.find(
-    (product) => product.group === "도구" && product.kind === item.kind && lifeShopProductTier(product) === tier,
-  )?.price ?? 0;
+// 지금 보유 중인 단계 (가방=최대중량, 도구·탐지=1·2단계). 서버 buyLifeGear 와 같은 규칙.
+function lifeShopCurrentTier(item: LifeShopProductView, lifeShop: LifeShopView): number {
+  if (item.group === "가방") return lifeShop.bags[item.kind].maxWeight;
+  if (item.group === "탐지") return lifeShop.detectors[item.kind] ?? 0;
+  return lifeShopToolTier(lifeShop.tools[item.kind]);
 }
 
 function lifeShopPurchaseInfo(item: LifeShopProductView, lifeShop: LifeShopView) {
-  const currentValue =
-    item.group === "가방"
-      ? lifeShop.bags[item.kind].maxWeight
-      : lifeShopToolTier(lifeShop.tools[item.kind]);
-  const targetValue = item.group === "가방" ? lifeShopBagWeight(item) : lifeShopProductTier(item);
-  const ownedOrSurpassed = currentValue >= targetValue;
-  const refund = ownedOrSurpassed ? 0 : Math.floor(lifeShopOwnedPrice(item, lifeShop) / 2);
+  const currentValue = lifeShopCurrentTier(item, lifeShop);
+  const ownedOrSurpassed = currentValue >= item.tier;
+  const refund = ownedOrSurpassed
+    ? 0
+    : Math.floor(lifeGearPriceAt(item.kind, item.group, currentValue) / 2);
   return {
     ownedOrSurpassed,
     refund,
     netPrice: Math.max(0, item.price - refund),
-    statusLabel: currentValue > targetValue ? "상위 보유" : "보유중",
+    statusLabel: currentValue > item.tier ? "상위 보유" : "보유중",
   };
 }
 
@@ -1256,7 +1227,7 @@ function LifeGearShop({
   onClose: () => void;
 }) {
   const [state, action, pending] = useActionState<LifeShopState, FormData>(buyLifeGear, undefined);
-  const groups = ["가방", "도구"] as const;
+  const groups = LIFE_GEAR_GROUPS;
   const kindTabs = ["낚시", "채집", "채광"] as const;
   const kindEmoji: Record<string, string> = { 낚시: "🎣", 채집: "🌿", 채광: "⛏️" };
   const [kindTab, setKindTab] = useState<(typeof kindTabs)[number]>("낚시");
@@ -1314,7 +1285,7 @@ function LifeGearShop({
             <section key={group}>
               <h4 className="mb-2 text-sm font-extrabold text-content">{group}</h4>
               <div className="grid gap-2 sm:grid-cols-2">
-                {LIFE_SHOP_PRODUCTS.filter((item) => item.group === group && item.kind === kindTab).map(
+                {LIFE_GEAR_PRODUCTS.filter((item) => item.group === group && item.kind === kindTab).map(
                   (item) => {
                     const info = lifeShopPurchaseInfo(item, lifeShop);
                     return (

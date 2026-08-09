@@ -64,6 +64,7 @@ import { isBlacksmithClass, itemAsCraftMinor, MOON_FRAGMENT } from "@/lib/weapon
 import { resolveMaterialSellPrice } from "@/lib/shop";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
+import { buildDetectorView, type DetectorView } from "@/lib/lifeDetector";
 import { SKILLBOOK_META } from "@/lib/skillbook";
 import {
   normalizeAdventurerRank,
@@ -562,7 +563,27 @@ export default async function WorldPage() {
       채광: { name: life.bags.채광.name, maxWeight: life.bags.채광.maxWeight },
     },
     tools: life.tools,
+    detectors: life.detectors,
   };
+  // 탐지기·감정기 — 지금 서 있는 장소의 등급 확률. 장비가 없거나 여기서 못 하는 스킬은 빠진다.
+  const detectorViews: DetectorView[] = (
+    [
+      ["낚시", hereLife?.fish],
+      ["채집", hereLife?.gather],
+      ["채광", hereLife?.mine],
+    ] as const
+  )
+    .map(([kind, pool]) =>
+      buildDetectorView({
+        kind,
+        tier: life.detectors[kind] ?? 0,
+        life,
+        statsJson: sheet.statsJson,
+        pool: pool ?? null,
+        locationName: here.name,
+      }),
+    )
+    .filter((view): view is DetectorView => view != null);
   const lifeStorageItems: LifeStorageItemView[] = (["낚시", "채집", "채광"] as const).flatMap((kind) =>
     life.bags[kind].items.map((item) => ({
       sourceKind: kind,
@@ -581,6 +602,7 @@ export default async function WorldPage() {
     const bag = life.bags[kind];
     const max = lifeBagLimit(life, kind);
     return {
+      kind,
       name: bag.name,
       emoji,
       weight: `${lifeBagWeight(bag)} / ${max}`,
@@ -1685,6 +1707,7 @@ export default async function WorldPage() {
             lifeBags={lifeBags}
             skillBooks={skillBookNames}
             tagDict={craftTags}
+            detectors={detectorViews}
           />
 
           <SheetSync />
