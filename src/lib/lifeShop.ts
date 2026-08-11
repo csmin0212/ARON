@@ -33,11 +33,11 @@ export const LIFE_GEAR_PRODUCTS: readonly LifeGearProduct[] = [
   { id: "iron_pick", kind: "채광", group: "도구", name: "철 곡괭이", price: 2500, tier: 1, note: "채광 장비 1단계" },
   { id: "mithril_pick", kind: "채광", group: "도구", name: "미스릴 곡괭이", price: 7000, tier: 2, note: "채광 장비 2단계" },
 
-  { id: "fish_radar_1", kind: "낚시", group: "탐지", name: "어군 탐지기", price: 3000, tier: 1, note: "가방에 등급별 확률 표시" },
+  { id: "fish_radar_1", kind: "낚시", group: "탐지", name: "어군 탐지기", price: 4000, tier: 1, note: "가방에 등급별 확률 표시" },
   { id: "fish_radar_2", kind: "낚시", group: "탐지", name: "어군 감정기", price: 15000, tier: 2, note: "확률 + 나오는 어종까지" },
-  { id: "plant_radar_1", kind: "채집", group: "탐지", name: "약초 탐지기", price: 3000, tier: 1, note: "가방에 등급별 확률 표시" },
+  { id: "plant_radar_1", kind: "채집", group: "탐지", name: "약초 탐지기", price: 4000, tier: 1, note: "가방에 등급별 확률 표시" },
   { id: "plant_radar_2", kind: "채집", group: "탐지", name: "약초 감정기", price: 15000, tier: 2, note: "확률 + 나오는 약초까지" },
-  { id: "mine_radar_1", kind: "채광", group: "탐지", name: "광물 탐지기", price: 3000, tier: 1, note: "가방에 등급별 확률 표시" },
+  { id: "mine_radar_1", kind: "채광", group: "탐지", name: "광물 탐지기", price: 4000, tier: 1, note: "가방에 등급별 확률 표시" },
   { id: "mine_radar_2", kind: "채광", group: "탐지", name: "광물 감정기", price: 15000, tier: 2, note: "확률 + 나오는 광물까지" },
 ] as const;
 

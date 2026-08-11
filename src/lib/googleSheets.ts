@@ -485,6 +485,15 @@ export async function appendSheetFormula(
   }
 }
 
+// 명성칸은 셀 전체가 숫자일 때만 값으로 인정한다. parseNumber 는 숫자 아닌 문자를 전부 버려서
+// "D - 11" 같은 혼합 표기를 -11 로 읽고, 그걸 그대로 다시 써서 칸을 "-10" 으로 만들어 버린다
+// (랭크 표기까지 날아간다). 순수 숫자가 아니면 건드리지 않고 넘어간다 — 명성 정본은 DB 쪽이라
+// 시트 반영만 건너뛰고 지급 자체는 정상 처리된다.
+function pureSheetNumber(raw: string | null | undefined): number | null {
+  const trimmed = String(raw ?? "").trim();
+  return /^-?\d+$/.test(trimmed) ? Number(trimmed) : null;
+}
+
 export async function appendSheetFame(tab: string | null, delta: number): Promise<boolean> {
   if (!tab || delta === 0) return false;
   try {
@@ -495,18 +504,17 @@ export async function appendSheetFame(tab: string | null, delta: number): Promis
         value: await getCellFormula(`${quoteSheet(tab)}!${cellName}`),
       })),
     );
-    const target =
-      formulas.find((entry) => entry.value?.startsWith("=") || parseNumber(entry.value ?? "") != null) ??
-      formulas[0];
-    if (!target?.cellName || target.value == null) return false;
-
-    let next: string;
-    if (target.value.startsWith("=")) {
-      next = `${target.value}+${delta}`;
-    } else {
-      const current = parseNumber(target.value) ?? 0;
-      next = String(current + delta);
+    const target = formulas.find(
+      (entry) => entry.value?.startsWith("=") || pureSheetNumber(entry.value) != null,
+    );
+    if (!target?.cellName || target.value == null) {
+      console.warn("appendSheetFame: 명성칸이 수식도 순수 숫자도 아니라 건너뜀", tab);
+      return false;
     }
+
+    const next = target.value.startsWith("=")
+      ? `${target.value}+${delta}`
+      : String((pureSheetNumber(target.value) ?? 0) + delta);
     return updateValues(`${quoteSheet(tab)}!${target.cellName}`, [[next]]);
   } catch (error) {
     console.warn("Failed to append sheet fame", error);

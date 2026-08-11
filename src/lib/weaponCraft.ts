@@ -205,15 +205,24 @@ export function isCraftMinorMaterial(item: LifeSkillItem): boolean {
 //  - 커스텀 이름이 기존 도감 아이템(아이언 너클 등)의 행을 침범하지 않는다.
 // 헷갈리는 글자(0·O·1·I)는 뺐다 — 플레이어가 손으로 옮겨 적는 값이라서.
 const SERIAL_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-const CRAFT_SERIAL_PATTERN = /\s*#([0-9A-Z]{4,6})$/;
+// 고유번호 뒤에 꼬리표가 붙어도 번호를 읽는다. 강화 '(+1)', 보석 '(다이아몬드)',
+// 인첸트 '[강운]' 처럼 플레이어·GM 이 손으로 덧붙이는 표기가 실제로 흔하다.
+// 예전엔 '#XXXX' 가 이름 맨 끝이어야만 해서, 꼬리표 하나에 도감·경매 조회가 통째로
+// 실패하고 동명 제작품의 효과·가격이 붙었다.
+const CRAFT_SERIAL_TAIL = "(?:\\s*(?:\\([^()]*\\)|\\[[^\\][]*\\]))*";
+const CRAFT_SERIAL_PATTERN = new RegExp(`\\s*#([0-9A-Z]{4,6})(${CRAFT_SERIAL_TAIL})$`);
 
 export function craftSerialOf(name: string): string | null {
   const m = CRAFT_SERIAL_PATTERN.exec(name.trim());
   return m ? m[1] : null;
 }
 
+// 고유번호만 떼고 꼬리표는 남긴다 — 강화 수치 같은 정보를 조용히 지우지 않도록.
 export function stripCraftSerial(name: string): string {
-  return name.trim().replace(CRAFT_SERIAL_PATTERN, "").trim();
+  const trimmed = name.trim();
+  const m = CRAFT_SERIAL_PATTERN.exec(trimmed);
+  if (!m) return trimmed;
+  return `${trimmed.slice(0, m.index)}${m[2]}`.trim();
 }
 
 export function withCraftSerial(name: string, serial: string): string {

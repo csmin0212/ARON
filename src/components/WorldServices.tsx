@@ -370,10 +370,14 @@ function itemTags(name: string): string[] {
   return match[1].split(",").map((tag) => tag.trim()).filter(Boolean);
 }
 
-// 이미 인첸트된 무기 (보석 태그 또는 효과에 '인첸트')
+// 이미 인첸트된 무기 (보석 접두어·옛 보석 태그 또는 효과에 '인첸트')
 function isEnchanted(item: SheetInventoryItem): boolean {
-  const tags = itemTags(item.name);
-  return GEM_NAMES.some((gem) => tags.includes(gem)) || (item.effect ?? "").includes("인첸트");
+  const name = item.name.trim();
+  const tags = itemTags(name);
+  return (
+    GEM_NAMES.some((gem) => tags.includes(gem) || name.startsWith(`${gem} `)) ||
+    (item.effect ?? "").includes("인첸트")
+  );
 }
 
 // 이미 강화된 무기 (+N 태그)

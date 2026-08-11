@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { MASTER_SHEET_ID, fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
 import { adventurerRankFromFame, totalFameForRank } from "@/lib/adventurerRank";
-import { craftSerialOf } from "@/lib/weaponCraft";
+import { craftSerialOf, randomCraftSerial, withCraftSerial } from "@/lib/weaponCraft";
 import {
   pushInventoryToSheet,
   readSheetEquipment,
@@ -20,6 +20,57 @@ export type SheetState = { error?: string; ok?: boolean } | undefined;
 // "강철 검(+1)" → "강철 검" : 강화·인첸트 꼬리표 제거
 function baseItemName(name: string): string {
   return name.trim().replace(/\s*\([^()]*\)\s*$/, "").trim();
+}
+
+// 고유번호가 없는 제작품에 번호를 발급한다 (가방에 있는 것 한정).
+// 제작품은 같은 이름이라도 제작 건마다 효과·가격이 다르다. 번호가 없으면 이름으로 도감을
+// 뒤지다 남의 제작 정의를 물려받는다 — 실제로 '철 포인트 아머'가 그렇게 셋으로 갈렸다.
+//
+// 가방만 건드리는 이유: 이름을 바꾸는 작업이라 창고·경매에 흩어진 같은 이름과 갈라진다.
+// 가방은 pushInventoryToSheet 로 시트 이름 칸까지 되돌려 쓸 수 있어 한 번에 정합이 맞는다.
+// 착용 중인 장비는 시트 장비칸에 쓰는 경로가 없어서 여기서 제외한다.
+const CRAFTED_MARK = /(?:^|\n)제작:\s*\S/;
+
+async function issueMissingCraftSerials(inventory: SheetInventory): Promise<boolean> {
+  const targets = inventory.items.filter(
+    (item) => item.qty > 0 && !craftSerialOf(item.name) && CRAFTED_MARK.test(item.effect ?? ""),
+  );
+  if (targets.length === 0) return false;
+
+  let changed = false;
+  for (const item of targets) {
+    const baseName = item.name.trim();
+    // 지금 이 물건이 참조하던 도감 행을 그대로 스냅샷해 자기 행으로 복제한다.
+    const source = await prisma.item.findFirst({
+      where: { OR: [{ id: baseName }, { name: baseName }] },
+      select: { category: true, buyPrice: true, sellPrice: true, weight: true, desc: true, craftEffect: true, order: true },
+    });
+
+    let nextName: string | null = null;
+    for (let attempt = 0; attempt < 8 && !nextName; attempt++) {
+      const candidate = withCraftSerial(baseName, randomCraftSerial());
+      const taken = await prisma.item.findUnique({ where: { id: candidate }, select: { id: true } });
+      if (!taken) nextName = candidate;
+    }
+    if (!nextName) continue; // 8번 다 겹치면 이번 동기화는 건너뛴다 (다음에 다시 시도)
+
+    await prisma.item.create({
+      data: {
+        id: nextName,
+        name: nextName,
+        category: source?.category ?? null,
+        buyPrice: source?.buyPrice ?? null,
+        sellPrice: source?.sellPrice ?? null,
+        weight: item.weight ?? source?.weight ?? null,
+        desc: item.effect ?? source?.desc ?? null,
+        craftEffect: source?.craftEffect ?? null,
+        order: source?.order ?? 0,
+      },
+    });
+    item.name = nextName;
+    changed = true;
+  }
+  return changed;
 }
 
 // 효과/중량이 비어 있는 휴대품을 아이템 탭 카탈로그로 채운다.
@@ -155,6 +206,8 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
     items: [],
   };
   const catalogFilled = inventory ? await fillItemCatalogDetails(inventory) : false;
+  // 효과를 채운 뒤에 발급해야 새 도감 행이 빈 채로 만들어지지 않는다.
+  const serialsIssued = inventory ? await issueMissingCraftSerials(inventory) : false;
   const existing = await prisma.characterSheet.findUnique({
     where: { userId: user.id },
     select: { adventurerRank: true, fame: true },
@@ -192,7 +245,7 @@ export async function syncSheet(_prev: SheetState, formData: FormData): Promise<
   });
   if (sheetInventory) await syncDbInventoryFromSheet(user.id, sheetInventory);
   // 새로 채운 효과를 시트 효과·해설 칸에도 반영 (보강된 게 있을 때만)
-  if (inventory && inventory.sourceSheetId === MASTER_SHEET_ID && catalogFilled) {
+  if (inventory && inventory.sourceSheetId === MASTER_SHEET_ID && (catalogFilled || serialsIssued)) {
     await pushInventoryToSheet(tab, inventory);
   }
 
@@ -217,6 +270,7 @@ export async function syncSheetInventory(): Promise<void> {
   ]);
   if (!inventory) return;
   const catalogFilled = await fillItemCatalogDetails(inventory);
+  const serialsIssued = await issueMissingCraftSerials(inventory);
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
@@ -227,7 +281,7 @@ export async function syncSheetInventory(): Promise<void> {
     },
   });
   await syncDbInventoryFromSheet(user.id, inventory);
-  if (inventory.sourceSheetId === MASTER_SHEET_ID && catalogFilled) {
+  if (inventory.sourceSheetId === MASTER_SHEET_ID && (catalogFilled || serialsIssued)) {
     await pushInventoryToSheet(sheet.sheetTab, inventory);
   }
 

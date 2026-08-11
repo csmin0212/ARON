@@ -13,6 +13,7 @@ import {
   type SheetInventoryItem,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
+import { craftSerialOf } from "@/lib/weaponCraft";
 import { parseGoldToInt } from "@/lib/dice";
 import {
   addLifeBagItem,
@@ -313,7 +314,17 @@ async function lookupItemDesc(name: string): Promise<string | null> {
     where: { OR: [{ id: exact }, { name: exact }, { id: base }, { name: base }] },
     select: { desc: true },
   });
-  return item?.desc ?? null;
+  if (item) return item.desc ?? null;
+
+  // 수식어·보석이 이름 앞에 붙어 이름이 달라져도 고유번호(#7K2F)로 자기 도감 행을 찾는다.
+  // charsheet.ts 의 효과 채움과 경매 조회는 이미 이 폴백을 쓰는데 여기만 빠져 있었다.
+  const serial = craftSerialOf(exact) ?? craftSerialOf(base);
+  if (!serial) return null;
+  const bySerial = await prisma.item.findFirst({
+    where: { id: { endsWith: ` #${serial}` } },
+    select: { desc: true },
+  });
+  return bySerial?.desc ?? null;
 }
 
 // 정확히 보석 이름인지 (예: "다이아몬드"). 인첸트된 무기 이름은 보석으로 인정하지 않음.
@@ -330,6 +341,22 @@ function gemEffect(gemName: string): string {
 function gemTag(gemName: string): string {
   const target = gemName.trim();
   return GEM_EFFECTS.find((gem) => gem.key === target)?.key ?? target;
+}
+
+// 보석 인첸트는 수식어와 마찬가지로 이름 '앞'에 붙인다.
+// 제작품 고유번호(#7K2F)는 이름 맨 끝에 있어야 craftSerialOf 가 읽는데,
+// 뒤에 '(다이아몬드)'를 붙이던 옛 방식은 그 번호를 가려서 효과·중량 자동 채움과
+// 경매 가격 조회가 전부 이름 폴백으로 새어나갔다 (동명 제작품의 값이 붙는다).
+function gemPrefixOf(itemName: string): string | null {
+  const trimmed = itemName.trim();
+  const gem = GEM_EFFECTS.find(
+    (entry) => trimmed.startsWith(`${entry.key} `) && trimmed.length > entry.key.length + 1,
+  );
+  return gem?.key ?? null;
+}
+
+function addGemPrefix(itemName: string, gem: string): string {
+  return `${gem} ${itemName.trim()}`;
 }
 
 function itemTags(itemName: string): string[] {
@@ -350,9 +377,11 @@ function enhancementLevel(itemName: string): number {
   return tag ? parseInt(tag.slice(1), 10) : 0;
 }
 
+// 옛 꼬리표 '(다이아몬드)' 와 새 접두어 '다이아몬드 ...' 둘 다 인정한다 — 이미 인첸트된
+// 기존 무기가 한 번 더 인첸트되지 않도록.
 function hasMagicTag(itemName: string): boolean {
   const tags = itemTags(itemName);
-  return GEM_EFFECTS.some((gem) => tags.includes(gem.key));
+  return GEM_EFFECTS.some((gem) => tags.includes(gem.key)) || gemPrefixOf(itemName) != null;
 }
 
 function addItemTag(itemName: string, tag: string): string {
@@ -4024,7 +4053,7 @@ export async function enchantWeapon(
 
   const baseEffect = weapon.effect ?? (await lookupItemDesc(weapon.name));
   const nextEffect = appendEffect(baseEffect, gemEffect(gemName));
-  const nextName = addItemTag(weapon.name, nextGemTag);
+  const nextName = addGemPrefix(weapon.name, nextGemTag);
   let inv = consumeInvItem(ctx.inv, STEEL_FRAGMENT, 2);
   inv = consumeInvItem(inv, gemName, 1);
   inv = transformOneInvItem(inv, weapon.name, { name: nextName, effect: nextEffect });
