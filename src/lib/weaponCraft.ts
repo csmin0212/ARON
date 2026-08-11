@@ -101,6 +101,23 @@ export function minorSlotsFor(smithLevel: number): number {
   return MAX_MINORS;
 }
 
+// 장비 레벨 → 마이너 슬롯 수 (3칸째는 Lv5, 4칸째는 Lv10부터)
+// 대장 숙련과 '함께' 걸린다 — 둘 중 낮은 쪽이 실제 슬롯 수다.
+// 숙련만 보면 Lv25 대장이 Lv1 단검에 특수 재료 4종을 몰아넣을 수 있어서,
+// 상위 슬롯이 상위 장비에서만 열리도록 레벨 조건을 겹쳤다.
+export const MINOR_SLOT_LEVEL_REQ = [0, 0, 5, 10] as const; // 슬롯 n개를 쓰려면 필요한 장비 레벨
+
+export function minorSlotsForEquipLevel(equipLevel: number): number {
+  if (equipLevel >= MINOR_SLOT_LEVEL_REQ[3]) return 4;
+  if (equipLevel >= MINOR_SLOT_LEVEL_REQ[2]) return 3;
+  return MAX_MINORS;
+}
+
+// 실제 사용 가능한 마이너 슬롯 — 대장 숙련과 장비 레벨 중 낮은 쪽.
+export function effectiveMinorSlots(smithLevel: number, equipLevel: number): number {
+  return Math.min(minorSlotsFor(smithLevel), minorSlotsForEquipLevel(equipLevel));
+}
+
 const EXTRA_MINOR_MATERIAL_NAMES = [
   "그리폰깃털",
   "그리폰 깃털",
@@ -754,6 +771,15 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     return { error: `메이저 광물은 최대 ${MAX_MAJORS}개까지예요. (개수 = 장비 레벨)` };
   }
   if (input.minors.length > maxMinors) return { error: `마이너 재료는 최대 ${maxMinors}종이에요. (대장 레벨로 확장)` };
+  // 장비 레벨 조건 — 대장 숙련을 통과해도 저레벨 장비면 확장 슬롯이 안 열린다.
+  const levelSlots = minorSlotsForEquipLevel(level);
+  if (input.minors.length > levelSlots) {
+    return {
+      error: `마이너 재료 ${input.minors.length}종은 장비 레벨 ${
+        MINOR_SLOT_LEVEL_REQ[input.minors.length] ?? MINOR_SLOT_LEVEL_REQ[3]
+      } 이상부터예요. (현재 Lv${level})`,
+    };
+  }
   for (const m of majors) {
     if ((m.item.craftRole ?? "") !== "메이저") return { error: `${m.item.name}은(는) 메이저 광물이 아니에요.` };
   }

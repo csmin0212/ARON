@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { craftEquipment, type CraftResult } from "@/app/actions/craft";
 import {
@@ -18,6 +18,8 @@ import {
   isCraftMinorMaterial,
   isMoonFragment,
   minorSlotsFor,
+  minorSlotsForEquipLevel,
+  MINOR_SLOT_LEVEL_REQ,
   type CraftHand,
   type CraftGroup,
 } from "@/lib/weaponCraft";
@@ -181,7 +183,7 @@ export default function CraftingForge({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CraftResult | null>(null);
   const [openTag, setOpenTag] = useState<string | null>(null);
-  const maxMinors = minorSlotsFor(smithLevel);
+  const smithMinors = minorSlotsFor(smithLevel);
   const categoryOptions = useMemo(
     () =>
       CRAFT_CATEGORIES.filter(
@@ -215,6 +217,12 @@ export default function CraftingForge({
     .filter(([name]) => !isMoonFragment(name))
     .reduce((s, [, n]) => s + n, 0);
   const craftLevel = moonQty > 0 ? MOON_TIER_BASE + moonQty : Math.max(1, oreQty);
+  // 마이너 슬롯은 대장 숙련과 장비 레벨 둘 다 만족해야 열린다 (3칸 Lv5 / 4칸 Lv10).
+  const maxMinors = Math.min(smithMinors, minorSlotsForEquipLevel(craftLevel));
+  // 광물을 빼서 장비 레벨이 내려가면 넘치는 마이너를 자동으로 떨어뜨린다.
+  useEffect(() => {
+    setMinorSel((prev) => (prev.length > maxMinors ? prev.slice(0, maxMinors) : prev));
+  }, [maxMinors]);
   // 광물 5개를 채우기 전엔 특수 광물을 올릴 수 없다 (Lv5 를 채운 뒤에 그 위로 간다).
   const moonLocked = oreQty < MAX_MAJORS;
 
@@ -457,6 +465,11 @@ export default function CraftingForge({
             <p className="mb-2 text-[11px] font-bold text-violet-600">
               마이너 재료를 넣으면 결과가 매직 아이템으로 표기된다.
             </p>
+            {maxMinors < smithMinors && (
+              <p className="mb-2 text-[11px] font-bold text-faint">
+                {maxMinors + 1}칸째는 장비 레벨 {MINOR_SLOT_LEVEL_REQ[maxMinors + 1]} 이상 · 현재 Lv{craftLevel}
+              </p>
+            )}
             {minorsOwned.length === 0 ? (
               <p className="rounded-xl bg-surface px-3 py-4 text-center text-xs text-faint">가진 마이너 재료가 없다.</p>
             ) : (

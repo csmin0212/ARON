@@ -3,8 +3,12 @@ import { detectForgeSlot, type ForgeSlot } from "@/lib/forge";
 
 export type InventoryEquipmentSlot = ForgeSlot | "accessory" | "life";
 
+// '판매가' 는 요리·조제로 만들어진 물건에만 붙는 꼬리줄이라 소모품 판별에 그대로 쓴다.
+// 이게 없으면 '과일 치즈 플레이트'가 ARMOR_HINTS 의 '플레이트'에 걸려 방어구로 잡혀
+// 사용하기 버튼이 사라진다 (마찬가지로 '도라지 차'는 '도' 한 글자에 무기가 된다).
+// 아래 CRAFT_CATEGORY_PATTERN 검사가 이 줄보다 먼저라 진짜 제작 장비는 영향받지 않는다.
 const CONSUMABLE_TEXT_PATTERN =
-  /(?:소모품|포션|물약|요리|음식|해독제|양피지|랜덤박스|든\s*병|HP|MP|피로도|스태미나|AP|페이트|회복|던전\s*(?:클리어|도전)?\s*횟수)/;
+  /(?:소모품|포션|물약|요리|음식|해독제|양피지|랜덤박스|든\s*병|판매가|HP|MP|피로도|스태미나|AP|페이트|회복|던전\s*(?:클리어|도전)?\s*횟수)/;
 
 const LIFE_EQUIPMENT_NAME_PATTERN =
   /(?:낚싯대|낚시대|곡괭이|채집\s*도구|낚시꾼\s*가방|약초꾼\s*가방|광부\s*가방|\d+\s*칸\s*가방)/;
