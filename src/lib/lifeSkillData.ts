@@ -1,4 +1,8 @@
 export type LifeSkillKind = "채집" | "낚시" | "채광";
+
+// 4·5성 마지노선 (%). 어떤 경로(행운·특성·장소 정규화)로도 이 위로 못 올라간다.
+// 두 곳에서 건다 — adjustedRankWeights(정규화 전) + clampTopRanks(정규화 후).
+export const RANK_HARD_CAP: Record<number, number> = { 4: 8, 5: 2 };
 export type FishWater = "민물" | "바다" | "전체";
 
 export type LifeSkillPoolConfig = {
@@ -317,6 +321,33 @@ export function lifeSkillKindOf(kind: string, label?: string | null): LifeSkillK
 // 추첨에 실제로 쓰이는 후보 풀과 등급 가중치를 뽑는다.
 // 탐지기/감정기(레이더)가 보여주는 확률이 실제 추첨과 어긋나면 안 되므로,
 // pickLifeSkillCatch 와 lifeSkillRankOdds 가 반드시 이 함수를 공유한다.
+// 4·5성 마지노선을 '정규화된 확률' 기준으로 다시 건다.
+//
+// adjustedRankWeights 의 상한은 정규화 전 값이라, 장소에 없는 등급이 빠지면서 분모가
+// 줄면 표시·추첨 확률이 그 위로 올라간다. 실측: 잔잔한 개울(3성 품목 없음)에서
+// 상한 초과분을 3성으로 되돌려도 3성이 통째로 마스킹돼 사라져 4성이 100% 가 됐다.
+//
+// 여기서는 남아 있는 등급들의 합을 기준으로 다시 재고, 초과분은 '실제로 존재하는'
+// 가장 높은 하위 등급으로 내린다. 내려보낼 곳이 없으면(그 등급만 있는 장소) 그대로 둔다.
+function clampTopRanks(weights: number[] | undefined, available: Set<number>): void {
+  if (!weights) return;
+  for (const rank of [5, 4] as const) {
+    const cap = RANK_HARD_CAP[rank];
+    if (cap == null || weights[rank] <= 0) continue;
+    const total = weights.reduce((sum, w) => sum + Math.max(0, w), 0);
+    if (total <= 0) continue;
+    const allowed = (total * cap) / 100;
+    if (weights[rank] <= allowed) continue;
+    // 내려보낼 곳은 '가중치가 남아 있는' 등급이 아니라 '이 장소에 품목이 있는' 등급으로 찾는다.
+    // 행운의 부적 + 운의 축적 만렙 + 고행운이면 하위 가중치가 전부 0 이 되는데, 그때
+    // 가중치로 찾으면 후보가 없어 상한이 뚫린다 (잔잔한 개울 = 3성 품목 없음 → 4성 100%).
+    const sink = [3, 2, 1, 0].find((r) => r < rank && available.has(r));
+    if (sink == null) continue; // 이 장소에 그 등급밖에 없으면 손댈 수 없다
+    weights[sink] += weights[rank] - allowed;
+    weights[rank] = allowed;
+  }
+}
+
 function resolveLifeSkillPool(kind: LifeSkillKind, options?: number[] | LifeSkillPoolConfig) {
   const config: LifeSkillPoolConfig | undefined = Array.isArray(options)
     ? { enabled: true, weights: options }
@@ -340,6 +371,7 @@ function resolveLifeSkillPool(kind: LifeSkillKind, options?: number[] | LifeSkil
   const rankWeights = (config?.weights ?? undefined)?.map((weight, rank) =>
     availableRanks.has(rank) ? weight : 0,
   );
+  clampTopRanks(rankWeights, availableRanks);
   const weightedRanks = rankWeights
     ? new Set(rankWeights.map((weight, rank) => (weight > 0 ? rank : null)).filter((rank) => rank != null))
     : null;

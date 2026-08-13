@@ -90,6 +90,33 @@ console.log("== 3. 행운을 올리면 3성이 올라간다 (내려가면 안 �
   }
 }
 
+console.log("== 3-b. 운의 축적(경로 B) → 3성, 4성은 구간 상한까지만, 5성은 절대 안 됨 ==");
+{
+  // 삭감량의 5% 를 4성에 주되 구간 상한(Lv1~30 0 / Lv31~60 0.5 / Lv61+ 1)에서 멈춘다.
+  // 나머지는 전부 3성. 예전엔 3·4·5성에 6:3:1 로 나눠줘서 특성만으로 4성이 두 배가 됐다
+  // (채광 Lv32 실측 4.15% → 8.48%).
+  const CAP: Record<number, number> = { 15: 0, 45: 0.5, 99: 1 };
+  const light = { rank0Down: 2, rank1Down: 8, rank2Down: 3 }; // 삭감 13 — 별의아이 실측 구성
+  const full = { rank0Down: 10, rank1Down: 20, rank2Down: 20 }; // 삭감 50 — 만렙
+
+  for (const level of [15, 45, 99]) {
+    for (const [label, perks, removed] of [["삭감13", light, 13], ["삭감50", full, 50]] as const) {
+      const plain = weightsAt("채광", level, mods(0));
+      const withPerks = weightsAt("채광", level, mods(0, perks));
+      const expected4 = Math.min(removed * 0.05, CAP[level]);
+      check(`Lv${level} ${label} 4성 +${expected4}`, r2(withPerks[4] - plain[4]), r2(expected4));
+      check(`Lv${level} ${label} 5성 불변`, withPerks[5], plain[5]);
+      const moved = plain[0] - withPerks[0] + (plain[1] - withPerks[1]) + (plain[2] - withPerks[2]);
+      check(`Lv${level} ${label} 나머지는 3성`, r2(withPerks[3] - plain[3]), r2(moved - expected4));
+    }
+  }
+  // 상한이 실제로 물리는지 — 삭감 50 이어도 4성 기여가 상한을 넘지 않는다
+  for (const level of [45, 99]) {
+    const gain = weightsAt("채광", level, mods(0, full))[4] - weightsAt("채광", level, mods(0))[4];
+    check(`Lv${level} 만렙 삭감에도 상한 ${CAP[level]} 유지`, r2(gain), CAP[level]);
+  }
+}
+
 console.log("== 4. 4성은 Lv1~30 에서도 행운으로 열린다 ==");
 {
   for (const kind of ["낚시", "채집", "채광"] as const) {
@@ -152,9 +179,42 @@ console.log("== 10. 레벨 구간 기본값 ==");
 {
   check("Lv1~30 채광(보정 없음)", baseWeightsFor(15, "채광"), [30, 40, 25, 5, 0, 0]);
   check("Lv31~60 채광", baseWeightsFor(45, "채광"), [20, 35, 35, 9, 1, 0]);
-  check("Lv61+ 채광", baseWeightsFor(99, "채광"), [10, 30, 30, 25, 4, 1]);
+  check("Lv61+ 채광", baseWeightsFor(99, "채광"), [10, 30, 30, 26, 4, 0]);
   check("낚시 보정 적용", baseWeightsFor(15, "낚시").map(r2), [27.2, 42, 25.7, 5.1, 0, 0]);
   check("채집 보정 적용", baseWeightsFor(15, "채집").map(r2), [27.1, 42, 25.8, 5.1, 0, 0]);
+}
+
+console.log("== 11. 마지노선 — 4성 8% / 5성 2% 를 어떤 경로로도 넘지 않는다 ==");
+{
+  const extreme = { rank0Down: 10, rank1Down: 20, rank2Down: 20, rank5Up: 0.3, noTrash: true };
+  for (const kind of ["낚시", "채집", "채광"] as const) {
+    for (const level of [15, 45, 99]) {
+      for (const luck of [0, 20, 60, 200, 999]) {
+        const w = weightsAt(kind, level, mods(luck, extreme));
+        if (w[4] > 8.0001 || w[5] > 2.0001) {
+          check(`${kind} Lv${level} 행운${luck} 상한 초과`, [w[4], w[5]], ["≤8", "≤2"]);
+        }
+      }
+    }
+  }
+  check("전 조합에서 상한 유지", true, true);
+  // 상한에 실제로 닿는지 (닿지도 못하면 상한이 의미 없다)
+  check("Lv61+ 행운 16 이면 4성 8 도달", weightsAt("채광", 99, mods(16))[4], 8);
+  check("Lv61+ 행운 60 이면 5성 2 도달", weightsAt("채광", 99, mods(60))[5], 2);
+}
+
+console.log("== 12. Lv61+ 5성은 기본 0 — 행운으로만 열린다 ==");
+{
+  for (const kind of ["낚시", "채집", "채광"] as const) {
+    check(`${kind} 행운 0 이면 5성 0`, weightsAt(kind, 99, mods(0))[5], 0);
+    check(`${kind} 행운 10 이면 5성 0.5`, weightsAt(kind, 99, mods(10))[5], 0.5);
+    // 운의 축적(경로 B)으로는 절대 안 열린다
+    check(
+      `${kind} 특성만으로는 5성 0`,
+      weightsAt(kind, 99, mods(0, { rank0Down: 10, rank1Down: 20, rank2Down: 20 }))[5],
+      0,
+    );
+  }
 }
 
 console.log(`

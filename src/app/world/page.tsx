@@ -13,6 +13,7 @@ import { ABILITY_LABELS_KO, type DropEntry } from "@/lib/gamedata";
 import { enterHome, enterWorld, leaveHome, moveTo } from "@/app/actions/world";
 import DungeonPanel, { type DungeonAbility, type DungeonView } from "@/components/DungeonPanel";
 import BagInventory from "@/components/BagInventory";
+import GuildRankPerks from "@/components/GuildRankPerks";
 import GatheringStatus from "@/components/GatheringStatus";
 import MiningStatus from "@/components/MiningStatus";
 import FishingStatus from "@/components/FishingStatus";
@@ -67,6 +68,7 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { buildDetectorView, type DetectorView } from "@/lib/lifeDetector";
 import { SKILLBOOK_META } from "@/lib/skillbook";
 import {
+  GUILD_LOCATION_ID,
   normalizeAdventurerRank,
   rankAtLeast,
   storageWeightBonus,
@@ -1486,6 +1488,9 @@ export default async function WorldPage() {
 
       <ActiveBuffsBar buffs={buffRows} />
 
+      {/* 랭크 특혜 팝업은 카드 밖으로 넘치므로 overflow-hidden 바깥에 둔다 */}
+      <div className="relative">
+      {here.id === GUILD_LOCATION_ID && <GuildRankPerks rank={guild.rank} fame={guild.fame} />}
       <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
         <div className="relative">
           {here.image ? (
@@ -1531,6 +1536,7 @@ export default async function WorldPage() {
             ))}
           </div>
         )}
+      </div>
       </div>
 
       {atHome && hasGuestbookStand && (

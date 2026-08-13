@@ -3,7 +3,7 @@
 // 레벨업 시 특성 3개가 제시되고 하나를 선택한다.
 // 특성 희귀도 등장률: 일반 50% / 레어 30% / 유니크 16% / 전설 4% (신화는 현재 비활성)
 
-import type { LifeSkillKind } from "./lifeSkillData";
+import { RANK_HARD_CAP, type LifeSkillKind } from "./lifeSkillData";
 
 export type PerkRarity = "일반" | "레어" | "유니크" | "전설" | "신화";
 
@@ -227,7 +227,9 @@ export function isPerkChoiceLevel(level: number): boolean {
 export const LEVEL_BANDS: { min: number; max: number; weights: number[] }[] = [
   { min: 1, max: 30, weights: [30, 40, 25, 5, 0, 0] }, // Lv1~30: 0~3성
   { min: 31, max: 60, weights: [20, 35, 35, 9, 1, 0] }, // Lv31~60: 4성까지 살짝
-  { min: 61, max: 999, weights: [10, 30, 30, 25, 4, 1] }, // Lv61+: 5성까지
+  // Lv61+: 5성 기본값은 0 — 5성은 오직 행운(과 신의 어부)으로만 연다.
+  // 원래 5성에 있던 1 은 3성으로 옮겼다 (합계 100 유지 = 가중치 1 이 확률 1%p).
+  { min: 61, max: 999, weights: [10, 30, 30, 26, 4, 0] },
 ];
 
 const KIND_WEIGHT_ADJUSTMENTS: Partial<Record<LifeSkillKind, number[]>> = {
@@ -897,6 +899,19 @@ function luckBonusForLevel(level: number | undefined): { rank4: number; rank5: n
   return { rank4: 0.25, rank5: 0.05 };
 }
 
+// 경로 B(운의 축적)가 4성에 얹어주는 몫 — 삭감량의 5%, 단 구간별 상한까지만.
+// 상한을 두는 이유: 5% 정률만 두면 삭감량에 정비례해서, 운의 축적 만렙(삭감 50)이면
+// Lv31~60 에서 4성이 1.00% → 3.50% 로 3.5배가 된다. 행운 0 인 캐릭터가 특성만으로
+// 행운 28 짜리 효과를 얻는 셈이라 "상위 등급은 행운의 몫" 이라는 원칙이 깨진다.
+// 상한에 걸리는 삭감량: Lv31~60 은 10, Lv61+ 는 20.
+const PERK_RANK4_SHARE = 0.05;
+
+function perkRank4CapForLevel(level: number | undefined): number {
+  if (level == null || level < 31) return 0; // Lv1~30 은 특성으로 4성을 아예 안 연다
+  if (level < 61) return 0.5;
+  return 1;
+}
+
 // 등급 가중치 [0성..5성] 에 특성/행운 보정 적용.
 // base 는 레벨 구간표(baseWeightsFor) 또는 장소별 override다.
 export function adjustedRankWeights(mods: LifeMods, base?: number[], level?: number): number[] {
@@ -913,14 +928,20 @@ export function adjustedRankWeights(mods: LifeMods, base?: number[], level?: num
   take(1, mods.rank1Down);
   take(2, mods.rank2Down);
 
-  // 제거된 확률은 "이 구간에서 허용된" 상위 등급(3~5성)에 6:3:1 비율로 재분배
-  const RATIO: Record<number, number> = { 3: 6, 4: 3, 5: 1 };
-  const upper = [3, 4, 5].filter((i) => orig[i] > 0);
-  if (removed > 0 && upper.length > 0) {
-    const ratioSum = upper.reduce((s, i) => s + RATIO[i], 0);
-    for (const i of upper) w[i] += (removed * RATIO[i]) / ratioSum;
-  } else if (removed > 0) {
-    w[2] += removed; // 상위 등급이 모두 잠긴 극단 케이스
+  // 깎은 몫은 3성으로 간다. 4성은 삭감량의 5%까지만, 그것도 구간 상한(0 / 0.5 / 1)까지만.
+  // 5성은 경로 B 로 절대 오르지 않는다 — 오직 행운(luckBonusForLevel)의 몫이다.
+  //
+  // 예전엔 3·4·5성에 6:3:1 로 나눠줬는데, 그러면 특성만으로 상위 등급이 뚫린다.
+  // 실측: 채광 Lv32 / 운의 축적 1·2·3 보유 → 4성이 4.15% 에서 8.48% 로 두 배가 됐다.
+  if (removed > 0) {
+    if (orig[3] > 0) {
+      const toRank4 =
+        orig[4] > 0 ? Math.min(removed * PERK_RANK4_SHARE, perkRank4CapForLevel(level)) : 0;
+      w[4] += toRank4;
+      w[3] += removed - toRank4;
+    } else {
+      w[2] += removed; // 3성마저 잠긴 극단 케이스 — 상위로 새지 않게 되돌린다
+    }
   }
 
   // 행운: 3·4(·5)성이 오르고, 그만큼을 0·1·2성에서 4:4:2 로 가져온다. 총합은 항상 보존된다.
@@ -950,8 +971,21 @@ export function adjustedRankWeights(mods: LifeMods, base?: number[], level?: num
       }
     }
   }
-  // 신의 어부(5성 확률 증가): 5성이 열린 구간에서만 효과
-  if (orig[5] > 0) w[5] += mods.rank5Up;
+  // 신의 어부(5성 확률 증가): 5성이 열릴 수 있는 구간에서만 효과.
+  // 예전엔 orig[5] > 0 으로 봤는데, Lv61+ 기본값을 0 으로 내리면서 그 조건이면
+  // 이 특성이 전 구간에서 죽는다(Lv1~60 은 원래 orig[5] = 0). 행운이 5성을 열 수 있는
+  // 구간인지로 판단한다 — 즉 Lv31+ 에서 작동한다.
+  if (luckBonusForLevel(level).rank5 > 0) w[5] += mods.rank5Up;
+
+  // 마지노선 — 어떤 경로(행운·특성·신의 어부)로도 이 수치를 넘지 않는다.
+  // 초과분은 3성으로 되돌려 합계 100 을 유지한다.
+  for (const rank of [4, 5] as const) {
+    const over = w[rank] - RANK_HARD_CAP[rank];
+    if (over > 0) {
+      w[rank] = RANK_HARD_CAP[rank];
+      w[3] += over;
+    }
+  }
 
   return w;
 }
