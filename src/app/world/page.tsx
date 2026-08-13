@@ -1378,7 +1378,7 @@ export default async function WorldPage() {
     const week = dungeonWeekKey();
     const used = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
     dungeonWeeklyLimit =
-      3 + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "B") ? 1 : 0);
+      3 + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "A") ? 1 : 0);
     dungeonRunsLeft = Math.max(0, dungeonWeeklyLimit - used);
   }
 

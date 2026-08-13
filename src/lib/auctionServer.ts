@@ -849,8 +849,8 @@ export async function createListingCore(
     return { error: `즉시매각 하한(${floor.toLocaleString()}G)보다 낮게는 올릴 수 없어요.` };
   }
 
-  // S랭크 특혜 — 등록 수수료 면제
-  const fee = rankAtLeast(actor.rank, "S") ? 0 : listingFee(unitPrice, qty);
+  // A랭크+ 특혜 — 등록 수수료 면제
+  const fee = rankAtLeast(actor.rank, "A") ? 0 : listingFee(unitPrice, qty);
   if (actor.curGold < fee) return { error: `등록 수수료가 부족합니다. (${fee.toLocaleString()}G 필요)` };
   const nextGold = actor.curGold - fee;
   const isSkillBookListing = source === "basic" && category === "스킬북";
@@ -898,7 +898,7 @@ export async function createListingCore(
 
   return {
     ok: `${name} x${qty}을(를) 개당 ${unitPrice.toLocaleString()}G에 등록했어요. ${
-      fee > 0 ? `(수수료 -${fee.toLocaleString()}G)` : "(S랭크 — 수수료 면제)"
+      fee > 0 ? `(등록 수수료 -${fee.toLocaleString()}G)` : "(A랭크+ — 등록 수수료 면제)"
     }`,
   };
 }

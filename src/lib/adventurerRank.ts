@@ -24,23 +24,33 @@ export const GUILD_LOCATION_ID = "모험가길드";
 // 수치를 바꾸면 아래 '적용 지점'도 같이 고칠 것.
 export type AdventurerRankPerks = { rank: string; fame: number; perks: string[] };
 
+// 낮은 랭크 → 높은 랭크 순. 표시는 역순(S가 위)이지만 배열은 등급 순서를 유지한다.
 export const ADVENTURER_RANK_PERKS: AdventurerRankPerks[] = [
-  // auctionSlots / maxQuestItemRank
-  { rank: "D", fame: ADVENTURER_RANK_THRESHOLDS.D, perks: ["경매 등록 5칸", "의뢰 품목 2성까지"] },
-  // + storageWeightBonus / rerollCap
+  // auctionSlots
+  { rank: "D", fame: ADVENTURER_RANK_THRESHOLDS.D, perks: ["경매장 등록 5칸"] },
+  // + storageWeightBonus 10 / guildQuests.ts rerollCap 4
   {
     rank: "C",
     fame: ADVENTURER_RANK_THRESHOLDS.C,
-    perks: ["경매 등록 10칸", "창고 중량 +10", "의뢰 리롤권 4개", "의뢰 품목 3성까지"],
+    perks: ["경매장 등록 10칸", "창고 중량 +10", "의뢰 리롤권 4개"],
   },
-  // + dungeon.ts WEEKLY_LIMIT +1
-  { rank: "B", fame: ADVENTURER_RANK_THRESHOLDS.B, perks: ["경매 등록 15칸", "던전 주간 4회"] },
-  { rank: "A", fame: ADVENTURER_RANK_THRESHOLDS.A, perks: ["경매 등록 20칸", "의뢰 품목 4성까지"] },
-  // + auctionServer.ts listingFee 면제
+  // + guildQuests.ts questOfferCount 4 (기본 3지선다)
+  {
+    rank: "B",
+    fame: ADVENTURER_RANK_THRESHOLDS.B,
+    perks: ["경매장 등록 15칸", "창고 중량 +10", "의뢰 4지선다"],
+  },
+  // + dungeon.ts WEEKLY_LIMIT +1 / auctionServer.ts listingFee 면제
+  {
+    rank: "A",
+    fame: ADVENTURER_RANK_THRESHOLDS.A,
+    perks: ["경매장 등록 20칸", "주간 던전 입장 횟수 +1", "경매장 등록 수수료 무료"],
+  },
+  // + storageWeightBonus 20. '전설의 모험가' 는 아직 효과 미정 — 표시만 한다.
   {
     rank: "S",
     fame: ADVENTURER_RANK_THRESHOLDS.S,
-    perks: ["경매 등록 25칸", "경매 수수료 무료", "의뢰 품목 5성까지"],
+    perks: ["경매장 등록 25칸", "창고 중량 +20", "고유 버프 '전설의 모험가'"],
   },
 ];
 
@@ -84,8 +94,9 @@ export function rankAtLeast(rank: string | null | undefined, min: string): boole
   return order.indexOf(normalizeAdventurerRank(rank)) >= order.indexOf(min);
 }
 
-// C랭크+ 길드 특혜 — 창고 최대 중량 +10
+// 길드 특혜 — 창고 최대 중량. C~A +10, S +20.
 export function storageWeightBonus(rank: string | null | undefined): number {
+  if (rankAtLeast(rank, "S")) return 20;
   return rankAtLeast(rank, "C") ? 10 : 0;
 }
 

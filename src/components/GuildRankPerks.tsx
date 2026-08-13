@@ -6,6 +6,7 @@ import {
   adventurerRankGoal,
   nextAdventurerRank,
   normalizeAdventurerRank,
+  rankAtLeast,
 } from "@/lib/adventurerRank";
 
 type Props = { rank: string | null | undefined; fame: number };
@@ -15,9 +16,10 @@ type Props = { rank: string | null | undefined; fame: number };
 export default function GuildRankPerks({ rank, fame }: Props) {
   const [open, setOpen] = useState(false);
   const current = normalizeAdventurerRank(rank);
-  const currentIndex = ADVENTURER_RANK_PERKS.findIndex((r) => r.rank === current);
   const next = nextAdventurerRank(current);
   const goal = adventurerRankGoal(current);
+  // 위에서부터 S → D. 목표 등급이 먼저 눈에 들어오는 편이 읽기 좋다.
+  const rows = [...ADVENTURER_RANK_PERKS].reverse();
 
   return (
     <>
@@ -56,9 +58,9 @@ export default function GuildRankPerks({ rank, fame }: Props) {
           </p>
 
           <ul className="space-y-1.5">
-            {ADVENTURER_RANK_PERKS.map((row, i) => {
+            {rows.map((row) => {
               const isCurrent = row.rank === current;
-              const unlocked = i <= currentIndex;
+              const unlocked = rankAtLeast(current, row.rank);
               return (
                 <li
                   key={row.rank}
