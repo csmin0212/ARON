@@ -535,7 +535,7 @@ export default async function WorldPage() {
       ? `${computedBagWeight ?? sheetInventory.curWeight} / ${sheetInventory.maxWeight}`
       : null;
   const storage: StorageView = {
-    maxWeight: (storageBox?.maxWeight ?? 30) + storageWeightBonus(sheet.adventurerRank), // C랭크+ +10
+    maxWeight: (storageBox?.maxWeight ?? 30) + storageWeightBonus(sheet.adventurerRank), // 랭크 특혜
     usedWeight:
       storageBox?.entries.reduce(
         (sum, item) => sum + (item.weight ?? 0) * Math.max(0, item.qty),

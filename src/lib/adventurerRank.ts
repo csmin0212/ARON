@@ -94,10 +94,13 @@ export function rankAtLeast(rank: string | null | undefined, min: string): boole
   return order.indexOf(normalizeAdventurerRank(rank)) >= order.indexOf(min);
 }
 
-// 길드 특혜 — 창고 최대 중량. C~A +10, S +20.
+// 길드 특혜 — 창고 최대 중량 (누적 합계).
+// ADVENTURER_RANK_PERKS 의 '창고 중량 +N' 은 그 랭크가 '더해주는' 값이라 여기서 누적한다.
+// 예전엔 C~A 가 전부 +10 이라 C→B 승급 시 창고가 그대로였다 — 팝업엔 B 특혜로 적혀 있는데도.
+const STORAGE_WEIGHT_BONUS: Record<string, number> = { D: 0, C: 10, B: 20, A: 20, S: 40 };
+
 export function storageWeightBonus(rank: string | null | undefined): number {
-  if (rankAtLeast(rank, "S")) return 20;
-  return rankAtLeast(rank, "C") ? 10 : 0;
+  return STORAGE_WEIGHT_BONUS[normalizeAdventurerRank(rank)] ?? 0;
 }
 
 // 경매장 동시 등록 슬롯 — 랭크업마다 +5 (D 5 → C 10 → B 15 → A 20 → S 25)

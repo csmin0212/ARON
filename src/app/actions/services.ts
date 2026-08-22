@@ -845,7 +845,7 @@ export async function depositToStorage(
   const box = await storageBox(ctx.userId);
   const usedWeight = await storageWeight(box.id);
   const movingWeight = (item.weight ?? 0) * qty;
-  const boxLimit = box.maxWeight + storageWeightBonus(ctx.adventurerRank); // C랭크+ +10
+  const boxLimit = box.maxWeight + storageWeightBonus(ctx.adventurerRank); // 랭크 특혜 (C+10 B+20 S+40)
   if (usedWeight + movingWeight > boxLimit) {
     return { error: `창고 중량이 부족합니다. (${usedWeight + movingWeight}/${boxLimit})` };
   }

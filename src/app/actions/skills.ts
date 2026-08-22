@@ -11,6 +11,7 @@ import {
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { consumeSkillBookToken, hasSkillBookToken } from "@/lib/skillbook";
+import { sameClass } from "@/lib/charClass";
 
 export type SkillBookState = { ok?: string; error?: string } | undefined;
 
@@ -51,8 +52,8 @@ export async function useSkillBook(
   const requiredClass = skill.job?.trim();
   if (requiredClass) {
     const myClasses = await readSheetClasses(sheet.sheetTab);
-    const norm = (s: string) => s.replace(/\s+/g, "");
-    const canLearn = myClasses.some((c) => norm(c) === norm(requiredClass));
+    // 표기 흔들림(일루저니스트 / 일루져니스트)을 흡수해서 대조한다
+    const canLearn = myClasses.some((c) => sameClass(c, requiredClass));
     if (!canLearn) {
       return {
         error: `${requiredClass} 전용 스킬이에요. (내 클래스: ${myClasses.join(" / ") || "없음"})`,
