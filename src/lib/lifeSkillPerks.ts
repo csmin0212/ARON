@@ -200,6 +200,25 @@ export function expForNext(level: number): number {
   return Math.round(20 * Math.pow(level, 1.6));
 }
 
+// 생활(낚시·채집·채광) 후반 구간 배율.
+//
+// 4성 exp 가 3성의 12배(106 → 1333)라, 4성이 열리는 Lv31 부터 기대 exp 가 3배로 뛴다.
+// 그래서 레벨이 오를수록 오히려 레벨업이 빨라지는 절벽이 있었다 (행운 10 · 채집 기준
+// 레벨업 필요 횟수: Lv30 199회 → Lv31 79회, Lv60 228회 → Lv61 74회).
+// 확률을 건드리지 않고 요구 exp 쪽에서 잡는다.
+//
+// 요리·대장·연금은 productionExpForNext 가 따로 계산하므로 이 배율을 타지 않는다.
+const LIFE_LATE_BANDS: { min: number; mult: number }[] = [
+  { min: 61, mult: 8 },
+  { min: 50, mult: 3 },
+  { min: 45, mult: 2 },
+];
+
+export function lifeExpForNext(level: number): number {
+  const band = LIFE_LATE_BANDS.find((b) => level >= b.min);
+  return Math.max(1, Math.round(expForNext(level) * (band?.mult ?? 1)));
+}
+
 export type ProductionSkillKind = "cooking" | "smithing" | "alchemy";
 
 const PRODUCTION_EXP_MULTIPLIER: Record<ProductionSkillKind, { early: number; late: number }> = {
@@ -581,8 +600,8 @@ export function applyExp(
   const prog = progressOf(state, kind);
   prog.exp += gained;
   const leveled: number[] = [];
-  while (prog.exp >= expForNext(prog.level)) {
-    prog.exp -= expForNext(prog.level);
+  while (prog.exp >= lifeExpForNext(prog.level)) {
+    prog.exp -= lifeExpForNext(prog.level);
     prog.level += 1;
     leveled.push(prog.level);
     // 특성은 Lv4부터 3레벨마다(4·7·10·13·16·19…). (레벨-1)%3==0, 시작 레벨1은 제외.

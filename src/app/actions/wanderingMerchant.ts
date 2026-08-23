@@ -19,6 +19,7 @@ import {
 import { findLifeSkillItem, isSeaLifeItem, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { prisma } from "@/lib/prisma";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
+import { grantSkillBookTokenInTransaction, isSkillBookItem } from "@/lib/skillbook";
 import { postSystem } from "@/lib/play";
 import {
   MYSTERY_PARCHMENT_NAME,
@@ -211,6 +212,12 @@ export async function buyWanderingMerchantItem(
           await tx.inventoryEntry.create({
             data: { userId: user.id, itemId: basicItem.itemId, qty: 1, meta: null },
           });
+        }
+        // 스킬북이면 사용 권한 토큰까지 같이 발급한다.
+        // 이 상인은 Item 테이블의 아무 아이템이나 취급할 수 있어서, 나중에 스킬북을
+        // 매대에 올리면 아이템만 들어오고 '정상 획득' 기록이 없어 못 쓰게 된다.
+        if (await isSkillBookItem(basicItem.itemId)) {
+          await grantSkillBookTokenInTransaction(tx, user.id, basicItem.itemId, 1);
         }
       }
     });

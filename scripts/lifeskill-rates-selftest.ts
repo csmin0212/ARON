@@ -9,6 +9,9 @@
 import {
   adjustedRankWeights,
   baseWeightsFor,
+  expForNext,
+  lifeExpForNext,
+  productionExpForNext,
   toolRankRateBonus,
   type LifeMods,
 } from "../src/lib/lifeSkillPerks";
@@ -214,6 +217,29 @@ console.log("== 12. Lv61+ 5성은 기본 0 — 행운으로만 열린다 ==");
       weightsAt(kind, 99, mods(0, { rank0Down: 10, rank1Down: 20, rank2Down: 20 }))[5],
       0,
     );
+  }
+}
+
+console.log("== 13. 생활 레벨 곡선 — 후반 구간 배율 ==");
+{
+  // 4성 exp 가 3성의 12배라 4성이 열리는 구간부터 레벨업이 오히려 빨라졌다.
+  // 확률은 그대로 두고 요구 exp 로 잡는다 (45~49 x2 / 50~60 x3 / 61+ x8).
+  for (const [level, mult] of [[44, 1], [45, 2], [49, 2], [50, 3], [60, 3], [61, 8], [99, 8]] as const) {
+    check(`Lv${level} 배율 x${mult}`, lifeExpForNext(level), Math.round(expForNext(level) * mult));
+  }
+  // 45 이후로는 요구 exp 가 절대 줄지 않는다
+  let prev = 0;
+  let dips = 0;
+  for (let level = 45; level <= 120; level++) {
+    const need = lifeExpForNext(level);
+    if (need < prev) dips++;
+    prev = need;
+  }
+  check("45~120 요구 exp 단조 증가", dips, 0);
+  // 요리·대장·연금은 이 배율을 타지 않는다
+  for (const kind of ["cooking", "smithing", "alchemy"] as const) {
+    const ratio = productionExpForNext(kind, 61) / productionExpForNext(kind, 60);
+    check(`${kind} 는 생활 배율 무영향`, ratio < 1.2, true);
   }
 }
 

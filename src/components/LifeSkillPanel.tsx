@@ -4,7 +4,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { chooseLifePerk, type LifeActionState } from "@/app/actions/life";
 import {
   computeMods,
-  expForNext,
+  lifeExpForNext,
   lifeBagLimit,
   lifeBagWeight,
   PERK_EVERY,
@@ -342,7 +342,7 @@ export default function LifeSkillPanel({
           const need =
             key === "cooking" || key === "smithing" || key === "alchemy"
               ? productionExpForNext(key, prog.level)
-              : expForNext(prog.level);
+              : lifeExpForNext(prog.level);
           const pct = Math.min(100, Math.round((prog.exp / need) * 100));
           return (
             <div key={kind} className="rounded-2xl border border-line bg-subtle/50 p-4">

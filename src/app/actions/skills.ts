@@ -64,7 +64,11 @@ export async function useSkillBook(
   // 보유 확인 — 서버가 정상 지급한 스킬북 토큰만 인정 (시트 위조로는 얻을 수 없음)
   const bookIds = [skill.sourceItem, ...ids].filter((v): v is string => !!v);
   if (!(await hasSkillBookToken(user.id, bookIds))) {
-    return { error: "정상적으로 획득한 스킬북이 없어요. (던전 등에서 획득해야 사용할 수 있어요)" };
+    // 시트에 손으로 적은 스킬북은 토큰이 없어 여기서 걸린다. 창고에 넣어서 망가진 게 아니라
+    // 처음부터 토큰이 없던 것 — 문구로 구분이 되게 한다.
+    return {
+      error: "시트에 직접 적은 스킬북은 사용할 수 없어요. GM에게 우편 재발송을 요청해주세요.",
+    };
   }
 
   // 시트에 스킬 기입 — 중복·가득참은 여기서 막고, 실패 시 소모하지 않음
