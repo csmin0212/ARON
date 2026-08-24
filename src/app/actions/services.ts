@@ -2574,16 +2574,30 @@ function normalizedSecretText(value: string): string {
   return value.replace(/\s+/g, "").toLowerCase();
 }
 
+// 병에서 뽑히지 않는 키워드.
+// '라카노아를 기억하라' 는 의문의 양피지가 주는 몫이고, '어둠의 시대'(잊힌 제단)는
+// 병으로 풀지 않기로 했다.
+const MESSAGE_BOTTLE_EXCLUDED_KEYWORDS = ["라카노아를 기억하라", "어둠의 시대"];
+
+// 병은 히든 장소 발견 키워드를 하나 뽑아준다.
+// 이미 발견한 장소도 후보에 남긴다 — 꽝 없이 '뽑는 맛'을 유지하려는 의도 (중복이 곧 꽝).
+// 키워드가 하나도 없으면 분위기 문구로 떨어진다.
 async function randomMessageBottleReading(): Promise<string> {
-  const hiddenKeywords = await prisma.location.findMany({
+  const excluded = new Set(MESSAGE_BOTTLE_EXCLUDED_KEYWORDS.map(normalizedSecretText));
+  const hidden = await prisma.location.findMany({
     where: { hidden: true, keyword: { not: null } },
     select: { keyword: true },
   });
-  const blocked = new Set(hiddenKeywords.map((location) => normalizedSecretText(location.keyword ?? "")));
-  const safeReadings = MESSAGE_BOTTLE_READINGS.filter(
-    (reading) => !blocked.has(normalizedSecretText(reading)),
-  );
-  const pool = safeReadings.length > 0 ? safeReadings : MESSAGE_BOTTLE_READINGS;
+  const pool = [
+    ...new Set(
+      hidden
+        .map((location) => (location.keyword ?? "").trim())
+        .filter((keyword) => keyword && !excluded.has(normalizedSecretText(keyword))),
+    ),
+  ];
+  if (pool.length === 0) {
+    return MESSAGE_BOTTLE_READINGS[Math.floor(Math.random() * MESSAGE_BOTTLE_READINGS.length)];
+  }
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
