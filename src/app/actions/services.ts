@@ -1553,6 +1553,22 @@ export async function cookDish(_prev: CookingState, formData: FormData): Promise
   };
 }
 
+// 요리 이름 → {기본이름, 등급}. 레시피 표를 먼저 보고 나서 이름을 자른다.
+//
+// parseCookedName 은 첫 단어가 '의' 로 끝나면 "{닉네임}의 ..." 장인작 서명으로 본다.
+// 그래서 '죽음의 나팔 촛불스튜' 가 base="나팔 촛불스튜" / grade="장인" 으로 잘려
+// 레시피를 못 찾고 판매가 막혔다(행운의 계란찜·광부의 소금 주먹밥·대장장이의 만찬·
+// 삼도의 행운 성찬도 같은 증상). 이름 그대로가 레시피면 서명 해석을 하지 않는다.
+async function resolveCookedName(itemName: string): Promise<{ base: string; grade: string | null }> {
+  const trimmed = itemName.trim();
+  const exact = await prisma.cookingRecipe.findFirst({
+    where: { resultName: trimmed },
+    select: { resultName: true },
+  });
+  if (exact) return { base: trimmed, grade: null };
+  return parseCookedName(trimmed);
+}
+
 export async function sellCookedFood(
   _prev: CookingState,
   formData: FormData,
@@ -1566,7 +1582,7 @@ export async function sellCookedFood(
   if (!itemName) return { error: "판매할 요리가 올바르지 않습니다." };
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };
 
-  const { base, grade } = parseCookedName(itemName);
+  const { base, grade } = await resolveCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
     select: { sellPrice: true, ingredientsJson: true },
@@ -2759,7 +2775,7 @@ export async function useCookingItem(
     return { error: "장비류 아이템은 사용하기로 소비할 수 없어요." };
   }
 
-  const { base, grade } = parseCookedName(itemName);
+  const { base, grade } = await resolveCookedName(itemName);
   const recipe = await prisma.cookingRecipe.findFirst({
     where: { resultName: base },
     select: { effect: true, duration: true, tags: true },
@@ -3998,8 +4014,9 @@ export async function upgradeWeapon(
   }
   const nextEnhancement = enhancementLevel(weapon.name) + 1;
   const materialName = STEEL_FRAGMENT;
-  if (nextEnhancement > 4) {
-    return { error: "현재는 +4까지만 강화할 수 있습니다." };
+  // 강화는 강철 파편 1회(+1)가 마지노선. 그 위 단계는 재료 설계가 아직 없다.
+  if (nextEnhancement > 1) {
+    return { error: "강화는 +1까지만 가능합니다." };
   }
   if (itemQty(ctx.inv, materialName) < weaponLevel) {
     return { error: `${materialName}이 부족합니다. (${itemQty(ctx.inv, materialName)}/${weaponLevel})` };

@@ -242,8 +242,20 @@ export function stripCraftSerial(name: string): string {
   return `${trimmed.slice(0, m.index)}${m[2]}`.trim();
 }
 
+// 고유번호는 꼬리표보다 '앞'에 온다 — 이름 = 기본이름 + #번호 + 꼬리표.
+//
+// 예전엔 번호를 무조건 맨 뒤에 붙여서, 이미 강화된 이름에 번호를 발급하면
+// '묵사발!(+1) #U9QN' 처럼 꼬리표가 번호 앞에 갇혔다. itemTags 는 이름 '끝'의
+// 괄호만 보므로 그 (+1) 이 안 보이게 되고, 다음 강화가 뒤에 (+2) 를 새로 붙여
+// 꼬리표가 두 덩어리로 갈라진다(강화 단계가 리셋되고 효과 줄만 쌓인다).
+const TRAILING_TAGS = /(?:\s*(?:\([^()]*\)|\[[^\][]*\]))*$/;
+
 export function withCraftSerial(name: string, serial: string): string {
-  return `${stripCraftSerial(name)} #${serial}`;
+  const stripped = stripCraftSerial(name);
+  const match = TRAILING_TAGS.exec(stripped);
+  const tail = match ? match[0].trim() : "";
+  const base = (match ? stripped.slice(0, match.index) : stripped).trim();
+  return `${base} #${serial}${tail}`;
 }
 
 export function randomCraftSerial(rand: () => number = Math.random): string {
