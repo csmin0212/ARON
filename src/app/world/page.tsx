@@ -494,7 +494,7 @@ export default async function WorldPage() {
       : Promise.resolve([]),
   ]);
   const itemCatalog = new Map(invItemRows.map((it) => [it.id, it]));
-  const skillBookNames = [
+  const tokenSkillBookNames = [
     ...new Set([...tokenItemIds, ...skillBookItems.map((item) => item.name)]),
   ];
 
@@ -525,6 +525,24 @@ export default async function WorldPage() {
       }];
     });
   const bagItems = [...rawBagItems, ...tokenOnlySkillBookItems].filter((item) => !lifeSkillItemKind(item.name));
+
+  // '스킬 습득' 버튼은 토큰이 아니라 '이 아이템이 스킬북인가' 로 켠다.
+  // 토큰으로 켜면 정상 획득이 아닌 스킬북은 버튼 자체가 사라져, 유저 눈엔 이유 없이
+  // 버튼이 없는 것처럼 보인다(스킬북17 사례 — 흰산, 토큰 0). 토큰 검사는 서버가
+  // 그대로 하므로 버튼을 보여줘도 위조로 습득되지 않는다. 거절 사유만 전달된다.
+  const bagItemNames = [...new Set(bagItems.map((item) => item.name.trim()).filter(Boolean))];
+  const bagBookSkills = bagItemNames.length
+    ? await prisma.combatSkill.findMany({
+        where: { sourceItem: { in: bagItemNames } },
+        select: { sourceItem: true },
+      })
+    : [];
+  const skillBookNames = [
+    ...new Set([
+      ...tokenSkillBookNames,
+      ...bagBookSkills.map((skill) => skill.sourceItem).filter((v): v is string => !!v),
+    ]),
+  ];
   const bagGold =
     sheet.curGold != null
       ? `${sheet.curGold.toLocaleString()}G`
