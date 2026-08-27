@@ -22,7 +22,7 @@ import {
 } from "@/lib/lifeSkillPerks";
 import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
-import { skillBookTokenItemIds, skillBookTokenQty, transferSkillBookTokens } from "@/lib/skillbook";
+import { skillBookTokenItemIds, transferSkillBookTokens } from "@/lib/skillbook";
 
 export type TradeActionState = {
   ok?: boolean;
@@ -293,12 +293,9 @@ async function validateSkillBookTokens(userId: string, items: TradeSideItem[]): 
     else needed.set(key, { name: item.name, qty: item.qty });
   }
 
-  for (const item of needed.values()) {
-    const have = await skillBookTokenQty(userId, item.name);
-    if (have < item.qty) {
-      return `${item.name}의 정상 지급 기록이 부족합니다. (보유 ${have} / 필요 ${item.qty})`;
-    }
-  }
+  // 스킬북 '정상 지급 기록' 검사는 없앴다 — 시트로 들어온 스킬북도 거래할 수 있다.
+  // 토큰이 있으면 transferSkillBookTokens 가 같이 옮기고, 없으면 아이템만 옮긴다.
+  void needed;
   return null;
 }
 

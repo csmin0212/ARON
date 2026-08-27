@@ -30,7 +30,6 @@ import {
   isSkillBookItem,
   SKILLBOOK_META,
   skillBookTokenItemIds,
-  skillBookTokenQty,
 } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
@@ -628,16 +627,9 @@ export async function getSellableItems(userId: string): Promise<SellableItem[]> 
       resolveFloor(r.name, r.source, r.effect),
       resolveCategory(r.name, r.source, r.effect),
     ]);
-    let qty = r.qty;
-    let blockedReason: string | undefined;
-    if (r.source === "basic" && category === "스킬북") {
-      const tokenQty = await skillBookTokenQty(userId, r.name);
-      // 서버가 지급한 기록(토큰)이 없는 스킬북은 못 판다. 예전에는 여기서 목록에서 빼버려서
-      // 가방에는 있는데 판매창에는 없는, 원인을 알 수 없는 상태가 됐다 — 이유를 붙여 보여준다.
-      if (tokenQty <= 0) blockedReason = "지급 기록이 없어 거래할 수 없어요. GM에게 문의하세요.";
-      else qty = Math.min(qty, tokenQty);
-    }
-    out.push({ ...r, qty, floor, category, blockedReason });
+    // 스킬북 '지급 기록(토큰)' 으로 수량을 깎거나 막지 않는다.
+    // 시트로 들어온 스킬북이 쓰지도 팔지도 못하는 물건이 되는 사고가 반복돼 걷어냈다.
+    out.push({ ...r, qty: r.qty, floor, category });
   }
   return out.sort(
     (a, b) =>
@@ -819,8 +811,7 @@ export async function createListingCore(
     const ref = firstInvItem(actor.inv, name);
     category = await resolveCategory(name, source, ref?.effect);
     if (category === "스킬북") {
-      const tokenQty = await skillBookTokenQty(userId, name);
-      if (tokenQty < qty) return { error: `${name}의 정상 지급 기록이 부족해서 등록할 수 없어요.` };
+
       const item = await prisma.item.findFirst({
         where: { OR: [{ id: name }, { name }] },
         select: { desc: true, weight: true },
@@ -862,11 +853,9 @@ export async function createListingCore(
     if (!removed) return { error: `${name} 수량이 부족합니다.` };
   }
 
-  const txResult = await prisma.$transaction(async (tx) => {
-    if (isSkillBookListing) {
-      const consumed = await consumeSkillBookTokensInTransaction(tx, userId, name, qty);
-      if (!consumed) return { error: `${name}의 정상 지급 기록이 부족해서 등록할 수 없어요.` };
-    }
+  await prisma.$transaction(async (tx) => {
+    // 토큰이 있으면 같이 넘긴다. 없다고 막지는 않는다 — 시트로 들어온 스킬북도 거래 가능.
+    if (isSkillBookListing) await consumeSkillBookTokensInTransaction(tx, userId, name, qty);
     if (source === "basic") await decrementDbInventoryInTransaction(tx, userId, name, qty);
     await tx.characterSheet.update({
       where: { userId },
@@ -890,9 +879,7 @@ export async function createListingCore(
         expiresAt: listingExpiry(),
       },
     });
-    return {};
   });
-  if (txResult.error) return { error: txResult.error };
   void enqueueSheetGoldSync(actor.userId);
   void pushInventoryToSheet(actor.tab, actor.inv);
 
@@ -1011,8 +998,7 @@ export async function instantSellCore(
     const ref = firstInvItem(actor.inv, name);
     category = await resolveCategory(name, source, ref?.effect);
     if (category === "스킬북") {
-      const tokenQty = await skillBookTokenQty(userId, name);
-      if (tokenQty < qty) return { error: `${name}의 정상 지급 기록이 부족해서 매각할 수 없어요.` };
+
       const item = await prisma.item.findFirst({
         where: { OR: [{ id: name }, { name }] },
         select: { desc: true },
@@ -1041,11 +1027,9 @@ export async function instantSellCore(
 
   const gain = floor * qty;
   const nextGold = actor.curGold + gain;
-  const txResult = await prisma.$transaction(async (tx) => {
-    if (isSkillBookSale) {
-      const consumed = await consumeSkillBookTokensInTransaction(tx, userId, name, qty);
-      if (!consumed) return { error: `${name}의 정상 지급 기록이 부족해서 매각할 수 없어요.` };
-    }
+  await prisma.$transaction(async (tx) => {
+    // 토큰이 있으면 같이 넘긴다. 없다고 막지는 않는다 — 시트로 들어온 스킬북도 거래 가능.
+    if (isSkillBookSale) await consumeSkillBookTokensInTransaction(tx, userId, name, qty);
     if (source === "basic") await decrementDbInventoryInTransaction(tx, userId, name, qty);
     await tx.characterSheet.update({
       where: { userId },
@@ -1056,9 +1040,7 @@ export async function instantSellCore(
         gold: `${nextGold}G`,
       },
     });
-    return {};
   });
-  if (txResult.error) return { error: txResult.error };
   void enqueueSheetGoldSync(actor.userId);
   if (source === "basic") {
     void pushInventoryToSheet(actor.tab, actor.inv);

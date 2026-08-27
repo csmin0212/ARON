@@ -10,7 +10,7 @@ import {
   writeSkillRowToSheet,
   type SheetInventory,
 } from "@/lib/googleSheets";
-import { consumeSkillBookToken, hasSkillBookToken } from "@/lib/skillbook";
+import { consumeSkillBookToken } from "@/lib/skillbook";
 import { sameClass } from "@/lib/charClass";
 
 export type SkillBookState = { ok?: string; error?: string } | undefined;
@@ -61,15 +61,11 @@ export async function useSkillBook(
     }
   }
 
-  // 보유 확인 — 서버가 정상 지급한 스킬북 토큰만 인정 (시트 위조로는 얻을 수 없음)
+  // 예전엔 '정상 지급 토큰' 이 없으면 여기서 막았다. 시트로 들어온 스킬북(GM 지급 등)이
+  // 쓰지도 팔지도 못하는 물건이 되는 사고가 반복돼 차단을 걷어냈다.
+  // 토큰 기록 자체는 남긴다 — 던전 드랍처럼 시트에 아직 안 적힌 스킬북을 가방에 띄우는
+  // 근거이자(world/page.tsx tokenOnlySkillBookItems) 거래 시 같이 옮겨가는 값이다.
   const bookIds = [skill.sourceItem, ...ids].filter((v): v is string => !!v);
-  if (!(await hasSkillBookToken(user.id, bookIds))) {
-    // 시트에 손으로 적은 스킬북은 토큰이 없어 여기서 걸린다. 창고에 넣어서 망가진 게 아니라
-    // 처음부터 토큰이 없던 것 — 문구로 구분이 되게 한다.
-    return {
-      error: "시트에 직접 적은 스킬북은 사용할 수 없어요. GM에게 우편 재발송을 요청해주세요.",
-    };
-  }
 
   // 시트에 스킬 기입 — 중복·가득참은 여기서 막고, 실패 시 소모하지 않음
   const write = await writeSkillRowToSheet(sheet.sheetTab, {
@@ -89,7 +85,7 @@ export async function useSkillBook(
   });
   if (!write.ok) return { error: write.error ?? "스킬을 시트에 기록하지 못했어요." };
 
-  // 소모 — 서버 토큰(정본) 차감 + 시트 표시용 가방/칸 정리
+  // 토큰이 있으면 같이 정리한다 (없어도 습득은 이미 성공 — 차단하지 않는다)
   await consumeSkillBookToken(user.id, bookIds);
   const inv = parseInv(sheet.invJson);
   const line = inv.items.find((i) => i.name.trim() === itemName);
