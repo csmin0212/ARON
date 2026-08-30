@@ -7,7 +7,7 @@ import { freshAp, postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant, setStat } from "@/lib/achievements";
 import { rollDice } from "@/lib/dice";
 import { dungeonWeekKey } from "@/lib/world";
-import { normalizeAdventurerRank, rankAtLeast } from "@/lib/adventurerRank";
+import { dungeonWeeklyLimit } from "@/lib/adventurerRank";
 import { ABILITY_LABELS_KO, pickDrop, type DropEntry } from "@/lib/gamedata";
 import { grantSkillBookToken, isSkillBookItem } from "@/lib/skillbook";
 import { pickSkillbookInFamily } from "@/lib/guildQuestsServer";
@@ -22,7 +22,6 @@ import {
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
 
 const DUNGEON_AP = 60;
-const WEEKLY_LIMIT = 3;
 const EXP_CELL = "N9"; // 시트 경험점 칸 (수식 보존하고 +N)
 
 type ItemAward = { itemId: string; qty: number };
@@ -155,11 +154,10 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   if (!dungeon) return { error: "던전을 찾지 못했어요." };
   if (sheet.locationId !== dungeon.locationId) return { error: "이 던전을 도전할 수 있는 장소가 아니에요." };
 
-  // 주간 캡 — A랭크+ 길드 특혜로 +1
+  // 주간 캡 — B랭크 +1, A랭크 +1 (기본 3 · B 4 · A/S 5)
   const week = dungeonWeekKey();
   const runs = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
-  const weeklyLimit =
-    WEEKLY_LIMIT + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "A") ? 1 : 0);
+  const weeklyLimit = dungeonWeeklyLimit(sheet.adventurerRank);
   if (runs >= weeklyLimit) {
     return { error: `이번 주 던전 도전을 모두 사용했어요. (${weeklyLimit}/${weeklyLimit}) 월요일 0시(일요일 자정)에 초기화돼요.` };
   }

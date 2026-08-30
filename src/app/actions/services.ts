@@ -92,6 +92,7 @@ import {
 } from "@/lib/dailyEvents";
 import {
   adventurerRankFloor,
+  dungeonWeeklyLimit,
   adventurerRankFromFame,
   adventurerRankGoal,
   nextAdventurerRank,
@@ -3216,8 +3217,7 @@ export async function useCookingItem(
     if (currentRuns <= 0) return { error: "회복할 던전 횟수가 없어요." };
 
     const nextRuns = Math.max(0, currentRuns - dungeonRunRecovery);
-    const weeklyLimit =
-      3 + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "A") ? 1 : 0);
+    const weeklyLimit = dungeonWeeklyLimit(sheet.adventurerRank);
     const beforeLeft = Math.max(0, weeklyLimit - currentRuns);
     const afterLeft = Math.max(0, weeklyLimit - nextRuns);
     ok = `${itemName}을 사용했습니다. 이번 주 남은 던전 횟수 ${beforeLeft} → ${afterLeft}`;

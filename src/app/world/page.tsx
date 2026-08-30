@@ -68,6 +68,7 @@ import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { buildDetectorView, type DetectorView } from "@/lib/lifeDetector";
 import { SKILLBOOK_META } from "@/lib/skillbook";
 import {
+  dungeonWeeklyLimit,
   GUILD_LOCATION_ID,
   normalizeAdventurerRank,
   rankAtLeast,
@@ -1355,7 +1356,7 @@ export default async function WorldPage() {
   let dungeonView: DungeonView[] = [];
   let dungeonAbilities: DungeonAbility[] = [];
   let dungeonRunsLeft = 0;
-  let dungeonWeeklyLimit = 3;
+  let dungeonWeekly = 3;
   if (dungeonsHere.length > 0) {
     dungeonView = dungeonsHere.map((d) => {
       let drops: DropEntry[] = [];
@@ -1395,9 +1396,8 @@ export default async function WorldPage() {
     }));
     const week = dungeonWeekKey();
     const used = sheet.dungeonWeek === week ? sheet.dungeonRuns : 0;
-    dungeonWeeklyLimit =
-      3 + (rankAtLeast(normalizeAdventurerRank(sheet.adventurerRank), "A") ? 1 : 0);
-    dungeonRunsLeft = Math.max(0, dungeonWeeklyLimit - used);
+    dungeonWeekly = dungeonWeeklyLimit(sheet.adventurerRank);
+    dungeonRunsLeft = Math.max(0, dungeonWeekly - used);
   }
 
   let adminLocations: { id: string; name: string }[] = [];
@@ -1674,7 +1674,7 @@ export default async function WorldPage() {
           <DungeonPanel
             dungeons={dungeonView}
             runsLeft={dungeonRunsLeft}
-            weeklyLimit={dungeonWeeklyLimit}
+            weeklyLimit={dungeonWeekly}
             abilities={dungeonAbilities}
           />
 

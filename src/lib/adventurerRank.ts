@@ -38,7 +38,7 @@ export const ADVENTURER_RANK_PERKS: AdventurerRankPerks[] = [
   {
     rank: "B",
     fame: ADVENTURER_RANK_THRESHOLDS.B,
-    perks: ["경매장 등록 15칸", "창고 중량 +10", "의뢰 4지선다"],
+    perks: ["경매장 등록 15칸", "창고 중량 +10", "의뢰 4지선다", "주간 던전 입장 횟수 +1"],
   },
   // + dungeon.ts WEEKLY_LIMIT +1 / auctionServer.ts listingFee 면제
   {
@@ -92,6 +92,19 @@ export function adventurerRankGoal(rank: string | null | undefined): number {
 export function rankAtLeast(rank: string | null | undefined, min: string): boolean {
   const order = ADVENTURER_RANKS as readonly string[];
   return order.indexOf(normalizeAdventurerRank(rank)) >= order.indexOf(min);
+}
+
+// 길드 특혜 — 주간 던전 입장 횟수. B 에서 +1, A 에서 다시 +1 (누적).
+// 기본 3 · B 4 · A/S 5. 세 곳(dungeon 입장 판정 · 포션 회복 안내 · 월드 표시)이
+// 같은 식을 쓰고 있었어서 여기로 모았다.
+export const DUNGEON_WEEKLY_BASE = 3;
+
+export function dungeonWeeklyLimit(rank: string | null | undefined): number {
+  return (
+    DUNGEON_WEEKLY_BASE +
+    (rankAtLeast(rank, "B") ? 1 : 0) +
+    (rankAtLeast(rank, "A") ? 1 : 0)
+  );
 }
 
 // 길드 특혜 — 창고 최대 중량 (누적 합계).

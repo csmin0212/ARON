@@ -15,6 +15,7 @@ import {
   toolRankRateBonus,
   type LifeMods,
 } from "../src/lib/lifeSkillPerks";
+import { dungeonWeeklyLimit } from "../src/lib/adventurerRank";
 
 let passCount = 0;
 let failCount = 0;
@@ -180,9 +181,10 @@ console.log("== 9. 누적 예시 (Lv15 낚시) ==");
 
 console.log("== 10. 레벨 구간 기본값 ==");
 {
-  check("Lv1~30 채광(보정 없음)", baseWeightsFor(15, "채광"), [30, 40, 25, 5, 0, 0]);
-  check("Lv31~60 채광", baseWeightsFor(45, "채광"), [20, 35, 35, 9, 1, 0]);
-  check("Lv61+ 채광", baseWeightsFor(99, "채광"), [10, 30, 30, 26, 4, 0]);
+  // 채광도 보정을 받는다 — 0성 -1%p 를 1·2·3성에 6:3:1 로 나눠준다.
+  check("Lv1~30 채광", baseWeightsFor(15, "채광").map(r2), [29, 40.6, 25.3, 5.1, 0, 0]);
+  check("Lv31~60 채광", baseWeightsFor(45, "채광").map(r2), [19, 35.6, 35.3, 9.1, 1, 0]);
+  check("Lv61+ 채광", baseWeightsFor(99, "채광").map(r2), [9, 30.6, 30.3, 26.1, 4, 0]);
   check("낚시 보정 적용", baseWeightsFor(15, "낚시").map(r2), [27.2, 42, 25.7, 5.1, 0, 0]);
   check("채집 보정 적용", baseWeightsFor(15, "채집").map(r2), [27.1, 42, 25.8, 5.1, 0, 0]);
 }
@@ -241,6 +243,31 @@ console.log("== 13. 생활 레벨 곡선 — 후반 구간 배율 ==");
     const ratio = productionExpForNext(kind, 61) / productionExpForNext(kind, 60);
     check(`${kind} 는 생활 배율 무영향`, ratio < 1.2, true);
   }
+}
+
+console.log("== 14. 길드 랭크 특혜 — 주간 던전 입장 횟수 ==");
+{
+  // B 에서 +1, A 에서 다시 +1 (누적). 기본 3 · B 4 · A/S 5.
+  for (const [rank, limit] of [["D", 3], ["C", 3], ["B", 4], ["A", 5], ["S", 5]] as const) {
+    check(`${rank}랭크 ${limit}회`, dungeonWeeklyLimit(rank), limit);
+  }
+  check("표기 흔들림(소문자·공백)도 같게", dungeonWeeklyLimit(" a "), 5);
+}
+
+console.log("== 15. 채광 0성 보정 — 총량 1%p 를 1·2·3성에 6:3:1 ==");
+{
+  for (const level of [15, 45, 99]) {
+    const base = baseWeightsFor(level, "채광");
+    check(`Lv${level} 합계 100`, r2(base.reduce((a, b) => a + b, 0)), 100);
+  }
+  // 보정 전 원본과의 차이가 정확히 -1 / +0.6 / +0.3 / +0.1 인지
+  const plain = [30, 40, 25, 5, 0, 0];
+  const mined = baseWeightsFor(15, "채광");
+  check("0성 -1", r2(mined[0] - plain[0]), -1);
+  check("1성 +0.6", r2(mined[1] - plain[1]), 0.6);
+  check("2성 +0.3", r2(mined[2] - plain[2]), 0.3);
+  check("3성 +0.1", r2(mined[3] - plain[3]), 0.1);
+  check("4·5성 불변", [r2(mined[4] - plain[4]), r2(mined[5] - plain[5])], [0, 0]);
 }
 
 console.log(`

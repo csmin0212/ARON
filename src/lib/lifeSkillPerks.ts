@@ -254,6 +254,9 @@ export const LEVEL_BANDS: { min: number; max: number; weights: number[] }[] = [
 const KIND_WEIGHT_ADJUSTMENTS: Partial<Record<LifeSkillKind, number[]>> = {
   채집: [-2.9, 2, 0.8, 0.1, 0, 0],
   낚시: [-2.8, 2, 0.7, 0.1, 0, 0],
+  // 채광은 원래 구간표 원본을 그대로 썼다. 0성(잡석·돌멩이) 체감이 나빠 1%p 를 덜어
+  // 1·2·3성에 6:3:1 로 나눠준다. 4·5성은 건드리지 않는다 — 상위는 행운의 몫.
+  채광: [-1, 0.6, 0.3, 0.1, 0, 0],
 };
 
 export function baseWeightsFor(level: number, kind?: LifeSkillKind): number[] {
