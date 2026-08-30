@@ -29,8 +29,12 @@ function foldSyllable(ch: string): string {
   return String.fromCodePoint(HANGUL_BASE + (cho * JUNG_COUNT + folded) * JONG_COUNT + jong);
 }
 
-// 대조 전용 키. 공백·구분자를 지우고 표기 흔들림을 한쪽으로 모은다.
-export function classMatchKey(name: string | null | undefined): string {
+// 위 규칙(ㅈ·ㅉ·ㅊ + ㅑㅕㅛㅠ)으로는 못 잡는 표기 흔들림을 쌍으로 적는다.
+// 첫 항목이 대표 표기 — 대조할 때 나머지가 여기로 모인다.
+// 실제 사례: 스킬 '직업' 은 '건슬링어', 어떤 시트는 '건슬링거' 로 적혀 있었다.
+const CLASS_ALIAS_GROUPS: string[][] = [["건슬링어", "건슬링거"]];
+
+function foldKey(name: string): string {
   return String(name ?? "")
     .normalize("NFC")
     .replace(/[\s·・\-_]/g, "")
@@ -38,6 +42,19 @@ export function classMatchKey(name: string | null | undefined): string {
     .map(foldSyllable)
     .join("")
     .toLowerCase();
+}
+
+const ALIAS_TO_CANONICAL = new Map<string, string>(
+  CLASS_ALIAS_GROUPS.flatMap((group) => {
+    const canonical = foldKey(group[0]);
+    return group.map((variant) => [foldKey(variant), canonical] as const);
+  }),
+);
+
+// 대조 전용 키. 공백·구분자를 지우고 표기 흔들림을 한쪽으로 모은다.
+export function classMatchKey(name: string | null | undefined): string {
+  const folded = foldKey(String(name ?? ""));
+  return ALIAS_TO_CANONICAL.get(folded) ?? folded;
 }
 
 // 두 클래스 이름이 같은 클래스인지 (표기 차이 무시)
