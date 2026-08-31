@@ -15,6 +15,7 @@ import {
   BREW_AP_COST,
   alchemyLabSlotLimit,
   alchemyMaterialPointsForItem,
+  alchemyPointItemValue,
   parsePotionName,
 } from "@/lib/alchemy";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
@@ -208,19 +209,37 @@ export default function AlchemyLab({
     return ranks;
   }, [lifeItems, storageItems]);
 
+  // 가방의 '연금 포인트 +N' 포션 — 채집물이 아니지만 재료로 되먹일 수 있다.
+  // 등급 접두어가 붙어도 기본 이름으로 합산되도록 base 도 같이 담는다.
+  const pointPotions = useMemo(() => {
+    const found = new Map<string, number>();
+    for (const item of inventoryItems) {
+      if (item.qty <= 0) continue;
+      const raw = item.name.trim();
+      const value = alchemyPointItemValue(raw) ?? alchemyPointItemValue(item.effect);
+      if (value == null) continue;
+      found.set(raw, value);
+      found.set(parsePotionName(raw).base, value);
+    }
+    return found;
+  }, [inventoryItems]);
+
   const materialPointOf = useMemo(
-    () => (name: string) => alchemyMaterialPointsForItem(name, materialRanks.get(name.trim()) ?? 0),
-    [materialRanks],
+    () => (name: string) =>
+      pointPotions.get(name.trim()) ??
+      alchemyMaterialPointsForItem(name, materialRanks.get(name.trim()) ?? 0),
+    [materialRanks, pointPotions],
   );
 
-  // 재료 후보 — 연금 포인트가 붙는 생활 재료만
+  // 재료 후보 — 연금 포인트가 붙는 생활 재료 + 포인트 포션
   const drawerNames = useMemo(() => {
     const names = new Set<string>();
     for (const [name, rank] of materialRanks) {
       if (alchemyMaterialPointsForItem(name, rank) > 0) names.add(name);
     }
+    for (const name of pointPotions.keys()) names.add(name);
     return names;
-  }, [materialRanks]);
+  }, [materialRanks, pointPotions]);
 
   // 재료 팝업 소스 — 가방별 탭 (휴대품은 등급 붙은 포션도 기본 이름으로 합산)
   const pickerSources = useMemo<PickerSource[]>(() => {

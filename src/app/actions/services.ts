@@ -36,6 +36,7 @@ import {
   BREW_AP_COST,
   WEAK_PRICE_MULT,
   ALCHEMY_CUSTOM_POTION_MARKER,
+  alchemyPointItemValue,
   alchemyAcceleratorEffect,
   alchemyAcceleratorMinutes,
   alchemyLabSlotLimit,
@@ -1678,7 +1679,16 @@ async function alchemyIngredientPoints(name: string): Promise<number | null> {
   await loadLifeItems();
   const item = findLifeSkillItem("채집", name);
   if (item) return alchemyMaterialPointsForItem(name, item.rank);
-  return null;
+
+  // '연금 포인트 +N' 포션 — 채집물이 아니지만 예외적으로 재료로 되먹인다.
+  // 이름(등급 접두어 포함)에서 먼저 보고, 없으면 도감 설명에서 읽는다.
+  const byName = alchemyPointItemValue(name);
+  if (byName != null) return byName;
+  const catalog = await prisma.item.findFirst({
+    where: { OR: [{ id: name.trim() }, { name: name.trim() }] },
+    select: { desc: true },
+  });
+  return alchemyPointItemValue(catalog?.desc ?? null);
 }
 
 function selectedOptionIds(formData: FormData): string[] {

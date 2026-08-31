@@ -156,6 +156,9 @@ export function buildCookedName(base: string, grade: string | null, nickname: st
 //  - 최대 HP/MP 스탯: 5단위로. "최대 HP +5" → 고품질 +10 / 명품 +15 / 장인 +20
 //  - 행운·공격·판정 등 그 외 "+N": 각 수치에 +n (복합이면 전부). "공격 +2, 근력 판정 +1" → 명품 "공격 +4, 근력 판정 +3"
 export function enhanceEffectText(effect: string, n = 1): string {
+  // '연금 포인트 +N' 은 등급으로 오르지 않는다 — 재료 가치라 고품질/명품으로 만들면
+  // 넣은 것보다 많이 돌려받는 증식 고리가 생긴다.
+  if (/연금\s*포인트\s*(?:에\s*)?\+\s*\d+/.test(effect)) return effect;
   if (/\[\d+\s*D\]/.test(effect)) {
     return effect.replace(/\[(\d+)\s*D\]/g, (_m, d: string) => `[${Number(d) + n}D]`);
   }

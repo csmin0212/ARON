@@ -100,6 +100,22 @@ export function alchemyMaterialPointsForItem(name: string, rank: number): number
   return alchemyMaterialPoints(rank);
 }
 
+// 포션이지만 예외적으로 연금 재료로 되먹일 수 있는 것.
+// 효과문(또는 이름)의 '연금 포인트 +N' 에서 N 을 읽는다.
+// 시트에 옵션만 추가하면 +3·+10 짜리도 코드 수정 없이 늘어난다.
+//
+// 필요 포인트(제작 비용)와 되돌려받는 값은 따로다 — 5 로 만들어 5 를 받으면 본전(저등급
+// 재료를 3성급으로 치환), 15 로 만들어 10 을 받으면 손해지만 재료 슬롯 하나에 포인트를
+// 몰아넣을 수 있다. 슬롯이 3~5칸이라 이 '압축'이 상위 옵션을 여는 수단이 된다.
+const ALCHEMY_POINT_ITEM = /연금\s*포인트\s*(?:에\s*)?\+\s*(\d+)/;
+
+export function alchemyPointItemValue(text: string | null | undefined): number | null {
+  const match = ALCHEMY_POINT_ITEM.exec(String(text ?? ""));
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function alchemyLabSlotLimit(tier: number | null | undefined): number {
   if ((tier ?? 0) >= 3) return 5;
   if ((tier ?? 0) >= 2) return 4;
