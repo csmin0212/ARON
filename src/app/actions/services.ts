@@ -1956,6 +1956,14 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
     if (durationKinds.includes("thirty") && durationKinds.some((kind) => kind !== "thirty")) {
       return { error: "30분 지속 옵션은 30분 지속 옵션끼리만 조합할 수 있어요." };
     }
+    // 연금 포인트 옵션은 단독으로만 쓴다 — 다른 효과와 섞으면 '재료이자 포션' 이 되어
+    // 회수량 계산과 사용 가능 여부가 둘 다 모호해진다. 같은 옵션 중복은 허용.
+    if (options.some((option) => alchemyPointItemValue(option.effect) != null)) {
+      if (new Set(options.map((option) => option.id)).size > 1) {
+        return { error: "연금 포인트 옵션은 다른 옵션과 함께 넣을 수 없어요." };
+      }
+    }
+
     const optionCounts = new Map<string, number>();
     for (const option of options) optionCounts.set(option.id, (optionCounts.get(option.id) ?? 0) + 1);
     for (const option of optionRows) {
@@ -2797,6 +2805,11 @@ export async function useCookingItem(
   const rawEffect = gradeBonus > 0 && recipe?.effect ? enhanceEffectText(baseEffect, gradeBonus) : baseEffect;
   if (!rawEffect || base === FAILED_DISH.name) {
     return { error: "사용할 수 있는 요리 효과가 없습니다." };
+  }
+  // 연금 재료 전용 포션 — 마실 물건이 아니라 조제 재료다. 가방에서 못 쓰게 막는다.
+  // (UI 버튼도 안 뜨지만, 서버에서도 이유를 분명히 돌려준다)
+  if (alchemyPointItemValue(rawEffect) != null) {
+    return { error: "연금 재료 전용 포션이에요. 조제할 때 재료로 넣어주세요." };
   }
   const isCustomAlchemyPotion = isCustomAlchemyPotionName(itemName) || customPotionSellPrice(rawEffect) != null;
 
