@@ -289,16 +289,25 @@ export async function syncSheetInventory(): Promise<void> {
   revalidatePath("/world");
 }
 
+// 연동 '해제' 는 말 그대로 시트 연결만 끊는다. 행은 지우지 않는다.
+//
+// 예전엔 CharacterSheet 행을 통째로 삭제했다. 그 행에는 시트로 되채울 수 없는 것들이
+// 전부 들어 있다 — lifeJson(생활스킬 레벨·exp·특성·도감·도구·생활가방·장소기록),
+// housingJson·houseTier(부동산), discoveredJson(히든 발견), achStatsJson(업적 카운터),
+// guildQuestJson, visitedJson. 실제로 한 캐릭터가 연동 해제 한 번에 채집 Lv32·도감 95종·
+// 특성 11개·집·히든 3곳을 전부 잃었고, DB 백업 브랜치로만 되살릴 수 있었다.
+//
+// sheetTab 을 비우면 '!sheet?.sheetTab' 을 쓰는 모든 연동 검사가 미연동으로 판정한다.
+// 재연동하면 syncSheet 가 같은 행을 upsert 하므로 나머지 데이터는 그대로 돌아온다.
+// 인벤 미러(meta=null)도 남긴다 — 시트에서 다시 채워지는 값이라 지울 이유가 없고,
+// 지우면 재연동 전까지 창고·도감 표시가 어긋난다.
 export async function unlinkSheet(): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
-  await prisma.$transaction([
-    prisma.characterSheet.deleteMany({ where: { userId: user.id } }),
-    // 시트에서 다시 채울 수 있는 미러 인벤만 정리한다.
-    // 경매 등록·미수령 우편은 원본 보상 데이터라 삭제하면 아이템이 유실될 수 있다.
-    // (스킬북 토큰 meta='skillbook'은 보존, 재연동 시 인벤은 시트에서 다시 채워짐)
-    prisma.inventoryEntry.deleteMany({ where: { userId: user.id, meta: null } }),
-  ]);
+  await prisma.characterSheet.updateMany({
+    where: { userId: user.id },
+    data: { sheetTab: "" },
+  });
   revalidatePath("/profile");
   revalidatePath("/world");
 }
