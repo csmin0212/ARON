@@ -582,7 +582,9 @@ export async function checkAndGrant(
         achStatsJson: bumpStat(sheet?.achStatsJson, "명성:업적보상", fameGain),
       },
     });
-    void appendSheetFame(sheet?.sheetTab ?? null, fameGain);
+    // void 로 띄우면 서버리스가 응답 직후 얼어붙어 시트 쓰기가 유실된다 (DB 만 오르고
+    // 시트는 뒤처지는 드리프트의 원인). 내부 try/catch 라 throw 하지 않으므로 await 해도 안전.
+    await appendSheetFame(sheet?.sheetTab ?? null, fameGain);
   }
 
   return granted.map((a) => ({

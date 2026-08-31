@@ -288,7 +288,10 @@ export async function deliverGuildQuest(): Promise<GuildQuestActionState> {
     },
   });
   void enqueueSheetGoldSync(user.id);
-  if (fameDelta > 0) void appendSheetFame(sheet.sheetTab, fameDelta);
+  // await 로 기다린다. void 로 띄우면 서버리스가 응답 직후 실행을 얼려서 시트 쓰기가
+  // 통째로 유실된다 — 실제로 20명 중 8명의 시트 명성이 DB 보다 뒤처져 있었다.
+  // appendSheetFame 은 내부 try/catch 라 throw 하지 않는다.
+  if (fameDelta > 0) await appendSheetFame(sheet.sheetTab, fameDelta);
   if (sheetPushNeeded) void pushInventoryToSheet(sheet.sheetTab, inv);
   void checkAndGrant(user.id);
 
