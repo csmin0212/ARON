@@ -1,14 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  cleanupOldWorldMessages,
-  resetWeeklyDungeons,
-  restoreAllFatigue,
-  syncWorldMap,
-  type WorldActionState,
-  type WorldCleanupState,
-} from "@/app/actions/world";
+import { cleanupOldWorldMessages, resetWeeklyDungeons, restoreAllFatigue, setCharacterFame, syncWorldMap, type WorldActionState, type WorldCleanupState } from "@/app/actions/world";
 import { openRift, closeRift, type RiftActionState } from "@/app/actions/rift";
 import { sendMail, type MailState } from "@/app/actions/mail";
 import { RIFT_TYPES } from "@/lib/rift";
@@ -53,6 +46,10 @@ export default function WorldAdmin({
   );
   const [mailState, mailAction, mailPending] = useActionState<MailState, FormData>(
     sendMail,
+    undefined,
+  );
+  const [fameState, fameAction, famePending] = useActionState<WorldActionState, FormData>(
+    setCharacterFame,
     undefined,
   );
 
@@ -197,6 +194,33 @@ export default function WorldAdmin({
         {(dungeonResetState?.error || dungeonResetState?.ok) && (
           <p className={`mt-2 text-xs font-medium ${dungeonResetState.error ? "text-rose-600" : "text-emerald-600"}`}>
             {dungeonResetState.error ?? `✅ ${dungeonResetState.ok}`}
+          </p>
+        )}
+        {/* 명성 하향 수정 — 일반 동기화는 명성을 못 내린다(오입력으로 오른 등급을
+            시트로 되돌릴 수 없음). 여기서만 정확한 값으로 맞추고 등급도 같이 따라간다. */}
+        <form action={fameAction} className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_7rem_auto]">
+          <input
+            name="sheetTab"
+            placeholder="캐릭터 탭 이름 (예: 소진)"
+            className="rounded-xl border border-line bg-surface px-3 py-2 text-xs text-content"
+          />
+          <input
+            name="fame"
+            inputMode="numeric"
+            placeholder="명성"
+            className="rounded-xl border border-line bg-surface px-3 py-2 text-xs text-content"
+          />
+          <button
+            type="submit"
+            disabled={famePending}
+            className="rounded-xl border border-brand-300 bg-surface px-3.5 py-2 text-xs font-bold text-brand-700 shadow-sm transition hover:bg-brand-50 disabled:opacity-60"
+          >
+            {famePending ? "수정 중…" : "🎖️ 명성 수정"}
+          </button>
+        </form>
+        {(fameState?.error || fameState?.ok) && (
+          <p className={`mt-2 text-xs font-medium ${fameState.error ? "text-rose-600" : "text-emerald-600"}`}>
+            {fameState.error ?? `✅ ${fameState.ok}`}
           </p>
         )}
         {(fatigueState?.error || fatigueState?.ok) && (

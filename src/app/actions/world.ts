@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { isGmUsername } from "@/lib/gm";
+import { adventurerRankFromFame } from "@/lib/adventurerRank";
 import { isWorldGmOnly } from "@/lib/worldAccess";
 import { fetchWorldRows, regenFatigue, FATIGUE_MAX, dungeonWeekKey } from "@/lib/world";
 import {
@@ -594,6 +595,46 @@ export async function leaveHome(): Promise<void> {
 }
 
 // 시트 동기화 — GM 전용. 맵(필수) + 아이템/행동(선택) 탭 → DB 교체
+// GM 전용 - set a character's fame to an exact value, rank follows.
+//
+// Normal sheet sync never lowers fame (Math.max + rank floor). That guard exists
+// so a sheet typo or a failed read cannot wipe fame, but it also means a rank
+// that went up by mistake cannot be walked back from the sheet (소진: a bad value
+// synced to B, and putting 17 back left it pinned at the B floor of 25).
+//
+// So downward edits go through this GM path only. Making the sheet authoritative
+// is not an option right now - appendSheetFame is fire-and-forget, so several
+// characters have DB fame ahead of the sheet and would lose the difference.
+export async function setCharacterFame(
+  _prev: WorldActionState,
+  formData: FormData,
+): Promise<WorldActionState> {
+  void _prev;
+  const user = await getCurrentUser();
+  if (!user || !isGmUsername(user.username)) return { error: "GM 권한이 필요합니다." };
+
+  const tab = String(formData.get("sheetTab") ?? "").trim();
+  const raw = String(formData.get("fame") ?? "").trim();
+  if (!tab) return { error: "캐릭터 탭 이름을 입력해주세요." };
+  if (!/^\d+$/.test(raw)) return { error: "명성은 0 이상의 숫자로 입력해주세요." };
+  const fame = Number(raw);
+
+  const sheet = await prisma.characterSheet.findFirst({
+    where: { sheetTab: tab },
+    select: { userId: true, fame: true, adventurerRank: true },
+  });
+  if (!sheet) return { error: `'${tab}' 캐릭터 시트를 찾지 못했어요.` };
+
+  const nextRank = adventurerRankFromFame(fame);
+  await prisma.characterSheet.update({
+    where: { userId: sheet.userId },
+    data: { fame, adventurerRank: nextRank },
+  });
+  revalidatePath("/world");
+  revalidatePath("/profile");
+  return { ok: `${tab} 명성 ${sheet.fame} → ${fame} · 등급 ${sheet.adventurerRank} → ${nextRank}` };
+}
+
 export async function syncWorldMap(
   _prev: WorldActionState,
   _formData: FormData,
