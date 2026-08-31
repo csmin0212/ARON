@@ -104,9 +104,12 @@ export function alchemyMaterialPointsForItem(name: string, rank: number): number
 // 효과문(또는 이름)의 '연금 포인트 +N' 에서 N 을 읽는다.
 // 시트에 옵션만 추가하면 +3·+10 짜리도 코드 수정 없이 늘어난다.
 //
-// 필요 포인트(제작 비용)와 되돌려받는 값은 따로다 — 5 로 만들어 5 를 받으면 본전(저등급
-// 재료를 3성급으로 치환), 15 로 만들어 10 을 받으면 손해지만 재료 슬롯 하나에 포인트를
-// 몰아넣을 수 있다. 슬롯이 3~5칸이라 이 '압축'이 상위 옵션을 여는 수단이 된다.
+// 중복 옵션은 한 줄로 합쳐지며 숫자가 배수로 곱해지므로(scaleAlchemyOptionEffect),
+// '연금 포인트 5 · 중복가능 · 중복증가 5' 한 줄이면 이렇게 굴러간다:
+//   1개  비용 5        → 회수 +5   (본전. 1~2성 재료를 3성급으로 치환)
+//   2개  비용 5+10=15  → 회수 +10  (손해지만 슬롯 하나에 몰아넣어 상위 옵션을 연다)
+// 재료 슬롯이 3~5칸이라 이 '압축' 이 상한을 여는 수단이 된다.
+// 등급(고품질·명품)은 enhanceEffectText 가 숫자를 올려주므로 회수량도 같이 오른다.
 const ALCHEMY_POINT_ITEM = /연금\s*포인트\s*(?:에\s*)?\+\s*(\d+)/;
 
 export function alchemyPointItemValue(text: string | null | undefined): number | null {
