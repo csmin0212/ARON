@@ -151,6 +151,10 @@ const STEEL_TIER_SPAN = 4;
 //   Lv4 장비: +1 파편4 → +2 조각4 → +3 덩어리4
 //   Lv9 장비: +1 덩어리1 (이미 최상위라 여기서 끝)
 // 덩어리 위가 없으니 상한 규칙을 따로 두지 않아도 재료가 알아서 막는다.
+//
+// 다만 지금은 +1 까지만 연다. 2·3강은 나중에 붙일 예정이라 배선은 그대로 두고
+// 이 상수로만 잠근다 — 열 때는 여기 숫자를 STEEL_TIERS.length 로 올리면 된다.
+export const ENHANCE_STEP_CAP = 1;
 function steelBaseTier(level: number): number {
   return Math.min(STEEL_TIERS.length - 1, Math.floor((level - 1) / STEEL_TIER_SPAN));
 }
@@ -161,13 +165,14 @@ export function enhanceMaterialFor(
 ): { name: string; qty: number } | null {
   const base = steelBaseTier(level);
   const tier = base + (step - 1);
+  if (step < 1 || step > ENHANCE_STEP_CAP) return null;
   if (tier < 0 || tier >= STEEL_TIERS.length) return null;
   return { name: STEEL_TIERS[tier], qty: level - base * STEEL_TIER_SPAN };
 }
 
 // 이 레벨의 장비가 올라갈 수 있는 최고 강화 단계.
 export function maxEnhancementFor(level: number): number {
-  return STEEL_TIERS.length - steelBaseTier(level);
+  return Math.min(ENHANCE_STEP_CAP, STEEL_TIERS.length - steelBaseTier(level));
 }
 
 // 합성 단계: 아래 재료 3개 → 위 재료 1개. 최상위(덩어리)는 더 올라갈 곳이 없다.

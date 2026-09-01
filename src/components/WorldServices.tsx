@@ -4393,8 +4393,8 @@ export default function WorldServices({
                       </label>
                       {upgradeCost != null && upgradeMaterial ? (
                         <p className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2.5 text-xs font-bold text-amber-100/85">
-                          Lv{upgradeCost} 장비 <b className="text-amber-200">+{upgradeStep}</b>{" "}
-                          (최대 +{upgradeMax}) — {upgradeMaterial.name}{" "}
+                          Lv{upgradeCost} 장비 <b className="text-amber-200">+{upgradeStep}</b>
+                          {upgradeMax > 1 ? ` (최대 +${upgradeMax})` : ""} — {upgradeMaterial.name}{" "}
                           <b className="text-amber-200">{upgradeMaterial.qty}</b>개 소모 ·{" "}
                           {upgradeSlot === "armor" ? "물리 방어력" : "공격력"} +{upgradeCost} · 중량
                           +{upgradeCost}
