@@ -119,7 +119,6 @@ async function grant(userId: string, nickname: string, locationId: string | null
     return { full: true as const };
   }
   const first = recordCollection(life, MINE, p.name);
-  const count = recordLifeCatch(life, MINE, p.name);
   recordLifeItemLocation(life, MINE, p.name, originLocationId);
   addLifeBagItem(life, MINE, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   // 일석이조 — doubleDrop% 확률로 광물 1개 추가 (가방에 여유가 있을 때만)
@@ -129,6 +128,8 @@ async function grant(userId: string, nickname: string, locationId: string | null
     lifeBagWeight(bag) + p.weight <= lifeBagLimit(life, MINE);
   if (doubled) addLifeBagItem(life, MINE, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   const gotQty = doubled ? 2 : 1;
+  // 누적 획득 횟수도 얻은 개수만큼 — '아이템획득수' 카운터와 셈이 어긋나지 않게.
+  const count = recordLifeCatch(life, MINE, p.name, gotQty);
   // 숙련도도 얻은 개수만큼. 추첨 결과를 알아야 해서 일석이조 판정 뒤에 계산한다.
   const expBase = lifeSkillExpGain(MINE, p.exp) * gotQty;
   const expGained = boostedLifeExp(expBase, mods.expMult);

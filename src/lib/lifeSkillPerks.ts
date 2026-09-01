@@ -487,9 +487,15 @@ export function recordCollection(
   return true;
 }
 
-export function recordLifeCatch(state: LifeState, kind: LifeSkillKind, itemName: string): number {
+// qty — 한 번에 여러 개를 얻는 경우(채광 일석이조)에 그 개수만큼 센다.
+export function recordLifeCatch(
+  state: LifeState,
+  kind: LifeSkillKind,
+  itemName: string,
+  qty = 1,
+): number {
   const counts = state.catchCounts[kind];
-  counts[itemName] = (counts[itemName] ?? 0) + 1;
+  counts[itemName] = (counts[itemName] ?? 0) + Math.max(1, Math.floor(qty));
   return counts[itemName];
 }
 
