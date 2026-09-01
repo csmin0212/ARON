@@ -84,6 +84,7 @@ import {
 } from "@/lib/qualityPricing";
 import {
   enhanceMaterialFor,
+  maxEnhancementFor,
   STEEL_FRAGMENT,
   STEEL_SYNTHESIS,
   TIER_LABEL,
@@ -308,6 +309,16 @@ function transformOneInvItem(
 
 function appendEffect(current: string | null, line: string): string {
   return current ? `${current}\n${line}` : line;
+}
+
+// 기존 "장비 강화 +N: ..." 줄 제거 — 단계가 오를 때 누적값 한 줄로 갈아끼우기 위함.
+function stripEnhanceEffect(effect: string | null | undefined): string {
+  if (!effect) return "";
+  return effect
+    .split("\n")
+    .filter((line) => !/^\s*장비\s*강화\s*\+\d+\s*:/.test(line))
+    .join("\n")
+    .trim();
 }
 
 // "강철 검(+1, 사파이어)" → "강철 검" : 강화·인첸트 꼬리표를 떼어 기본 이름만.
@@ -4042,12 +4053,15 @@ export async function upgradeWeapon(
     return { error: "이 장비의 레벨 표기(Lv○)를 찾지 못했어요. 시트 효과·해설을 확인해주세요." };
   }
   const nextEnhancement = enhancementLevel(weapon.name) + 1;
-  // 재료는 장비 레벨이 정한다 — Lv1~4 파편, Lv5~8 조각, Lv9~ 덩어리를 티어당 1~4개.
-  const { name: materialName, qty: materialQty } = enhanceMaterialFor(weaponLevel);
-  // 강화는 1회(+1)가 마지노선. 그 위 단계는 재료 설계가 아직 없다.
-  if (nextEnhancement > 1) {
-    return { error: "강화는 +1까지만 가능합니다." };
+  // 재료는 장비 레벨과 강화 단계가 함께 정한다 — 레벨이 티어를, 단계가 그 위 칸을 올린다.
+  // 덩어리 위가 없어서 상한 검사도 이 한 줄로 끝난다 (Lv1~4 +3, Lv5~8 +2, Lv9~ +1).
+  const material = enhanceMaterialFor(weaponLevel, nextEnhancement);
+  if (!material) {
+    return {
+      error: `Lv${weaponLevel} 장비는 +${maxEnhancementFor(weaponLevel)}까지만 강화할 수 있어요.`,
+    };
   }
+  const { name: materialName, qty: materialQty } = material;
   if (itemQty(ctx.inv, materialName) < materialQty) {
     return { error: `${materialName}이 부족합니다. (${itemQty(ctx.inv, materialName)}/${materialQty})` };
   }
@@ -4057,9 +4071,11 @@ export async function upgradeWeapon(
   const gainLabel = slot === "weapon" ? "공격력" : "물리 방어력";
   // 효과가 비어 있으면 아이템 탭 기본 설명을 먼저 채워 시트 효과·해설에도 보존되게 한다.
   const baseEffect = weapon.effect ?? (await lookupItemDesc(weapon.name));
+  // 2강부터는 줄이 쌓이지 않게 기존 '장비 강화 +N' 줄을 지우고 누적값 한 줄로 다시 쓴다.
+  const gain = weaponLevel * nextEnhancement;
   const nextEffect = appendEffect(
-    baseEffect,
-    `장비 강화 +${nextEnhancement}: ${gainLabel} +${weaponLevel}, 중량 +${weaponLevel}`,
+    stripEnhanceEffect(baseEffect),
+    `장비 강화 +${nextEnhancement}: ${gainLabel} +${gain}, 중량 +${gain}`,
   );
   const nextName = setEnhancementTag(weapon.name, nextEnhancement);
 
@@ -4082,7 +4098,7 @@ export async function upgradeWeapon(
     });
   }
   revalidatePath("/world");
-  return { ok: `${nextName} 강화 완료. ${gainLabel} +${weaponLevel}, 중량 +${weaponLevel}` };
+  return { ok: `${nextName} 강화 완료. ${gainLabel} +${gain}, 중량 +${gain} (누적)` };
 }
 
 export async function enchantWeapon(

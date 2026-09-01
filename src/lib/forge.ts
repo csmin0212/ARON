@@ -147,9 +147,27 @@ export const STEEL_TIERS = [STEEL_FRAGMENT, STEEL_PIECE, STEEL_INGOT] as const;
 export const STEEL_SYNTH_COST = 3;
 const STEEL_TIER_SPAN = 4;
 
-export function enhanceMaterialFor(level: number): { name: string; qty: number } {
-  const tier = Math.min(STEEL_TIERS.length - 1, Math.floor((level - 1) / STEEL_TIER_SPAN));
-  return { name: STEEL_TIERS[tier], qty: level - tier * STEEL_TIER_SPAN };
+// 강화 단계가 오를 때마다 재료 티어도 한 칸씩 오른다 — 개수는 그대로.
+//   Lv4 장비: +1 파편4 → +2 조각4 → +3 덩어리4
+//   Lv9 장비: +1 덩어리1 (이미 최상위라 여기서 끝)
+// 덩어리 위가 없으니 상한 규칙을 따로 두지 않아도 재료가 알아서 막는다.
+function steelBaseTier(level: number): number {
+  return Math.min(STEEL_TIERS.length - 1, Math.floor((level - 1) / STEEL_TIER_SPAN));
+}
+
+export function enhanceMaterialFor(
+  level: number,
+  step = 1,
+): { name: string; qty: number } | null {
+  const base = steelBaseTier(level);
+  const tier = base + (step - 1);
+  if (tier < 0 || tier >= STEEL_TIERS.length) return null;
+  return { name: STEEL_TIERS[tier], qty: level - base * STEEL_TIER_SPAN };
+}
+
+// 이 레벨의 장비가 올라갈 수 있는 최고 강화 단계.
+export function maxEnhancementFor(level: number): number {
+  return STEEL_TIERS.length - steelBaseTier(level);
 }
 
 // 합성 단계: 아래 재료 3개 → 위 재료 1개. 최상위(덩어리)는 더 올라갈 곳이 없다.

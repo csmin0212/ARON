@@ -66,7 +66,12 @@ import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
 import { equipmentLevelOf, inventoryEquipmentSlot } from "@/lib/itemUse";
-import { enhanceMaterialFor, STEEL_SYNTHESIS } from "@/lib/forge";
+import {
+  enhanceMaterialFor,
+  maxEnhancementFor,
+  STEEL_SYNTHESIS,
+  STEEL_TIERS,
+} from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -361,7 +366,7 @@ function isWeapon(item: SheetInventoryItem): boolean {
 
 // 강화 대상: 무기·방어구 (파편·보석 제외). 소모량은 장비 레벨에서 자동으로 나온다.
 function isUpgradable(item: SheetInventoryItem): boolean {
-  if (item.name.includes("파편") || isGem(item)) return false;
+  if (isSteelMaterial(item.name) || item.name.includes("파편") || isGem(item)) return false;
   const slot = inventoryEquipmentSlot(item);
   return slot === "weapon" || slot === "armor";
 }
@@ -385,6 +390,16 @@ function isEnchanted(item: SheetInventoryItem): boolean {
 // 이미 강화된 무기 (+N 태그)
 function isEnhanced(item: SheetInventoryItem): boolean {
   return itemTags(item.name).some((tag) => /^\+\d+$/.test(tag));
+}
+
+// 이름 꼬리표 "(+2)" 에서 현재 강화 단계를 읽는다 (없으면 0).
+function enhanceStepOf(item: SheetInventoryItem): number {
+  const tag = itemTags(item.name).find((value) => /^\+\d+$/.test(value));
+  return tag ? parseInt(tag.slice(1), 10) : 0;
+}
+
+function isSteelMaterial(name: string): boolean {
+  return (STEEL_TIERS as readonly string[]).includes(name.trim());
 }
 
 function countOf(items: SheetInventoryItem[], name: string): number {
@@ -3753,15 +3768,18 @@ export default function WorldServices({
   const upgradeItem =
     upgradables.find((it) => it.name === upgradeTarget) ?? upgradables[0] ?? null;
   const upgradeCost = upgradeItem ? equipmentLevelOf(upgradeItem) : null;
-  // 강화 재료는 장비 레벨이 정한다 — Lv1~4 파편, Lv5~8 조각, Lv9~ 덩어리.
-  const upgradeMaterial = upgradeCost != null ? enhanceMaterialFor(upgradeCost) : null;
+  // 강화 재료 — 레벨이 티어를, 다음 강화 단계가 그 위 칸을 정한다.
+  const upgradeStep = upgradeItem ? enhanceStepOf(upgradeItem) + 1 : 1;
+  const upgradeMaterial =
+    upgradeCost != null ? enhanceMaterialFor(upgradeCost, upgradeStep) : null;
+  const upgradeMax = upgradeCost != null ? maxEnhancementFor(upgradeCost) : 0;
   const upgradeSlot = upgradeItem ? inventoryEquipmentSlot(upgradeItem) : null;
   // 인첸트 대상: 강화(+N)·인첸트가 안 된 깨끗한 무기만
   const enchantableWeapons = weapons.filter((w) => !isEnchanted(w) && !isEnhanced(w));
   // 수식어 리롤 대상: 무기 또는 방어구 (강철 파편·보석 제외)
   const forgeables = items.filter(
     (it) => {
-      if (isGem(it) || it.name.includes("파편")) return false;
+      if (isGem(it) || isSteelMaterial(it.name) || it.name.includes("파편")) return false;
       const slot = inventoryEquipmentSlot(it);
       return slot === "weapon" || slot === "armor";
     },
@@ -4373,12 +4391,17 @@ export default function WorldServices({
                           ))}
                         </select>
                       </label>
-                      {upgradeCost != null ? (
+                      {upgradeCost != null && upgradeMaterial ? (
                         <p className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2.5 text-xs font-bold text-amber-100/85">
-                          Lv{upgradeCost} 장비 — {upgradeMaterial?.name}{" "}
-                          <b className="text-amber-200">{upgradeMaterial?.qty}</b>개 소모 ·{" "}
+                          Lv{upgradeCost} 장비 <b className="text-amber-200">+{upgradeStep}</b>{" "}
+                          (최대 +{upgradeMax}) — {upgradeMaterial.name}{" "}
+                          <b className="text-amber-200">{upgradeMaterial.qty}</b>개 소모 ·{" "}
                           {upgradeSlot === "armor" ? "물리 방어력" : "공격력"} +{upgradeCost} · 중량
                           +{upgradeCost}
+                        </p>
+                      ) : upgradeCost != null ? (
+                        <p className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-2.5 text-xs font-bold text-stone-400">
+                          Lv{upgradeCost} 장비는 +{upgradeMax}까지만 강화할 수 있어요.
                         </p>
                       ) : (
                         upgradables.length > 0 && (
@@ -4396,7 +4419,7 @@ export default function WorldServices({
                       )}
                       <button
                         type="submit"
-                        disabled={upgradePending || upgradables.length === 0 || upgradeCost == null}
+                        disabled={upgradePending || upgradables.length === 0 || !upgradeMaterial}
                         className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-amber-500 disabled:opacity-50"
                       >
                         {upgradePending ? "강화 중..." : "강화 적용"}
