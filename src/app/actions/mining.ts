@@ -118,10 +118,6 @@ async function grant(userId: string, nickname: string, locationId: string | null
   if (lifeBagWeight(bag) + p.weight > lifeBagLimit(life, MINE)) {
     return { full: true as const };
   }
-  const expBase = lifeSkillExpGain(MINE, p.exp);
-  const expGained = boostedLifeExp(expBase, mods.expMult);
-  const expText = lifeExpGainText(expBase, expGained);
-  const leveled = applyExp(life, MINE, expGained, await fetchLifeSkillCatalog());
   const first = recordCollection(life, MINE, p.name);
   const count = recordLifeCatch(life, MINE, p.name);
   recordLifeItemLocation(life, MINE, p.name, originLocationId);
@@ -133,6 +129,11 @@ async function grant(userId: string, nickname: string, locationId: string | null
     lifeBagWeight(bag) + p.weight <= lifeBagLimit(life, MINE);
   if (doubled) addLifeBagItem(life, MINE, { name: p.name, weight: p.weight, rank: p.rank, text: p.text });
   const gotQty = doubled ? 2 : 1;
+  // 숙련도도 얻은 개수만큼. 추첨 결과를 알아야 해서 일석이조 판정 뒤에 계산한다.
+  const expBase = lifeSkillExpGain(MINE, p.exp) * gotQty;
+  const expGained = boostedLifeExp(expBase, mods.expMult);
+  const expText = lifeExpGainText(expBase, expGained);
+  const leveled = applyExp(life, MINE, expGained, await fetchLifeSkillCatalog());
   await ensureItem(p);
   let achStats = bumpStat(sheet?.achStatsJson, "채광성공횟수");
   achStats = bumpStat(achStats, "아이템획득수", gotQty);
