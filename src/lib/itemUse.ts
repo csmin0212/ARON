@@ -17,7 +17,7 @@ const ACCESSORY_EQUIPMENT_NAME_PATTERN =
   /(?:장신구|액세서리|악세서리|반지|목걸이|귀걸이|팔찌|벨트|브로치|아뮬렛|부적)/;
 
 const EQUIPMENT_SLOT_PATTERN =
-  /(?:^|\s|[·,])(?:한손|양손|머리|몸통|보조|장신구|무기|방어구|갑옷|방패)(?=$|\s|[·,])/;
+  /(?:^|\s|[·,])(?:한손|양손|두손|머리|몸통|보조|전신|장신구|무기|방어구|갑옷|방패)(?=$|\s|[·,])/;
 
 // 한글 뒤에는 \b(단어 경계)가 절대 서지 않는다 — \w가 ASCII만 인정하기 때문.
 // 예전엔 여기에 \b가 붙어 있어서 이 패턴이 한 번도 매치되지 않았다(사실상 죽은 분기).
@@ -36,19 +36,24 @@ const CRAFT_CATEGORY_CAPTURE = new RegExp(
   `(?:^|\\n)\\s*Lv\\s*\\d+\\s+(${CRAFT_CATEGORY_NAMES})${CRAFT_CATEGORY_BOUNDARY}`,
 );
 
+// 제작 장비의 부위 표기 중 방어구 쪽. weaponCraft 의 part 값(머리·몸통·보조·전신)과
+// 방패를 함께 본다. '전신' 이 빠져 있어서 전신 갑옷이 무기로 잡히고, 수식어 리롤에서
+// 무기 수식어(공격력·명중)가 붙는 사고가 있었다.
+const ARMOR_CRAFT_CATEGORIES = new Set(["방패", "몸통", "머리", "보조", "전신"]);
+
 function craftedCategorySlot(text: string): InventoryEquipmentSlot | null {
   const match = text.match(CRAFT_CATEGORY_CAPTURE);
   if (!match) return null;
   const category = match[1];
   if (category === "장신구") return "accessory";
-  if (category === "방패" || category === "몸통" || category === "머리" || category === "보조") return "armor";
+  if (ARMOR_CRAFT_CATEGORIES.has(category)) return "armor";
   return "weapon";
 }
 
 function slotHintSlot(text: string): InventoryEquipmentSlot | null {
   if (/(?:^|\s|[·,])장신구(?=$|\s|[·,])/.test(text)) return "accessory";
-  if (/(?:^|\s|[·,])(?:머리|몸통|보조|방어구|갑옷|방패)(?=$|\s|[·,])/.test(text)) return "armor";
-  if (/(?:^|\s|[·,])(?:한손|양손|무기)(?=$|\s|[·,])/.test(text)) return "weapon";
+  if (/(?:^|\s|[·,])(?:머리|몸통|보조|전신|방어구|갑옷|방패)(?=$|\s|[·,])/.test(text)) return "armor";
+  if (/(?:^|\s|[·,])(?:한손|양손|두손|무기)(?=$|\s|[·,])/.test(text)) return "weapon";
   return null;
 }
 
