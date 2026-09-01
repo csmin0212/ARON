@@ -16,6 +16,7 @@
 //   --out    저장 파일 (기본 shot.png, 절대/상대 모두 가능)
 //   --as     이 username 으로 로그인한 것처럼 세션 쿠키 주입 (선택)
 //   --click  이 텍스트가 든 버튼/링크를 눌러 모달 등을 연 뒤 캡처 (선택)
+//            '>>' 로 이어 붙이면 순서대로 누른다: --click='대장간>>합성소'
 //   --wait   클릭 후 추가 대기 ms (선택)
 //   --base   베이스 URL (기본 http://localhost:3000)
 //   --w      뷰포트 너비 (기본 820)
@@ -213,13 +214,13 @@ async function main() {
   await sleep(700); // 폰트·레이아웃 안정화
 
   // --click: 텍스트가 들어간 버튼/링크를 눌러 모달 등을 연 뒤 찍는다.
-  if (clickText) {
+  for (const step of clickText ? clickText.split(">>").map((t) => t.trim()).filter(Boolean) : []) {
     let clicked = "not-found";
     for (let i = 0; i < 20 && clicked !== "ok"; i += 1) {
       const { result } = await cdp.send(
         "Runtime.evaluate",
         {
-          expression: `(()=>{const t=${JSON.stringify(clickText)};
+          expression: `(()=>{const t=${JSON.stringify(step)};
             const el=[...document.querySelectorAll('button,a,[role="button"]')].find(e=>(e.innerText||'').includes(t));
             if(!el) return 'not-found';
             el.click(); return 'ok';})()`,
@@ -230,7 +231,7 @@ async function main() {
       clicked = result.value;
       if (clicked !== "ok") await sleep(1000);
     }
-    console.log(`🖱️  click ${JSON.stringify(clickText)}: ${clicked}`);
+    console.log(`🖱️  click ${JSON.stringify(step)}: ${clicked}`);
     await sleep(600);
   }
   if (waitMs > 0) await sleep(waitMs);
