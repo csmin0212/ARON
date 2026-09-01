@@ -105,11 +105,13 @@ export function minorSlotsFor(smithLevel: number): number {
 // 대장 숙련과 '함께' 걸린다 — 둘 중 낮은 쪽이 실제 슬롯 수다.
 // 숙련만 보면 Lv25 대장이 Lv1 단검에 특수 재료 4종을 몰아넣을 수 있어서,
 // 상위 슬롯이 상위 장비에서만 열리도록 레벨 조건을 겹쳤다.
-export const MINOR_SLOT_LEVEL_REQ = [0, 0, 5, 10] as const; // 슬롯 n개를 쓰려면 필요한 장비 레벨
+// 인덱스 = 슬롯 개수. 안내 문구가 이 배열을 슬롯 수로 바로 찾아 쓰기 때문에
+// 한 칸이라도 어긋나면 "3칸째는 Lv10 이상" 같은 틀린 안내가 나간다(실제는 Lv5).
+export const MINOR_SLOT_LEVEL_REQ = [0, 0, 0, 5, 10] as const;
 
 export function minorSlotsForEquipLevel(equipLevel: number): number {
-  if (equipLevel >= MINOR_SLOT_LEVEL_REQ[3]) return 4;
-  if (equipLevel >= MINOR_SLOT_LEVEL_REQ[2]) return 3;
+  if (equipLevel >= MINOR_SLOT_LEVEL_REQ[4]) return 4;
+  if (equipLevel >= MINOR_SLOT_LEVEL_REQ[3]) return 3;
   return MAX_MINORS;
 }
 
@@ -788,7 +790,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   if (input.minors.length > levelSlots) {
     return {
       error: `마이너 재료 ${input.minors.length}종은 장비 레벨 ${
-        MINOR_SLOT_LEVEL_REQ[input.minors.length] ?? MINOR_SLOT_LEVEL_REQ[3]
+        MINOR_SLOT_LEVEL_REQ[input.minors.length] ?? MINOR_SLOT_LEVEL_REQ[4]
       } 이상부터예요. (현재 Lv${level})`,
     };
   }
