@@ -3791,6 +3791,15 @@ export default function WorldServices({
   const synthHave = countOf(items, synthStep.from);
   const synthMax = Math.floor(synthHave / synthStep.cost);
   const moonCount = countOf(items, "달의 파편");
+  // 대장간 상단 보유량 — 강화 재료 세 티어를 모두 보여준다 (합성소가 생겨 파편만으론 부족).
+  // 두 번째 항목부터는 '강철'을 떼어 좁은 화면에서도 한 줄에 더 들어가게 한다.
+  const forgeStock = [
+    ...STEEL_TIERS.map((name, i) => ({
+      label: i === 0 ? name : name.replace("강철 ", ""),
+      count: countOf(items, name),
+    })),
+    { label: "달의 파편", count: moonCount },
+  ];
   const ownedFurniture = useMemo(() => new Set(housing.furnitureOwned), [housing.furnitureOwned]);
   const merchantRemainMs = wanderingMerchant.active
     ? Date.parse(wanderingMerchant.active.endsAt) - nowMs
@@ -4364,9 +4373,17 @@ export default function WorldServices({
                     >
                       선택으로
                     </button>
-                    <div className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2 text-xs font-bold text-stone-300">
-                      강철 파편 <b className="text-amber-200">{steelCount}</b>개 · 달의 파편{" "}
-                      <b className="text-amber-200">{moonCount}</b>개
+                    <div className="min-w-0 rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2 text-right text-xs font-bold leading-relaxed text-stone-300">
+                      {forgeStock.map((entry, i) => (
+                        // 줄바꿈은 항목 사이에서만 — 구분자를 바깥에 둬야 여기서 끊긴다.
+                        // 안쪽 nowrap 이 없으면 '덩어리'가 가운데서 잘린다.
+                        <span key={entry.label}>
+                          {i > 0 ? " · " : ""}
+                          <span className="whitespace-nowrap">
+                            {entry.label} <b className="text-amber-200">{entry.count}</b>개
+                          </span>
+                        </span>
+                      ))}
                     </div>
                   </div>
 
