@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { chooseLifePerk, type LifeActionState } from "@/app/actions/life";
+import { chooseLifePerk, clearSessionBuff, type LifeActionState } from "@/app/actions/life";
 import {
   computeMods,
   lifeExpForNext,
@@ -194,7 +194,11 @@ function LifeGearPanel({ life }: { life: LifeState }) {
   );
 }
 
-function CookingBuffPanel({ life }: { life: LifeState }) {
+function CookingBuffPanel({ life, isOwn }: { life: LifeState; isOwn: boolean }) {
+  const [clearState, clearAction, clearPending] = useActionState<LifeActionState, FormData>(
+    clearSessionBuff,
+    undefined,
+  );
   // 만료된 행운 버프는 표시하지 않는다 — 열어둔 화면에서도 30초마다 갱신해 지운다.
   // (상태 정리는 다음 저장 때 parseLifeState가 처리)
   const [now, setNow] = useState<number | null>(null);
@@ -298,15 +302,41 @@ function CookingBuffPanel({ life }: { life: LifeState }) {
           </div>
         ))}
         {sessions.map((buff, i) => (
-          <div key={`${buff.source}-${buff.usedAt}-${i}`} className="rounded-2xl bg-subtle px-4 py-3">
-            <p className="text-sm font-extrabold text-content">{buff.source}</p>
-            <p className="mt-0.5 text-xs font-bold text-brand-600">
-              세션 버프: {buff.effect}
-              <span className="ml-1 font-semibold text-faint">— {timeOf(buff.usedAt)} 사용</span>
-            </p>
+          <div
+            key={`${buff.source}-${buff.usedAt}-${i}`}
+            className="flex items-start gap-2 rounded-2xl bg-subtle px-4 py-3"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-extrabold text-content">{buff.source}</p>
+              <p className="mt-0.5 text-xs font-bold text-brand-600">
+                세션 버프: {buff.effect}
+                <span className="ml-1 font-semibold text-faint">— {timeOf(buff.usedAt)} 사용</span>
+              </p>
+            </div>
+            {/* 세션 버프는 만료 시각이 없어 스스로 사라지지 않는다. 직접 내린다. */}
+            {isOwn && (
+              <form action={clearAction}>
+                <input type="hidden" name="usedAt" value={buff.usedAt} />
+                <input type="hidden" name="source" value={buff.source} />
+                <button
+                  type="submit"
+                  disabled={clearPending}
+                  aria-label={`${buff.source} 세션 버프 내리기`}
+                  title="세션 버프 내리기"
+                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-extrabold text-faint transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </form>
+            )}
           </div>
         ))}
       </div>
+      {(clearState?.error || clearState?.ok) && (
+        <p className={`mt-2 text-xs font-bold ${clearState.error ? "text-rose-600" : "text-emerald-600"}`}>
+          {clearState.error ?? clearState.ok}
+        </p>
+      )}
     </div>
   );
 }
@@ -503,7 +533,7 @@ export default function LifeSkillPanel({
       {view === "profile" && canViewProfile && (
         <div className="space-y-5">
           {levelCard}
-          <CookingBuffPanel life={life} />
+          <CookingBuffPanel life={life} isOwn={isOwn} />
           <LifeGearPanel life={life} />
         </div>
       )}
