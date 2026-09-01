@@ -135,3 +135,26 @@ export function stripPrefixEffect(effect: string | null | undefined): string {
     .join("\n")
     .trim();
 }
+
+// ── 강화 재료 티어 ────────────────────────────────────────────────────────────
+// 장비 레벨 4칸마다 한 단계 위 재료를 쓰고, 소모 개수는 티어 안에서 1~4로 다시 센다.
+//   Lv1~4  강철 파편 1·2·3·4    Lv5~8  강철 조각 1·2·3·4    Lv9~  강철 덩어리 1·2·…
+// 합성소에서 아래 티어 3개 → 위 티어 1개라, 한 티어 위는 파편 환산 3배다.
+export const STEEL_FRAGMENT = "강철 파편";
+export const STEEL_PIECE = "강철 조각";
+export const STEEL_INGOT = "강철 덩어리";
+export const STEEL_TIERS = [STEEL_FRAGMENT, STEEL_PIECE, STEEL_INGOT] as const;
+export const STEEL_SYNTH_COST = 3;
+const STEEL_TIER_SPAN = 4;
+
+export function enhanceMaterialFor(level: number): { name: string; qty: number } {
+  const tier = Math.min(STEEL_TIERS.length - 1, Math.floor((level - 1) / STEEL_TIER_SPAN));
+  return { name: STEEL_TIERS[tier], qty: level - tier * STEEL_TIER_SPAN };
+}
+
+// 합성 단계: 아래 재료 3개 → 위 재료 1개. 최상위(덩어리)는 더 올라갈 곳이 없다.
+export const STEEL_SYNTHESIS = STEEL_TIERS.slice(0, -1).map((from, i) => ({
+  from,
+  to: STEEL_TIERS[i + 1],
+  cost: STEEL_SYNTH_COST,
+}));

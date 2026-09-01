@@ -23,6 +23,7 @@ import {
   sellFood,
   reforgeItem,
   stockHousingProduction,
+  synthesizeSteel,
   upgradeWeapon,
   useFurniture,
   withdrawHousingProduction,
@@ -65,6 +66,7 @@ import AlchemyLab, { type AlchemyView } from "@/components/AlchemyLab";
 import IngredientPicker, { type PickerSource } from "@/components/IngredientPicker";
 import RecipeGacha from "@/components/RecipeGacha";
 import { equipmentLevelOf, inventoryEquipmentSlot } from "@/lib/itemUse";
+import { enhanceMaterialFor, STEEL_SYNTHESIS } from "@/lib/forge";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 
 type Props = {
@@ -3725,7 +3727,7 @@ export default function WorldServices({
   const [housingOpen, setHousingOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState<ProductionKind | null>(null);
   const [dailyFurnitureOpen, setDailyFurnitureOpen] = useState<string | null>(null);
-  const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | "reforge" | null>(null);
+  const [forgeMode, setForgeMode] = useState<"weapon" | "magic" | "reforge" | "synth" | null>(null);
   const [upgradeState, upgradeAction, upgradePending] = useActionState<ServiceState, FormData>(
     upgradeWeapon,
     undefined,
@@ -3738,6 +3740,10 @@ export default function WorldServices({
     reforgeItem,
     undefined,
   );
+  const [synthState, synthAction, synthPending] = useActionState<ServiceState, FormData>(
+    synthesizeSteel,
+    undefined,
+  );
 
   const items = useMemo(() => mergeItems(inventoryItems), [inventoryItems]);
   const weapons = items.filter(isWeapon);
@@ -3747,6 +3753,8 @@ export default function WorldServices({
   const upgradeItem =
     upgradables.find((it) => it.name === upgradeTarget) ?? upgradables[0] ?? null;
   const upgradeCost = upgradeItem ? equipmentLevelOf(upgradeItem) : null;
+  // 강화 재료는 장비 레벨이 정한다 — Lv1~4 파편, Lv5~8 조각, Lv9~ 덩어리.
+  const upgradeMaterial = upgradeCost != null ? enhanceMaterialFor(upgradeCost) : null;
   const upgradeSlot = upgradeItem ? inventoryEquipmentSlot(upgradeItem) : null;
   // 인첸트 대상: 강화(+N)·인첸트가 안 된 깨끗한 무기만
   const enchantableWeapons = weapons.filter((w) => !isEnchanted(w) && !isEnhanced(w));
@@ -3760,6 +3768,10 @@ export default function WorldServices({
   );
   const gems = items.filter(isGem);
   const steelCount = countOf(items, "강철 파편");
+  const [synthTarget, setSynthTarget] = useState<string>(STEEL_SYNTHESIS[0].to);
+  const synthStep = STEEL_SYNTHESIS.find((step) => step.to === synthTarget) ?? STEEL_SYNTHESIS[0];
+  const synthHave = countOf(items, synthStep.from);
+  const synthMax = Math.floor(synthHave / synthStep.cost);
   const moonCount = countOf(items, "달의 파편");
   const ownedFurniture = useMemo(() => new Set(housing.furnitureOwned), [housing.furnitureOwned]);
   const merchantRemainMs = wanderingMerchant.active
@@ -4317,6 +4329,12 @@ export default function WorldServices({
                     title="장비 제작"
                     onClick={() => setCraftOpen(true)}
                   />
+                  <ForgeChoice
+                    tone="fire"
+                    icon="🧲"
+                    title="합성소"
+                    onClick={() => setForgeMode("synth")}
+                  />
                 </div>
               ) : (
                 <div className="mx-auto max-w-xl space-y-4 rounded-[1.5rem] border border-amber-900/60 bg-stone-950/72 p-4 shadow-[inset_0_0_30px_rgba(0,0,0,0.75)] sm:p-5">
@@ -4357,8 +4375,8 @@ export default function WorldServices({
                       </label>
                       {upgradeCost != null ? (
                         <p className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2.5 text-xs font-bold text-amber-100/85">
-                          Lv{upgradeCost} 장비 — 강철 파편{" "}
-                          <b className="text-amber-200">{upgradeCost}</b>개 소모 ·{" "}
+                          Lv{upgradeCost} 장비 — {upgradeMaterial?.name}{" "}
+                          <b className="text-amber-200">{upgradeMaterial?.qty}</b>개 소모 ·{" "}
                           {upgradeSlot === "armor" ? "물리 방어력" : "공격력"} +{upgradeCost} · 중량
                           +{upgradeCost}
                         </p>
@@ -4430,7 +4448,7 @@ export default function WorldServices({
                         {enchantPending ? "제련 중..." : "제련 적용"}
                       </button>
                     </form>
-                  ) : (
+                  ) : forgeMode === "reforge" ? (
                     <form action={reforgeAction} className="space-y-3">
                       <h4 className="text-lg font-black text-amber-100">수식어 부여</h4>
                       <StateLine state={reforgeState} />
@@ -4458,6 +4476,49 @@ export default function WorldServices({
                         className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-amber-500 disabled:opacity-50"
                       >
                         {reforgePending ? "제작 중..." : "수식어 리롤 (강철 파편 1)"}
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={synthAction} className="space-y-3">
+                      <h4 className="text-lg font-black text-amber-100">합성소</h4>
+                      <StateLine state={synthState} />
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-bold text-stone-400">합성 재료</span>
+                        <select
+                          name="target"
+                          value={synthTarget}
+                          onChange={(e) => setSynthTarget(e.target.value)}
+                          className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2.5 text-sm font-semibold text-stone-100 outline-none focus:border-amber-400"
+                        >
+                          {STEEL_SYNTHESIS.map((step) => (
+                            <option key={step.to} value={step.to}>
+                              {step.from} {step.cost} → {step.to} 1
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-bold text-stone-400">개수</span>
+                        <input
+                          type="number"
+                          name="times"
+                          min={1}
+                          max={Math.max(1, synthMax)}
+                          defaultValue={1}
+                          key={synthTarget}
+                          className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2.5 text-sm font-semibold text-stone-100 outline-none focus:border-amber-400"
+                        />
+                      </label>
+                      <p className="rounded-xl border border-amber-900/70 bg-stone-900 px-3 py-2.5 text-xs font-bold text-amber-100/85">
+                        보유 {synthStep.from} <b className="text-amber-200">{synthHave}</b>개 — 최대{" "}
+                        <b className="text-amber-200">{synthMax}</b>개까지 합성
+                      </p>
+                      <button
+                        type="submit"
+                        disabled={synthPending || synthMax < 1}
+                        className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-black text-white shadow-lg transition hover:bg-amber-500 disabled:opacity-50"
+                      >
+                        {synthPending ? "합성 중..." : "합성"}
                       </button>
                     </form>
                   )}

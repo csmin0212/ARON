@@ -82,7 +82,15 @@ import {
   profitAdjustedSellPrice,
   recipeIngredientCostFromJson,
 } from "@/lib/qualityPricing";
-import { TIER_LABEL, rollPrefix, stripPrefix, stripPrefixEffect } from "@/lib/forge";
+import {
+  enhanceMaterialFor,
+  STEEL_FRAGMENT,
+  STEEL_SYNTHESIS,
+  TIER_LABEL,
+  rollPrefix,
+  stripPrefix,
+  stripPrefixEffect,
+} from "@/lib/forge";
 import { FATIGUE_MAX, dungeonWeekKey, regenFatigue, restedTodayKst } from "@/lib/world";
 import { buildWeeklyIncomeEntries, parseWeeklyIncomeState } from "@/lib/weeklyIncome";
 import { postSystem } from "@/lib/play";
@@ -135,7 +143,6 @@ export type CookingState = { error?: string; ok?: string } | undefined;
 export type AlchemyState = { error?: string; ok?: string } | undefined;
 export type GuildState = { error?: string; ok?: string } | undefined;
 
-const STEEL_FRAGMENT = "강철 파편";
 const COOKING_AP_COST = 10;
 const STORAGE_UPGRADE_STEP = 10;
 const FAILED_DISH = {
@@ -4035,13 +4042,14 @@ export async function upgradeWeapon(
     return { error: "이 장비의 레벨 표기(Lv○)를 찾지 못했어요. 시트 효과·해설을 확인해주세요." };
   }
   const nextEnhancement = enhancementLevel(weapon.name) + 1;
-  const materialName = STEEL_FRAGMENT;
-  // 강화는 강철 파편 1회(+1)가 마지노선. 그 위 단계는 재료 설계가 아직 없다.
+  // 재료는 장비 레벨이 정한다 — Lv1~4 파편, Lv5~8 조각, Lv9~ 덩어리를 티어당 1~4개.
+  const { name: materialName, qty: materialQty } = enhanceMaterialFor(weaponLevel);
+  // 강화는 1회(+1)가 마지노선. 그 위 단계는 재료 설계가 아직 없다.
   if (nextEnhancement > 1) {
     return { error: "강화는 +1까지만 가능합니다." };
   }
-  if (itemQty(ctx.inv, materialName) < weaponLevel) {
-    return { error: `${materialName}이 부족합니다. (${itemQty(ctx.inv, materialName)}/${weaponLevel})` };
+  if (itemQty(ctx.inv, materialName) < materialQty) {
+    return { error: `${materialName}이 부족합니다. (${itemQty(ctx.inv, materialName)}/${materialQty})` };
   }
 
   const nextWeight = (weapon.weight ?? 0) + weaponLevel;
@@ -4055,7 +4063,7 @@ export async function upgradeWeapon(
   );
   const nextName = setEnhancementTag(weapon.name, nextEnhancement);
 
-  let inv = consumeInvItem(ctx.inv, materialName, weaponLevel);
+  let inv = consumeInvItem(ctx.inv, materialName, materialQty);
   inv = transformOneInvItem(inv, weapon.name, { name: nextName, effect: nextEffect, weight: nextWeight });
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   await Promise.all([
@@ -4063,7 +4071,7 @@ export async function upgradeWeapon(
       where: { userId: ctx.userId },
       data: { invJson: JSON.stringify(inv) },
     }),
-    decrementDbInventory(ctx.userId, materialName, weaponLevel),
+    decrementDbInventory(ctx.userId, materialName, materialQty),
   ]);
 
   if (ctx.locationId) {
@@ -4129,6 +4137,58 @@ export async function enchantWeapon(
   }
   revalidatePath("/world");
   return { ok: `${nextName} 제련 완료.` };
+}
+
+// 합성소 — 아래 티어 재료 3개를 위 티어 1개로 합친다 (파편3→조각, 조각3→덩어리).
+// 되돌리기(분해)는 없다. 상위 재료는 고레벨 장비 강화에만 쓰이므로 한 방향이면 충분하다.
+export async function synthesizeSteel(
+  _prev: ServiceState,
+  formData: FormData,
+): Promise<ServiceState> {
+  const ctx = await currentSheet();
+  if (!ctx) return { error: "로그인과 캐릭터 시트 연동이 필요합니다." };
+  if (!ctx.invFromSheet) return { error: "구글 시트 쓰기 설정을 먼저 확인해주세요." };
+
+  const target = String(formData.get("target") ?? "").trim();
+  const step = STEEL_SYNTHESIS.find((s) => s.to === target);
+  if (!step) return { error: "합성할 재료를 고르지 못했습니다." };
+
+  // 배수 합성 — 한 번에 여러 개를 만들 수 있게 열어둔다(기본 1개).
+  const times = Math.max(1, Math.min(99, parseInt(String(formData.get("times") ?? "1"), 10) || 1));
+  const need = step.cost * times;
+  const have = itemQty(ctx.inv, step.from);
+  if (have < need) {
+    return { error: `${step.from}이 부족합니다. (${have}/${need})` };
+  }
+
+  const source = findInvItem(ctx.inv, step.from);
+  const effect = (await lookupItemDesc(step.to)) ?? null;
+  const weight = source?.weight ?? 1;
+
+  let inv = consumeInvItem(ctx.inv, step.from, need);
+  inv = addInvItem(inv, { name: step.to, effect, weight }, times);
+  inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
+  const overflow = inventoryWeightOverflowMessage(inv);
+  if (overflow) return { error: overflow };
+
+  await Promise.all([
+    prisma.characterSheet.update({
+      where: { userId: ctx.userId },
+      data: { invJson: JSON.stringify(inv) },
+    }),
+    decrementDbInventory(ctx.userId, step.from, need),
+    incrementDbInventory(ctx.userId, step.to, times),
+  ]);
+
+  if (ctx.locationId) {
+    await postSystem(
+      ctx.locationId,
+      `🧲 ${ctx.nickname}님이 ${step.from} ${need}개를 ${step.to} ${times}개로 합성.`,
+      { userId: ctx.userId, actorName: ctx.nickname, kind: "강화" },
+    );
+  }
+  revalidatePath("/world");
+  return { ok: `${step.to} ${times}개 합성 완료. (${step.from} -${need})` };
 }
 
 // 수식어 리롤 — 강철 파편 1개로 무기/방어구 앞에 랜덤 수식어를 부여(기존 수식어 교체).
