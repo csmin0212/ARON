@@ -216,7 +216,8 @@ export default function AlchemyLab({
     for (const item of inventoryItems) {
       if (item.qty <= 0) continue;
       const raw = item.name.trim();
-      const value = alchemyPointItemValue(raw) ?? alchemyPointItemValue(item.effect);
+      // 효과문 우선 — 이름의 '+5x2' 는 1개분이라 그대로 읽으면 절반이 된다
+      const value = alchemyPointItemValue(item.effect) ?? alchemyPointItemValue(raw);
       if (value == null) continue;
       found.set(raw, value);
       found.set(parsePotionName(raw).base, value);

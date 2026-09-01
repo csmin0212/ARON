@@ -110,13 +110,18 @@ export function alchemyMaterialPointsForItem(name: string, rank: number): number
 //   2개  비용 5+10=15  → 회수 +10  (손해지만 슬롯 하나에 몰아넣어 상위 옵션을 연다)
 // 재료 슬롯이 3~5칸이라 이 '압축' 이 상한을 여는 수단이 된다.
 // 등급(고품질·명품)은 enhanceEffectText 가 숫자를 올려주므로 회수량도 같이 오른다.
-const ALCHEMY_POINT_ITEM = /연금\s*포인트\s*(?:에\s*)?\+\s*(\d+)/;
+// 효과문은 중복분이 이미 곱해진 총량('+10')을 담지만, 이름은 '(연금 포인트 +5x2)' 처럼
+// 1개분 값과 개수를 따로 적는다. 두 표기를 모두 읽는다.
+const ALCHEMY_POINT_ITEM = /연금\s*포인트\s*(?:에\s*)?\+\s*(\d+)(?:\s*[x×*]\s*(\d+))?/;
 
 export function alchemyPointItemValue(text: string | null | undefined): number | null {
   const match = ALCHEMY_POINT_ITEM.exec(String(text ?? ""));
   if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) && value > 0 ? value : null;
+  const each = Number(match[1]);
+  const copies = match[2] ? Number(match[2]) : 1;
+  if (!Number.isFinite(each) || each <= 0) return null;
+  if (!Number.isFinite(copies) || copies <= 0) return each;
+  return each * copies;
 }
 
 export function alchemyLabSlotLimit(tier: number | null | undefined): number {

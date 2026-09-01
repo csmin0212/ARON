@@ -1681,14 +1681,13 @@ async function alchemyIngredientPoints(name: string): Promise<number | null> {
   if (item) return alchemyMaterialPointsForItem(name, item.rank);
 
   // '연금 포인트 +N' 포션 — 채집물이 아니지만 예외적으로 재료로 되먹인다.
-  // 이름(등급 접두어 포함)에서 먼저 보고, 없으면 도감 설명에서 읽는다.
-  const byName = alchemyPointItemValue(name);
-  if (byName != null) return byName;
+  // 효과문을 먼저 본다. 효과문은 중복분이 곱해진 총량('+10')이지만 이름은
+  // '(연금 포인트 +5x2)' 라 1개분만 적혀 있어, 이름을 먼저 읽으면 절반만 인정된다.
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: name.trim() }, { name: name.trim() }] },
     select: { desc: true },
   });
-  return alchemyPointItemValue(catalog?.desc ?? null);
+  return alchemyPointItemValue(catalog?.desc ?? null) ?? alchemyPointItemValue(name);
 }
 
 function selectedOptionIds(formData: FormData): string[] {
