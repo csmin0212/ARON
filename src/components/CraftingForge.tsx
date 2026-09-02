@@ -430,12 +430,8 @@ export default function CraftingForge({
                 />
               ))}
             </div>
-            {!hasUnique ? (
+            {!hasUnique && (
               <p className="mt-1.5 text-center text-[11px] text-faint">보유 없음</p>
-            ) : (
-              <p className="mt-1.5 text-center text-[11px] font-bold text-amber-600">
-                1개만 넣으면 Lv6~10 으로 확장
-              </p>
             )}
           </section>
 

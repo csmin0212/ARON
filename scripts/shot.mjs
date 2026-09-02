@@ -17,6 +17,7 @@
 //   --as     이 username 으로 로그인한 것처럼 세션 쿠키 주입 (선택)
 //   --click  이 텍스트가 든 버튼/링크를 눌러 모달 등을 연 뒤 캡처 (선택)
 //            '>>' 로 이어 붙이면 순서대로 누른다: --click='대장간>>합성소'
+//            '문맥|버튼' 이면 그 문맥을 품은 줄 안의 버튼을 누른다: --click='달의 파편|+'
 //   --wait   클릭 후 추가 대기 ms (선택)
 //   --base   베이스 URL (기본 http://localhost:3000)
 //   --w      뷰포트 너비 (기본 820)
@@ -220,10 +221,32 @@ async function main() {
       const { result } = await cdp.send(
         "Runtime.evaluate",
         {
-          expression: `(()=>{const t=${JSON.stringify(step)};
-            const el=[...document.querySelectorAll('button,a,[role="button"]')].find(e=>(e.innerText||'').includes(t));
-            if(!el) return 'not-found';
-            el.click(); return 'ok';})()`,
+          expression: `(()=>{const raw=${JSON.stringify(step)};
+            const bar=raw.indexOf('|');
+            if(bar<0){
+              // 정확히 그 글자만인 버튼을 먼저 찾는다 — 안 그러면 '장비 제작 · 장비 강화 …'
+              // 처럼 그 말이 섞인 설명 줄이 먼저 잡힌다.
+              const all=[...document.querySelectorAll('button,a,[role="button"]')];
+              // 정확 일치가 먼저. 없으면 그 말을 품은 것 중 글자수가 가장 적은 것 —
+              // 안 그러면 '대장간 · 장비 제작 · 장비 강화 …' 같은 설명 줄이 먼저 잡힌다.
+              const hit=all.filter(e=>(e.innerText||'').includes(raw))
+                .sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);
+              const el=all.find(e=>(e.innerText||'').trim()===raw)||hit[0];
+              if(!el) return 'not-found';
+              el.click(); return 'ok';
+            }
+            // '문맥|버튼' — 문맥 텍스트를 품은 가장 안쪽 요소 안에서 그 버튼을 누른다.
+            const ctx=raw.slice(0,bar), label=raw.slice(bar+1);
+            // 문맥을 품으면서 그 버튼도 안에 가진 것 중 가장 작은 것 = 그 줄.
+            const hosts=[...document.querySelectorAll('*')]
+              .filter(e=>(e.innerText||'').includes(ctx)
+                && [...e.querySelectorAll('button,a,[role="button"]')].some(b=>(b.innerText||'').trim()===label))
+              .sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);
+            if(!hosts.length) return 'not-found';
+            const b=[...hosts[0].querySelectorAll('button,a,[role="button"]')]
+              .find(e=>(e.innerText||'').trim()===label);
+            if(b.disabled) return 'disabled';
+            b.click(); return 'ok';})()`,
           returnByValue: true,
         },
         sessionId,
