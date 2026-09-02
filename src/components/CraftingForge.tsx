@@ -261,15 +261,8 @@ export default function CraftingForge({
       const draft = { ...prev };
       if (next <= 0) delete draft[name];
       else draft[name] = next;
-
-      // 광물이 5개 미만으로 내려가면 올려둔 특수 광물은 성립하지 않으니 같이 내린다.
-      // (안 그러면 '광물 3 + 파편 2' 같은 상태가 남아 제작 시 서버에서 거부당한다)
-      const ores = Object.entries(draft)
-        .filter(([k]) => !isMoonFragment(k))
-        .reduce((s, [, v]) => s + v, 0);
-      if (ores < MAX_MAJORS) {
-        for (const key of Object.keys(draft)) if (isMoonFragment(key)) delete draft[key];
-      }
+      // 파편은 광물 개수와 무관하게 남는다 — 광물 1~4개에도 Lv6~9 로 성립하고,
+      // 파편을 먼저 올려두고 광물을 채워도 된다.
       return draft;
     });
   }
