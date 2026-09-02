@@ -69,13 +69,17 @@ export const MAX_MAJORS = 5; // 일반 메이저 투입 상한 = Lv5
 export const MAX_MINORS = 2; // 기본 마이너 슬롯 (대장 레벨로 확장)
 
 // ── 달의 파편 — Lv6~10 티어 ──
-// 일반 광물로는 Lv5가 천장이다. 그 위로 가려면 광물을 꽉 채운 상태(5개)에서
-// 달의 파편을 얹어야 하고, 파편 개수가 곧 상위 단계가 된다 (1개 Lv6 … 5개 Lv10).
-// 광물은 이때 '재질'을 정한다 — 레벨은 파편이, 스탯 방향은 광물이.
+// 달의 파편은 '상위 티어 확장 스위치'다. 1개만 넣으면 눈금이 Lv6~10 으로 옮겨가고,
+// 그 안에서 레벨을 정하는 건 여전히 메이저 광물 개수다 (1개 Lv6 … 5개 Lv10).
+// 광물이 재질·스탯을, 파편이 티어를 맡는다.
+//
+// 파편 개수로 레벨을 올리던 예전 방식은 Lv10 한 자루에 5개가 필요했는데,
+// 파편은 던전 전용 산출물이라 서버 전체 공급이 한 달 10개도 안 됐다.
+// 파편 소모를 1개로 고정하고 상위 레벨의 문턱은 광물 쪽에 남긴다.
 // Lv11부터는 또 다른 재료를 쓸 예정이라 여기서 끊는다.
 export const MOON_FRAGMENT = "달의 파편";
-export const MAX_MOON_FRAGMENTS = 5;
-export const MOON_TIER_BASE = MAX_MAJORS; // 달의 파편 1개 = Lv6
+export const MAX_MOON_FRAGMENTS = 1;
+export const MOON_TIER_BASE = MAX_MAJORS; // 달의 파편을 넣으면 눈금이 Lv6부터
 
 export function isMoonFragment(name: string): boolean {
   return name.normalize("NFKC").replace(/\s+/g, "") === MOON_FRAGMENT.replace(/\s+/g, "");
@@ -268,10 +272,11 @@ export function randomCraftSerial(rand: () => number = Math.random): string {
   return out;
 }
 
-// 제작 피로도 — 투입한 '일반 광물' 개수에 비례한다.
-// Lv6~10은 광물 5개가 필수라 전부 100 고정 (달의 파편은 피로도를 더 먹지 않는다).
+// 제작 피로도 — 투입한 '일반 광물' 개수에 비례한다 (달의 파편은 피로도를 더 먹지 않는다).
+// 두 티어 모두 광물 1~5개를 쓰므로 Lv1~5 와 Lv6~10 이 같은 20~100 범위를 돈다.
 export function craftApCost(level: number): number {
-  const oreCount = Math.min(Math.max(1, level), MAX_MAJORS);
+  const tierCount = level > MOON_TIER_BASE ? level - MOON_TIER_BASE : level;
+  const oreCount = Math.min(Math.max(1, tierCount), MAX_MAJORS);
   return CRAFT_AP_PER_LEVEL * oreCount;
 }
 
@@ -768,18 +773,13 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     .reduce((sum, m) => sum + m.qty, 0);
   const majors = all.filter((m) => !isMoonFragment(m.item.name));
   const oreQty = majors.reduce((sum, m) => sum + m.qty, 0);
-  const level = moonQty > 0 ? MOON_TIER_BASE + moonQty : oreQty;
+  // 파편은 눈금을 Lv6~10 으로 옮기기만 한다 — 그 안의 레벨은 광물 개수가 정한다.
+  const level = moonQty > 0 ? MOON_TIER_BASE + oreQty : oreQty;
 
   const maxMinors = input.maxMinors ?? MAX_MINORS;
   if (oreQty < 1) return { error: "메이저 광물을 1개 이상 넣어주세요." };
   if (moonQty > MAX_MOON_FRAGMENTS) {
-    return { error: `${MOON_FRAGMENT}은 최대 ${MAX_MOON_FRAGMENTS}개까지예요. (Lv10)` };
-  }
-  // 상위 티어는 아래 단계를 다 채운 뒤에 올라간다 — 광물 5개(Lv5)가 전제.
-  if (moonQty > 0 && oreQty < MAX_MAJORS) {
-    return {
-      error: `${MOON_FRAGMENT}을 쓰려면 메이저 광물을 ${MAX_MAJORS}개 채워야 해요. (현재 ${oreQty}개)`,
-    };
+    return { error: `${MOON_FRAGMENT}은 ${MAX_MOON_FRAGMENTS}개만 넣으면 돼요. (티어 확장용)` };
   }
   if (oreQty > MAX_MAJORS) {
     return { error: `메이저 광물은 최대 ${MAX_MAJORS}개까지예요. (개수 = 장비 레벨)` };

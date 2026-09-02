@@ -41,20 +41,17 @@ const RANK_TONE = [
 ];
 
 // 메이저 광물 한 줄 — 일반 광물과 특수 광물이 같은 모양을 쓴다.
-// atCap 은 '그 분류의 상한에 닿았나'(일반 5개=Lv5, 특수 5개=Lv10)로 서로 따로 센다.
-// locked 는 아예 못 올리는 상태 — 광물 5개를 안 채웠을 때의 특수 광물이 여기 해당한다.
+// atCap 은 '그 분류의 상한에 닿았나'(일반 5개=Lv5, 달의 파편 1개)로 서로 따로 센다.
 function MajorRow({
   entry,
   qty,
   atCap,
-  locked,
   onBump,
   tone,
 }: {
   entry: CraftMineralView;
   qty: number;
   atCap: boolean;
-  locked?: boolean;
   onBump: (name: string, delta: number) => void;
   tone?: "amber";
 }) {
@@ -89,7 +86,7 @@ function MajorRow({
         <button
           type="button"
           onClick={() => onBump(def.name, 1)}
-          disabled={locked || qty >= have || (qty > 0 && atCap)}
+          disabled={qty >= have || (qty > 0 && atCap)}
           className="grid h-7 w-7 place-items-center rounded-lg bg-subtle text-sm font-black text-muted transition hover:text-content disabled:opacity-30"
         >
           ＋
@@ -209,22 +206,20 @@ export default function CraftingForge({
   const minorsOwned = minerals.filter((m) => m.def.craftRole === "마이너" && m.have > 0);
   const defs = useMemo(() => new Map(minerals.map((m) => [m.def.name, m])), [minerals]);
 
-  // 달의 파편은 레벨(티어)만 올리고, 광물이 재질을 정한다 — 상한도 따로 센다.
+  // 달의 파편은 눈금을 Lv6~10 으로 옮기는 스위치다 — 상한도 따로 센다.
   const moonQty = Object.entries(majorQty)
     .filter(([name]) => isMoonFragment(name))
     .reduce((s, [, n]) => s + n, 0);
   const oreQty = Object.entries(majorQty)
     .filter(([name]) => !isMoonFragment(name))
     .reduce((s, [, n]) => s + n, 0);
-  const craftLevel = moonQty > 0 ? MOON_TIER_BASE + moonQty : Math.max(1, oreQty);
+  const craftLevel = moonQty > 0 ? MOON_TIER_BASE + Math.max(1, oreQty) : Math.max(1, oreQty);
   // 마이너 슬롯은 대장 숙련과 장비 레벨 둘 다 만족해야 열린다 (3칸 Lv5 / 4칸 Lv10).
   const maxMinors = Math.min(smithMinors, minorSlotsForEquipLevel(craftLevel));
   // 광물을 빼서 장비 레벨이 내려가면 넘치는 마이너를 자동으로 떨어뜨린다.
   useEffect(() => {
     setMinorSel((prev) => (prev.length > maxMinors ? prev.slice(0, maxMinors) : prev));
   }, [maxMinors]);
-  // 광물 5개를 채우기 전엔 특수 광물을 올릴 수 없다 (Lv5 를 채운 뒤에 그 위로 간다).
-  const moonLocked = oreQty < MAX_MAJORS;
 
   const preview = useMemo(() => {
     // 새로고침으로 광물 목록이 바뀌었을 수 있으니 목록에 없는 선택은 무시
@@ -404,9 +399,7 @@ export default function CraftingForge({
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-extrabold text-content">⛏️ 메이저 광물</h4>
               <span className="text-xs font-black text-brand-600">
-                {moonQty > 0
-                  ? `광물 ${oreQty}/${MAX_MAJORS} · ${MOON_FRAGMENT} ${moonQty}/${MAX_MOON_FRAGMENTS}`
-                  : `${oreQty}/${MAX_MAJORS}`}{" "}
+                {moonQty > 0 ? `광물 ${oreQty}/${MAX_MAJORS} · ${MOON_FRAGMENT} ${moonQty}` : `${oreQty}/${MAX_MAJORS}`}{" "}
                 → Lv{craftLevel}
               </span>
             </div>
@@ -439,7 +432,6 @@ export default function CraftingForge({
                   entry={entry}
                   qty={majorQty[entry.def.name] ?? 0}
                   atCap={moonQty >= MAX_MOON_FRAGMENTS}
-                  locked={moonLocked}
                   onBump={bumpMajor}
                   tone="amber"
                 />
@@ -448,11 +440,9 @@ export default function CraftingForge({
             {!hasUnique ? (
               <p className="mt-1.5 text-center text-[11px] text-faint">보유 없음</p>
             ) : (
-              moonLocked && (
-                <p className="mt-1.5 text-center text-[11px] font-bold text-amber-600">
-                  일반 광물 {MAX_MAJORS}개 필요
-                </p>
-              )
+              <p className="mt-1.5 text-center text-[11px] font-bold text-amber-600">
+                1개만 넣으면 Lv6~10 으로 확장
+              </p>
             )}
           </section>
 
