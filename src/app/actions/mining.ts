@@ -199,7 +199,9 @@ export async function startMining(): Promise<MineStart> {
   if (ap < apCost) return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
 
   const level = progressOf(life, MINE).level;
-  const levelBase = baseWeightsFor(level);
+  // kind 를 넘겨야 채광 구간 보정(0성 -1%p 를 1·2·3성에 6:3:1)이 적용된다.
+  // 낚시·채집은 넘기는데 여기만 빠져 있어 그 보정이 죽어 있었다.
+  const levelBase = baseWeightsFor(level, MINE);
   const regionBase = pool.weights
     ? pool.weights.map((w, rank) => (levelBase[rank] > 0 ? w : 0))
     : levelBase;
