@@ -20,6 +20,9 @@ import {
   ALCHEMY_MASTER_MASTERY,
   applyAlchemyExp,
   applyCookingExp,
+  applySmithingExp,
+  type LifeState,
+  type ProductionSkillKind,
   applyExp,
   alchemyMasterySuffix,
   recordAlchemyCraft,
@@ -2551,13 +2554,46 @@ function parseDungeonRunRecovery(effect: string): number {
   return m ? Math.max(0, Number.parseInt(m[1], 10) || 0) : 0;
 }
 
-function parseLifeSkillExpPotion(effect: string): { kind: LifeSkillKind; amount: number } | null {
-  const m = effect.match(
-    /(낚시|채집|채광)\s*숙련도(?:를|을)?\s*(\d+)\s*(?:상승|증가|획득|올린다|올려준다)/,
-  );
-  if (!m) return null;
-  const amount = Number.parseInt(m[2], 10);
-  return Number.isFinite(amount) && amount > 0 ? { kind: m[1] as LifeSkillKind, amount } : null;
+// 생산 숙련(요리·대장·연금술)도 같은 문장으로 받는다. 시트에 '제작 숙련도를 N 상승'
+// 이라고 적어둔 물약이 생겼는데 낚시·채집·채광만 인식해 아무 일도 안 일어났다.
+// '제작'은 장비 제작(대장)을 가리킨다 — 제작 화면 표기가 '대장 Lv.N' 이다.
+const PRODUCTION_EXP_ALIASES: { pattern: string; kind: ProductionSkillKind; label: string }[] = [
+  { pattern: "제작|대장|대장장이|단조", kind: "smithing", label: "대장" },
+  { pattern: "요리", kind: "cooking", label: "요리" },
+  { pattern: "연금술|연금", kind: "alchemy", label: "연금술" },
+];
+
+const PRODUCTION_EXP_APPLIERS: Record<
+  ProductionSkillKind,
+  (state: LifeState, gained: number) => number[]
+> = { cooking: applyCookingExp, smithing: applySmithingExp, alchemy: applyAlchemyExp };
+
+type ExpPotion =
+  | { scope: "life"; kind: LifeSkillKind; label: string; amount: number }
+  | { scope: "production"; kind: ProductionSkillKind; label: string; amount: number };
+
+// 정규식 리터럴의 source 를 쓴다 — 문자열로 적으면 "\\s" 처럼 두 번 써야 하고, 한 번만 쓰면
+// JS 가 \s 를 그냥 s 로 읽어 패턴이 조용히 망가진다.
+const EXP_POTION_TAIL =
+  /\s*숙련도(?:를|을)?\s*(\d+)\s*(?:상승|증가|획득|올린다|올려준다)/.source;
+
+function parseLifeSkillExpPotion(effect: string): ExpPotion | null {
+  const life = effect.match(new RegExp(`(낚시|채집|채광)${EXP_POTION_TAIL}`));
+  if (life) {
+    const amount = Number.parseInt(life[2], 10);
+    if (Number.isFinite(amount) && amount > 0) {
+      return { scope: "life", kind: life[1] as LifeSkillKind, label: life[1], amount };
+    }
+  }
+  for (const alias of PRODUCTION_EXP_ALIASES) {
+    const m = effect.match(new RegExp(`(?:${alias.pattern})${EXP_POTION_TAIL}`));
+    if (!m) continue;
+    const amount = Number.parseInt(m[1], 10);
+    if (Number.isFinite(amount) && amount > 0) {
+      return { scope: "production", kind: alias.kind, label: alias.label, amount };
+    }
+  }
+  return null;
 }
 
 function recipeRankNumber(rank: string | null | undefined): number {
@@ -3033,24 +3069,29 @@ export async function useCookingItem(
   } else if (isCustomAlchemyPotion && lifeLuck) {
     return { error: "생활 행운 포션은 '30분' 같은 지속 옵션이 있어야 월드에서 사용할 수 있어요." };
   } else if (lifeSkillExpPotion) {
-    const prog = progressOf(life, lifeSkillExpPotion.kind);
+    // 생활 숙련(낚시·채집·채광)은 특성 선택지가 열리고, 생산 숙련(요리·대장·연금술)은
+    // 레벨만 오른다 — 진행도를 읽는 자리가 달라서 분기해 둔다.
+    const production = lifeSkillExpPotion.scope === "production";
+    const prog = production
+      ? life[lifeSkillExpPotion.kind]
+      : progressOf(life, lifeSkillExpPotion.kind);
     const beforeLevel = prog.level;
     const beforeExp = prog.exp;
-    const leveled = applyExp(
-      life,
-      lifeSkillExpPotion.kind,
-      lifeSkillExpPotion.amount,
-      await fetchLifeSkillCatalog(),
-    );
-    const after = progressOf(life, lifeSkillExpPotion.kind);
+    const leveled = production
+      ? PRODUCTION_EXP_APPLIERS[lifeSkillExpPotion.kind](life, lifeSkillExpPotion.amount)
+      : applyExp(life, lifeSkillExpPotion.kind, lifeSkillExpPotion.amount, await fetchLifeSkillCatalog());
+    const after = production
+      ? life[lifeSkillExpPotion.kind]
+      : progressOf(life, lifeSkillExpPotion.kind);
     const levelText =
       leveled.length > 0
         ? `, Lv.${beforeLevel} → Lv.${after.level}`
         : `, 숙련도 ${beforeExp} → ${after.exp}`;
-    const perkText = leveled.some(isPerkChoiceLevel)
-      ? " 특성 선택지가 열렸어요. 캐릭터 페이지에서 선택해주세요."
-      : "";
-    ok = `${itemName}을 사용했습니다. ${lifeSkillExpPotion.kind} 숙련도 +${lifeSkillExpPotion.amount}${levelText}.${perkText}`;
+    const perkText =
+      !production && leveled.some(isPerkChoiceLevel)
+        ? " 특성 선택지가 열렸어요. 캐릭터 페이지에서 선택해주세요."
+        : "";
+    ok = `${itemName}을 사용했습니다. ${lifeSkillExpPotion.label} 숙련도 +${lifeSkillExpPotion.amount}${levelText}.${perkText}`;
 
     const inv = consumeInvItem(ctx.inv, itemName, 1);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
@@ -3069,8 +3110,9 @@ export async function useCookingItem(
     if (ctx.locationId && leveled.length > 0) {
       await postSystem(
         ctx.locationId,
-        `🧪 ${ctx.nickname}님이 ${itemName}을 사용해 ${lifeSkillExpPotion.kind} Lv.${after.level}이 되었습니다.${perkText}`,
-        { userId: ctx.userId, actorName: ctx.nickname, kind: lifeSkillExpPotion.kind },
+        `🧪 ${ctx.nickname}님이 ${itemName}을 사용해 ${lifeSkillExpPotion.label} Lv.${after.level}이 되었습니다.${perkText}`,
+        // 활동 로그 분류는 한글 라벨 쪽 — 생산 숙련은 '제작' 으로 묶는다.
+        { userId: ctx.userId, actorName: ctx.nickname, kind: production ? "제작" : lifeSkillExpPotion.kind },
       );
     }
   } else if (lifeLuck) {
