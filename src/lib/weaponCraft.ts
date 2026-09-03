@@ -69,6 +69,15 @@ export const CRAFT_KIND_ADD_TAGS: Record<string, string> = {
   수렵: "수렵구",
 };
 
+// 이 재료가 종별 부여 재료인지 (마이너 목록에서 방어구일 때 막으려고 UI 도 쓴다).
+export function craftKindAddOf(craftEffect: string | null | undefined): string | null {
+  const text = craftEffect ?? "";
+  for (const [tag, kind] of Object.entries(CRAFT_KIND_ADD_TAGS)) {
+    if (text.includes(`[${tag}]`)) return kind;
+  }
+  return null;
+}
+
 export function craftCategoryLabel(category: CraftCategory): string {
   return category.label ?? category.key;
 }
@@ -923,6 +932,10 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   // 넣은 순서와 무관하게 표기 순서를 고정한다 — 같은 조합이 매번 같은 이름으로 나오도록.
   const addedSet = new Set(tagList.filter((t) => CRAFT_KIND_ADD_TAGS[t]).map((t) => CRAFT_KIND_ADD_TAGS[t]));
   const addedKinds = Object.values(CRAFT_KIND_ADD_TAGS).filter((k) => addedSet.has(k));
+  // UMD·수렵구는 무기 전용 분류다 — 방어구에 붙는 걸 여기서 막는다.
+  if (addedKinds.length > 0 && category.group !== "무기") {
+    return { error: `${addedKinds.join("·")}는 무기에만 붙일 수 있어요.` };
+  }
   const shownCategory = [categoryLabel, ...addedKinds].join("/");
   const shownTags = tagList.filter((t) => !CRAFT_KIND_ADD_TAGS[t]);
   const categoryNote = CRAFT_CATEGORY_NOTES[category.key];

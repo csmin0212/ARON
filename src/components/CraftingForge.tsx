@@ -15,6 +15,7 @@ import {
   MOON_FRAGMENT,
   MOON_TIER_BASE,
   craftCategoryLabel,
+  craftKindAddOf,
   isCraftMinorMaterial,
   isMoonFragment,
   minorSlotsFor,
@@ -458,7 +459,10 @@ export default function CraftingForge({
                   const lockedByExtraSlot =
                     !active && minorSel.length >= MAX_MINORS && !isCraftMinorMaterial(def);
                   const lockedByFull = !active && minorSel.length >= maxMinors;
-                  const disabled = lockedByExtraSlot || lockedByFull;
+                  // UMD·수렵구 부여 재료는 무기 전용 — 방어구를 고르고 있으면 못 누르게 한다.
+                  const kindAdd = craftKindAddOf(def.craftEffect);
+                  const lockedByGroup = kindAdd != null && group !== "무기";
+                  const disabled = lockedByExtraSlot || lockedByFull || lockedByGroup;
                   return (
                     <button
                       key={def.name}
@@ -478,7 +482,14 @@ export default function CraftingForge({
                         <span className={`text-[10px] font-bold ${RANK_TONE[def.rank] ?? "text-muted"}`}>{def.rarity}</span>
                       </p>
                       <p className="text-[10px] text-faint">
-                        보유 {have} · {lockedByExtraSlot ? "확장 슬롯은 특수 재료만" : used ? (def.craftEffect ?? "-") : "???"}
+                        보유 {have} ·{" "}
+                        {lockedByGroup
+                          ? "무기 전용"
+                          : lockedByExtraSlot
+                            ? "확장 슬롯은 특수 재료만"
+                            : used
+                              ? (def.craftEffect ?? "-")
+                              : "???"}
                       </p>
                     </button>
                   );
