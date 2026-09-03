@@ -60,10 +60,11 @@ export const CRAFT_CATEGORY_NOTES: Record<string, string> = {
   연금총: "사거리 40m · 행동 수정 -5",
 };
 
-// 마이너 재료의 태그로 종별 자체를 갈아끼운다.
-// 전자기판([UMD]) · 노란 갈기([수렵])처럼 '종별 부여' 재료가 여기 걸린다.
-// 태그로도 같이 뜨면 중복이라 부여에 쓴 태그는 목록에서 뺀다.
-export const CRAFT_KIND_OVERRIDE_TAGS: Record<string, string> = {
+// 마이너 재료의 태그로 종별을 '덧붙인다'. 원래 종별은 그대로 남는다 —
+// 룰북 표기가 '장검/내장' 꼴이고, UMD·수렵구는 서로 겹쳐 붙일 수 있는 추가 분류다.
+// 전자기판([UMD]) · 노란 갈기([수렵])가 여기 걸린다.
+// 태그로도 같이 뜨면 중복이라 부여에 쓴 태그는 태그 목록에서 뺀다.
+export const CRAFT_KIND_ADD_TAGS: Record<string, string> = {
   UMD: "UMD",
   수렵: "수렵구",
 };
@@ -918,10 +919,12 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     return slot === "공용" || slot === category.group;
   });
   // 부재료 효과(태그·부가효과)를 스탯 바로 다음 줄에 — 목록 미리보기(2줄)에서도 보이게.
-  // 종별 부여 재료가 들어갔으면 표기 종별을 갈아끼운다 (스탯은 고른 종별 그대로).
-  const overrideTag = tagList.find((t) => CRAFT_KIND_OVERRIDE_TAGS[t]);
-  const shownCategory = overrideTag ? CRAFT_KIND_OVERRIDE_TAGS[overrideTag] : categoryLabel;
-  const shownTags = overrideTag ? tagList.filter((t) => t !== overrideTag) : tagList;
+  // 종별 부여 재료 — 넣은 만큼 전부 뒤에 붙는다 (스탯은 고른 종별 그대로).
+  // 넣은 순서와 무관하게 표기 순서를 고정한다 — 같은 조합이 매번 같은 이름으로 나오도록.
+  const addedSet = new Set(tagList.filter((t) => CRAFT_KIND_ADD_TAGS[t]).map((t) => CRAFT_KIND_ADD_TAGS[t]));
+  const addedKinds = Object.values(CRAFT_KIND_ADD_TAGS).filter((k) => addedSet.has(k));
+  const shownCategory = [categoryLabel, ...addedKinds].join("/");
+  const shownTags = tagList.filter((t) => !CRAFT_KIND_ADD_TAGS[t]);
   const categoryNote = CRAFT_CATEGORY_NOTES[category.key];
 
   const effectText = [

@@ -22,9 +22,11 @@ const EQUIPMENT_SLOT_PATTERN =
 // 한글 뒤에는 \b(단어 경계)가 절대 서지 않는다 — \w가 ASCII만 인정하기 때문.
 // 예전엔 여기에 \b가 붙어 있어서 이 패턴이 한 번도 매치되지 않았다(사실상 죽은 분기).
 // 경계는 문자열 끝이나 구분자(공백·중점·쉼표·줄바꿈)로 직접 확인한다.
-const CRAFT_CATEGORY_BOUNDARY = "(?=$|[\\s·,])";
+// 종별 뒤에 "/UMD" 처럼 부여 종별이 붙을 수 있어 "/" 도 경계로 본다.
+// (없으면 "Lv5 장검/UMD" 가 주 판정을 못 타고 부위 힌트로만 잡힌다)
+const CRAFT_CATEGORY_BOUNDARY = "(?=$|[\\s·,/])";
 const CRAFT_CATEGORY_NAMES =
-  "격투|단검|장검|양손검|도끼|타격|메이스|창|채찍|카타나|활|방패|몸통|머리|전신|보조|장신구";
+  "격투|단검|장검|양손검|도끼|타격|메이스|창|채찍|카타나|활|마도총|연금총|방패|몸통|머리|전신|보조|장신구";
 const CRAFT_CATEGORY_PATTERN = new RegExp(
   `(?:^|\\n)\\s*Lv\\s*\\d+\\s+(?:${CRAFT_CATEGORY_NAMES})${CRAFT_CATEGORY_BOUNDARY}`,
 );
