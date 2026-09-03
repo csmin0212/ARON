@@ -93,3 +93,45 @@ export function equipmentLevelOf(item: Pick<SheetInventoryItem, "name" | "effect
   if (!Number.isFinite(level) || level < 1) return null;
   return Math.min(EQUIPMENT_LEVEL_MAX, level);
 }
+
+// ── 숙련도 물약 ──────────────────────────────────────────────────────────────
+// 가방의 '사용하기' 노출(클라)과 실제 사용 처리(서버)가 같은 규칙을 봐야 한다.
+// 예전엔 양쪽에 같은 정규식을 복붙해 뒀다가, 서버만 생산 숙련을 알아보게 되어
+// 버튼이 안 뜨는 일이 있었다. 여기 한 곳만 고치면 둘 다 따라온다.
+export type ExpPotionTarget =
+  | { scope: "life"; kind: "낚시" | "채집" | "채광"; label: string; amount: number }
+  | { scope: "production"; kind: "cooking" | "smithing" | "alchemy"; label: string; amount: number };
+
+const EXP_POTION_TAIL =
+  /\s*숙련도(?:를|을)?\s*(\d+)\s*(?:상승|증가|획득|올린다|올려준다)/.source;
+
+const PRODUCTION_EXP_ALIASES: {
+  pattern: string;
+  kind: "cooking" | "smithing" | "alchemy";
+  label: string;
+}[] = [
+  // '제작'은 장비 제작(대장)을 가리킨다 — 제작 화면 표기가 '대장 Lv.N' 이다.
+  { pattern: "제작|대장장이|대장|단조", kind: "smithing", label: "대장" },
+  { pattern: "요리", kind: "cooking", label: "요리" },
+  { pattern: "연금술|연금", kind: "alchemy", label: "연금술" },
+];
+
+export function parseExpPotion(effect: string | null | undefined): ExpPotionTarget | null {
+  const text = effect ?? "";
+  const life = text.match(new RegExp(`(낚시|채집|채광)${EXP_POTION_TAIL}`));
+  if (life) {
+    const amount = Number.parseInt(life[2], 10);
+    if (Number.isFinite(amount) && amount > 0) {
+      return { scope: "life", kind: life[1] as "낚시" | "채집" | "채광", label: life[1], amount };
+    }
+  }
+  for (const alias of PRODUCTION_EXP_ALIASES) {
+    const m = text.match(new RegExp(`(?:${alias.pattern})${EXP_POTION_TAIL}`));
+    if (!m) continue;
+    const amount = Number.parseInt(m[1], 10);
+    if (Number.isFinite(amount) && amount > 0) {
+      return { scope: "production", kind: alias.kind, label: alias.label, amount };
+    }
+  }
+  return null;
+}

@@ -79,6 +79,7 @@ import {
   equipmentLevelOf,
   inventoryEquipmentSlot,
   isEquipmentLikeInventoryItem,
+  parseExpPotion,
 } from "@/lib/itemUse";
 import {
   potionSellPrice,
@@ -2554,47 +2555,10 @@ function parseDungeonRunRecovery(effect: string): number {
   return m ? Math.max(0, Number.parseInt(m[1], 10) || 0) : 0;
 }
 
-// 생산 숙련(요리·대장·연금술)도 같은 문장으로 받는다. 시트에 '제작 숙련도를 N 상승'
-// 이라고 적어둔 물약이 생겼는데 낚시·채집·채광만 인식해 아무 일도 안 일어났다.
-// '제작'은 장비 제작(대장)을 가리킨다 — 제작 화면 표기가 '대장 Lv.N' 이다.
-const PRODUCTION_EXP_ALIASES: { pattern: string; kind: ProductionSkillKind; label: string }[] = [
-  { pattern: "제작|대장|대장장이|단조", kind: "smithing", label: "대장" },
-  { pattern: "요리", kind: "cooking", label: "요리" },
-  { pattern: "연금술|연금", kind: "alchemy", label: "연금술" },
-];
-
 const PRODUCTION_EXP_APPLIERS: Record<
   ProductionSkillKind,
   (state: LifeState, gained: number) => number[]
 > = { cooking: applyCookingExp, smithing: applySmithingExp, alchemy: applyAlchemyExp };
-
-type ExpPotion =
-  | { scope: "life"; kind: LifeSkillKind; label: string; amount: number }
-  | { scope: "production"; kind: ProductionSkillKind; label: string; amount: number };
-
-// 정규식 리터럴의 source 를 쓴다 — 문자열로 적으면 "\\s" 처럼 두 번 써야 하고, 한 번만 쓰면
-// JS 가 \s 를 그냥 s 로 읽어 패턴이 조용히 망가진다.
-const EXP_POTION_TAIL =
-  /\s*숙련도(?:를|을)?\s*(\d+)\s*(?:상승|증가|획득|올린다|올려준다)/.source;
-
-function parseLifeSkillExpPotion(effect: string): ExpPotion | null {
-  const life = effect.match(new RegExp(`(낚시|채집|채광)${EXP_POTION_TAIL}`));
-  if (life) {
-    const amount = Number.parseInt(life[2], 10);
-    if (Number.isFinite(amount) && amount > 0) {
-      return { scope: "life", kind: life[1] as LifeSkillKind, label: life[1], amount };
-    }
-  }
-  for (const alias of PRODUCTION_EXP_ALIASES) {
-    const m = effect.match(new RegExp(`(?:${alias.pattern})${EXP_POTION_TAIL}`));
-    if (!m) continue;
-    const amount = Number.parseInt(m[1], 10);
-    if (Number.isFinite(amount) && amount > 0) {
-      return { scope: "production", kind: alias.kind, label: alias.label, amount };
-    }
-  }
-  return null;
-}
 
 function recipeRankNumber(rank: string | null | undefined): number {
   const match = String(rank ?? "").match(/R\s*(\d+)/i);
@@ -2911,7 +2875,7 @@ export async function useCookingItem(
   const dungeonRunRecovery = parseDungeonRunRecovery(rawEffect);
   const apRecovery = parseApRecovery(rawEffect);
   const fateRecovery = parseFateRecovery(rawEffect);
-  const lifeSkillExpPotion = parseLifeSkillExpPotion(rawEffect);
+  const lifeSkillExpPotion = parseExpPotion(rawEffect);
   const potionDurationMinutes = isCustomAlchemyPotion ? parseBuffDurationMinutes(rawEffect) : null;
   const timedPotionLifeLuck = potionDurationMinutes && lifeLuck ? lifeLuck : null;
   const timedPotionStat = potionDurationMinutes && statBuff ? statBuff : null;

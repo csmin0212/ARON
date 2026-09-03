@@ -5,7 +5,7 @@ import { useCookingItem, type CookingState } from "@/app/actions/services";
 import { useSkillBook, type SkillBookState } from "@/app/actions/skills";
 import type { SheetInventoryItem } from "@/lib/googleSheets";
 import { ALCHEMY_CUSTOM_POTION_MARKER, customPotionSellPrice } from "@/lib/alchemy";
-import { isEquipmentLikeInventoryItem } from "@/lib/itemUse";
+import { isEquipmentLikeInventoryItem, parseExpPotion } from "@/lib/itemUse";
 import type { DetectorView } from "@/lib/lifeDetector";
 
 export type LifeBagPocket = {
@@ -97,6 +97,8 @@ function canUseItem(item: SheetInventoryItem): boolean {
   const effect = item.effect ?? "";
   if (effect.includes("아무도 없는 곳에서 열어보자")) return true;
   if (isEquipmentLikeInventoryItem(item)) return false;
+  // 숙련도 물약은 서버와 같은 파서로 판정한다 (생활·생산 숙련 모두).
+  if (parseExpPotion(effect)) return true;
   const isCustomAlchemyPotion = customPotionSellPrice(effect) != null;
   if (isCustomAlchemyPotion) {
     const hasDuration = /\d+\s*분/.test(effect);
@@ -117,7 +119,7 @@ function canUseItem(item: SheetInventoryItem): boolean {
   }
   // 행운·판정(월드 30분 버프)·세션 버프·HP/MP 회복·피로도 회복·던전 횟수 회복
   // useCookingItem이 처리하는 효과들.
-  return /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+|(?:낚시|채집|채광)\s*숙련도(?:를|을)?\s*\d+\s*(?:상승|증가|획득|올린다|올려준다)|(?:근력|재주|민첩|지력|감지|정신|행운|명중|회피|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?|세션\s*버프|(?:시나리오|장면)\s*종료\s*시?\s*까지\s*지속|\d+\s*분\s*지속|(HP|MP)[^\n]*회복|피로도\s*(?:를|을)?\s*(?:\[\d+\s*D\]|\d+\s*D|\d+)[^\n]*회복|페이트[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(effect);
+  return /(?:낚시·채집·채광|낚시·채집|낚시|채집|채광)\s*행운\s*\+\d+|(?:근력|재주|민첩|지력|감지|정신|행운|명중|회피|공격력|마력|물리\s*공격력|마법\s*공격력|마법\s*공격|무기\s*공격력|원하는\s*능력|모든\s*능력)\s*(?:판정\s*)?\+\d+(?:\s*(?:증가|버프))?|세션\s*버프|(?:시나리오|장면)\s*종료\s*시?\s*까지\s*지속|\d+\s*분\s*지속|(HP|MP)[^\n]*회복|피로도\s*(?:를|을)?\s*(?:\[\d+\s*D\]|\d+\s*D|\d+)[^\n]*회복|페이트[^\n]*회복|던전\s*(?:클리어|도전)?\s*횟수[^\n]*(?:회복|초기화)/.test(effect);
 }
 
 function displayEffect(effect: string | null | undefined): string {
