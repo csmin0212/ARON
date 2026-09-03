@@ -44,12 +44,29 @@ export const CRAFT_CATEGORIES: CraftCategory[] = [
   { key: "채찍", group: "무기", emoji: "〰️", hand: "한손" },
   { key: "카타나", group: "무기", emoji: "🈁", hand: "한손" },
   { key: "활", group: "무기", emoji: "🏹", hand: "양손" },
+  { key: "마도총", group: "무기", emoji: "🔫", hand: "한손" },
+  { key: "연금총", group: "무기", emoji: "💥", hand: "양손" },
   { key: "방패", group: "방어구", emoji: "🛡️" },
   { key: "몸통", group: "방어구", emoji: "🎽" },
   { key: "머리", group: "방어구", emoji: "🪖" },
   { key: "전신", group: "방어구", emoji: "🛡️" },
   { key: "보조", group: "방어구", emoji: "🧤" },
 ];
+
+// 종별마다 늘 따라붙는 룰북 수치 — 앱은 명중·공격력만 표에 들고 있어서
+// 사거리·행동 수정 같은 건 이렇게 효과문에 한 줄로 붙인다.
+export const CRAFT_CATEGORY_NOTES: Record<string, string> = {
+  마도총: "사거리 10m · 「사거리: 지근」의 대상에게 사격 공격 가능",
+  연금총: "사거리 40m · 행동 수정 -5",
+};
+
+// 마이너 재료의 태그로 종별 자체를 갈아끼운다.
+// 전자기판([UMD]) · 노란 갈기([수렵])처럼 '종별 부여' 재료가 여기 걸린다.
+// 태그로도 같이 뜨면 중복이라 부여에 쓴 태그는 목록에서 뺀다.
+export const CRAFT_KIND_OVERRIDE_TAGS: Record<string, string> = {
+  UMD: "UMD",
+  수렵: "수렵구",
+};
 
 export function craftCategoryLabel(category: CraftCategory): string {
   return category.label ?? category.key;
@@ -473,6 +490,33 @@ export const BASELINE: Record<string, BaselineRow[]> = {
     { hit: -2, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 3800, rep: "헤비 컴포짓 보우", part: "양손" },
     { hit: -2, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 6000, rep: "발리스타", part: "양손" },
   ],
+  // 마도총 — 「사거리: 지근」 대상에게도 사격 가능한 한손 총. 공격력 3+Lv, 중량 3+(Lv-1).
+  마도총: [
+    { hit: 0, atk: 4, dodge: 0, pdef: 0, mdef: 0, price: 153, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 5, dodge: 0, pdef: 0, mdef: 0, price: 240, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 6, dodge: 0, pdef: 0, mdef: 0, price: 398, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 7, dodge: 0, pdef: 0, mdef: 0, price: 568, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 793, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 9, dodge: 0, pdef: 0, mdef: 0, price: 1087, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 1500, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 11, dodge: 0, pdef: 0, mdef: 0, price: 2147, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 3007, rep: "마도총", part: "한손" },
+    { hit: 0, atk: 13, dodge: 0, pdef: 0, mdef: 0, price: 4406, rep: "마도총", part: "한손" },
+  ],
+  // 연금총 — 화약식 양손 총. 공격력 6+Lv*2 로 세지만 행동 -5 가 대가다.
+  연금총: [
+    { hit: -1, atk: 8, dodge: 0, pdef: 0, mdef: 0, price: 153, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 10, dodge: 0, pdef: 0, mdef: 0, price: 240, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 12, dodge: 0, pdef: 0, mdef: 0, price: 398, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 14, dodge: 0, pdef: 0, mdef: 0, price: 568, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 16, dodge: 0, pdef: 0, mdef: 0, price: 793, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 18, dodge: 0, pdef: 0, mdef: 0, price: 1087, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 20, dodge: 0, pdef: 0, mdef: 0, price: 1500, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 22, dodge: 0, pdef: 0, mdef: 0, price: 2147, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 24, dodge: 0, pdef: 0, mdef: 0, price: 3007, rep: "머스킷", part: "양손" },
+    { hit: -1, atk: 26, dodge: 0, pdef: 0, mdef: 0, price: 4406, rep: "머스킷", part: "양손" },
+  ],
+
   방패: [
     { hit: 0, atk: 0, dodge: -1, pdef: 3, mdef: 0, price: 100, rep: "라운드 실드", part: "한손" },
     { hit: 0, atk: 0, dodge: -1, pdef: 4, mdef: 0, price: 150, rep: "카이트 실드", part: "한손" },
@@ -551,6 +595,8 @@ const BASELINE_WEIGHT: Record<string, number[]> = {
   채찍: [3, 4, 5, 6, 7, 7, 7, 7, 7, 7],
   카타나: [5, 6, 7, 8, 9, 9, 9, 9, 9, 9],
   활: [6, 7, 8, 9, 10, 10, 10, 13, 13, 13],
+  마도총: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  연금총: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   방패: [3, 4, 5, 6, 7, 7, 7, 7, 7, 7],
   몸통: [5, 7, 8, 10, 9, 9, 9, 10, 11, 11],
   머리: [1, 1, 2, 3, 4, 4, 4, 5, 5, 6],
@@ -872,16 +918,23 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     return slot === "공용" || slot === category.group;
   });
   // 부재료 효과(태그·부가효과)를 스탯 바로 다음 줄에 — 목록 미리보기(2줄)에서도 보이게.
+  // 종별 부여 재료가 들어갔으면 표기 종별을 갈아끼운다 (스탯은 고른 종별 그대로).
+  const overrideTag = tagList.find((t) => CRAFT_KIND_OVERRIDE_TAGS[t]);
+  const shownCategory = overrideTag ? CRAFT_KIND_OVERRIDE_TAGS[overrideTag] : categoryLabel;
+  const shownTags = overrideTag ? tagList.filter((t) => t !== overrideTag) : tagList;
+  const categoryNote = CRAFT_CATEGORY_NOTES[category.key];
+
   const effectText = [
     statLine(stats, category.group),
-    ...(tagList.length > 0 ? [tagList.map((t) => `[${t}]`).join(" ")] : []),
+    ...(shownTags.length > 0 ? [shownTags.map((t) => `[${t}]`).join(" ")] : []),
     ...(extras.length > 0 ? [extras.join(" · ")] : []),
     ...(isMagic ? ["분류: 매직 아이템"] : []),
-    `Lv${level} ${categoryLabel} · ${base.part}`,
+    ...(categoryNote ? [categoryNote] : []),
+    `Lv${level} ${shownCategory} · ${base.part}`,
   ].join("\n");
 
   return {
-    category: categoryLabel,
+    category: shownCategory,
     group: category.group,
     level,
     part: base.part,

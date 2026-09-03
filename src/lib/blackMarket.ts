@@ -22,6 +22,24 @@ export const BLACK_MARKET_POTIONS = [
   },
 ] as const;
 
+// 제작 재료 — 마이너에 넣으면 결과물의 종별을 갈아끼우는 '종별 부여' 재료.
+// 포션과 같은 코인으로 사는 물건이라 구매 처리는 그대로 쓰고, 탭만 따로 둔다.
+export const BLACK_MARKET_CRAFT_MATERIALS = [
+  {
+    id: "전자기판",
+    itemName: "전자기판",
+    coinPrice: 1,
+  },
+  {
+    id: "노란갈기",
+    itemName: "노란 갈기",
+    coinPrice: 1,
+  },
+] as const;
+
+// 코인으로 살 수 있는 전부 — 구매 처리·아이템 행 조회는 이 목록을 본다.
+export const BLACK_MARKET_PRODUCTS = [...BLACK_MARKET_POTIONS, ...BLACK_MARKET_CRAFT_MATERIALS];
+
 export const BLACK_MARKET_EXCHANGE_OFFERS = [
   {
     id: "coin_500",
@@ -43,7 +61,8 @@ export const BLACK_MARKET_EXCHANGE_OFFERS = [
   },
 ] as const;
 
-export type BlackMarketPotionProduct = (typeof BLACK_MARKET_POTIONS)[number];
+export type BlackMarketPotionProduct = (typeof BLACK_MARKET_PRODUCTS)[number];
+export type BlackMarketCraftMaterial = (typeof BLACK_MARKET_CRAFT_MATERIALS)[number];
 export type BlackMarketExchangeOffer = (typeof BLACK_MARKET_EXCHANGE_OFFERS)[number];
 
 export type BlackMarketExchangeState = {
@@ -53,7 +72,7 @@ export type BlackMarketExchangeState = {
 
 export function blackMarketPotionProduct(productId: string): BlackMarketPotionProduct | null {
   return (
-    BLACK_MARKET_POTIONS.find(
+    BLACK_MARKET_PRODUCTS.find(
       (item) => item.id === productId || item.itemName === productId,
     ) ?? null
   );

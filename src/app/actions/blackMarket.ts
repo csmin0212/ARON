@@ -407,7 +407,7 @@ export async function buyBlackMarketPotion(
   if (!user) return { error: "로그인이 필요합니다." };
   const productId = String(formData.get("productId") ?? "").trim();
   const product = blackMarketPotionProduct(productId);
-  if (!product) return { error: "판매 목록에 없는 포션입니다." };
+  if (!product) return { error: "판매 목록에 없는 물품입니다." };
 
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.sheetTab) return { error: "캐릭터 시트 연동이 필요합니다." };

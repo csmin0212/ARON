@@ -294,6 +294,13 @@ export type BlackMarketView = {
     weight: number | null;
     coinPrice: number;
   }[];
+  materials: {
+    id: string;
+    itemName: string;
+    desc: string | null;
+    weight: number | null;
+    coinPrice: number;
+  }[];
   exchanges: {
     id: string;
     goldCost: number;
@@ -2458,7 +2465,7 @@ function BlackMarketDealer({
     undefined,
   );
   const [actionState, setActionState] = useState<BlackMarketState>(undefined);
-  const [tab, setTab] = useState<"goods" | "potions" | "exchange">("goods");
+  const [tab, setTab] = useState<"goods" | "potions" | "materials" | "exchange">("goods");
   const [pending, startTransition] = useTransition();
 
   function run(action: () => Promise<BlackMarketState>) {
@@ -2538,10 +2545,11 @@ function BlackMarketDealer({
             )}
           </section>
 
-          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/[0.04] p-1">
+          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/[0.04] p-1 sm:grid-cols-4">
             {[
               { id: "goods" as const, label: "오늘의 물품" },
               { id: "potions" as const, label: "포션" },
+              { id: "materials" as const, label: "재료" },
               { id: "exchange" as const, label: "교환" },
             ].map((item) => (
               <button
@@ -2632,6 +2640,38 @@ function BlackMarketDealer({
                         )}
                       </span>
                       <span className="shrink-0 text-xs font-black text-violet-100">
+                        {item.coinPrice}코인
+                      </span>
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </section>
+          ) : tab === "materials" ? (
+            <section>
+              <h4 className="mb-2 text-sm font-extrabold text-white">🧷 재료</h4>
+              <div className="grid gap-2">
+                {blackMarket.materials.map((item) => (
+                  <form key={item.id} action={potionAction}>
+                    <input type="hidden" name="productId" value={item.id} />
+                    <button
+                      type="submit"
+                      disabled={potionPending || blackMarket.coins < item.coinPrice}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-3 text-left transition hover:border-amber-300/50 hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <span className="text-xl">🧷</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-extrabold text-white">{item.itemName}</span>
+                        <span className="mt-0.5 block text-[11px] font-semibold text-zinc-400">
+                          재료 · 중량 {item.weight ?? 1}
+                        </span>
+                        {item.desc && (
+                          <span className="mt-1 block line-clamp-2 text-[11px] leading-snug text-zinc-500">
+                            {item.desc}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 text-xs font-black text-amber-100">
                         {item.coinPrice}코인
                       </span>
                     </button>

@@ -46,7 +46,11 @@ import {
   loadBlackMarketExchangeState,
   loadBlackMarketQuestState,
 } from "@/lib/blackMarketServer";
-import { BLACK_MARKET_EXCHANGE_OFFERS, BLACK_MARKET_POTIONS } from "@/lib/blackMarket";
+import {
+  BLACK_MARKET_CRAFT_MATERIALS,
+  BLACK_MARKET_EXCHANGE_OFFERS,
+  BLACK_MARKET_POTIONS,
+} from "@/lib/blackMarket";
 import {
   countTodayWanderingMerchantSummons,
   loadActiveWanderingMerchant,
@@ -1253,6 +1257,17 @@ export default async function WorldPage() {
         desc: item?.desc ?? null,
         weight: item?.weight ?? 1,
         coinPrice: potion.coinPrice,
+      };
+    }),
+    // 제작 재료 — 포션과 같은 아이템 행 캐시를 쓴다 (getBlackMarketPotionRows 가 둘 다 담는다).
+    materials: BLACK_MARKET_CRAFT_MATERIALS.map((mat) => {
+      const item = blackMarketPotionByKey.get(mat.id) ?? blackMarketPotionByKey.get(mat.itemName);
+      return {
+        id: mat.id,
+        itemName: item?.name ?? mat.itemName,
+        desc: item?.desc ?? null,
+        weight: item?.weight ?? 1,
+        coinPrice: mat.coinPrice,
       };
     }),
     exchanges: BLACK_MARKET_EXCHANGE_OFFERS.map((offer) => {
