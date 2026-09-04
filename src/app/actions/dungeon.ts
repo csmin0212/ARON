@@ -2,6 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
+import { findLifeSkillItem, lifeSkillItemKind } from "@/lib/lifeSkillData";
+import {
+  addLifeBagItem,
+  lifeBagLimit,
+  lifeBagWeight,
+  type LifeState,
+} from "@/lib/lifeSkillPerks";
 import { getCurrentUser } from "@/lib/auth";
 import { freshAp, postSystem } from "@/lib/play";
 import { bumpStat, checkAndGrant, setStat } from "@/lib/achievements";
@@ -86,12 +94,13 @@ function parseDropList(json: string | null): DropEntry[] {
 async function giveItemById(
   userId: string,
   inv: SheetInventory,
+  life: LifeState,
   itemId: string,
   qty: number,
   rewards: string[],
   awards: ItemAward[],
   note?: string,
-): Promise<void> {
+): Promise<boolean> {
   void userId;
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: itemId }, { name: itemId }] },
@@ -99,6 +108,35 @@ async function giveItemById(
   });
   const itemName = catalog?.name ?? itemId;
   const weight = catalog?.weight ?? 1;
+
+  // 광물·물고기·약초는 일반 가방이 아니라 그 생활스킬 가방에 산다.
+  // 던전에서 떨어져도 같은 물건이라 같은 자리로 넣는다 — 안 그러면 성급 표기도
+  // 없고 광물 가방에도 안 보인다. 가방이 가득 차면 남는 만큼만 일반 가방으로.
+  let lifeUsed = false;
+  const kind = lifeSkillItemKind(itemName);
+  const def = kind ? findLifeSkillItem(kind, itemName) : null;
+  if (kind && def) {
+    const bag = life.bags[kind];
+    const limit = lifeBagLimit(life, kind);
+    let put = 0;
+    while (put < qty && lifeBagWeight(bag) + def.weight <= limit) {
+      addLifeBagItem(life, kind, { name: def.name, weight: def.weight, rank: def.rank, text: def.text });
+      put += 1;
+    }
+    if (put > 0) {
+      lifeUsed = true;
+      rewards.push(`${def.name}${note ? ` ${note}` : ""} x${put}`);
+      qty -= put;
+    }
+    if (qty <= 0) return lifeUsed;
+    rewards.push(`${def.name} x${qty}(가방이 가득 차 휴대품으로)`);
+    const spill = inv.items.find((i) => i.name.trim() === itemName.trim());
+    if (spill) spill.qty += qty;
+    else inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight, qty });
+    awards.push({ itemId: catalog?.id ?? itemId, qty });
+    return lifeUsed;
+  }
+
   const found = inv.items.find((i) => i.name.trim() === itemName.trim());
   if (found) {
     found.qty += qty;
@@ -109,24 +147,27 @@ async function giveItemById(
   }
   awards.push({ itemId: catalog?.id ?? itemId, qty });
   rewards.push(`${itemName}${note ? ` ${note}` : ""} x${qty}`);
+  return false;
 }
 
 // 드랍 한 건을 인벤토리/도감에 반영하고, 골드 드랍이면 그 양을 반환(나중에 합산 지급).
 async function giveDrop(
   userId: string,
   inv: SheetInventory,
+  life: LifeState,
   d: DropEntry,
   rewards: string[],
   awards: ItemAward[],
-): Promise<number> {
-  if (d.item === "꽝") return 0;
+): Promise<{ gold: number; lifeUsed: boolean }> {
+  if (d.item === "꽝") return { gold: 0, lifeUsed: false };
   if (d.item === "골드") {
     if (d.gold > 0) rewards.push(`${d.gold}G`);
-    return d.gold;
+    return { gold: d.gold, lifeUsed: false };
   }
   // 스킬북 패밀리 토큰(스킬북1~4) → 같은 N%4 패밀리에서 랜덤 실제 스킬북으로 개별 추첨.
   // 1→1·5·9·13… / 2→2·6·10… / 3→3·7·11… / 4→유니크(4·8·12…)
   const fam = d.item.match(/^스킬북([1-4])$/);
+  let lifeUsed = false;
   if (fam) {
     for (let i = 0; i < d.qty; i++) {
       const picked = await pickSkillbookInFamily(Number(fam[1]));
@@ -134,12 +175,14 @@ async function giveDrop(
         rewards.push(`${d.item}(추첨 실패 — 해당 계열 스킬북 없음)`);
         continue;
       }
-      await giveItemById(userId, inv, picked.itemId, 1, rewards, awards, `《${picked.skillName}》`);
+      if (await giveItemById(userId, inv, life, picked.itemId, 1, rewards, awards, `《${picked.skillName}》`)) {
+        lifeUsed = true;
+      }
     }
-    return 0;
+    return { gold: 0, lifeUsed };
   }
-  await giveItemById(userId, inv, d.item, d.qty, rewards, awards);
-  return 0;
+  lifeUsed = await giveItemById(userId, inv, life, d.item, d.qty, rewards, awards);
+  return { gold: 0, lifeUsed };
 }
 
 export async function challengeDungeon(dungeonId: string, ability: string): Promise<DungeonResult> {
@@ -194,6 +237,9 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
   const awards: ItemAward[] = [];
   let nextInv: SheetInventory | null = null;
   let goldGain = 0;
+  // 광물·물고기·약초 드랍은 생활스킬 가방으로 들어간다 — 바뀌면 lifeJson 도 같이 저장.
+  const life = parseLifeState(sheet.lifeJson);
+  let lifeChanged = false;
   if (success) {
     const guaranteed = parseDropList(dungeon.dropsJson);
     const rollPool = parseDropList(dungeon.rollDropsJson);
@@ -201,8 +247,11 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
     if (rollPool.length > 0) picks.push(pickDrop(rollPool));
 
     const inv = parseInv(sheet.invJson);
+    await loadLifeItems();
     for (const d of picks) {
-      goldGain += await giveDrop(user.id, inv, d, rewards, awards);
+      const got = await giveDrop(user.id, inv, life, d, rewards, awards);
+      goldGain += got.gold;
+      if (got.lifeUsed) lifeChanged = true;
     }
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
     const overflow = inventoryWeightOverflowMessage(inv);
@@ -223,6 +272,7 @@ export async function challengeDungeon(dungeonId: string, ability: string): Prom
       dungeonRuns: runs + 1,
       achStatsJson: achStats,
       ...(nextInv ? { invJson: JSON.stringify(nextInv) } : {}),
+      ...(lifeChanged ? { lifeJson: JSON.stringify(life) } : {}),
       ...(goldGain > 0 ? { curGold: nextGold, gold: `${nextGold}G` } : {}),
     },
   });
