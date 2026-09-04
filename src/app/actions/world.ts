@@ -696,13 +696,26 @@ export async function syncWorldMap(
     warns.push(e instanceof Error ? e.message : "아이템 탭 오류");
   }
 
+  // 광물·어획물은 아이템 탭이 아니라 생활아이템 탭이 정본이다.
+  // 드랍 검증에서도 그쪽 이름을 인정해야 '은 광석이 아이템 탭에 없어요' 같은 경고가 안 뜬다.
+  // (생활아이템 동기화는 뒤 단계라 DB 에 이미 들어와 있는 목록을 본다 — 이번 회차에
+  //  새로 추가한 광물이라면 다음 동기화에서 통과한다)
+  let dropNames: (base: Set<string>) => Set<string> = (base) => base;
+  try {
+    const lifeRows = await prisma.lifeSkillItem.findMany({ select: { name: true } });
+    const lifeNames = lifeRows.flatMap((it) => [it.name, it.name.trim()]);
+    dropNames = (base) => new Set([...base, ...lifeNames]);
+  } catch {
+    // 생활아이템 조회가 실패해도 맵 동기화는 계속한다 — 검증만 예전처럼 좁아진다.
+  }
+
   // 3) 행동 (선택 — 아이템 도감 기준으로 드랍 검증)
   try {
     if (!itemIds) {
       const existing = await prisma.item.findMany({ select: { id: true, name: true } });
       itemIds = new Set(existing.flatMap((it) => [it.id, it.name]));
     }
-    const sheetActions = (await fetchActionsRows(itemIds)) ?? [];
+    const sheetActions = (await fetchActionsRows(dropNames(itemIds))) ?? [];
     const actions = [...sheetActions, ...autoLifeActions(rows, sheetActions)];
     if (actions.length > 0) {
       const locIds = new Set(rows.map((r) => r.id));
@@ -738,7 +751,7 @@ export async function syncWorldMap(
       const existing = await prisma.item.findMany({ select: { id: true, name: true } });
       itemIds = new Set(existing.flatMap((it) => [it.id, it.name]));
     }
-    const dungeons = await fetchDungeonsRows(itemIds);
+    const dungeons = await fetchDungeonsRows(dropNames(itemIds));
     if (dungeons) {
       const locIds = new Set(rows.map((r) => r.id));
       const valid = dungeons.filter((d) => locIds.has(d.locationId));
@@ -773,7 +786,7 @@ export async function syncWorldMap(
       const existing = await prisma.item.findMany({ select: { id: true, name: true } });
       itemIds = new Set(existing.flatMap((it) => [it.id, it.name]));
     }
-    const events = await fetchEventsRows(itemIds);
+    const events = await fetchEventsRows(dropNames(itemIds));
     if (events) {
       const locIds = new Set(rows.map((r) => r.id));
       const valid = events.filter((event) => locIds.has(event.locationId));
