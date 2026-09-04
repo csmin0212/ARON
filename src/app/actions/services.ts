@@ -66,6 +66,8 @@ import {
 import {
   findLifeSkillItem,
   getActiveItems,
+  lifeSkillItemKind,
+  lifeSkillMarketPrice,
   lifeSkillSellPrice,
   type LifeSkillKind,
 } from "@/lib/lifeSkillData";
@@ -3356,7 +3358,15 @@ export async function sellMaterial(_prev: MarketState, formData: FormData): Prom
     },
     select: { sellPrice: true },
   });
-  const sellPrice = resolveMaterialSellPrice(itemName, item?.sellPrice);
+  let sellPrice = resolveMaterialSellPrice(itemName, item?.sellPrice);
+  // 광물은 아이템 탭에 없어도 된다 — 정본은 광물 탭이다. 가방이 꽉 차서 휴대품으로
+  // 흘러든 광물을 여기서도 팔 수 있게, 생활 가방에서 파는 값과 같은 시세로 폴백한다.
+  if (sellPrice <= 0) {
+    await loadLifeItems();
+    const kind = lifeSkillItemKind(itemName);
+    const def = kind ? findLifeSkillItem(kind, itemName) : null;
+    if (kind && def) sellPrice = lifeSkillMarketPrice(kind, def);
+  }
   if (sellPrice <= 0) return { error: "이곳에서 매입하지 않는 물건입니다." };
 
   if (itemQty(ctx.inv, itemName) < qty) return { error: `${itemName} 수량이 부족합니다.` };

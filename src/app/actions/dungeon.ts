@@ -101,7 +101,6 @@ async function giveItemById(
   awards: ItemAward[],
   note?: string,
 ): Promise<boolean> {
-  void userId;
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: itemId }, { name: itemId }] },
     select: { id: true, name: true, desc: true, weight: true },
@@ -129,11 +128,27 @@ async function giveItemById(
       qty -= put;
     }
     if (qty <= 0) return lifeUsed;
-    rewards.push(`${def.name} x${qty}(가방이 가득 차 휴대품으로)`);
-    const spill = inv.items.find((i) => i.name.trim() === itemName.trim());
-    if (spill) spill.qty += qty;
-    else inv.items.push({ name: itemName, effect: catalog?.desc ?? null, weight, qty });
-    awards.push({ itemId: catalog?.id ?? itemId, qty });
+    // 가방이 가득 차면 남는 만큼은 우편으로 보낸다 — 휴대품에 넣으면 성급도 없고
+    // 광물 가방에도 안 보인다. 우편 수령은 이미 생활 가방(가득 차면 창고)으로 넣어준다.
+    // 아이템 탭에 광물 행이 없어도 되도록 성급·중량·설명을 스냅샷으로 함께 보낸다.
+    rewards.push(`${def.name} x${qty}(가방이 가득 차 우편함으로)`);
+    await prisma.mail.create({
+      data: {
+        recipientId: userId,
+        senderName: "던전",
+        subject: `${def.name} x${qty} 배달`,
+        body: `${bag.name}이 가득 차서 우편으로 보냅니다. 첨부를 수령해주세요.`,
+        itemName: def.name,
+        itemQty: qty,
+        itemMetaJson: JSON.stringify({
+          source: kind,
+          rank: def.rank,
+          text: def.text,
+          weight: def.weight,
+          effect: `R${def.rank} · ${def.text}`,
+        }),
+      },
+    });
     return lifeUsed;
   }
 

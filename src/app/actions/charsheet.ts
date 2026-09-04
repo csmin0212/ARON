@@ -2,6 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { loadLifeItems } from "@/lib/lifeSkillLoader";
+import {
+  findLifeSkillItem,
+  lifeSkillItemEffect,
+  lifeSkillItemKind,
+} from "@/lib/lifeSkillData";
 import { getCurrentUser } from "@/lib/auth";
 import { MASTER_SHEET_ID, fetchSheetByTab, isValidTabName } from "@/lib/charsheet";
 import { parseGoldToInt } from "@/lib/dice";
@@ -99,6 +105,7 @@ async function fillItemCatalogDetails(inventory: SheetInventory): Promise<boolea
     },
     select: { id: true, name: true, desc: true, weight: true },
   });
+  await loadLifeItems();
   const descByKey = new Map<string, string>();
   const weightByKey = new Map<string, number>();
   for (const entry of catalog) {
@@ -120,12 +127,17 @@ async function fillItemCatalogDetails(inventory: SheetInventory): Promise<boolea
     const lookup = <T>(map: Map<string, T>): T | undefined =>
       map.get(key) ?? (serial ? map.get(`#${serial}`) : undefined) ?? map.get(baseKey);
 
-    const desc = lookup(descByKey);
+    // 광물·어획물은 아이템 탭에 없어도 된다 — 정본은 광물/어획 목록이다.
+    // 가방이 꽉 차 휴대품으로 흘러든 것들이 설명·중량 없이 남지 않게 여기서 채운다.
+    const lifeKind = lifeSkillItemKind(key) ?? lifeSkillItemKind(baseKey);
+    const lifeDef = lifeKind ? findLifeSkillItem(lifeKind, key) ?? findLifeSkillItem(lifeKind, baseKey) : null;
+
+    const desc = lookup(descByKey) ?? (lifeKind && lifeDef ? lifeSkillItemEffect(lifeDef, lifeKind) : undefined);
     if (!item.effect && desc) {
       item.effect = desc;
       changed = true;
     }
-    const weight = lookup(weightByKey);
+    const weight = lookup(weightByKey) ?? lifeDef?.weight;
     if (item.weight == null && weight != null) {
       item.weight = weight;
       changed = true;
