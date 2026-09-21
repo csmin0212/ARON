@@ -14,26 +14,50 @@ import {
 
 export const metadata = { title: "우편함 · 아리안로드 온라인 갤러리" };
 
+// 한 페이지에 보여줄 통수. 예전엔 최신 100통만 가져오고 끝이라, 그보다 많이 쌓인
+// 사람은 오래된 우편이 아예 안 보였다 (228통까지 쌓인 사례).
+const PAGE_SIZE = 50;
+
+// 첨부가 없거나 이미 수령한 우편만 지울 수 있다 — '전체 삭제' 버튼 노출 조건과 같다.
+const DELETABLE = {
+  OR: [
+    { claimedAt: { not: null } },
+    {
+      AND: [
+        { gold: { lte: 0 } },
+        { OR: [{ itemName: null }, { itemQty: { lte: 0 } }] },
+        { cardSkin: null },
+      ],
+    },
+  ],
+};
+
 export default async function MailPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; page?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const sp = await searchParams;
 
+  const where = { recipientId: user.id };
+  // 개수는 전체 기준으로 센다 — 현재 페이지만 보고 세면 '모두 읽음' 같은 버튼이
+  // 뒤쪽 페이지에 읽지 않은 우편이 남아 있어도 사라진다.
+  const [total, unread, deletableCount] = await Promise.all([
+    prisma.mail.count({ where }),
+    prisma.mail.count({ where: { ...where, readAt: null } }),
+    prisma.mail.count({ where: { ...where, ...DELETABLE } }),
+  ]);
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = Math.min(pageCount, Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1));
+
   const mails = await prisma.mail.findMany({
-    where: { recipientId: user.id },
+    where,
     orderBy: { createdAt: "desc" },
-    take: 100,
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
   });
-  const unread = mails.filter((m) => !m.readAt).length;
-  const deletableCount = mails.filter(
-    (m) =>
-      m.claimedAt ||
-      (m.gold <= 0 && (!m.itemName || m.itemQty <= 0) && !m.cardSkin),
-  ).length;
 
   return (
     <div className="mx-auto max-w-2xl animate-fadeup space-y-5 py-4">
@@ -44,6 +68,10 @@ export default async function MailPage({
             <h1 className="mt-1 text-2xl font-black text-content">📬 우편함</h1>
             <p className="mt-1 text-sm text-faint">
               GM 우편과 경매장 보관품을 수령합니다.
+            </p>
+            <p className="mt-1 text-xs font-bold text-faint">
+              전체 {total}통{unread > 0 ? ` · 안 읽음 ${unread}통` : ""}
+              {pageCount > 1 ? ` · ${page}/${pageCount} 페이지` : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -162,6 +190,34 @@ export default async function MailPage({
           </div>
         )}
       </section>
+
+      {pageCount > 1 && (
+        <nav className="flex items-center justify-between gap-2 rounded-3xl border border-line bg-surface px-4 py-3 shadow-sm">
+          {page > 1 ? (
+            <a
+              href={`/mail?page=${page - 1}`}
+              className="rounded-xl border border-line px-3 py-2 text-xs font-extrabold text-content transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              ← 최신
+            </a>
+          ) : (
+            <span className="px-3 py-2 text-xs font-bold text-faint">← 최신</span>
+          )}
+          <span className="text-xs font-extrabold text-muted">
+            {page} / {pageCount}
+          </span>
+          {page < pageCount ? (
+            <a
+              href={`/mail?page=${page + 1}`}
+              className="rounded-xl border border-line px-3 py-2 text-xs font-extrabold text-content transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              지난 우편 →
+            </a>
+          ) : (
+            <span className="px-3 py-2 text-xs font-bold text-faint">지난 우편 →</span>
+          )}
+        </nav>
+      )}
     </div>
   );
 }
