@@ -14,6 +14,9 @@ import {
 export const metadata: Metadata = {
   title: "아리안로드 온라인 갤러리",
   description: "아리안로드 온라인 유저들이 모이는 갤러리 — 정보 공유, 공략, 잡담",
+  // 애드센스 소유권 확인 — 크롤러는 JS 를 실행하지 않아서 next/script 로 넣은
+  // 로더는 서버 HTML 의 <head> 에 안 보인다. 메타 태그는 여기서 서버 렌더된다.
+  other: { "google-adsense-account": "ca-pub-6434531883973503" },
 };
 
 export default async function RootLayout({
