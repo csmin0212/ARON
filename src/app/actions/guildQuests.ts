@@ -389,27 +389,31 @@ export async function exchangeSkillbook(itemName: string): Promise<GuildQuestAct
   const sheet = await prisma.characterSheet.findUnique({ where: { userId: user.id } });
   if (!sheet?.sheetTab) return { error: "캐릭터 시트 연동이 필요합니다." };
 
-  // 정상 지급(토큰 보유) 스킬북만 교환 가능 — 시트 위조본을 파편으로 가는 악용 차단
   const item = await prisma.item.findFirst({
     where: { OR: [{ id: target }, { name: target }] },
     select: { id: true, name: true },
   });
   const itemId = item?.id ?? target;
-  const consumed = await consumeSkillBookToken(user.id, [itemId]);
-  if (!consumed) return { error: `${target}의 정상 지급 기록이 없어요. (서버 지급 스킬북만 교환 가능)` };
+  const inv = parseInv(sheet.invJson);
+  const displayName = item?.name ?? target;
+
+  // 가방에 실제로 있는지만 본다. 예전엔 지급 토큰을 요구했는데, 창고에 한 번
+  // 넣었다 빼면 토큰이 사라져서 "팔 수는 있는데 갈 수는 없는" 상태가 됐다.
+  // 판매·거래에서 이미 토큰 게이트를 걷어냈으므로 갈기만 남겨둘 이유가 없다.
+  const owned = inv.items.find(
+    (entry) => entry.name.trim() === displayName || entry.name.trim() === itemId,
+  );
+  if (!owned || owned.qty <= 0) return { error: `${displayName}이(가) 가방에 없어요.` };
+
+  // 토큰이 남아 있으면 같이 정리한다 — 없어도 교환은 진행한다.
+  await consumeSkillBookToken(user.id, [itemId]).catch(() => false);
 
   const { state } = await loadGuildQuestState(user.id, sheet);
   const unique = isUniqueSkillbook(num);
   const fragKind: FragKind = unique ? "고급" : "일반";
   state.frags[fragKind] += EXCHANGE_REFUND;
 
-  const inv = parseInv(sheet.invJson);
-  const displayName = item?.name ?? target;
-  for (const entry of inv.items) {
-    if (entry.name.trim() !== displayName) continue;
-    entry.qty -= 1;
-    break;
-  }
+  owned.qty -= 1;
   inv.items = inv.items.filter((entry) => entry.qty > 0);
   inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
 

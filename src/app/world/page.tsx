@@ -539,7 +539,7 @@ export default async function WorldPage() {
   const bagBookSkills = bagItemNames.length
     ? await prisma.combatSkill.findMany({
         where: { sourceItem: { in: bagItemNames } },
-        select: { sourceItem: true },
+        select: { sourceItem: true, name: true, job: true },
       })
     : [];
   const skillBookNames = [
@@ -671,23 +671,19 @@ export default async function WorldPage() {
             .filter((item) => item.name.trim() === offer.itemName.trim())
             .reduce((sum, item) => sum + Math.max(0, item.qty), 0)) + questStorageQty(offer),
   }));
-  // 위쪽 skillBookTokens 와 완전히 같은 조회라 그대로 재사용한다 (같은 렌더에서 두 번 갈 이유가 없다)
-  const bookTokens = skillBookTokens;
-  const bookSkills = bookTokens.length
-    ? await prisma.combatSkill.findMany({
-        where: { sourceItem: { in: bookTokens.map((token) => token.itemId) } },
-        select: { sourceItem: true, name: true, job: true },
-      })
-    : [];
-  const questBooks = bookTokens
-    .map((token) => {
-      const num = skillbookNumber(token.itemId);
-      if (num == null) return null;
-      const skill = bookSkills.find((entry) => entry.sourceItem === token.itemId);
+  // 갈기 목록은 토큰이 아니라 '가방에 있는가' 로 만든다.
+  // 토큰으로 만들면 창고에 한 번 넣었다 뺀 스킬북이 목록에서 사라져서,
+  // 유저 눈엔 "경매엔 올라가는데 갈기만 안 되는" 상태가 된다 (비바람 사례).
+  const questBooks = bagItems
+    .map((item) => {
+      const name = item.name.trim();
+      const num = skillbookNumber(name);
+      if (num == null || item.qty <= 0) return null;
+      const skill = bagBookSkills.find((entry) => entry.sourceItem === name);
       return {
-        name: token.itemId,
-        qty: token.qty,
-        skillName: skill?.name ?? token.itemId,
+        name,
+        qty: item.qty,
+        skillName: skill?.name ?? name,
         job: skill?.job ?? null,
         unique: isUniqueSkillbook(num),
       };
