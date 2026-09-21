@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Script from "next/script";
 import { prisma } from "@/lib/prisma";
 import { isValidCategory, BEST_THRESHOLD } from "@/lib/categories";
 import Banner from "@/components/Banner";
@@ -187,6 +188,14 @@ export default async function HomePage({
 
   return (
     <div className="animate-fadeup">
+      {/* 구글 애드센스 — 갤러리 메인에만 둔다. 월드(게임) 화면에는 광고를 넣지 않는다.
+          next/script 기본 전략(afterInteractive)이라 하이드레이션을 막지 않는다. */}
+      <Script
+        id="adsbygoogle-init"
+        async
+        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6434531883973503"
+        crossOrigin="anonymous"
+      />
       <Banner />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
