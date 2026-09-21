@@ -155,9 +155,18 @@ export function buildCookedName(base: string, grade: string | null, nickname: st
 //  - 회복(주사위 [ND]): 모든 주사위에 +nD (평탄 +M 유지). "[2D]+1 회복" → 명품 "[4D]+1 회복"
 //  - 최대 HP/MP 스탯: 5단위로. "최대 HP +5" → 고품질 +10 / 명품 +15 / 장인 +20
 //  - 행운·공격·판정 등 그 외 "+N": 각 수치에 +n (복합이면 전부). "공격 +2, 근력 판정 +1" → 명품 "공격 +4, 근력 판정 +3"
+// 대괄호 없는 주사위 표기("HP 2D회복")도 같은 규칙으로 올린다.
+// 요리 레시피가 전부 이 꼴이라, 예전엔 고품질·명품·장인을 띄워도 회복량이 그대로였다.
+// 뒤에 영문/숫자가 붙는 건 건드리지 않는다 (2D6 같은 다른 표기 보호).
+const BARE_DICE = /(\d+)\s*D(?![A-Za-z0-9])/g;
+
 export function enhanceEffectText(effect: string, n = 1): string {
   if (/\[\d+\s*D\]/.test(effect)) {
     return effect.replace(/\[(\d+)\s*D\]/g, (_m, d: string) => `[${Number(d) + n}D]`);
+  }
+  // 여기까지 왔으면 대괄호 표기는 없다 — 맨 주사위만 올린다.
+  if (new RegExp(BARE_DICE.source).test(effect)) {
+    return effect.replace(BARE_DICE, (_m, d: string) => `${Number(d) + n}D`);
   }
   return effect.replace(
     /(최대\s*(?:HP|MP)\s*)?\+\s*(\d+)/g,
