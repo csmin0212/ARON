@@ -284,13 +284,27 @@ export default function WorldChat({
   }
 
   // 보이는 로그를 인쇄용 창으로 → PDF 저장 (지금 보고 있는 탭만)
-  function exportLog() {
+  async function exportLog() {
     const w = window.open("", "_blank");
     if (!w) return;
-    void fetch("/api/world/log-save", { method: "POST" }).catch(() => {}); // 업적 카운터
+    w.document.write("<!doctype html><meta charset=utf-8><p>로그를 불러오는 중…</p>");
+
+    // 화면용 메시지는 월드+시스템 합쳐 60줄까지만 들고 있어서 그대로 내보내면
+    // 대화가 잘린다. 저장할 때는 서버에서 입장 이후 기록을 전부 다시 받는다.
+    // (업적 카운터도 이 요청이 같이 올린다)
+    let source = shown;
+    try {
+      const res = await fetch("/api/world/log-save", { method: "POST" });
+      const data = (await res.json()) as { messages?: ChatMessage[] };
+      if (data.messages?.length) {
+        source = data.messages.filter((m) => (tab === "world" ? isWorldMessage(m) : !isWorldMessage(m)));
+      }
+    } catch {
+      /* 실패하면 화면에 있는 것만이라도 내보낸다 */
+    }
 
     const esc = escapeHtml;
-    const body = shown
+    const body = source
       .map((m) => {
         const time = formatFullDate(m.createdAt);
         if (m.system)
@@ -299,6 +313,7 @@ export default function WorldChat({
         return `<div class="msg">${avatarForLog(m.user)}<div class="msg-body"><p class="name"><b>${who}</b> <span class="t">${time}</span></p><p class="text">${araconHtml(m.content, esc)}</p></div></div>`;
       })
       .join("\n");
+    w.document.open();
     w.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <title>${esc(locationName)} 로그</title>
 <style>
@@ -318,7 +333,7 @@ export default function WorldChat({
   .t{color:#aaa;font-size:11px;font-weight:normal}
 </style></head><body>
 <h1>📜 ${esc(locationName)} — ${tab === "world" ? "월드" : "시스템"} 기록</h1>
-<div class="meta">아리안로드 온라인 · ${formatFullDate(new Date())} 내보냄 · ${shown.length}개 메시지</div>
+<div class="meta">아리안로드 온라인 · ${formatFullDate(new Date())} 내보냄 · ${source.length}개 메시지</div>
 ${body}
 </body></html>`);
     w.document.close();
