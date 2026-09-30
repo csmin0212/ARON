@@ -319,7 +319,7 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
     dailyGradeEventMultiplier("crafting"),
   );
   // 판매가 = 재료가치 + 세공비 + 순이익. 등급은 순이익 쪽만 키운다.
-  const sellPrice = craftSellPrice(preview.materialValue, fee, grade);
+  const sellPrice = craftSellPrice(preview.materialValue, preview.processedValue, fee, grade);
 
   const stats = applyGradeBonus(preview.stats, preview.group, grade);
   const name = await assignCraftSerial(craftResultName(preview, grade, user.nickname, customName));

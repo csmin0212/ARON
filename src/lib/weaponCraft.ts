@@ -331,6 +331,42 @@ export function craftMaterialValue(
   return Math.round(major + minor);
 }
 
+// 재료별 가공 배율 — 낮은 성급일수록 가공으로 붙는 값이 크다.
+// 상점 판매가는 곧 경매 등록 하한이라, 고성급 제작품의 값을 높게 잡으면 개인 거래가
+// 아예 막힌다(4성 장검 하한 6,395G > 역대 최고 낙찰 4,000G). 하한을 낮춰 거래를 연다.
+// 원재료 매각가는 건드리지 않는다 — 이 배율은 제작품 판매가에만 쓴다.
+export const CRAFT_VALUE_MULT: Record<number, number> = {
+  0: 2.0,
+  1: 2.0,
+  2: 1.8,
+  3: 1.5,
+  4: 1.3,
+  5: 1.1,
+};
+// 탐색 마이너(아이템 탭 드롭품, no=0) — 성급이 없어 1성과 같게 본다.
+export const CRAFT_EXPLORE_MINOR_MULT = 2.0;
+
+export function craftValueMultFor(item: LifeSkillItem): number {
+  if (item.no <= 0) return CRAFT_EXPLORE_MINOR_MULT;
+  return CRAFT_VALUE_MULT[item.rank] ?? CRAFT_EXPLORE_MINOR_MULT;
+}
+
+// 가공 후 가치 — 재료마다 제 배율을 매겨 더한다(섞어 넣으면 각자 기준).
+export function craftProcessedValue(
+  majors: { item: LifeSkillItem; qty: number }[],
+  minors: LifeSkillItem[],
+): number {
+  const major = majors.reduce(
+    (sum, m) => sum + craftMaterialUnitValue(m.item) * craftValueMultFor(m.item) * m.qty,
+    0,
+  );
+  const minor = minors.reduce(
+    (sum, m) => sum + craftMaterialUnitValue(m) * craftValueMultFor(m),
+    0,
+  );
+  return Math.round(major + minor);
+}
+
 // 제작 스탯 — 무기: hit/atk, 방어구: dodge/pdef/mdef. price는 기준가(수수료·판매가 산정용).
 export type CraftStats = {
   hit: number;
@@ -671,19 +707,25 @@ export const CRAFT_GRADES: Record<CraftGradeKey, { bonus: number; priceMult: num
 
 // 순이익 — 투입한 재료를 그냥 팔았을 때의 값에 가공 마진과 등급 배율을 곱한 것.
 // 일반 등급이면 딱 본전(재료가치만큼 더 번다), 등급이 붙는 만큼이 대장장이의 실력값.
-export function craftProfit(materialValue: number, grade: CraftGradeKey | null): number {
+export function craftProfit(
+  materialValue: number,
+  processedValue: number,
+  grade: CraftGradeKey | null,
+): number {
+  const added = Math.max(0, processedValue - materialValue);
   const mult = CRAFT_MARGIN * (grade ? CRAFT_GRADES[grade].priceMult : 1);
-  return Math.max(1, Math.round(materialValue * mult));
+  return Math.max(1, Math.round(added * mult));
 }
 
 // 상점 매입가(=Item.sellPrice) = 재료가치 + 세공비 + 순이익.
 // 세공비가 판매가에 얹혀 있으므로 제작자는 낸 수수료를 팔 때 그대로 회수한다.
 export function craftSellPrice(
   materialValue: number,
+  processedValue: number,
   fee: number,
   grade: CraftGradeKey | null,
 ): number {
-  return Math.max(1, materialValue + fee + craftProfit(materialValue, grade));
+  return Math.max(1, materialValue + fee + craftProfit(materialValue, processedValue, grade));
 }
 
 // 세공비 — 장비 자체의 손품값. 종별·레벨(기준가)에만 반응하고 광물과는 무관.
@@ -778,6 +820,7 @@ export type CraftPreview = {
   extras: string[];
   basePrice: number; // 기준가 — 세공비 산정 (종별·레벨만 반영)
   materialValue: number; // 투입 재료를 그냥 팔았을 때의 값 — 판매가·순이익의 기준
+  processedValue: number; // 재료별 가공 배율을 먹인 값 — 판매가의 윗변
   fee: number; // 제작 수수료 (블랙스미스 할인 전)
   weight: number; // 장비 중량 — 종류/레벨 기준 중량 + 메이저 광물 평균 중량 보정
   isMagic: boolean; // 마이너 재료가 들어간 매직 아이템 여부
@@ -914,6 +957,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
   const fee = craftBaseFee(basePrice);
   // 재료가치는 달의 파편도 포함한다 — 그대로 팔았을 때의 값이 순이익의 기준이라서.
   const materialValue = craftMaterialValue(all, input.minors);
+  const processedValue = craftProcessedValue(all, input.minors);
 
   // 중량 — 장비 기준 중량에 메이저 광물 평균 중량을 반영한다.
   const avgMajorWeight = majors.reduce((s, m) => s + (m.item.weight || 1) * m.qty, 0) / oreQty;
@@ -961,6 +1005,7 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     extras,
     basePrice,
     materialValue,
+    processedValue,
     fee,
     weight,
     isMagic,

@@ -242,7 +242,7 @@ export default function CraftingForge({
   const requiredFee = preview && !("error" in preview) ? craftFee(preview.fee, isBlacksmith) : 0;
   const feeText = requiredFee.toLocaleString();
   const expectedSellPrice =
-    preview && !("error" in preview) ? craftSellPrice(preview.materialValue, requiredFee, null) : 0;
+    preview && !("error" in preview) ? craftSellPrice(preview.materialValue, preview.processedValue, requiredFee, null) : 0;
 
   function bumpMajor(name: string, delta: number) {
     const moon = isMoonFragment(name);
