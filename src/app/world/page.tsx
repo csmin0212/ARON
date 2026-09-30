@@ -96,8 +96,10 @@ import {
   alchemyMasteryRank,
   lifeBagLimit,
   lifeBagWeight,
+  mineApPassive,
   parseLifeState,
   productionExpForNext,
+  progressOf,
 } from "@/lib/lifeSkillPerks";
 import { parseCookedName } from "@/lib/auction";
 import {
@@ -1508,7 +1510,9 @@ export default async function WorldPage() {
   const displayActionApCost = (action: (typeof locActions)[number]): number => {
     const kind = lifeSkillKindOf(action.kind, action.label);
     if (!kind) return action.apCost;
-    return Math.max(1, action.apCost - dailyLifeEventBonus(kind).apCostDown);
+    // 채광은 숙련 레벨이 오를수록 덜 지친다 — 실제 소모와 같은 값을 보여준다.
+    const passive = kind === "채광" ? mineApPassive(progressOf(life, kind).level) : 0;
+    return Math.max(1, action.apCost - dailyLifeEventBonus(kind).apCostDown - passive);
   };
 
   return (

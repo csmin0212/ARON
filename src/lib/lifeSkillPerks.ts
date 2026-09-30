@@ -259,6 +259,20 @@ const KIND_WEIGHT_ADJUSTMENTS: Partial<Record<LifeSkillKind, number[]>> = {
   채광: [-1, 0.6, 0.3, 0.1, 0, 0],
 };
 
+// 채광 숙련 패시브 — 레벨이 오르면 곡괭이질이 덜 지친다.
+// 낚시·채집은 '효율적인 낚시/채집' 특성으로 피로도가 10 -> 5 까지 내려가는데
+// 채광엔 그 계열 특성이 없어서(대신 일석이조를 갖는다) 후반에 격차가 컸다.
+// 특성 뽑기 운에 맡기지 않고 레벨만 올리면 누구나 같게 받도록 패시브로 둔다.
+//
+//   Lv15 -1 / Lv30 -2 / Lv45 -3 / Lv60 -4 (만렙 기준 상한)
+export const MINE_AP_PASSIVE_STEP = 15;
+export const MINE_AP_PASSIVE_MAX = 4;
+
+export function mineApPassive(level: number): number {
+  if (!Number.isFinite(level) || level < MINE_AP_PASSIVE_STEP) return 0;
+  return Math.min(MINE_AP_PASSIVE_MAX, Math.floor(level / MINE_AP_PASSIVE_STEP));
+}
+
 export function baseWeightsFor(level: number, kind?: LifeSkillKind): number[] {
   const band = LEVEL_BANDS.find((b) => level >= b.min && level <= b.max);
   const weights = [...(band ?? LEVEL_BANDS[LEVEL_BANDS.length - 1]).weights];

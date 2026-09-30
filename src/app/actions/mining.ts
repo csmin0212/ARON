@@ -26,6 +26,7 @@ import {
   isPerkChoiceLevel,
   lifeLuckModFromStats,
   lifeExpGainText,
+  mineApPassive,
   lifeBagLimit,
   lifeBagWeight,
   parseLifeState,
@@ -193,12 +194,12 @@ export async function startMining(): Promise<MineStart> {
   const mineToolTier = toolTier(life.tools.채광);
   mods.luck += toolRankRateBonus(mineToolTier, mods.toolEff);
 
-  // '효율적인 정리' — 피로도 소모 감소 (최소 1은 소모)
-  const apCost = Math.max(1, action.apCost - mods.apCostDown);
+  const level = progressOf(life, MINE).level;
+  // 특성/이벤트 감소 + 채광 숙련 패시브(15레벨마다 -1, 최대 -4). 최소 1은 소모.
+  const apCost = Math.max(1, action.apCost - mods.apCostDown - mineApPassive(level));
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);
   if (ap < apCost) return { error: `피로도가 부족해요. (필요 ${apCost}, 보유 ${ap})` };
 
-  const level = progressOf(life, MINE).level;
   // kind 를 넘겨야 채광 구간 보정(0성 -1%p 를 1·2·3성에 6:3:1)이 적용된다.
   // 낚시·채집은 넘기는데 여기만 빠져 있어 그 보정이 죽어 있었다.
   const levelBase = baseWeightsFor(level, MINE);
