@@ -28,7 +28,12 @@ export async function chooseLifePerk(
 
   const picked = choice.options[optionIndex];
   if (!picked) return { error: "잘못된 선택이에요." };
-  if (life.perks.some((perk) => perkIdentityKey(perk) === perkIdentityKey(picked))) {
+  // 종류까지 같아야 중복이다 — 낚시의 같은 이름 특성이 채광 선택을 막으면 안 된다.
+  if (
+    life.perks.some(
+      (perk) => perk.kind === choice.kind && perkIdentityKey(perk) === perkIdentityKey(picked),
+    )
+  ) {
     return { error: `[${picked.rarity}] ${picked.name} 특성은 이미 익혔어요.` };
   }
 

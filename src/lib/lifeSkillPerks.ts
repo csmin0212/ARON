@@ -586,8 +586,12 @@ export function rollPerkOptions(
   kind: LifeSkillKind,
   catalog?: LifeSkillCatalogEntry[],
 ): LifePerk[] {
-  const ownedMyth = new Set(state.perks.filter(isMyth).map((p) => p.name));
-  const ownedPerks = new Set(state.perks.map(perkIdentityKey));
+  // 보유 판정은 반드시 '같은 종류' 안에서만 한다.
+  // 종류를 안 보면 낚시로 익힌 '운의 축적 1(레어)' 가 채광의 같은 이름까지 막아서,
+  // 낚시를 많이 찍은 사람일수록 채광 선택지가 말라붙는다 (레어·유니크 등장률 0%).
+  const ownPool = state.perks.filter((p) => p.kind === kind);
+  const ownedMyth = new Set(ownPool.filter(isMyth).map((p) => p.name));
+  const ownedPerks = new Set(ownPool.map(perkIdentityKey));
   const options: LifePerk[] = [];
   let guard = 0;
   while (options.length < 3 && guard++ < 60) {
