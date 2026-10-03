@@ -645,12 +645,12 @@ function consumeLifeItemOfKind(
   return qty - remaining;
 }
 
-type StorageIngredientEntry = { id: string; name: string; qty: number };
+type StorageIngredientEntry = { id: string; name: string; qty: number; effect: string | null };
 
 async function loadStorageIngredients(userId: string): Promise<StorageIngredientEntry[]> {
   return prisma.storageEntry.findMany({
     where: { box: { userId }, qty: { gt: 0 } },
-    select: { id: true, name: true, qty: true },
+    select: { id: true, name: true, qty: true, effect: true },
     orderBy: { updatedAt: "asc" },
   });
 }
@@ -1699,14 +1699,22 @@ async function consumeBrewIngredient(
   }
 }
 
-async function alchemyIngredientPoints(name: string): Promise<number | null> {
+async function alchemyIngredientPoints(
+  name: string,
+  heldEffect?: string | null,
+): Promise<number | null> {
   await loadLifeItems();
   const item = findLifeSkillItem("채집", name);
   if (item) return alchemyMaterialPointsForItem(name, item.rank);
 
   // '연금 포인트 +N' 포션 — 채집물이 아니지만 예외적으로 재료로 되먹인다.
-  // 효과문을 먼저 본다. 효과문은 중복분이 곱해진 총량('+10')이지만 이름은
-  // '(연금 포인트 +5x2)' 라 1개분만 적혀 있어, 이름을 먼저 읽으면 절반만 인정된다.
+  // 들고 있는 그 물건의 효과문이 정본이다. 이름을 바꿔도 재료로 계속 쓸 수 있게
+  // 가방·창고에 적힌 효과문을 가장 먼저 본다 (예전엔 아이템 탭을 이름으로 뒤져서,
+  // 이름을 바꾸는 순간 '연금 재료로 등록되어 있지 않아요' 가 떴다).
+  const held = alchemyPointItemValue(heldEffect);
+  if (held != null) return held;
+
+  // 효과문이 비어 있을 때만 도감으로 내려간다. 이름의 '+5x2' 는 1개분이라 마지막 수단.
   const catalog = await prisma.item.findFirst({
     where: { OR: [{ id: name.trim() }, { name: name.trim() }] },
     select: { desc: true },
@@ -1997,7 +2005,12 @@ export async function startBrew(_prev: AlchemyState, formData: FormData): Promis
 
     let availablePoints = 0;
     for (const ingredient of potIngredients) {
-      const points = await alchemyIngredientPoints(ingredient.name);
+      const target = ingredient.name.trim();
+      const heldEffect =
+        findInvItem(ctx.inv, target)?.effect ??
+        storageIngredients.find((entry) => entry.name.trim() === target)?.effect ??
+        null;
+      const points = await alchemyIngredientPoints(target, heldEffect);
       if (points == null) return { error: `${ingredient.name}은(는) 연금 재료로 등록되어 있지 않아요.` };
       if (points <= 0) return { error: `${ingredient.name}은(는) 연금 포인트가 없습니다.` };
       availablePoints += points;
