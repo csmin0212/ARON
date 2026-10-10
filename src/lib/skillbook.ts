@@ -79,6 +79,23 @@ export async function consumeSkillBookTokens(
   return prisma.$transaction((tx) => consumeSkillBookTokenIdsInTransaction(tx, userId, itemIds, qty));
 }
 
+// 있는 만큼만 차감 (부족해도 실패하지 않음) — 창고 보관처럼 토큰 없는 스킬북도 옮겨야 하는 경로용.
+// 실제 차감한 수량을 돌려준다.
+export async function consumeSkillBookTokensUpTo(
+  userId: string,
+  itemNameOrId: string,
+  qty: number,
+): Promise<number> {
+  if (qty <= 0) return 0;
+  const itemIds = await skillBookTokenItemIds(itemNameOrId);
+  if (itemIds.length === 0) return 0;
+  const have = await skillBookTokenQty(userId, itemNameOrId);
+  const take = Math.min(have, qty);
+  if (take <= 0) return 0;
+  await prisma.$transaction((tx) => consumeSkillBookTokenIdsInTransaction(tx, userId, itemIds, take));
+  return take;
+}
+
 export async function consumeSkillBookTokensInTransaction(
   tx: Prisma.TransactionClient,
   userId: string,

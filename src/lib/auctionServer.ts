@@ -30,6 +30,7 @@ import {
   isSkillBookItem,
   SKILLBOOK_META,
   skillBookTokenItemIds,
+  skillBookTokenQty,
 } from "@/lib/skillbook";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import {
@@ -111,6 +112,13 @@ function itemQty(inv: SheetInventory, name: string): number {
   return inv.items
     .filter((i) => i.name.trim() === target)
     .reduce((sum, i) => sum + Math.max(0, i.qty), 0);
+}
+
+// 스킬북 보유량 — 가방 화면과 같은 기준: 가방(invJson)에 있으면 그 수량, 없으면 토큰으로만 뜬 수량.
+// 토큰 차단은 걷어냈어도(시트로 들어온 스킬북 거래 허용) 둘 다 0 이면 없는 물건이다.
+async function ownedSkillBookQty(userId: string, inv: SheetInventory, name: string): Promise<number> {
+  const inBag = itemQty(inv, name);
+  return inBag > 0 ? inBag : skillBookTokenQty(userId, name);
 }
 
 function firstInvItem(inv: SheetInventory, name: string): SheetInventoryItem | null {
@@ -811,7 +819,7 @@ export async function createListingCore(
     const ref = firstInvItem(actor.inv, name);
     category = await resolveCategory(name, source, ref?.effect);
     if (category === "스킬북") {
-
+      if ((await ownedSkillBookQty(userId, actor.inv, name)) < qty) return { error: `${name} 수량이 부족합니다.` };
       const item = await prisma.item.findFirst({
         where: { OR: [{ id: name }, { name }] },
         select: { desc: true, weight: true },
@@ -998,7 +1006,7 @@ export async function instantSellCore(
     const ref = firstInvItem(actor.inv, name);
     category = await resolveCategory(name, source, ref?.effect);
     if (category === "스킬북") {
-
+      if ((await ownedSkillBookQty(userId, actor.inv, name)) < qty) return { error: `${name} 수량이 부족합니다.` };
       const item = await prisma.item.findFirst({
         where: { OR: [{ id: name }, { name }] },
         select: { desc: true },

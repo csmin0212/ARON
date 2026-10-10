@@ -140,6 +140,12 @@ import {
   type HousingProductionKind,
 } from "@/lib/housing";
 import { MYSTERY_PARCHMENT_NAME } from "@/lib/wanderingMerchant";
+import {
+  consumeSkillBookTokensUpTo,
+  grantSkillBookToken,
+  skillBookTokenItemIds,
+  skillBookTokenQty,
+} from "@/lib/skillbook";
 
 export type ServiceState = { error?: string; ok?: string } | undefined;
 export type StorageState = { error?: string; ok?: string } | undefined;
@@ -852,6 +858,8 @@ export async function depositToStorage(
     | null = null;
   let inv: SheetInventory | null = null;
   let nextLifeJson: string | null = null;
+  // 가방(invJson)엔 없고 스킬북 토큰으로만 떠 있는 스킬북 — 던전 드랍 등 (world/page tokenOnlySkillBookItems)
+  let tokenOnlyBook = false;
 
   if (sourceKind) {
     const sheet = await prisma.characterSheet.findUnique({
@@ -865,7 +873,17 @@ export async function depositToStorage(
   } else {
     if (!ctx.invFromSheet) return { error: "구글 시트 가방을 먼저 동기화해주세요." };
     item = findInvItem(ctx.inv, itemName);
-    if (!item || (item.qty ?? 0) < qty) return { error: "보관할 아이템 수량이 부족합니다." };
+    if (!item && (await skillBookTokenQty(ctx.userId, itemName)) >= qty) {
+      const catalog = await prisma.item.findFirst({
+        where: { OR: [{ id: itemName }, { name: itemName }] },
+        select: { name: true, desc: true, weight: true },
+      });
+      item = { name: catalog?.name ?? itemName, effect: catalog?.desc ?? null, weight: catalog?.weight ?? 1, qty };
+      tokenOnlyBook = true;
+    }
+    if (!item || (!tokenOnlyBook && itemQty(ctx.inv, itemName) < qty)) {
+      return { error: "보관할 아이템 수량이 부족합니다." };
+    }
   }
 
   const box = await storageBox(ctx.userId);
@@ -876,8 +894,9 @@ export async function depositToStorage(
     return { error: `창고 중량이 부족합니다. (${usedWeight + movingWeight}/${boxLimit})` };
   }
 
-  if (!sourceKind) {
+  if (!sourceKind && !tokenOnlyBook) {
     inv = consumeInvItem(ctx.inv, item.name, qty);
+    inv.items = inv.items.filter((entry) => entry.qty > 0);
     inv.curWeight = inventoryWeightTotal(inv.items) ?? inv.curWeight;
   }
   const achStatsJson = bumpStat(ctx.achStatsJson, "창고보관횟수");
@@ -916,10 +935,18 @@ export async function depositToStorage(
       where: { userId: ctx.userId },
       data: sourceKind
         ? { lifeJson: nextLifeJson, achStatsJson }
-        : { invJson: JSON.stringify(inv), achStatsJson },
+        : inv
+          ? { invJson: JSON.stringify(inv), achStatsJson }
+          : { achStatsJson },
     }),
-    sourceKind ? Promise.resolve() : decrementDbInventory(ctx.userId, item.name, qty),
+    sourceKind || tokenOnlyBook ? Promise.resolve() : decrementDbInventory(ctx.userId, item.name, qty),
   ]);
+  if (!sourceKind) {
+    // 스킬북 토큰도 같이 창고로 — 남겨 두면 가방에 '유령 스킬북'이 계속 떠 있다.
+    await consumeSkillBookTokensUpTo(ctx.userId, item.name, qty);
+    // 시트 휴대품 칸도 맞춘다 — 안 하면 '시트 동기화' 때 보관한 물건이 가방에 되살아난다.
+    if (inv) void pushInventoryToSheet(ctx.tab, inv);
+  }
 
   await checkAndGrant(ctx.userId);
   revalidatePath("/world");
@@ -1014,6 +1041,10 @@ export async function withdrawFromStorage(
     }),
     incrementDbInventory(ctx.userId, entry.name, qty),
   ]);
+  // 보관 때 창고로 넘긴 스킬북 토큰을 돌려준다 (경매 회수·우편 수령과 같은 규칙)
+  const [bookId] = await skillBookTokenItemIds(entry.name);
+  if (bookId) await grantSkillBookToken(ctx.userId, bookId, qty);
+  void pushInventoryToSheet(ctx.tab, inv);
 
   revalidatePath("/world");
   return { ok: `${entry.name} x${qty} 꺼내기 완료.` };
