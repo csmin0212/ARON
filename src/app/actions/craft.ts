@@ -19,6 +19,7 @@ import {
   type SheetInventory,
 } from "@/lib/googleSheets";
 import { enqueueSheetGoldSync } from "@/lib/sheetGoldSync";
+import { fetchSheetByTab } from "@/lib/charsheet";
 import { resolveMaterialSellPrice } from "@/lib/shop";
 import {
   applyGradeBonus,
@@ -28,10 +29,12 @@ import {
   craftResultName,
   craftSellPrice,
   craftSmithExp,
+  hasFireSmithSkill,
   isBlacksmithClass,
   itemAsCraftMinor,
   minorSlotsFor,
   MOON_FRAGMENT,
+  parseSheetSkillsJson,
   randomCraftSerial,
   rollCraftGrade,
   withCraftSerial,
@@ -175,6 +178,27 @@ async function atForgeLocation(locationId: string | null): Promise<boolean> {
   return ["대장간", "강화", "제련", "forge", "smith"].some((k) => source.includes(k.toLowerCase()));
 }
 
+// 《불의 제련사》 SL 1+ 확인. 캐시(sheetSkillsJson)는 '시트 연동' 때만 갱신돼서
+// 스킬북으로 배운 뒤 시트에서 SL 을 올린 직후엔 옛값이다 — 캐시에 없으면 블랙스미스만 시트를 직접 읽는다.
+async function resolveFireSmith(
+  userId: string,
+  sheet: { sheetTab: string | null; charClass: string | null; sheetSkillsJson: string | null },
+): Promise<boolean> {
+  if (hasFireSmithSkill(parseSheetSkillsJson(sheet.sheetSkillsJson))) return true;
+  if (!sheet.sheetTab || !isBlacksmithClass(sheet.charClass)) return false;
+  try {
+    const parsed = await fetchSheetByTab(sheet.sheetTab);
+    await prisma.characterSheet.update({
+      where: { userId },
+      data: { sheetSkillsJson: JSON.stringify(parsed.skills) },
+    });
+    return hasFireSmithSkill(parsed.skills);
+  } catch (e) {
+    console.warn("[craft] 스킬란 읽기 실패:", e);
+    return false;
+  }
+}
+
 // 커스텀 이름 검증 — 등급 사칭(명품/장인 등) 방지, 2~20자
 function sanitizeCustomName(raw: string): string | { error: string } {
   const name = raw.replace(/\s+/g, " ").trim();
@@ -281,14 +305,20 @@ async function craftEquipmentInner(formData: FormData): Promise<CraftResult> {
   // 태그 슬롯 규칙 — 무기/방어구 슬롯에 안 맞는 태그는 안 붙게 (제작특성 탭)
   const tagRows = await prisma.craftTag.findMany({ select: { name: true, slot: true } });
   const tagSlot = new Map(tagRows.map((t) => [t.name, t.slot]));
-  const preview = computeCraft({
+  const craftInput = {
     category,
     majors,
     minors,
     maxMinors: minorSlotsFor(life.smithing.level),
-    tagSlotOf: (t) => tagSlot.get(t) ?? "공용",
-  });
+    tagSlotOf: (t: string) => tagSlot.get(t) ?? "공용",
+  };
+  let preview = computeCraft(craftInput);
   if ("error" in preview) return { error: preview.error };
+  // 《불의 제련사》는 무기에만 걸리므로 방어구 제작엔 시트를 읽지 않는다.
+  if (preview.group === "무기" && (await resolveFireSmith(user.id, sheet))) {
+    preview = computeCraft({ ...craftInput, fireSmith: true });
+    if ("error" in preview) return { error: preview.error };
+  }
 
   const apCost = craftApCost(preview.level);
   const { ap, apResetAt } = freshAp(sheet.ap, sheet.apResetAt);

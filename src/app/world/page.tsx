@@ -65,7 +65,13 @@ import {
   lifeSkillKindOf,
   type LocationLifeConfig,
 } from "@/lib/lifeSkillData";
-import { isBlacksmithClass, itemAsCraftMinor, MOON_FRAGMENT } from "@/lib/weaponCraft";
+import {
+  hasFireSmithSkill,
+  isBlacksmithClass,
+  itemAsCraftMinor,
+  MOON_FRAGMENT,
+  parseSheetSkillsJson,
+} from "@/lib/weaponCraft";
 import { resolveMaterialSellPrice } from "@/lib/shop";
 import type { CraftMineralView } from "@/components/CraftingForge";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
@@ -1723,6 +1729,7 @@ export default async function WorldPage() {
             guild={guild}
             craftMinerals={craftMinerals}
             isBlacksmith={isBlacksmithClass(sheet.charClass)}
+            craftFireSmith={hasFireSmithSkill(parseSheetSkillsJson(sheet.sheetSkillsJson))}
             craftSmithLevel={life.smithing.level}
             craftAp={ap}
             craftTags={craftTags}

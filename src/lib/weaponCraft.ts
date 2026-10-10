@@ -773,6 +773,31 @@ export function isBlacksmithClass(charClass: string | null | undefined): boolean
   return (charClass ?? "").replace(/\s+/g, "").includes("블랙스미스");
 }
 
+// 블랙스미스 스킬 《불의 제련사》 — 제작한 무기에 명중 +1, [속성공격:화].
+// 시트 스킬란에 SL 1 이상이어야 발동한다. 스킬북으로 배우면 SL 0 으로 기입되므로 배운 것만으론 안 켜진다.
+export const FIRE_SMITH_SKILL = "불의 제련사";
+export const FIRE_SMITH_TAG = "속성공격:화";
+// 시트 표기 흔들림 흡수 — 띄어쓰기·《》 괄호, '재련사' 오기
+const FIRE_SMITH_KEYS = new Set(["불의제련사", "불의재련사"]);
+const skillKey = (name: string) => name.replace(/[\s《》<>「」【】]/g, "");
+
+export function hasFireSmithSkill(skills: { name: string; sl: number }[] | null | undefined): boolean {
+  return (skills ?? []).some((s) => s.sl >= 1 && FIRE_SMITH_KEYS.has(skillKey(s.name)));
+}
+
+export function parseSheetSkillsJson(json: string | null | undefined): { name: string; sl: number }[] {
+  try {
+    const raw = json ? (JSON.parse(json) as unknown) : null;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (s): s is { name: string; sl: number } =>
+        !!s && typeof s.name === "string" && typeof s.sl === "number",
+    );
+  } catch {
+    return [];
+  }
+}
+
 // 아이템 탭 드롭품(제작효과 채워진 것) → 마이너 재료 어댑터.
 // 광물이 아니므로 메이저 불가, 중량 기여 1(깃털·비늘 등 가벼운 마감재).
 export function itemAsCraftMinor(item: {
@@ -806,6 +831,7 @@ export type CraftInput = {
   maxMinors?: number; // 대장 레벨에 따른 마이너 슬롯 (기본 MAX_MINORS)
   // 태그 슬롯 규칙 — 태그명 → "무기"|"방어구"|"공용". 슬롯이 안 맞으면 그 태그는 안 붙는다.
   tagSlotOf?: (tag: string) => string;
+  fireSmith?: boolean; // 《불의 제련사》 SL1+ — 무기에 명중 +1, [속성공격:화]
 };
 
 export type CraftPreview = {
@@ -945,6 +971,12 @@ export function computeCraft(input: CraftInput): CraftPreview | { error: string 
     }
     for (const t of eff.tags) tags.add(resolveSlotTag(t, category.group));
     extras.push(...eff.extras);
+  }
+
+  // 《불의 제련사》 — 무기 한정
+  if (input.fireSmith && category.group === "무기") {
+    stats.hit += 1;
+    tags.add(FIRE_SMITH_TAG);
   }
 
   // 대표 광물 — 최다 투입, 동률 시 고등급

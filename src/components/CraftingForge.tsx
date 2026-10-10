@@ -156,6 +156,7 @@ export default function CraftingForge({
   minerals,
   gold,
   isBlacksmith,
+  fireSmith = false,
   smithLevel,
   ap,
   tags = {},
@@ -165,6 +166,7 @@ export default function CraftingForge({
   minerals: CraftMineralView[];
   gold: number;
   isBlacksmith: boolean;
+  fireSmith?: boolean;
   smithLevel: number;
   ap: number;
   tags?: Record<string, string>; // [태그] 룰 사전 — 클릭 시 설명
@@ -235,8 +237,9 @@ export default function CraftingForge({
       minors,
       maxMinors,
       tagSlotOf: (t) => tagSlots[t] ?? "공용",
+      fireSmith,
     });
-  }, [category, majorQty, minorSel, defs, maxMinors, tagSlots]);
+  }, [category, majorQty, minorSel, defs, maxMinors, tagSlots, fireSmith]);
 
   // 세공비는 등급과 무관하게 확정값 — 팔 때 판매가에 얹혀 돌아온다.
   const requiredFee = preview && !("error" in preview) ? craftFee(preview.fee, isBlacksmith) : 0;
@@ -325,6 +328,7 @@ export default function CraftingForge({
             광석을 녹여 장비를 벼린다. <span className="font-bold text-content">⚒️ 대장 Lv.{smithLevel}</span>
             <span className="ml-1">· 피로도 {ap}</span>
             {isBlacksmith && <span className="ml-1 font-bold text-emerald-600">· 🔥 블랙스미스의 화로</span>}
+            {fireSmith && <span className="ml-1 font-bold text-orange-600">· 불의 제련사</span>}
           </p>
         </div>
 

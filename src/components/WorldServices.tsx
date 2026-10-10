@@ -98,6 +98,7 @@ type Props = {
   guild: GuildView;
   craftMinerals: CraftMineralView[];
   isBlacksmith: boolean;
+  craftFireSmith: boolean; // 《불의 제련사》 SL1+ (시트 연동 캐시 기준)
   craftSmithLevel: number;
   craftAp: number;
   craftTags: Record<string, string>;
@@ -3751,6 +3752,7 @@ export default function WorldServices({
   guild,
   craftMinerals,
   isBlacksmith,
+  craftFireSmith,
   craftSmithLevel,
   craftAp,
   craftTags,
@@ -4248,6 +4250,7 @@ export default function WorldServices({
           minerals={craftMinerals}
           gold={lifeShop.gold}
           isBlacksmith={isBlacksmith}
+          fireSmith={craftFireSmith}
           smithLevel={craftSmithLevel}
           ap={craftAp}
           tags={craftTags}
