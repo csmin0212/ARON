@@ -325,7 +325,7 @@ export async function resolveFloor(
   // 판매가가 비어 있으면 구매가의 50%로 폴백 — 시트에 구매가만 적어도 팔 수 있다.
   // (장비 판매가는 구매가의 1/2이 원칙이므로 폴백도 같은 비율)
   if (!isNonSellable(raw)) {
-    const item = await findItemByNameOrSerial(raw, { sellPrice: true, buyPrice: true });
+    const item = await findItemByNameOrSerial(raw);
     if (item?.sellPrice && item.sellPrice > 0) return item.sellPrice;
     if (item?.buyPrice && item.buyPrice > 0) return Math.max(1, Math.floor(item.buyPrice * 0.5));
   }
@@ -340,12 +340,18 @@ export async function resolveFloor(
 // 이름으로 도감 행을 찾되, 못 찾으면 제작품 고유번호(#7K2F)로 한 번 더 찾는다.
 // 대장간 수식어 리롤은 이름 앞에 '예리한' 같은 접두어를 붙여서 이름이 통째로 달라지는데,
 // 고유번호는 끝에 그대로 남으므로 그걸로 원본 행을 되짚을 수 있다.
-async function findItemByNameOrSerial<S extends Record<string, boolean>>(
+//
+// 가격 없는 행은 '못 찾음'으로 친다. 수식어 붙은 이름은 거래로 받을 때 가격 없는 빈 행
+// (분류 '기타')이 생기는데, 그 행에서 멈추면 원본까지 못 가서 0G 가 됐다 ('수호의 … #5Z8A').
+async function findItemByNameOrSerial(
   raw: string,
-  select: S,
-): Promise<Record<string, number | null> | null> {
+): Promise<{ sellPrice: number | null; buyPrice: number | null } | null> {
+  const select = { sellPrice: true, buyPrice: true } as const;
+  const priced = (row: { sellPrice: number | null; buyPrice: number | null } | null) =>
+    !!row && ((row.sellPrice ?? 0) > 0 || (row.buyPrice ?? 0) > 0);
+
   const exact = await prisma.item.findFirst({ where: { OR: [{ id: raw }, { name: raw }] }, select });
-  if (exact) return exact as Record<string, number | null>;
+  if (priced(exact)) return exact;
 
   // 강화·보석 태그는 이름 끝에 '(+1)' '(+2, 화염)' 처럼 붙는다. 붙은 채로는 도감에서 못 찾으므로
   // 태그를 떼고 한 번 더 본다 — '고품질 묵사발!(+1)' 이 0G 로 잡히던 원인.
@@ -356,13 +362,13 @@ async function findItemByNameOrSerial<S extends Record<string, boolean>>(
       where: { OR: [{ id: untagged }, { name: untagged }] },
       select,
     });
-    if (byBaseName) return byBaseName as Record<string, number | null>;
+    if (priced(byBaseName)) return byBaseName;
   }
 
   const serial = craftSerialOf(raw) ?? craftSerialOf(untagged);
-  if (!serial) return null;
-  const bySerial = await prisma.item.findFirst({ where: { id: { endsWith: ` #${serial}` } }, select });
-  return (bySerial as Record<string, number | null> | null) ?? null;
+  if (!serial) return exact;
+  const bySerial = await prisma.item.findMany({ where: { id: { endsWith: ` #${serial}` } }, select });
+  return bySerial.find(priced) ?? exact;
 }
 
 // 이름 끝의 태그 묶음 '(...)' 을 뗀다. 강화(+N)나 보석 효과가 하나라도 들어 있을 때만.

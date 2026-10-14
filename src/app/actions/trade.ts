@@ -23,6 +23,7 @@ import {
 import { findLifeSkillItem, lifeSkillItemKind, type LifeSkillKind } from "@/lib/lifeSkillData";
 import { loadLifeItems } from "@/lib/lifeSkillLoader";
 import { skillBookTokenItemIds, transferSkillBookTokens } from "@/lib/skillbook";
+import { craftSerialOf } from "@/lib/weaponCraft";
 
 export type TradeActionState = {
   ok?: boolean;
@@ -314,6 +315,29 @@ async function decrementDbInventory(userId: string, itemName: string, qty: numbe
   });
 }
 
+// 도감에 없는 이름으로 받은 물건의 행. 수식어 붙은 제작품('수호의 … #5Z8A')이면
+// 고유번호로 원본 행을 찾아 분류·가격을 물려받는다 — 빈 행은 매각가 0G 의 원인이었다.
+async function createTradedItemRow(itemName: string, snapshot?: TradeSideItem) {
+  const serial = craftSerialOf(itemName);
+  const origin = serial
+    ? await prisma.item.findFirst({
+        where: { id: { endsWith: ` #${serial}` }, OR: [{ sellPrice: { gt: 0 } }, { buyPrice: { gt: 0 } }] },
+        select: { category: true, sellPrice: true, buyPrice: true },
+      })
+    : null;
+  return prisma.item.create({
+    data: {
+      id: itemName,
+      name: itemName,
+      category: origin?.category ?? "기타",
+      sellPrice: origin?.sellPrice ?? null,
+      buyPrice: origin?.buyPrice ?? null,
+      desc: snapshot?.effect ?? null,
+      weight: snapshot?.weight ?? null,
+    },
+  });
+}
+
 async function incrementDbInventory(
   userId: string,
   itemName: string,
@@ -322,15 +346,7 @@ async function incrementDbInventory(
 ): Promise<void> {
   const item =
     (await prisma.item.findFirst({ where: { OR: [{ id: itemName }, { name: itemName }] } })) ??
-    (await prisma.item.create({
-      data: {
-        id: itemName,
-        name: itemName,
-        category: "기타",
-        desc: snapshot?.effect ?? null,
-        weight: snapshot?.weight ?? null,
-      },
-    }));
+    (await createTradedItemRow(itemName, snapshot));
 
   const existing = await prisma.inventoryEntry.findFirst({
     where: { userId, itemId: item.id, meta: null },
