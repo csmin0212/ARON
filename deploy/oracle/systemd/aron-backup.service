@@ -1,0 +1,8 @@
+[Unit]
+Description=ARON DB 백업
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=aron
+ExecStart=/usr/local/lib/aron/backup.sh

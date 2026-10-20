@@ -1,0 +1,7 @@
+[Unit]
+Description=DuckDNS 주소를 서버 IP 로 갱신
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/aron/duckdns.sh

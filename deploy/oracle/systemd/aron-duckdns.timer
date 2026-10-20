@@ -1,0 +1,9 @@
+[Unit]
+Description=DuckDNS 갱신 (30분마다)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target

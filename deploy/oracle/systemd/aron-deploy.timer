@@ -1,0 +1,9 @@
+[Unit]
+Description=ARON 자동 배포 확인 (2분마다)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

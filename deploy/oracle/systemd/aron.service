@@ -1,0 +1,17 @@
+[Unit]
+Description=ARON (Next.js)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=aron
+WorkingDirectory=/srv/aron/current
+Environment=NODE_ENV=production
+# Vercel 과 같은 UTC — KST 계산은 코드가 직접 한다
+Environment=TZ=UTC
+ExecStart=/usr/bin/node /srv/aron/current/node_modules/next/dist/bin/next start -p 3000 -H 127.0.0.1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
