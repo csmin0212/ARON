@@ -3,6 +3,7 @@ import type { SheetEquipment } from "@/lib/googleSheets";
 import type { LanternEmberBuff } from "@/lib/lanternEmbers";
 import { lanternHpBonus, lanternMpBonus } from "@/lib/lanternEmbers";
 import { adventurerRankGoal, normalizeAdventurerRank, totalFameForRank } from "@/lib/adventurerRank";
+import EffectIcons from "./EffectIcons";
 import EquipmentPanel from "./EquipmentPanel";
 
 export type SheetData = {
@@ -196,25 +197,17 @@ export default function CharacterSheetCard({
       )}
 
       {lanternEmbers.length > 0 && (
-        <div>
-          <p className="mb-1.5 text-xs font-bold text-faint">등불 효과</p>
-          <div className="space-y-2">
-            {lanternEmbers.map((ember) => (
-              <div key={ember.key} className="rounded-2xl border border-amber-200 bg-amber-50/60 px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="min-w-0 truncate text-sm font-extrabold text-amber-900">
-                    <span className="mr-1">{ember.icon}</span>
-                    {ember.title}
-                  </p>
-                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                    {ember.statLine}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-amber-800/80">{ember.flavor}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+        <EffectIcons
+          label="등불 효과"
+          items={lanternEmbers.map((ember) => ({
+            id: ember.key,
+            icon: ember.icon,
+            tone: "lantern" as const,
+            category: "등불",
+            title: ember.statLine,
+            lines: [ember.title, ember.flavor],
+          }))}
+        />
       )}
 
       <EquipmentPanel equipment={equipment} />

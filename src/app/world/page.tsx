@@ -1463,6 +1463,7 @@ export default async function WorldPage() {
       label: `${ember.itemName} · ${ember.statLine}`,
       until: null,
       source: "lantern" as const,
+      detail: ember.title,
     })),
   ];
   for (const buff of life.cookingBuffs.lifeLuck) {
