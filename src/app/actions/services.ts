@@ -2817,15 +2817,12 @@ export async function useCookingItem(
     });
     if (!sheet) return { error: "캐릭터 시트를 찾지 못했습니다." };
     const life = parseLifeState(sheet.lifeJson);
-    const progress = progressOf(life, kind);
-    const previousLevel = Math.max(1, progress.level || 1);
-    progress.level = 1;
-    progress.exp = 0;
+    // 레벨·숙련도는 그대로 두고 특성만 리셋한다 — 지금까지 받은 선택지 수만큼 다시 고른다.
+    const level = Math.max(1, progressOf(life, kind).level || 1);
     life.perks = life.perks.filter((perk) => perk.kind !== kind);
     life.pending = life.pending.filter((choice) => choice.kind !== kind);
-    // 칸 수는 '지금까지 받은 선택지' 기준 — 초기화 후 덜 올린 채 또 쓰면 칸이 줄어들지 않게,
-    // 그리고 다시 레벨을 올려도 같은 레벨에서 선택지가 또 나오지 않게 기록을 유지한다.
-    const grantedUpTo = Math.max(previousLevel, life.perkGrantedLevel[kind]);
+    // 칸 수는 '지금까지 받은 선택지' 기준 — 예전 축복(레벨 1 초기화)을 쓴 뒤 덜 올린 캐릭터도 칸이 줄지 않게.
+    const grantedUpTo = Math.max(level, life.perkGrantedLevel[kind]);
     life.perkGrantedLevel[kind] = grantedUpTo;
     const catalog = await fetchLifeSkillCatalog();
     // 한꺼번에 뽑아서 뒤 선택지에 앞에서 고른 특성이 겹칠 수 있다 — 고를 때마다 chooseLifePerk 가 정리한다.
@@ -2853,7 +2850,7 @@ export async function useCookingItem(
     revalidatePath("/world");
     revalidatePath("/profile");
     return {
-      ok: `${itemName}을 사용했습니다. ${kind}을 Lv.${previousLevel}에서 Lv.1로 초기화하고 특성 선택지를 다시 열었습니다.`,
+      ok: `${itemName}을 사용했습니다. ${kind} 특성을 초기화하고 선택지를 다시 열었습니다.`,
     };
   }
 

@@ -40,8 +40,8 @@ export type LifeState = {
   alchemyMastery: Record<string, number>; // 구형 레시피 호환: 포션ID별 숙련도. 60=숙련([고급]), 300=장인([명품])
   perks: OwnedPerk[];
   pending: PendingChoice[];
-  // 스킬별로 특성 선택지를 '이 레벨까지 이미 줬다'. 망각의 축복으로 레벨을 1로 내려도 유지돼서,
-  // 다시 4·7·10 을 밟을 때 선택지가 또 나오지 않는다 (칸 수는 초기화 전과 같아야 한다).
+  // 스킬별로 특성 선택지를 '이 레벨까지 이미 줬다'. 레벨이 기록보다 낮아져도(예전 망각의 축복은
+  // 레벨을 1로 내렸다) 다시 4·7·10 을 밟을 때 선택지가 또 나오지 않는다.
   perkGrantedLevel: Record<LifeSkillKind, number>;
   // 도감 — 한 번이라도 획득한 아이템 이름
   collection: { 채집: string[]; 낚시: string[]; 채광: string[] };
