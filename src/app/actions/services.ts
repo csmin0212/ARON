@@ -2823,8 +2823,13 @@ export async function useCookingItem(
     progress.exp = 0;
     life.perks = life.perks.filter((perk) => perk.kind !== kind);
     life.pending = life.pending.filter((choice) => choice.kind !== kind);
+    // 칸 수는 '지금까지 받은 선택지' 기준 — 초기화 후 덜 올린 채 또 쓰면 칸이 줄어들지 않게,
+    // 그리고 다시 레벨을 올려도 같은 레벨에서 선택지가 또 나오지 않게 기록을 유지한다.
+    const grantedUpTo = Math.max(previousLevel, life.perkGrantedLevel[kind]);
+    life.perkGrantedLevel[kind] = grantedUpTo;
     const catalog = await fetchLifeSkillCatalog();
-    for (let level = 2; level <= previousLevel; level += 1) {
+    // 한꺼번에 뽑아서 뒤 선택지에 앞에서 고른 특성이 겹칠 수 있다 — 고를 때마다 chooseLifePerk 가 정리한다.
+    for (let level = 2; level <= grantedUpTo; level += 1) {
       if (isPerkChoiceLevel(level)) {
         life.pending.push({ kind, level, options: rollPerkOptions(life, kind, catalog) });
       }

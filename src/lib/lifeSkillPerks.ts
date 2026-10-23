@@ -40,6 +40,9 @@ export type LifeState = {
   alchemyMastery: Record<string, number>; // 구형 레시피 호환: 포션ID별 숙련도. 60=숙련([고급]), 300=장인([명품])
   perks: OwnedPerk[];
   pending: PendingChoice[];
+  // 스킬별로 특성 선택지를 '이 레벨까지 이미 줬다'. 망각의 축복으로 레벨을 1로 내려도 유지돼서,
+  // 다시 4·7·10 을 밟을 때 선택지가 또 나오지 않는다 (칸 수는 초기화 전과 같아야 한다).
+  perkGrantedLevel: Record<LifeSkillKind, number>;
   // 도감 — 한 번이라도 획득한 아이템 이름
   collection: { 채집: string[]; 낚시: string[]; 채광: string[] };
   // 도감 장소 기록 — 실제로 획득한 적 있는 장소 ID만 아이템별로 누적한다.
@@ -293,6 +296,7 @@ const EMPTY: LifeState = {
   alchemyMastery: {},
   perks: [],
   pending: [],
+  perkGrantedLevel: { 채집: 1, 낚시: 1, 채광: 1 },
   collection: { 채집: [], 낚시: [], 채광: [] },
   locationRecords: { 채집: {}, 낚시: {}, 채광: {} },
   bags: {
@@ -408,6 +412,12 @@ export function parseLifeState(json: string | null | undefined): LifeState {
       alchemyMastery: normalizeAlchemyMastery(v.alchemyMastery),
       perks: v.perks ?? [],
       pending: v.pending ?? [],
+      // 기록이 없던 시절 데이터는 '지금 레벨까지 받았다'로 본다 — 평소엔 레벨업마다 받았으니 맞는 값이다.
+      perkGrantedLevel: {
+        채집: Math.max(v.perkGrantedLevel?.채집 ?? 0, v.plant?.level ?? 1),
+        낚시: Math.max(v.perkGrantedLevel?.낚시 ?? 0, v.fishing?.level ?? 1),
+        채광: Math.max(v.perkGrantedLevel?.채광 ?? 0, v.mining?.level ?? 1),
+      },
       collection: {
         채집: v.collection?.채집 ?? [],
         낚시: v.collection?.낚시 ?? [],
@@ -585,16 +595,18 @@ export function rollPerkOptions(
   state: LifeState,
   kind: LifeSkillKind,
   catalog?: LifeSkillCatalogEntry[],
+  opts: { exclude?: Set<string>; count?: number } = {},
 ): LifePerk[] {
+  const want = opts.count ?? 3;
   // 보유 판정은 반드시 '같은 종류' 안에서만 한다.
   // 종류를 안 보면 낚시로 익힌 '운의 축적 1(레어)' 가 채광의 같은 이름까지 막아서,
   // 낚시를 많이 찍은 사람일수록 채광 선택지가 말라붙는다 (레어·유니크 등장률 0%).
   const ownPool = state.perks.filter((p) => p.kind === kind);
   const ownedMyth = new Set(ownPool.filter(isMyth).map((p) => p.name));
-  const ownedPerks = new Set(ownPool.map(perkIdentityKey));
+  const ownedPerks = new Set([...ownPool.map(perkIdentityKey), ...(opts.exclude ?? [])]);
   const options: LifePerk[] = [];
   let guard = 0;
-  while (options.length < 3 && guard++ < 60) {
+  while (options.length < want && guard++ < 60) {
     const rarity = rollRarity();
     const catalogPool =
       catalog
@@ -632,11 +644,38 @@ export function applyExp(
     prog.level += 1;
     leveled.push(prog.level);
     // 특성은 Lv4부터 3레벨마다(4·7·10·13·16·19…). (레벨-1)%3==0, 시작 레벨1은 제외.
-    if (isPerkChoiceLevel(prog.level)) {
+    if (isPerkChoiceLevel(prog.level) && prog.level > state.perkGrantedLevel[kind]) {
       state.pending.push({ kind, level: prog.level, options: rollPerkOptions(state, kind, catalog) });
     }
+    state.perkGrantedLevel[kind] = Math.max(state.perkGrantedLevel[kind], prog.level);
   }
   return leveled;
+}
+
+// 대기 중인 선택지에서 이미 익힌 특성을 새 특성으로 바꾼다.
+// 선택지는 미리 뽑아두는데(레벨업 여러 번·망각의 축복 일괄 재지급), 앞 선택지에서 고른 특성이
+// 뒤 선택지에 남아 있으면 셋 다 '이미 익힘'이 되어 대기열이 막힌다. 더 뽑을 게 없는 선택지는 버린다.
+export function refreshPendingChoices(
+  state: LifeState,
+  kind: LifeSkillKind,
+  catalog?: LifeSkillCatalogEntry[],
+): boolean {
+  const owned = new Set(state.perks.filter((p) => p.kind === kind).map(perkIdentityKey));
+  let changed = false;
+  for (const choice of state.pending) {
+    if (choice.kind !== kind) continue;
+    const keep = choice.options.filter((o) => !owned.has(perkIdentityKey(o)));
+    if (keep.length === choice.options.length) continue;
+    const extra = rollPerkOptions(state, kind, catalog, {
+      exclude: new Set(keep.map(perkIdentityKey)),
+      count: 3 - keep.length,
+    });
+    choice.options = [...keep, ...extra];
+    changed = true;
+  }
+  const before = state.pending.length;
+  state.pending = state.pending.filter((choice) => choice.options.length > 0);
+  return changed || state.pending.length !== before;
 }
 
 export function applyCookingExp(state: LifeState, gained: number): number[] {

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { parseLifeState, perkIdentityKey } from "@/lib/lifeSkillPerks";
+import { parseLifeState, perkIdentityKey, refreshPendingChoices } from "@/lib/lifeSkillPerks";
+import { fetchLifeSkillCatalog } from "@/lib/skillCatalog";
 
 export type LifeActionState = { error?: string; ok?: string } | undefined;
 
@@ -34,11 +35,23 @@ export async function chooseLifePerk(
       (perk) => perk.kind === choice.kind && perkIdentityKey(perk) === perkIdentityKey(picked),
     )
   ) {
-    return { error: `[${picked.rarity}] ${picked.name} 특성은 이미 익혔어요.` };
+    // 미리 뽑아둔 선택지라 그 사이 익힌 특성이 섞여 있을 수 있다 — 막히지 않게 새로 뽑아준다.
+    refreshPendingChoices(life, choice.kind, await fetchLifeSkillCatalog());
+    await prisma.characterSheet.update({
+      where: { userId: user.id },
+      data: { lifeJson: JSON.stringify(life) },
+    });
+    revalidatePath(`/u/${user.username}`);
+    revalidatePath("/world");
+    return { error: `[${picked.rarity}] ${picked.name} 특성은 이미 익혀서 선택지를 새로 뽑았어요.` };
   }
 
   life.pending.shift();
   life.perks.push({ ...picked, kind: choice.kind });
+  // 방금 익힌 특성이 뒤 선택지에 남아 있으면 바꿔둔다.
+  if (life.pending.some((c) => c.kind === choice.kind)) {
+    refreshPendingChoices(life, choice.kind, await fetchLifeSkillCatalog());
+  }
 
   await prisma.characterSheet.update({
     where: { userId: user.id },
